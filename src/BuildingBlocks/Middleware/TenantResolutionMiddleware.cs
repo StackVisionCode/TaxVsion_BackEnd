@@ -1,6 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using BuildingBlocks.Tenancy;
+using Microsoft.AspNetCore.Http;
 
-namespace BuildingBlocks;
+namespace BuildingBlocks.Middleware;
 
 public sealed class TenantResolutionMiddleware(RequestDelegate next)
 {

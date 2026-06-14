@@ -1,13 +1,14 @@
 ﻿using System.Reflection.Metadata;
 
-namespace BuildingBlocks;
+namespace BuildingBlocks.Domain;
 
 public abstract class BaseEntity
 {
 
-    // ReSharper disable once CollectionNeverUpdated.Global
 
+#pragma warning disable IDE0028 // Simplify collection initialization
     private readonly List<IDomainEvent> _domainEvents = new();
+#pragma warning restore IDE0028 // Simplify collection initialization
 
     public Guid Id { get; protected set; }
     public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();

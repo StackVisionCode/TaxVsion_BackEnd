@@ -1,4 +1,4 @@
-﻿namespace BuildingBlocks;
+﻿namespace BuildingBlocks.Common;
 
 public interface ICorrelationContext
 {

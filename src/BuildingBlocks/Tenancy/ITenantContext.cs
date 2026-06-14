@@ -1,4 +1,4 @@
-﻿namespace BuildingBlocks;
+﻿namespace BuildingBlocks.Tenancy;
 
 public interface ITenantContext
 {

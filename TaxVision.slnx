@@ -2,4 +2,11 @@
   <Folder Name="/src/">
     <Project Path="src/BuildingBlocks/BuildingBlocks.csproj" />
   </Folder>
+  <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/Tenant/">
+    <Project Path="src/Services/Tenant/TaxVision.Tenant.Api/TaxVision.Tenant.Api.csproj" />
+    <Project Path="src/Services/Tenant/TaxVision.Tenant.Application/TaxVision.Tenant.Application.csproj" />
+    <Project Path="src/Services/Tenant/TaxVision.Tenant.Domain/TaxVision.Tenant.Domain.csproj" />
+    <Project Path="src/Services/Tenant/TaxVision.Tenant.Infrastructure/TaxVision.Tenant.Infrastructure.csproj" />
+  </Folder>
 </Solution>

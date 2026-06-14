@@ -1,7 +1,8 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Serilog.Context;
+using BuildingBlocks.Common;
 
-namespace BuildingBlocks;
+namespace BuildingBlocks.Middleware;
 
 public sealed class CorrelationIdMiddleware(RequestDelegate next)
 {

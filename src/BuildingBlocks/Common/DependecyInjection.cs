@@ -1,6 +1,7 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using BuildingBlocks.Tenancy;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace BuildingBlocks;
+namespace BuildingBlocks.Common;
 
 public static class BuildingBlocksRegistration
 {

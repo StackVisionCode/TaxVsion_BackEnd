@@ -1,4 +1,4 @@
-﻿namespace BuildingBlocks;
+﻿namespace BuildingBlocks.Messaging;
 
 public interface IIntegrationEvent
 {
@@ -8,7 +8,7 @@ public interface IIntegrationEvent
     string CorrelationId { get; }
 
 }
-public abstract class IntegrationEvent : IIntegrationEvent
+public abstract record IntegrationEvent : IIntegrationEvent
 {
     public Guid EventId { get; init; } = Guid.NewGuid();
 
