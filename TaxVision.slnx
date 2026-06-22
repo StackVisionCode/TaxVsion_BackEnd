@@ -3,6 +3,15 @@
     <Project Path="src/BuildingBlocks/BuildingBlocks.csproj" />
   </Folder>
   <Folder Name="/src/Services/" />
+
+  <!-- AuthService -->
+  <Folder Name="/src/Services/Auth/">
+    <Project Path="src/Services/Auth/Api/TaxVision.Auth.Api.csproj" />
+    <Project Path="src/Services/Auth/Application/TaxVision.Auth.Application.csproj" />
+    <Project Path="src/Services/Auth/Domain/TaxVision.Auth.Domain.csproj" />
+    <Project Path="src/Services/Auth/Infrastructure/TaxVision.Auth.Infrastructure.csproj" />
+  </Folder>
+  <!-- TenantService -->
   <Folder Name="/src/Services/Tenant/">
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Api/TaxVision.Tenant.Api.csproj" />
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Application/TaxVision.Tenant.Application.csproj" />
