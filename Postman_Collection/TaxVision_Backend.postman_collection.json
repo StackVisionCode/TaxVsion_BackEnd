@@ -1,0 +1,133 @@
+{
+  "info": {
+    "_postman_id": "4a101daa-23f7-4027-a8aa-43dce5855659",
+    "name": "TaxVision_Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "50989378",
+    "_collection_link": "https://go.postman.co/collection/50989378-4a101daa-23f7-4027-a8aa-43dce5855659?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Registro_Tenant",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "\r",
+              "const response = pm.response.json();\r",
+              "\r",
+              "pm.environment.set(\"tenantId\", response.id);\r",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{UrlBase}}/tenants",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "tenants"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "AuthRegister",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbí\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{UrlBase}}/auth/register",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const response = pm.response.json();\r",
+              "\r",
+              "pm.environment.set(\"accessToken\", response.accessToken);\r",
+              "pm.environment.set(\"refreshToken\", response.refreshToken);\r",
+              "\r",
+              "console.log(\"Access token guardado\");\r",
+              "console.log(\"Refresh token guardado\");"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{UrlBase}}/auth/login",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
