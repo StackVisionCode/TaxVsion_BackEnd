@@ -3,5 +3,5 @@
 public interface ITenantOwned
 {
     Guid TenantId { get; }
-    void SetTenantId(Guid tenantId);
+    void SetTenant(Guid tenantId);
 }

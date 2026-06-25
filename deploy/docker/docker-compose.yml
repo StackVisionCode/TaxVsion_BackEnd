@@ -1,2 +1,104 @@
-# aqui ira el d ocker compose
-# vacio
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: taxvision-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: taxvision-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tenant-api:
+    image: taxvision/tenant-api:dev
+    container_name: taxvision-tenant-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Tenant/TaxVision.Tenant.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - taxvision-network
+
+  auth-api:
+    image: taxvision/auth-api:dev
+    container_name: taxvision-auth-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Auth/Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: amqp://guest:guest@rabbitmq:5672
+      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - taxvision-network
+
+  gateway:
+    image: taxvision/gateway:dev
+    container_name: taxvision-gateway
+    build:
+      context: ../..
+      dockerfile: src/Gateway/TaxVision.Gateway/Dockerfile
+    ports:
+      - "5047:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
+      ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
+    depends_on:
+      - auth-api
+      - tenant-api
+    networks:
+      - taxvision-network
+
+volumes:
+  rabbitmq-data:
+  redis-data:
+
+networks:
+  taxvision-network:
+    name: taxvision-network

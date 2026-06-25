@@ -10,7 +10,7 @@ public abstract class BaseEntity
     private readonly List<IDomainEvent> _domainEvents = new();
 #pragma warning restore IDE0028 // Simplify collection initialization
 
-    public Guid Id { get; protected set; }
+    public Guid Id { get; protected set; } = Guid.NewGuid();
     public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
 
     protected void Raise(IDomainEvent domainEvent) => _domainEvents.Add(domainEvent);

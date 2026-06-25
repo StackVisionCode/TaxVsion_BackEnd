@@ -1,13 +1,19 @@
 using System.Text;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Middleware;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Application.Users.IntegrationEvents;
 using TaxVision.Auth.Infrastructure;
 using TaxVision.Auth.Infrastructure.Security;
 using Wolverine;
+using Wolverine.ErrorHandling;
+using Wolverine.RabbitMQ;
+using Wolverine.SqlServer;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +21,7 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
+builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 
 var jwtOptions = builder.Configuration
@@ -49,7 +56,32 @@ builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(LoginHandler).Assembly);
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
+
+    var rabbitUri = builder.Configuration["RabbitMq:Uri"]
+        ?? throw new InvalidOperationException("RabbitMq:Uri is missing.");
+
+    var sqlConn = builder.Configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
+
+    options.UseRabbitMq(new Uri(rabbitUri)).AutoProvision();
+    options.PersistMessagesWithSqlServer(sqlConn);
+    options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+
+    options.PublishMessage<UserRegisteredIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
+    options.ListenToRabbitQueue("auth-tenant-events", queue =>
+    {
+        queue.BindExchange("taxvision-events", string.Empty);
+    }).UseDurableInbox();
+
+    options.Policies.OnException<Exception>()
+        .RetryWithCooldown(
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(15));
 });
+
 
 var app = builder.Build();
 

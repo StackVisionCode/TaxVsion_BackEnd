@@ -28,6 +28,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(provider =>
             provider.GetRequiredService<AuthDbContext>());
+        services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
