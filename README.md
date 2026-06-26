@@ -111,8 +111,10 @@ Funcionalidades implementadas:
 - Publicacion de `UserRegisteredIntegrationEvent`.
 - Generacion de JWT.
 - Emision de refresh tokens.
+- Unicidad de correo por tenant mediante el indice compuesto `(TenantId, Email)`.
+- Login contextualizado por `tenantId` para identificar correctamente al usuario.
 - Persistencia con Entity Framework Core.
-- Migraciones para agregar nombre, apellido y registry local de tenants.
+- Migraciones para agregar nombre, apellido, registry local de tenants y unicidad de correo por tenant.
 - Integracion con RabbitMQ mediante Wolverine.
 - Integracion con Redis.
 
@@ -144,6 +146,7 @@ Body:
 
 ```json
 {
+  "tenantId": "tenant-guid",
   "email": "jturbi@example.com",
   "password": "Brittany040238."
 }
@@ -172,6 +175,27 @@ Ahora el flujo correcto es:
 6. Auth solo permite registrar usuarios si el tenant existe y esta activo.
 
 Esto evita registrar usuarios asociados a tenants inexistentes.
+
+## Unicidad de correo por tenant
+
+Auth considera que la identidad de un usuario esta formada por:
+
+```text
+TenantId + Email
+```
+
+El indice unico compuesto de Entity Framework Core permite que dos tenants diferentes
+registren el mismo correo, pero impide repetirlo dentro de un mismo tenant.
+
+| Tenant | Correo | Resultado |
+| --- | --- | --- |
+| Tenant A | `usuario@example.com` | Permitido |
+| Tenant A | `usuario@example.com` | Rechazado |
+| Tenant B | `usuario@example.com` | Permitido |
+
+Las operaciones de registro y login consultan al usuario utilizando siempre
+`tenantId` y el correo normalizado. Por esta razon, el request de login tambien debe
+incluir el `tenantId`.
 
 ## API Gateway
 
@@ -283,14 +307,43 @@ Ver logs del Gateway:
 docker compose -f deploy\docker\docker-compose.yml --env-file .env logs -f gateway
 ```
 
+Aplicar las migraciones de Auth:
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Auth\Infrastructure\TaxVision.Auth.Infrastructure.csproj `
+  --startup-project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
+```
+
+Reconstruir y actualizar solamente Auth API:
+
+```powershell
+docker compose --env-file .env -f deploy\docker\docker-compose.yml up -d --build --force-recreate auth-api
+```
+
+Reconstruir todos los servicios:
+
+```powershell
+docker compose --env-file .env -f deploy\docker\docker-compose.yml up -d --build --force-recreate
+```
+
+Forzar una compilacion limpia de Auth cuando Docker reutilice una imagen anterior:
+
+```powershell
+docker compose --env-file .env -f deploy\docker\docker-compose.yml build --no-cache auth-api
+docker compose --env-file .env -f deploy\docker\docker-compose.yml up -d --force-recreate auth-api
+```
+
 ## Flujo recomendado de prueba
 
 1. Levantar los servicios con Docker Compose.
 2. Crear un tenant desde Postman usando el Gateway.
 3. Guardar el `tenantId` recibido en una variable de Postman.
 4. Registrar un usuario usando ese `tenantId`.
-5. Hacer login con el usuario registrado.
+5. Hacer login con el usuario registrado y el mismo `tenantId`.
 6. Guardar el `accessToken` y `refreshToken` en variables de Postman.
+7. Verificar que el correo se rechace al repetirlo en el mismo tenant.
+8. Verificar que el mismo correo se permita en un tenant diferente.
 
 ## Postman
 
@@ -310,6 +363,16 @@ Login:
 
 ```http
 POST http://localhost:5047/auth/login
+```
+
+Body:
+
+```json
+{
+  "tenantId": "{{tenantId}}",
+  "email": "jturbi@example.com",
+  "password": "Brittany040238."
+}
 ```
 
 Script de Postman para guardar el tenant:
@@ -342,9 +405,7 @@ El proyecto queda con la base de microservicios preparada para continuar las sig
 - RabbitMQ y Redis integrados.
 - Servicios conectados en la misma red Docker.
 
-##  Notas Pendientes de fecha 26-06-2026:
+## Notas pendientes de fecha 27-06-2026
 
-- Validar que un mismo correo no exista  en un mismo Tenant, pero que si pueda existir con otro Tenant
 - Se realizaron pruebas de registro de Tenant.
-- Crear MicroServicio de Subcripción
-
+- Crear microservicio de Suscripcion.
