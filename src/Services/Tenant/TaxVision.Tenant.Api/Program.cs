@@ -11,19 +11,20 @@ using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
+using BuildingBlocks.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Host.UseTaxVisionSerilog("tenant-service");
 // 1) Structured loggin with Serilog
-builder.Host.UseSerilog((context, logger) => logger
-    .ReadFrom.Configuration(context.Configuration)
-    .Enrich.FromLogContext()
-    .Enrich.WithProperty("service", "tenant-service")
-    .WriteTo.Console()
-    .WriteTo.File(
-        Path.Combine(AppContext.BaseDirectory, "Logs", "tenant-.log"),
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 30));
+// builder.Host.UseSerilog((context, logger) => logger
+//     .ReadFrom.Configuration(context.Configuration)
+//     .Enrich.FromLogContext()
+//     .Enrich.WithProperty("service", "tenant-service")
+//     .WriteTo.Console()
+//     .WriteTo.File(
+//         Path.Combine(AppContext.BaseDirectory, "Logs", "tenant-.log"),
+//         rollingInterval: RollingInterval.Day,
+//         retainedFileCountLimit: 30));
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

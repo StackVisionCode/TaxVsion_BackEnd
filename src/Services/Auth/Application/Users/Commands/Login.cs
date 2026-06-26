@@ -3,7 +3,7 @@ using TaxVision.Auth.Application.Abstractions;
 
 namespace TaxVision.Auth.Application.Users.Commands;
 
-public sealed record LoginCommand(string Email, string Password);
+public sealed record LoginCommand(Guid TenantId, string Email, string Password);
 public sealed record LoginResponse(string AccessToken, string RefreshToken);
 
 public static class LoginHandler
@@ -17,7 +17,7 @@ public static class LoginHandler
         CancellationToken ct)
     {
         var email = command.Email.Trim().ToLowerInvariant();
-        var user = await users.GetByEmailAsync(email, ct);
+        var user = await users.GetByEmailAsync(command.TenantId, email, ct);
 
         if (user is null || !hasher.Verify(command.Password, user.PasswordHash))
         {

@@ -14,9 +14,10 @@ using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
+using BuildingBlocks.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Host.UseTaxVisionSerilog("auth-service");
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();

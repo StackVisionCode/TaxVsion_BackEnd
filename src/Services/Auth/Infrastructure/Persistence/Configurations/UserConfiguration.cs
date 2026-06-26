@@ -19,7 +19,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.Email).HasMaxLength(320).IsRequired();
         builder.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
         builder.Property(user => user.IsActive).IsRequired();
-        builder.HasIndex(user => user.Email).IsUnique();
+        builder.HasIndex(user => new { user.TenantId, user.Email })
+            .IsUnique();
         builder.Ignore(user => user.Roles);
         builder.Ignore(user => user.DomainEvents);
 

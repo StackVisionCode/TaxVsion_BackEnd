@@ -35,7 +35,7 @@ public static class RegisterHandler
                 new Error("Tenant.NotFound", "Tenant does not exist or is inactive."));
         }
 
-        if (await users.EmailExistsAsync(email, ct))
+        if (await users.EmailExistsAsync(command.TenantId, email, ct))
         {
             return Result.Failure<UserResponse>(
                 new Error("User.EmailConflict", "Email is already registered."));

@@ -12,14 +12,26 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext ctx, ICorrelationContext corr)
     {
         // Check if the incoming request has a CorrelationId header. If it does, use that value; otherwise, generate a new CorrelationId.
-        var id = ctx.Request.Headers[Header].FirstOrDefault() ?? Guid.NewGuid().ToString();
-        ((CorrelationContext)corr).Set(id);
-        ctx.Response.Headers[Header] = id;
+        var id = ctx.Request.Headers[Header].FirstOrDefault();
 
-        // Push the CorrelationId into the Serilog LogContext so that it is included in all log entries for the duration of the request
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            id = Guid.NewGuid().ToString("N");
+        }
+
+        ctx.Request.Headers[Header] = id;
+        corr.Set(id);
+
+        ctx.Response.OnStarting(() =>
+        {
+            ctx.Response.Headers[Header] = id;
+            return Task.CompletedTask;
+        });
 
         using (LogContext.PushProperty("CorrelationId", id))
+        {
             await next(ctx);
+        }
 
 
 
