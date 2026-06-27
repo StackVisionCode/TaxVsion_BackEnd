@@ -30,7 +30,9 @@ public static class DependencyInjection
             provider.GetRequiredService<AuthDbContext>());
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IInvitationRepository, InvitationRepository>();
         services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
+        services.AddScoped<IInvitationTokenService, InvitationTokenService>();
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 

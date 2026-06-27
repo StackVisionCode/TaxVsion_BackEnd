@@ -18,6 +18,7 @@
               "const response = pm.response.json();\r",
               "\r",
               "pm.environment.set(\"tenantId\", response.id);\r",
+              "pm.environment.set(\"invitationToken\", response.adminActivationToken);\r",
               ""
             ],
             "type": "text/javascript",
@@ -37,7 +38,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\"\r\n}",
+          "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\",\r\n  \"defaultTimeZoneId\": \"America/Santo_Domingo\"\r\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -57,13 +58,13 @@
       "response": []
     },
     {
-      "name": "AuthRegister",
+      "name": "AcceptTenantAdminInvitation",
       "request": {
         "method": "POST",
         "header": [],
         "body": {
           "mode": "raw",
-          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbí\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+          "raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -71,13 +72,14 @@
           }
         },
         "url": {
-          "raw": "{{UrlBase}}/auth/register",
+          "raw": "{{UrlBase}}/auth/invitations/accept",
           "host": [
             "{{UrlBase}}"
           ],
           "path": [
             "auth",
-            "register"
+            "invitations",
+            "accept"
           ]
         }
       },
@@ -109,7 +111,7 @@
         "header": [],
         "body": {
           "mode": "raw",
-          "raw": "{\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
           "options": {
             "raw": {
               "language": "json"

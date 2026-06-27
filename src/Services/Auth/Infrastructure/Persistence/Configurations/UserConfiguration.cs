@@ -18,9 +18,16 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.LastName).HasMaxLength(100).IsRequired();
         builder.Property(user => user.Email).HasMaxLength(320).IsRequired();
         builder.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
+        builder.Property(user => user.ActorType)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
         builder.Property(user => user.IsActive).IsRequired();
         builder.HasIndex(user => new { user.TenantId, user.Email })
             .IsUnique();
+        builder.HasIndex(user => new { user.TenantId, user.ActorType });
+        builder.HasIndex(user => new { user.TenantId, user.CustomerId })
+            .HasFilter("[CustomerId] IS NOT NULL");
         builder.Ignore(user => user.Roles);
 
         var converter = new ValueConverter<List<string>, string>(

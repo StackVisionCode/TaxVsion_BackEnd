@@ -20,9 +20,13 @@ public static class RateLimitingRegistration
                     var path = context.Request.Path.Value ?? string.Empty;
                     var isSensitiveAuthEndpoint =
                         path.Equals("/auth/login", StringComparison.OrdinalIgnoreCase) ||
-                        path.Equals("/auth/register", StringComparison.OrdinalIgnoreCase) ||
                         path.Equals("/auth/refresh", StringComparison.OrdinalIgnoreCase) ||
-                        path.Equals("/auth/activate-admin", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals(
+                            "/auth/invitations/accept",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals(
+                            "/auth/invitations",
+                            StringComparison.OrdinalIgnoreCase) ||
                         path.Equals("/tenants", StringComparison.OrdinalIgnoreCase) &&
                         HttpMethods.IsPost(context.Request.Method);
 

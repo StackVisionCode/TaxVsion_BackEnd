@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Auth.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Auth.Infrastructure.Persistence;
 namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AuthDbContext))]
-    partial class AuthDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260627183006_AddAuthTenantDefaultTimeZone")]
+    partial class AddAuthTenantDefaultTimeZone
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,71 +24,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("TaxVision.Auth.Domain.Invitations.Invitation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AcceptedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("AcceptedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ActorType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<DateTime?>("CancelledAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("CancelledByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("CustomerId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<DateTime>("ExpiresAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("InvitedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExpiresAtUtc");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.HasIndex("TenantId", "Email", "Status");
-
-                    b.ToTable("Invitations", (string)null);
-                });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.RefreshTokens.RefreshToken", b =>
                 {
@@ -126,6 +64,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AdminEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime?>("AdminInvitationConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AdminInvitationTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("AdminUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -136,11 +88,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -154,36 +101,18 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AdminEmail");
+
                     b.HasIndex("SubDomain")
                         .IsUnique();
 
                     b.ToTable("Tenants", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"),
-                            CreatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc),
-                            DefaultTimeZoneId = "Etc/UTC",
-                            IsActive = true,
-                            Kind = "Platform",
-                            Name = "TaxVision Platform",
-                            SubDomain = "platform-internal"
-                        });
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ActorType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Email")
@@ -218,11 +147,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasColumnName("Roles");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "ActorType");
-
-                    b.HasIndex("TenantId", "CustomerId")
-                        .HasFilter("[CustomerId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "Email")
                         .IsUnique();

@@ -22,14 +22,19 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options) : IJwtTokenG
 {
     private readonly JwtOptions _options = options.Value;
 
-    public string Generate(User user)
+    public string Generate(User user, string effectiveTimeZoneId)
     {
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
-            new("tenant_id", user.TenantId.ToString())
+            new("tenant_id", user.TenantId.ToString()),
+            new("actor_type", user.ActorType.ToString()),
+            new("zoneinfo", effectiveTimeZoneId)
         };
+
+        if (user.CustomerId is Guid customerId)
+            claims.Add(new Claim("customer_id", customerId.ToString()));
 
         claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
 

@@ -5,7 +5,7 @@ namespace TaxVision.Tenant.Application.Tenants;
 
 public static class TenantListCache
 {
-    private const string VersionKey = "tenants:list:version";
+    private const string VersionKey = "tenants:list:v2:version";
 
     public static async Task<IReadOnlyList<TenantResponse>> GetPageAsync(
         ICacheService cache,
