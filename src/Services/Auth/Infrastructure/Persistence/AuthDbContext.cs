@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Domain.RefreshTokens;
+using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
@@ -14,6 +15,7 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options)
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

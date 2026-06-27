@@ -11,7 +11,8 @@ X-Correlation-Id: {{CorrelationId}}
 {
   "name": "Empresa Demo",
   "subdomain": "empresa-demo",
-  "adminEmail": "admin@empresa-demo.com"
+  "adminEmail": "admin@empresa-demo.com",
+  "defaultTimeZoneId": "America/Santo_Domingo"
 }
 
 ### List tenants (requires PlatformAdmin)

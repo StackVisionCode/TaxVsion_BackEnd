@@ -1,7 +1,7 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
-using System.Security.Cryptography;
-using System.Text;
+using BuildingBlocks.Tenancy;
+using BuildingBlocks.TimeZones;
 
 namespace TaxVision.Auth.Domain.Tenants;
 
@@ -11,19 +11,17 @@ public sealed class Tenant : BaseEntity
 
     public string Name { get; private set; } = default!;
     public string SubDomain { get; private set; } = default!;
+    public TenantKind Kind { get; private set; }
+    public string DefaultTimeZoneId { get; private set; } = default!;
     public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
-    public string? AdminEmail { get; private set; }
-    public string? AdminInvitationTokenHash { get; private set; }
-    public Guid? AdminUserId { get; private set; }
-    public DateTime? AdminInvitationConsumedAtUtc { get; private set; }
 
     public static Result<Tenant> Register(
         Guid id,
         string name,
         string subDomain,
-        string adminEmail,
-        string adminInvitationTokenHash)
+        TenantKind kind,
+        string defaultTimeZoneId)
     {
         if (id == Guid.Empty)
         {
@@ -43,11 +41,12 @@ public sealed class Tenant : BaseEntity
                 new Error("Tenant.SubDomain", "Tenant subdomain is required."));
         }
 
-        if (string.IsNullOrWhiteSpace(adminEmail) ||
-            string.IsNullOrWhiteSpace(adminInvitationTokenHash))
+        if (!IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalizedTimeZoneId))
         {
             return Result.Failure<Tenant>(
-                new Error("Tenant.AdminInvitation", "Admin invitation data is required."));
+                new Error(
+                    "Tenant.DefaultTimeZoneId",
+                    "Tenant default time zone must be a valid IANA identifier."));
         }
 
         return Result.Success(new Tenant
@@ -55,24 +54,31 @@ public sealed class Tenant : BaseEntity
             Id = id,
             Name = name.Trim(),
             SubDomain = subDomain.Trim().ToLowerInvariant(),
+            Kind = kind,
+            DefaultTimeZoneId = normalizedTimeZoneId,
             IsActive = true,
-            CreatedAtUtc = DateTime.UtcNow,
-            AdminEmail = adminEmail.Trim().ToLowerInvariant(),
-            AdminInvitationTokenHash = adminInvitationTokenHash
+            CreatedAtUtc = DateTime.UtcNow
         });
     }
 
     public void UpdateFromCreatedEvent(
         string name,
         string subDomain,
-        string adminEmail,
-        string adminInvitationTokenHash)
+        TenantKind kind,
+        string defaultTimeZoneId)
     {
         Name = name.Trim();
         SubDomain = subDomain.Trim().ToLowerInvariant();
+        Kind = kind;
+        if (!IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalizedTimeZoneId))
+        {
+            throw new ArgumentException(
+                "Tenant default time zone must be a valid IANA identifier.",
+                nameof(defaultTimeZoneId));
+        }
+
+        DefaultTimeZoneId = normalizedTimeZoneId;
         IsActive = true;
-        AdminEmail ??= adminEmail.Trim().ToLowerInvariant();
-        AdminInvitationTokenHash ??= adminInvitationTokenHash;
     }
 
     public void Deactivate() => IsActive = false;
@@ -81,22 +87,4 @@ public sealed class Tenant : BaseEntity
 
     public void SetActive(bool isActive) => IsActive = isActive;
 
-    public bool MatchesAdminInvitation(string rawToken)
-    {
-        if (string.IsNullOrWhiteSpace(AdminInvitationTokenHash) ||
-            string.IsNullOrWhiteSpace(rawToken))
-        {
-            return false;
-        }
-
-        var actual = SHA256.HashData(Encoding.UTF8.GetBytes(rawToken));
-        var expected = Convert.FromHexString(AdminInvitationTokenHash);
-        return CryptographicOperations.FixedTimeEquals(actual, expected);
-    }
-
-    public void MarkAdminInvitationConsumed(Guid userId)
-    {
-        AdminUserId ??= userId;
-        AdminInvitationConsumedAtUtc ??= DateTime.UtcNow;
-    }
 }

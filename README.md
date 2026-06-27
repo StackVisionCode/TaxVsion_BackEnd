@@ -1,4 +1,14 @@
+
+# Guia de implementación de los test (Pendiente)
+<a href="https://firebasestorage.googleapis.com/v0/b/c5iffaa-10025.firebasestorage.app/o/Guia_Implementacion_Pruebas_Automatizadas_TaxVision.pdf?alt=media&token=2ba4fb54-9e81-4812-b75c-03fe2b5e61d5"> Guía Implementación Test</a>
+
+<a href="https://firebasestorage.googleapis.com/v0/b/c5iffaa-10025.firebasestorage.app/o/Guia_Implementacion_Customer_Subscription_TaxVision.pdf?alt=media&token=ae21b127-f034-49c0-a04b-d28c03097212">Customer y Subscription </br>
+Guia de implementacion</a>
+
 # TaxVision Backend
+
+<img width="2400" height="1560" alt="taxvision_arch" src="https://github.com/user-attachments/assets/65b9f169-c0f1-4098-8533-f3d50e90c015" />
+
 
 Backend multitenant de TaxVision construido con microservicios en .NET 10.
 
@@ -10,8 +20,10 @@ Backend multitenant de TaxVision construido con microservicios en .NET 10.
 
 Esta documentacion describe el estado real del repositorio despues de incorporar
 seguridad multitenant, mensajeria transaccional, administracion de tenants,
-CorrelationId de extremo a extremo, cache con invalidacion y una plataforma local de
-observabilidad con Grafana, Loki, Prometheus, Tempo y OpenTelemetry.
+autenticacion exclusivamente por invitaciones, un tenant interno reservado para el
+control plane, CorrelationId de extremo a extremo, cache con invalidacion y una
+plataforma local de observabilidad con Grafana, Loki, Prometheus, Tempo y
+OpenTelemetry.
 
 ## Indice
 
@@ -38,6 +50,7 @@ observabilidad con Grafana, Loki, Prometheus, Tempo y OpenTelemetry.
 21. Depuracion
 22. Pruebas automatizadas
 23. Guia para nuevos microservicios y mejoras futuras
+24. Guia de implementacion Customer y Subscription
 
 ## 1. Introduccion y objetivo
 
@@ -108,7 +121,7 @@ Todos los procesos -> OTLP Collector
 | Servicio | Propietario de | Base |
 | --- | --- | --- |
 | Tenant | tenant canonico y estado | `TaxVision_Tenants` |
-| Auth | usuarios, refresh tokens y proyeccion de tenants | `TaxVision_Auth` |
+| Auth | usuarios, invitaciones, refresh tokens y proyeccion de tenants | `TaxVision_Auth` |
 | Gateway | borde HTTP y propagacion de contexto | ninguna |
 
 Auth nunca consulta directamente `TaxVision_Tenants`. Consume eventos y mantiene una
@@ -200,6 +213,7 @@ OpenTelemetry.
 
 - crea tenants;
 - valida `AdminEmail`;
+- exige una zona horaria predeterminada mediante un identificador IANA;
 - genera invitacion segura para el administrador;
 - lista tenants con paginacion y cache;
 - cambia estado Active/Suspended/Closed;
@@ -209,11 +223,14 @@ OpenTelemetry.
 ### Auth Service
 
 - proyecta tenants desde RabbitMQ;
-- activa el primer `TenantAdmin` mediante token;
-- registra usuarios;
+- crea y acepta invitaciones con tokens hasheados;
+- elimina el registro publico de usuarios;
+- soporta `TenantEmployee`, `CustomerPortal`, `TenantAdmin` y `PlatformAdmin`;
+- activa el primer `TenantAdmin` mediante la invitacion del onboarding;
+- provisiona el primer `PlatformAdmin` mediante bootstrap secreto y temporal;
 - permite email repetido en tenants distintos;
 - login con tenant, email y password;
-- JWT con rol y `tenant_id`;
+- JWT con rol, `tenant_id` y zona horaria efectiva en `zoneinfo`;
 - refresh token rotatorio y revocacion;
 - bloquea login/refresh si el tenant esta inactivo;
 - consume eventos con inbox durable.
@@ -277,7 +294,9 @@ var result = User.Register(
     name,
     lastName,
     email,
-    passwordHash);
+    passwordHash,
+    actorType,
+    customerId);
 ```
 
 Los antiguos eventos de dominio que se acumulaban sin dispatcher fueron eliminados.
@@ -337,14 +356,14 @@ La transaccion EF conserva conjuntamente cambios de negocio y envelopes saliente
 
 ```text
 POST /tenants
- -> valida Name, SubDomain y AdminEmail
+ -> valida Name, SubDomain, AdminEmail y DefaultTimeZoneId
  -> genera activation token
  -> guarda tenant
  -> guarda evento en outbox, dentro de la transaccion
  -> devuelve token plano una sola vez
  -> RabbitMQ entrega evento a Auth
- -> Auth guarda email + hash del token
- -> POST /auth/activate-admin
+ -> Auth crea Invitation(TenantAdmin) con el hash y la expiracion
+ -> POST /auth/invitations/accept
  -> Auth compara hash en tiempo constante
  -> crea TenantAdmin
  -> repeticion devuelve el mismo usuario
@@ -352,17 +371,22 @@ POST /tenants
 
 La password nunca viaja por RabbitMQ. El token plano no se almacena.
 
-### Registrar usuario
+### Invitar y registrar un actor
 
 ```text
-POST /auth/register
- -> confirma tenant activo
- -> normaliza email
- -> consulta por TenantId + Email
- -> PBKDF2
- -> inserta usuario
+POST /auth/invitations (TenantAdmin o PlatformAdmin)
+ -> valida la matriz fija de invitaciones
+ -> genera token aleatorio y guarda solo SHA-256
+ -> devuelve el token plano una sola vez
+POST /auth/invitations/accept
+ -> valida token, estado, expiracion, tenant y email
+ -> fija password PBKDF2
+ -> crea el User con un unico ActorType
+ -> marca la invitacion Accepted en la misma transaccion
  -> publica UserRegisteredIntegrationEvent
 ```
+
+No existe un endpoint de registro publico.
 
 ### Login
 
@@ -371,7 +395,7 @@ POST /auth/login
  -> confirma tenant activo
  -> busca por TenantId + Email
  -> verifica PBKDF2
- -> genera JWT
+ -> genera JWT con zoneinfo usando la zona predeterminada del tenant
  -> genera y almacena hash del refresh token
 ```
 
@@ -426,6 +450,31 @@ dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
 
 Tenant requiere los mismos tipos de claves y el mismo JWT secret. Gateway requiere
 `Jwt:Secret`.
+
+### Bootstrap del primer PlatformAdmin
+
+El tenant interno se crea mediante migraciones con el identificador fijo:
+
+```text
+8f58a521-4c25-4d91-9f4e-7ad5df14c001
+```
+
+No representa una suscripcion comercial. Para crear la primera invitacion de
+`PlatformAdmin`, configure temporalmente Auth mediante secretos:
+
+```powershell
+dotnet user-secrets set "PlatformBootstrap:Enabled" "true" `
+  --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
+dotnet user-secrets set "PlatformBootstrap:Email" "admin@taxvision.com" `
+  --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
+dotnet user-secrets set "PlatformBootstrap:InvitationToken" "<RANDOM-SECRET-32+>" `
+  --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
+```
+
+El servicio guarda solamente SHA-256 del token configurado y nunca lo escribe en
+logs. Despues de aceptar la invitacion, deshabilite y elimine estos secretos. Los
+`PlatformAdmin` posteriores se crean mediante invitaciones emitidas por otro
+`PlatformAdmin`.
 
 ## 9. Middleware
 
@@ -521,8 +570,11 @@ En Grafana:
 | `Auth.InvalidInvitation` | 401 |
 | `Auth.InvalidRefreshToken` | 401 |
 | `Tenant.NotFound` | 404 |
+| `Invitation.NotFound` | 404 |
 | `Tenant.Inactive` | 403 |
+| `Invitation.Forbidden` | 403 |
 | `User.EmailConflict` | 409 |
+| `Invitation.PendingConflict` | 409 |
 | `Tenant.SubdomainConflict` | 409 |
 
 `AuthDbContext` y `TenantDbContext` convierten errores SQL 2601/2627 en
@@ -598,6 +650,7 @@ Tenant:
 - SubDomain de 3 a 40, minusculas, numeros y guion;
 - subdominio unico;
 - AdminEmail valido;
+- `DefaultTimeZoneId` obligatorio, resoluble y expresado como identificador IANA;
 - estados validos;
 - un tenant Closed no se reactiva.
 
@@ -609,7 +662,11 @@ Auth:
 - email normalizado;
 - password minima de 12;
 - `(TenantId, Email)` unico;
-- invitacion admin con hash;
+- registro solo mediante invitacion;
+- token de invitacion aleatorio; solo SHA-256 persiste;
+- expiracion predeterminada de siete dias;
+- `CustomerId` obligatorio solo para `CustomerPortal`;
+- `PlatformAdmin` permitido solo en el tenant interno;
 - refresh token activo.
 
 Paginacion:
@@ -636,9 +693,67 @@ Incluye:
 - `sub`;
 - `email`;
 - `tenant_id`;
-- roles.
+- `actor_type`;
+- `customer_id`, solamente para `CustomerPortal`;
+- `zoneinfo`;
+- un rol fijo derivado del actor.
 
 Se firma con HMAC-SHA256. Auth, Tenant y Gateway comparten secret, issuer y audience.
+
+`zoneinfo` contiene actualmente `Tenant.DefaultTimeZoneId`. Se vuelve a calcular en
+cada login y renovacion del access token usando la proyeccion local de Auth. Cuando
+se incorpore `UserProfile.TimeZoneId`, la resolucion sera:
+
+```text
+UserProfile.TimeZoneId ?? Tenant.DefaultTimeZoneId ?? Etc/UTC
+```
+
+La preferencia personal no se ha agregado todavia. Las fechas de negocio deben
+persistirse en UTC; `zoneinfo` se usa para presentacion y reglas que necesiten la
+hora local. No se almacenan offsets fijos como `UTC-4`, porque no representan reglas
+historicas o de horario de verano.
+
+### Actores e invitaciones
+
+Auth usa cuatro actores cerrados:
+
+| Actor | Alcance | Identificador adicional |
+| --- | --- | --- |
+| `TenantEmployee` | un tenant comercial | ninguno |
+| `CustomerPortal` | un tenant y un customer | `CustomerId` |
+| `TenantAdmin` | administracion de un tenant | ninguno |
+| `PlatformAdmin` | control plane del SaaS | tenant interno reservado |
+
+No se aceptan nombres de roles arbitrarios desde el cliente. `ActorType` determina el
+unico rol persistido y emitido en JWT.
+
+Matriz autorizada:
+
+| Invitador | Puede invitar |
+| --- | --- |
+| `PlatformAdmin` | `PlatformAdmin` dentro del tenant interno; `TenantAdmin` dentro de un tenant comercial |
+| `TenantAdmin` | `TenantAdmin`, `TenantEmployee` y `CustomerPortal` dentro de su propio tenant |
+| `TenantEmployee` | nadie |
+| `CustomerPortal` | nadie |
+
+Una invitacion conserva `TenantId`, email normalizado, actor, `CustomerId` opcional,
+hash del token, creador, estado, expiracion y auditoria de aceptacion/cancelacion.
+El token plano solo aparece en la respuesta de creacion. La aceptacion es idempotente:
+si ya fue aceptada devuelve el usuario vinculado.
+
+### Tenant interno reservado
+
+`TaxVision Platform` tiene `Kind = Platform`, subdominio
+`platform-internal`, zona `Etc/UTC` y GUID fijo. Se siembra de forma explicita en las
+bases Tenant y Auth porque es una raiz de confianza del control plane, no un tenant
+adquirido por suscripcion.
+
+- no aparece en el listado comercial;
+- no puede suspenderse mediante el endpoint de estado;
+- no debe recibir Customer, Subscription o Billing;
+- solo admite usuarios `PlatformAdmin`;
+- un `PlatformAdmin` administra otros tenants mediante endpoints explicitos, sin
+  cambiar su `tenant_id` ni suplantar silenciosamente a otro tenant.
 
 ### Refresh token
 
@@ -656,18 +771,21 @@ Se firma con HMAC-SHA256. Auth, Tenant y Gateway comparten secret, issuer y audi
 | `POST /tenants` | onboarding publico, rate limited |
 | `GET /tenants` | rol `PlatformAdmin` |
 | `PATCH /tenants/{id}/status` | rol `PlatformAdmin` |
+| `POST /auth/invitations` | `TenantAdmin` o `PlatformAdmin`, sujeto a la matriz |
+| `POST /auth/invitations/accept` | anonimo con token valido |
+| `POST /auth/invitations/{id}/cancel` | `TenantAdmin` o `PlatformAdmin` |
 
-La creacion del primer `PlatformAdmin` debe resolverse mediante provisioning seguro
-del entorno; no existe un endpoint publico que otorgue ese rol.
+La creacion del primer `PlatformAdmin` se resuelve mediante el bootstrap secreto. No
+existe un endpoint publico que otorgue ese rol.
 
 ### Rate limiting
 
 Gateway limita por IP y path:
 
 - login;
-- register;
 - refresh;
-- activate-admin;
+- crear invitacion;
+- aceptar invitacion;
 - crear tenant.
 
 El limite actual es 10 requests por minuto, sin cola.
@@ -690,11 +808,19 @@ Solo Gateway publica API al host.
 El consumidor de creacion usa upsert. El consumidor de estado actualiza `IsActive`.
 Ambos usan inbox durable y correlation.
 
+`TenantCreatedIntegrationEvent` incluye `DefaultTimeZoneId`. Auth lo conserva en su
+tabla `Tenants`, por lo que login y refresh no consultan la base de Tenant ni realizan
+una llamada HTTP entre microservicios.
+
+El mismo evento lleva el hash y la expiracion de la invitacion inicial. Auth crea una
+fila `Invitation` de tipo `TenantAdmin`; las columnas especiales de invitacion que
+antes estaban dentro de su proyeccion `Tenant` fueron eliminadas.
+
 ### Redis
 
 Solo el listado de tenants usa cache. La estrategia es:
 
-1. obtener `tenants:list:version`;
+1. obtener `tenants:list:v2:version`;
 2. incluir version, page y size en la clave;
 3. guardar pagina durante 5 minutos;
 4. crear tenant cambia la version;
@@ -711,26 +837,40 @@ Tablas:
 
 - `Tenants`;
 - `Users`;
+- `Invitations`;
 - `RefreshTokens`;
 - `wolverine_*`.
 
-La migracion `AddTenantAdminInvitation` agrega:
+La migracion `AddAuthTenantDefaultTimeZone` agrega `DefaultTimeZoneId` a la
+proyeccion local de tenants. Los registros anteriores reciben `Etc/UTC`.
 
-- `AdminEmail`;
-- `AdminInvitationTokenHash`;
-- `AdminUserId`;
-- `AdminInvitationConsumedAtUtc`.
+La migracion `AddInvitationActorsAndPlatformTenant`:
+
+- crea `Invitations`;
+- agrega `ActorType` y `CustomerId` a `Users`;
+- convierte roles existentes a los cuatro actores fijos;
+- migra invitaciones iniciales desde las columnas antiguas de `Tenants`;
+- elimina esas columnas despues de preservar sus datos;
+- agrega `Kind` y siembra `TaxVision Platform`.
 
 ### Tenant
 
 - `Tenants`;
 - `wolverine_*`.
 
+La migracion `AddTenantDefaultTimeZone` agrega `DefaultTimeZoneId`; los tenants
+anteriores reciben `Etc/UTC`.
+
+La migracion `AddTenantKindAndPlatformTenant` agrega `Kind`, clasifica los registros
+anteriores como `Customer` y siembra el tenant interno. Las lecturas comerciales
+filtran `Kind = Customer`.
+
 Indices:
 
 - Tenant `SubDomain` unico;
 - Auth tenant `SubDomain` unico;
 - User `(TenantId, Email)` unico;
+- Invitation `TokenHash` unico;
 - RefreshToken `TokenHash` unico.
 
 Aplicar:
@@ -757,7 +897,8 @@ dotnet ef database update `
 - `IDistributedCache`;
 - `ICacheService`.
 
-`AddAuthInfrastructure` registra repositorios y seguridad.
+`AddAuthInfrastructure` registra repositorios de usuarios, tenants e invitaciones,
+PBKDF2, tokens de invitacion, JWT y refresh tokens.
 
 `AddTenantInfrastructure` registra repositorios y lecturas.
 
@@ -770,6 +911,7 @@ dotnet ef database update `
 | --- | --- |
 | Database per service | bases Auth y Tenant |
 | Identidad multitenant | filtro e indice `(TenantId, Email)` |
+| Registro cerrado | solo invitaciones con actor y alcance validados |
 | Secrets fuera de Git | `.env`, User Secrets |
 | Password hashing | PBKDF2 |
 | Token storage seguro | hash SHA-256 |
@@ -779,6 +921,7 @@ dotnet ef database update `
 | Atomic outbox | middleware EF Core Wolverine |
 | Durable inbox | queue Auth |
 | Idempotencia | upsert e invitacion reentrante |
+| Control plane aislado | tenant interno no comercial |
 | Correlation completo | HTTP, eventos, logs y traces |
 | Cache responsable | solo lectura + invalidacion + fallback |
 | Health checks | SQL, Redis, Rabbit y downstream |
@@ -804,7 +947,8 @@ POST /tenants
 {
   "name": "Empresa Demo",
   "subdomain": "empresa-demo",
-  "adminEmail": "admin@empresa-demo.com"
+  "adminEmail": "admin@empresa-demo.com",
+  "defaultTimeZoneId": "America/Santo_Domingo"
 }
 ```
 
@@ -815,39 +959,76 @@ Respuesta:
   "id": "tenant-guid",
   "name": "Empresa Demo",
   "subdomain": "empresa-demo",
-  "adminActivationToken": "one-time-token"
+  "defaultTimeZoneId": "America/Santo_Domingo",
+  "adminActivationToken": "one-time-token",
+  "adminInvitationExpiresAtUtc": "2026-07-04T12:00:00Z"
 }
 ```
 
-### Activar administrador
+### Aceptar la invitacion del administrador
 
 ```http
-POST /auth/activate-admin
+POST /auth/invitations/accept
 ```
 
 ```json
 {
-  "tenantId": "tenant-guid",
-  "activationToken": "one-time-token",
+  "invitationToken": "one-time-token",
   "name": "Jorge",
   "lastName": "Turbi",
   "password": "Use-A-Strong-Password-123!"
 }
 ```
 
-### Registrar usuario
+El mismo endpoint acepta invitaciones para cualquiera de los cuatro actores.
+
+### Invitar empleado
 
 ```http
-POST /auth/register
+POST /auth/invitations
+Authorization: Bearer <tenant-admin-jwt>
 ```
 
 ```json
 {
   "tenantId": "tenant-guid",
-  "name": "Ana",
-  "lastName": "Perez",
   "email": "ana@example.com",
-  "password": "Use-A-Strong-Password-123!"
+  "actorType": "TenantEmployee",
+  "customerId": null
+}
+```
+
+La respuesta incluye `invitationToken` una sola vez.
+
+### Invitar cliente al portal
+
+```http
+POST /auth/invitations
+Authorization: Bearer <tenant-admin-jwt>
+```
+
+```json
+{
+  "tenantId": "tenant-guid",
+  "email": "cliente@example.com",
+  "actorType": "CustomerPortal",
+  "customerId": "customer-guid"
+}
+```
+
+### Invitar otro PlatformAdmin
+
+```http
+POST /auth/invitations
+Authorization: Bearer <platform-admin-jwt>
+```
+
+```json
+{
+  "tenantId": "8f58a521-4c25-4d91-9f4e-7ad5df14c001",
+  "email": "admin2@taxvision.com",
+  "actorType": "PlatformAdmin",
+  "customerId": null
 }
 ```
 
@@ -1074,11 +1255,33 @@ Checklist:
 
 ### Pendientes reales
 
-- definir provisioning productivo del primer `PlatformAdmin`;
 - reemplazar credenciales locales por un secret manager en produccion;
+- mover el bootstrap de `PlatformAdmin` a un secret manager/Job de provisioning en produccion;
 - habilitar TLS externo e interno segun el entorno;
 - agregar CI/CD, SBOM y escaneo de secretos;
 - implementar las pruebas de la guia;
 - definir retencion y almacenamiento object storage para observabilidad productiva;
 - crear el microservicio de Suscripcion;
+- crear `UserProfile` y aplicar la sobrescritura personal de `TimeZoneId`;
 - versionar contratos de eventos antes de incorporar mas consumidores.
+
+## 24. Guia de implementacion Customer y Subscription
+
+La guia detallada y verificada visualmente se encuentra en:
+
+```text
+output/pdf/Guia_Implementacion_Customer_Subscription_TaxVision.pdf
+```
+
+Incluye:
+
+- modelo final del aggregate `Customer`;
+- `CustomerRelation` para conyuges, dependientes, contactos y socios;
+- separacion entre `RelationshipKind` y `RelationPurpose`;
+- `CustomerFiscalProfile` y `CustomerRelationFiscalProfile`;
+- exclusion de `CustomerNotes` y `PortalUserId` del bounded context;
+- implementacion por capas, tablas, indices, endpoints, eventos y pruebas;
+- modelo de `SubscriptionEnrollment` previo al tenant;
+- provisioning Subscription -> Payment -> Tenant -> Auth;
+- planes versionados, proration, renovacion y entitlements;
+- migracion desde las entidades legacy y orden de cutover.

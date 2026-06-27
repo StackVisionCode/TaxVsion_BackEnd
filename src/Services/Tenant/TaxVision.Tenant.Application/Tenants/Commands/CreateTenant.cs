@@ -10,18 +10,29 @@ using TaxVision.Tenant.Application.Tenants;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using Wolverine;
+using BuildingBlocks.Tenancy;
 
 namespace TaxVision.Tenant.Application.Tenants.Commands;
 
-public sealed record CreateTenantCommand(string Name, string Subdomain, string AdminEmail);
+public sealed record CreateTenantCommand(
+    string Name,
+    string Subdomain,
+    string AdminEmail,
+    string DefaultTimeZoneId);
 
 public sealed record CreateTenantResponse(
     Guid Id,
     string Name,
     string Subdomain,
-    string AdminActivationToken);
+    string DefaultTimeZoneId,
+    string AdminActivationToken,
+    DateTime AdminInvitationExpiresAtUtc);
 
-public sealed record TenantResponse(Guid Id, string Name, string Subdomain);
+public sealed record TenantResponse(
+    Guid Id,
+    string Name,
+    string Subdomain,
+    string DefaultTimeZoneId);
 
 public static class CreateTenantHandler
 {
@@ -49,7 +60,10 @@ public static class CreateTenantHandler
                 new Error("Tenant.SubdomainConflict", "Subdomain already exists."));
         }
 
-        var result = Domain.Tenant.Create(cmd.Name, cmd.Subdomain);
+        var result = Domain.Tenant.Create(
+            cmd.Name,
+            cmd.Subdomain,
+            cmd.DefaultTimeZoneId);
         if (result.IsFailure)
         {
             return Result.Failure<CreateTenantResponse>(result.Error);
@@ -59,6 +73,7 @@ public static class CreateTenantHandler
         var activationToken = ToBase64Url(RandomNumberGenerator.GetBytes(32));
         var activationTokenHash = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(activationToken)));
+        var invitationExpiresAtUtc = DateTime.UtcNow.AddDays(7);
 
         await repo.AddAsync(tenant, ct);
         await unitOfWork.SaveChangesAsync(ct);
@@ -69,8 +84,11 @@ public static class CreateTenantHandler
             TenantId = tenant.Id,
             Name = tenant.Name,
             SubDomain = tenant.SubDomain,
+            Kind = TenantKind.Customer.ToString(),
+            DefaultTimeZoneId = tenant.DefaultTimeZoneId,
             AdminEmail = adminEmail,
             AdminInvitationTokenHash = activationTokenHash,
+            AdminInvitationExpiresAtUtc = invitationExpiresAtUtc,
             CorrelationId = correlation.CorrelationId
         });
         try
@@ -90,7 +108,9 @@ public static class CreateTenantHandler
                 tenant.Id,
                 tenant.Name,
                 tenant.SubDomain,
-                activationToken));
+                tenant.DefaultTimeZoneId,
+                activationToken,
+                invitationExpiresAtUtc));
     }
 
     private static string ToBase64Url(byte[] value) =>

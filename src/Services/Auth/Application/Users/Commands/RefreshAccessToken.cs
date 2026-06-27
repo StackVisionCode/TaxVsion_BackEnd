@@ -29,7 +29,8 @@ public static class RefreshAccessTokenHandler
                 new Error("Auth.InvalidRefreshToken", "Refresh token is invalid or expired."));
         }
 
-        if (!await tenants.ExistsActiveAsync(user.TenantId, ct))
+        var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
+        if (tenant is null || !tenant.IsActive)
         {
             return Result.Failure<LoginResponse>(
                 new Error("Tenant.Inactive", "Tenant is inactive."));
@@ -43,7 +44,7 @@ public static class RefreshAccessTokenHandler
         }
 
         return Result.Success(new LoginResponse(
-            jwt.Generate(user),
+            jwt.Generate(user, tenant.DefaultTimeZoneId),
             replacement));
     }
 }

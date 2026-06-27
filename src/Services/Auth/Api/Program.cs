@@ -18,16 +18,23 @@ using BuildingBlocks.Security;
 using TaxVision.Auth.Infrastructure.Persistence;
 using BuildingBlocks.Health;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.Text.Json.Serialization;
 using Serilog;
+using TaxVision.Auth.Api.Bootstrap;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("auth-service");
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
+builder.Services.Configure<PlatformBootstrapOptions>(
+    builder.Configuration.GetSection(PlatformBootstrapOptions.SectionName));
+builder.Services.AddHostedService<PlatformAdminBootstrapService>();
 
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "auth-service");

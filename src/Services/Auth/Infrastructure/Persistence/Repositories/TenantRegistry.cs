@@ -1,14 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Tenants;
+using BuildingBlocks.Tenancy;
 
 namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
 
 public sealed class TenantRegistry(AuthDbContext db) : ITenantRegistry
 {
-    public Task<bool> ExistsActiveAsync(Guid tenantId, CancellationToken ct = default)
-        => db.Tenants.AnyAsync(tenant => tenant.Id == tenantId && tenant.IsActive, ct);
-
     public Task<Tenant?> GetByIdAsync(Guid tenantId, CancellationToken ct = default)
         => db.Tenants.FirstOrDefaultAsync(tenant => tenant.Id == tenantId, ct);
 
@@ -16,8 +14,8 @@ public sealed class TenantRegistry(AuthDbContext db) : ITenantRegistry
         Guid tenantId,
         string name,
         string subDomain,
-        string adminEmail,
-        string adminInvitationTokenHash,
+        TenantKind kind,
+        string defaultTimeZoneId,
         CancellationToken ct = default)
     {
         var existing = await db.Tenants.FirstOrDefaultAsync(tenant => tenant.Id == tenantId, ct);
@@ -26,8 +24,8 @@ public sealed class TenantRegistry(AuthDbContext db) : ITenantRegistry
             existing.UpdateFromCreatedEvent(
                 name,
                 subDomain,
-                adminEmail,
-                adminInvitationTokenHash);
+                kind,
+                defaultTimeZoneId);
             return;
         }
 
@@ -35,8 +33,8 @@ public sealed class TenantRegistry(AuthDbContext db) : ITenantRegistry
             tenantId,
             name,
             subDomain,
-            adminEmail,
-            adminInvitationTokenHash);
+            kind,
+            defaultTimeZoneId);
         if (result.IsFailure)
         {
             throw new InvalidOperationException(result.Error.Message);

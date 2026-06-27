@@ -17,7 +17,8 @@ public static class LoginHandler
         IRefreshTokenService refreshTokens,
         CancellationToken ct)
     {
-        if (!await tenants.ExistsActiveAsync(command.TenantId, ct))
+        var tenant = await tenants.GetByIdAsync(command.TenantId, ct);
+        if (tenant is null || !tenant.IsActive)
         {
             return Result.Failure<LoginResponse>(
                 new Error("Tenant.Inactive", "Tenant does not exist or is inactive."));
@@ -38,7 +39,7 @@ public static class LoginHandler
                 new Error("Auth.Inactive", "User is inactive."));
         }
 
-        var accessToken = jwt.Generate(user);
+        var accessToken = jwt.Generate(user, tenant.DefaultTimeZoneId);
         var refreshToken = await refreshTokens.IssueAsync(user.Id, ct);
 
         return Result.Success(new LoginResponse(accessToken, refreshToken));
