@@ -2,7 +2,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Tenant.Domain.Enums;
-using TaxVision.Tenant.Domain.Tenants.Events;
 
 
 namespace TaxVision.Tenant.Domain;
@@ -38,8 +37,6 @@ public partial class Tenant : BaseEntity
 
         };
 
-        tenant.Raise(new TenantCreatedDomainEvent(tenant.Id, tenant.SubDomain));
-
         return Result.Success(tenant);
     }
 
@@ -49,7 +46,19 @@ public partial class Tenant : BaseEntity
             return Result.Failure(new Error("Tenant.Status", "Only active tenants can be suspended."));
 
         Status = EnumTenantStatus.TenantStatus.Suspended;
-        Raise(new TenantSuspendedDomainEvent(Id));
+        return Result.Success();
+    }
+
+    public Result ChangeStatus(EnumTenantStatus.TenantStatus status)
+    {
+        if (Status == EnumTenantStatus.TenantStatus.Closed &&
+            status != EnumTenantStatus.TenantStatus.Closed)
+        {
+            return Result.Failure(
+                new Error("Tenant.Status", "A closed tenant cannot be reactivated."));
+        }
+
+        Status = status;
         return Result.Success();
     }
 

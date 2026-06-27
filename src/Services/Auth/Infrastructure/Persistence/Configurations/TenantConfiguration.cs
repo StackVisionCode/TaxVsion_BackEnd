@@ -25,9 +25,16 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(tenant => tenant.CreatedAtUtc)
             .IsRequired();
 
+        builder.Property(tenant => tenant.AdminEmail)
+            .HasMaxLength(320);
+
+        builder.Property(tenant => tenant.AdminInvitationTokenHash)
+            .HasMaxLength(64);
+
         builder.HasIndex(tenant => tenant.SubDomain)
             .IsUnique();
 
-        builder.Ignore(tenant => tenant.DomainEvents);
+        builder.HasIndex(tenant => tenant.AdminEmail);
+
     }
 }

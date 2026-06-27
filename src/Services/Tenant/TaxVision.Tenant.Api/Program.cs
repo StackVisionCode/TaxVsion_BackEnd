@@ -3,15 +3,21 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Middleware;
 using JasperFx.CodeGeneration.Model;
-using Serilog;
-using Serilog.Sinks.MSSqlServer;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Infrastructure;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
+using Wolverine.EntityFrameworkCore;
 using BuildingBlocks.Observability;
+using BuildingBlocks.Persistence;
+using BuildingBlocks.Security;
+using TaxVision.Tenant.Infrastructure.Persistence;
+using BuildingBlocks.Health;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using System.Text.Json.Serialization;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("tenant-service");
@@ -26,13 +32,33 @@ builder.Host.UseTaxVisionSerilog("tenant-service");
 //         rollingInterval: RollingInterval.Day,
 //         retainedFileCountLimit: 30));
 builder.Services.AddSwaggerGen();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 // 2) Services Shared plus Services's Infrastructure
 builder.Services.AddBuildingBlocks();
 //  Added Cache's Services
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddTenantInfrastructure(builder.Configuration);
+builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
+builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-service");
+
+var tenantRabbitUri = new Uri(builder.Configuration["RabbitMq:Uri"]
+    ?? throw new InvalidOperationException("RabbitMq:Uri is missing."));
+var tenantRedis = HostPort.Parse(
+    builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379",
+    6379);
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<TenantDbContext>("sql-server", tags: ["ready"])
+    .AddCheck(
+        "redis",
+        new TcpEndpointHealthCheck(tenantRedis.Host, tenantRedis.Port),
+        tags: ["ready"])
+    .AddCheck(
+        "rabbitmq",
+        new TcpEndpointHealthCheck(tenantRabbitUri.Host, tenantRabbitUri.Port),
+        tags: ["ready"]);
 
 // 3)
 builder.Host.UseWolverine(options =>
@@ -49,8 +75,13 @@ builder.Host.UseWolverine(options =>
     options.UseRabbitMq(new Uri(rabbitUri)).AutoProvision();
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+    options.UseEntityFrameworkCoreTransactions()
+        .WithDbContextAbstraction<IUnitOfWork, TenantDbContext>();
+    options.Policies.AutoApplyTransactions();
 
     options.PublishMessage<TenantCreatedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantStatusChangedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
     options.Policies.OnException<Exception>()
@@ -72,6 +103,7 @@ if (app.Environment.IsDevelopment())
 }
 //4) Middleware's Pipe Line (the order of this, it's important)
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<TenantResolutionMiddleware>();
 
@@ -80,6 +112,15 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+app.UseAuthentication();
 app.UseAuthorization();
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 app.MapControllers();
 app.Run();

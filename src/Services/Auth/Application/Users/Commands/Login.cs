@@ -11,11 +11,18 @@ public static class LoginHandler
     public static async Task<Result<LoginResponse>> Handle(
         LoginCommand command,
         IUserRepository users,
+        ITenantRegistry tenants,
         IPasswordHasher hasher,
         IJwtTokenGenerator jwt,
         IRefreshTokenService refreshTokens,
         CancellationToken ct)
     {
+        if (!await tenants.ExistsActiveAsync(command.TenantId, ct))
+        {
+            return Result.Failure<LoginResponse>(
+                new Error("Tenant.Inactive", "Tenant does not exist or is inactive."));
+        }
+
         var email = command.Email.Trim().ToLowerInvariant();
         var user = await users.GetByEmailAsync(command.TenantId, email, ct);
 
@@ -31,7 +38,7 @@ public static class LoginHandler
                 new Error("Auth.Inactive", "User is inactive."));
         }
 
-        var accessToken = jwt.Generate(user, user.Roles);
+        var accessToken = jwt.Generate(user);
         var refreshToken = await refreshTokens.IssueAsync(user.Id, ct);
 
         return Result.Success(new LoginResponse(accessToken, refreshToken));

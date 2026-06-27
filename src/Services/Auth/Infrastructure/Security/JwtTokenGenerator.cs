@@ -22,7 +22,7 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options) : IJwtTokenG
 {
     private readonly JwtOptions _options = options.Value;
 
-    public string Generate(User user, IEnumerable<string> permissions)
+    public string Generate(User user)
     {
         var claims = new List<Claim>
         {
@@ -32,7 +32,6 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options) : IJwtTokenG
         };
 
         claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
-        claims.AddRange(permissions.Select(permission => new Claim("permission", permission)));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

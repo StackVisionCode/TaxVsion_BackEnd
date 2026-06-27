@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Common;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users.IntegrationEvents;
 using TaxVision.Auth.Domain.Users;
@@ -25,6 +26,7 @@ public static class RegisterHandler
         IPasswordHasher hasher,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct)
     {
         var email = command.Email.Trim().ToLowerInvariant();
@@ -63,7 +65,8 @@ public static class RegisterHandler
         {
             UserId = result.Value.Id,
             TenantId = result.Value.TenantId,
-            Email = result.Value.Email
+            Email = result.Value.Email,
+            CorrelationId = correlation.CorrelationId
         });
 
         return Result.Success(

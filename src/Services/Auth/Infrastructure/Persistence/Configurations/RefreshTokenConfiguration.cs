@@ -17,7 +17,6 @@ public sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refresh
         builder.HasIndex(token => token.TokenHash).IsUnique();
         builder.HasIndex(token => token.UserId);
         builder.Ignore(token => token.IsActive);
-        builder.Ignore(token => token.DomainEvents);
 
         builder.HasOne<User>()
             .WithMany()

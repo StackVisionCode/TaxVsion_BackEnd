@@ -1,11 +1,8 @@
-using System.Text;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Middleware;
 using JasperFx.CodeGeneration.Model;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.IntegrationEvents;
 using TaxVision.Auth.Infrastructure;
@@ -14,7 +11,14 @@ using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
+using Wolverine.EntityFrameworkCore;
 using BuildingBlocks.Observability;
+using BuildingBlocks.Persistence;
+using BuildingBlocks.Security;
+using TaxVision.Auth.Infrastructure.Persistence;
+using BuildingBlocks.Health;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("auth-service");
@@ -25,33 +29,24 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 
-var jwtOptions = builder.Configuration
-    .GetSection(JwtOptions.SectionName)
-    .Get<JwtOptions>()
-    ?? throw new InvalidOperationException("JWT configuration is missing.");
+builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
+builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "auth-service");
 
-if (Encoding.UTF8.GetByteCount(jwtOptions.Secret) < 32)
-    throw new InvalidOperationException("JWT secret must contain at least 32 bytes.");
-
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtOptions.Issuer,
-            ValidAudience = jwtOptions.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtOptions.Secret)),
-            ClockSkew = TimeSpan.FromSeconds(30)
-        };
-    });
-
-builder.Services.AddAuthorization();
+var authRabbitUri = new Uri(builder.Configuration["RabbitMq:Uri"]
+    ?? throw new InvalidOperationException("RabbitMq:Uri is missing."));
+var authRedis = HostPort.Parse(
+    builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379",
+    6379);
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AuthDbContext>("sql-server", tags: ["ready"])
+    .AddCheck(
+        "redis",
+        new TcpEndpointHealthCheck(authRedis.Host, authRedis.Port),
+        tags: ["ready"])
+    .AddCheck(
+        "rabbitmq",
+        new TcpEndpointHealthCheck(authRabbitUri.Host, authRabbitUri.Port),
+        tags: ["ready"]);
 
 builder.Host.UseWolverine(options =>
 {
@@ -67,6 +62,9 @@ builder.Host.UseWolverine(options =>
     options.UseRabbitMq(new Uri(rabbitUri)).AutoProvision();
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+    options.UseEntityFrameworkCoreTransactions()
+        .WithDbContextAbstraction<IUnitOfWork, AuthDbContext>();
+    options.Policies.AutoApplyTransactions();
 
     options.PublishMessage<UserRegisteredIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
@@ -95,11 +93,20 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 app.MapControllers();
 
 app.Run();

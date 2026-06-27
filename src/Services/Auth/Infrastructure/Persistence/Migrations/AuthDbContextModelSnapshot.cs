@@ -61,6 +61,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AdminEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime?>("AdminInvitationConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AdminInvitationTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("AdminUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -78,6 +92,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(40)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AdminEmail");
 
                     b.HasIndex("SubDomain")
                         .IsUnique();

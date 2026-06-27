@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 namespace BuildingBlocks.Caching;
 
+
 public static class CachingRegistration
 {
     public static IServiceCollection AddRedisCache(

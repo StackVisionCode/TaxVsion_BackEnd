@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
 namespace BuildingBlocks.Caching;
 
+
 public sealed class RedisCacheService(IDistributedCache cache) : ICacheService
 {
     public async Task<T?> GetAsync<T>(string key, CancellationToken ct = default)

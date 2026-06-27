@@ -22,7 +22,6 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(user => new { user.TenantId, user.Email })
             .IsUnique();
         builder.Ignore(user => user.Roles);
-        builder.Ignore(user => user.DomainEvents);
 
         var converter = new ValueConverter<List<string>, string>(
             roles => JsonSerializer.Serialize(roles, (JsonSerializerOptions?)null),

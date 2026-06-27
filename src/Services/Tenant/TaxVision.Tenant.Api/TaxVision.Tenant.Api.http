@@ -1,6 +1,33 @@
-@TaxVision.Tenant.Api_HostAddress = http://localhost:5217
+@Gateway = http://localhost:5047
+@CorrelationId = tenant-http-001
+@PlatformAdminToken = replace-with-platform-admin-jwt
+@TenantId = 00000000-0000-0000-0000-000000000000
 
-GET {{TaxVision.Tenant.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Create tenant (public onboarding, rate limited)
+POST {{Gateway}}/tenants
+Content-Type: application/json
+X-Correlation-Id: {{CorrelationId}}
 
-###
+{
+  "name": "Empresa Demo",
+  "subdomain": "empresa-demo",
+  "adminEmail": "admin@empresa-demo.com"
+}
+
+### List tenants (requires PlatformAdmin)
+GET {{Gateway}}/tenants?page=1&size=20
+Authorization: Bearer {{PlatformAdminToken}}
+X-Correlation-Id: {{CorrelationId}}
+
+### Suspend tenant (requires PlatformAdmin)
+PATCH {{Gateway}}/tenants/{{TenantId}}/status
+Authorization: Bearer {{PlatformAdminToken}}
+Content-Type: application/json
+X-Correlation-Id: {{CorrelationId}}
+
+{
+  "status": "Suspended"
+}
+
+### Gateway liveness
+GET {{Gateway}}/health/live

@@ -1,13 +1,25 @@
 services:
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4.3.2-management
     container_name: taxvision-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
 
   redis:
-    image: redis:7
+    image: redis:7.2.12-alpine
     container_name: taxvision-redis
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  rabbitmq-data:
+  redis-data:

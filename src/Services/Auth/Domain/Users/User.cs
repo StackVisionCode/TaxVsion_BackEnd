@@ -1,6 +1,5 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
-using TaxVision.Auth.Domain.Users.Events;
 
 namespace TaxVision.Auth.Domain.Users;
 
@@ -46,7 +45,6 @@ public sealed class User : TenantEntity
 
         user.SetTenant(tenantId);
         user._roles.Add("User");
-        user.Raise(new UserRegisteredDomainEvent(user.Id, tenantId));
         return Result.Success(user);
     }
 
