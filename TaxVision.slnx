@@ -4,6 +4,7 @@
     <Project Path="src/BuildingBlocks/BuildingBlocks.Infrastructure/BuildingBlocks.Infrastructure.csproj" />
     <Project Path="src/BuildingBlocks/BuildingBlocks.Web/BuildingBlocks.Web.csproj" />
   </Folder>
+  <Folder Name="/src/BuildingBlocks/" />
   <Folder Name="/src/Gateway/">
     <Project Path="src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj" />
   </Folder>
@@ -15,6 +16,12 @@
     <Project Path="src/Services/Auth/Application/TaxVision.Auth.Application.csproj" />
     <Project Path="src/Services/Auth/Domain/TaxVision.Auth.Domain.csproj" />
     <Project Path="src/Services/Auth/Infrastructure/TaxVision.Auth.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Customer/">
+    <Project Path="src/Services/Customer/TaxVision.Customer.Api/TaxVision.Customer.Api.csproj" />
+    <Project Path="src/Services/Customer/TaxVision.Customer.Application/TaxVision.Customer.Application.csproj" />
+    <Project Path="src/Services/Customer/TaxVision.Customer.Domain/TaxVision.Customer.Domain.csproj" />
+    <Project Path="src/Services/Customer/TaxVision.Customer.Infrastructure/TaxVision.Customer.Infrastructure.csproj" />
   </Folder>
   <!-- TenantService -->
   <Folder Name="/src/Services/Tenant/">

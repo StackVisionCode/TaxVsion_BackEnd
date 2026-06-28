@@ -8,128 +8,506 @@
   },
   "item": [
     {
-      "name": "Registro_Tenant",
-      "event": [
+      "name": "Tenant",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "\r",
-              "const response = pm.response.json();\r",
-              "\r",
-              "pm.environment.set(\"tenantId\", response.id);\r",
-              "pm.environment.set(\"invitationToken\", response.adminActivationToken);\r",
-              ""
-            ],
-            "type": "text/javascript",
-            "packages": {},
-            "requests": {}
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content",
-            "value": "application/json",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\",\r\n  \"defaultTimeZoneId\": \"America/Santo_Domingo\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Registro_Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "\r",
+                  "const response = pm.response.json();\r",
+                  "\r",
+                  "pm.environment.set(\"tenantId\", response.id);\r",
+                  "pm.environment.set(\"invitationToken\", response.adminActivationToken);\r",
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
             }
-          }
-        },
-        "url": {
-          "raw": "{{UrlBase}}/tenants",
-          "host": [
-            "{{UrlBase}}"
           ],
-          "path": [
-            "tenants"
-          ]
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\",\r\n  \"defaultTimeZoneId\": \"America/Santo_Domingo\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/tenants",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "tenants" ]
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "AcceptTenantAdminInvitation",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+      "name": "Auth",
+      "item": [
+        {
+          "name": "AcceptTenantAdminInvitation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations/accept",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "auth", "invitations", "accept" ]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{UrlBase}}/auth/invitations/accept",
-          "host": [
-            "{{UrlBase}}"
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();\r",
+                  "\r",
+                  "pm.environment.set(\"accessToken\", response.accessToken);\r",
+                  "pm.environment.set(\"refreshToken\", response.refreshToken);\r",
+                  "\r",
+                  "console.log(\"Access token guardado\");\r",
+                  "console.log(\"Refresh token guardado\");"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
           ],
-          "path": [
-            "auth",
-            "invitations",
-            "accept"
-          ]
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/login",
+              "host": [ "{{UrlBase}}" ],
+              "path": [ "auth", "login" ]
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Login",
-      "event": [
+      "name": "Customer",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();\r",
-              "\r",
-              "pm.environment.set(\"accessToken\", response.accessToken);\r",
-              "pm.environment.set(\"refreshToken\", response.refreshToken);\r",
-              "\r",
-              "console.log(\"Access token guardado\");\r",
-              "console.log(\"Refresh token guardado\");"
-            ],
-            "type": "text/javascript",
-            "packages": {},
-            "requests": {}
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "CRUD",
+          "item": [
+            {
+              "name": "CreateCustomer",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const response = pm.response.json();\r",
+                      "\r",
+                      "pm.environment.set(\"customerId\", response.id);\r",
+                      "pm.environment.set(\"customerEmail\", response.primaryEmail);\r",
+                      "\r",
+                      "console.log(\"customerId guardado: \" + response.id);"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"kind\": \"Individual\",\r\n  \"firstName\": \"Maria\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": null,\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"legalName\": null,\r\n  \"businessStructure\": null,\r\n  \"dba\": null,\r\n  \"formationDate\": null,\r\n  \"principalBusinessActivityId\": null,\r\n  \"dateOfBirth\": \"1985-03-12\",\r\n  \"occupationId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550101\",\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Email\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GetCustomerById",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "SearchCustomers",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers?term=maria&page=1&size=20",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers" ],
+                  "query": [
+                    { "key": "term", "value": "maria" },
+                    { "key": "page", "value": "1" },
+                    { "key": "size", "value": "20" }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateCustomer",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Sms\",\r\n  \"occupationId\": null,\r\n  \"profilePictureFileId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550102\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "ArchiveCustomer",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/archive",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "archive" ]
+                }
+              },
+              "response": []
             }
-          }
+          ]
         },
-        "url": {
-          "raw": "{{UrlBase}}/auth/login",
-          "host": [
-            "{{UrlBase}}"
-          ],
-          "path": [
-            "auth",
-            "login"
+        {
+          "name": "Children",
+          "item": [
+            {
+              "name": "AddCustomerAddress",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const response = pm.response.json();\r",
+                      "pm.environment.set(\"addressId\", response.id);"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"kind\": \"Home\",\r\n  \"line1\": \"123 Main Street\",\r\n  \"line2\": null,\r\n  \"city\": \"Santo Domingo\",\r\n  \"region\": \"Distrito Nacional\",\r\n  \"postalCode\": \"10101\",\r\n  \"countryCode\": \"DO\",\r\n  \"isPrimary\": true\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/addresses",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "addresses" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "AddCustomerContactPoint",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const response = pm.response.json();\r",
+                      "pm.environment.set(\"contactPointId\", response.id);"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"type\": \"Email\",\r\n  \"value\": \"maria.work@example.com\",\r\n  \"label\": \"Work\",\r\n  \"isPrimary\": false\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/contact-points",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "contact-points" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "AddCustomerRelation",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const response = pm.response.json();\r",
+                      "pm.environment.set(\"relationId\", response.id);"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"relationshipKind\": \"Spouse\",\r\n  \"purposes\": 6,\r\n  \"firstName\": \"Juan\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": null,\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"primaryEmail\": \"juan.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550103\",\r\n  \"dateOfBirth\": \"1983-08-22\",\r\n  \"addressLine1\": null,\r\n  \"addressLine2\": null,\r\n  \"addressCity\": null,\r\n  \"addressRegion\": null,\r\n  \"addressPostalCode\": null,\r\n  \"addressCountryCode\": null\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "relations" ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Fiscal Profiles",
+          "item": [
+            {
+              "name": "SetCustomerFiscalProfile",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PUT",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"subjectKind\": \"Individual\",\r\n  \"taxIdentifier\": \"123-45-6789\",\r\n  \"filingStatus\": \"Single\",\r\n  \"priorYearAgi\": 45000.00,\r\n  \"isReturningCustomer\": false,\r\n  \"refundBankAccount\": null,\r\n  \"refundBankRouting\": null\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/fiscal-profile",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "fiscal-profile" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "SetRelationFiscalProfile",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PUT",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"role\": \"Spouse\",\r\n  \"taxIdentifier\": \"987-65-4321\",\r\n  \"taxYear\": 2025,\r\n  \"qualifiesAsDependent\": false,\r\n  \"livedWithTaxpayer\": true\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}/fiscal-profile",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "relations", "{{relationId}}", "fiscal-profile" ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Portal Access",
+          "item": [
+            {
+              "name": "RequestCustomerPortalInvitation",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "console.log(\"Portal invitation requested. El token plain aparece en los logs de Auth.Api con prefijo [DEV].\");\r",
+                      "console.log(\"Copialo y pegalo en la variable customerPortalToken del environment.\");"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/portal-invitations",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "portal-invitations" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "AcceptCustomerPortalInvitation",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"invitationToken\": \"{{customerPortalToken}}\",\r\n  \"name\": \"Maria\",\r\n  \"lastName\": \"Perez\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/auth/invitations/accept",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "auth", "invitations", "accept" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "LoginCustomerPortal",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const response = pm.response.json();\r",
+                      "\r",
+                      "pm.environment.set(\"customerPortalAccessToken\", response.accessToken);\r",
+                      "pm.environment.set(\"customerPortalRefreshToken\", response.refreshToken);\r",
+                      "\r",
+                      "console.log(\"Customer portal access token guardado\");"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"{{customerEmail}}\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/auth/login",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "auth", "login" ]
+                }
+              },
+              "response": []
+            }
           ]
         }
-      },
-      "response": []
+      ]
     }
   ]
 }

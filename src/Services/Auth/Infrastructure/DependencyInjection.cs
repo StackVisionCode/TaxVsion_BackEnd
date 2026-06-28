@@ -13,21 +13,19 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddAuthInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration
+    )
     {
-        var connectionString = configuration.GetConnectionString("Default")
+        var connectionString =
+            configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-        services.AddDbContext<AuthDbContext>(options =>
-            options.UseSqlServer(connectionString));
+        services.AddDbContext<AuthDbContext>(options => options.UseSqlServer(connectionString));
 
-        services.Configure<JwtOptions>(
-            configuration.GetSection(JwtOptions.SectionName));
-        services.Configure<RefreshTokenOptions>(
-            configuration.GetSection(RefreshTokenOptions.SectionName));
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<RefreshTokenOptions>(configuration.GetSection(RefreshTokenOptions.SectionName));
 
-        services.AddScoped<IUnitOfWork>(provider =>
-            provider.GetRequiredService<AuthDbContext>());
+        services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AuthDbContext>());
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IInvitationRepository, InvitationRepository>();

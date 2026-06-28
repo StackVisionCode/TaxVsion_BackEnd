@@ -446,6 +446,8 @@ dotnet user-secrets set "RabbitMq:Uri" "amqp://user:password@localhost:5672" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
 dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
+dotnet user-secrets set "Encryption:MasterKey" "<el-base64-generado>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
 ```
 
 Tenant requiere los mismos tipos de claves y el mismo JWT secret. Gateway requiere
@@ -1285,3 +1287,216 @@ Incluye:
 - provisioning Subscription -> Payment -> Tenant -> Auth;
 - planes versionados, proration, renovacion y entitlements;
 - migracion desde las entidades legacy y orden de cutover.
+
+### Customer Service
+
+- gestiona el registro maestro del cliente fiscal dentro del tenant;
+- aggregate root `Customer` con value objects embebidos (PersonalName, BusinessIdentity, EmailAddress, PhoneNumber);
+- child entities: addresses, contact points, relations, fiscal profile y fiscal profile de relaciones;
+- catalogos seed: 171 occupations y 769 NAICS (PrincipalBusinessActivities);
+- cifra SSN/ITIN/EIN con AES-256-GCM y mantiene blind index HMAC por tenant para deduplicar;
+- expone CRUD, invitacion al portal, archive y fiscal profile;
+- publica eventos al exchange `taxvision-events`;
+- usa outbox transaccional EF Core + Wolverine sobre SQL Server.
+
+## 25. Customer Service: estado actual de implementacion
+
+Documenta el microservicio Customer construido sobre la guia
+`output/pdf/Guia_Implementacion_Customer_Subscription_TaxVision.pdf`.
+Esta seccion describe lo entregado, no lo planificado.
+
+### 25.1 Limite de bounded context
+
+Customer es el sistema de registro del cliente fiscal dentro de un tenant.
+Administra identidad de persona o negocio, contacto maestro, direcciones,
+relaciones (conyuge, dependientes, contactos) y perfil fiscal cifrado.
+No guarda credenciales, login, marketing, facturacion ni millas.
+
+### 25.2 Estructura de proyectos
+
+Cuatro proyectos en `src/Services/Customer/`:
+
+- `TaxVision.Customer.Domain`
+- `TaxVision.Customer.Application`
+- `TaxVision.Customer.Infrastructure`
+- `TaxVision.Customer.Api`
+
+### 25.3 Aggregate y child entities
+
+- `Customer` aggregate root con value objects embebidos: `PersonalName`,
+  `BusinessIdentity`, `EmailAddress`, `PhoneNumber`.
+- Child entities: `CustomerAddress`, `CustomerContactPoint`, `CustomerRelation`,
+  `CustomerFiscalProfile`, `CustomerRelationFiscalProfile`.
+- Catalogos seed global: `Occupation` (171 filas) y `PrincipalBusinessActivity`
+  (769 codigos NAICS oficiales).
+- Acceso a colecciones via backing field privado expuesto como
+  `IReadOnlyCollection`; las altas pasan por metodos del aggregate.
+
+### 25.4 Persistencia
+
+Base `TaxVision_Customer`. Migracion inicial `InitialCustomer` crea las tablas
+de dominio mas las tablas `wolverine_*` de outbox/inbox y el seed de catalogos.
+
+Tablas de dominio:
+
+- `Customers`
+- `CustomerAddresses`
+- `CustomerContactPoints`
+- `CustomerRelations`
+- `CustomerFiscalProfiles`
+- `CustomerRelationFiscalProfiles`
+- `Occupations`
+- `PrincipalBusinessActivities`
+
+Indices clave:
+
+- `(TenantId, Status, DisplayName)` para listados;
+- `(TenantId, OccupationId)`;
+- `IX_Customers_PrimaryEmailNormalized` para busqueda por email;
+- `(TenantId, TaxIdentifierBlindIndex)` en fiscal profiles para deduplicar SSN
+  sin almacenar texto claro;
+- indices filtrados unique en addresses y contact points primarios por tipo.
+
+### 25.5 Cifrado de identificadores fiscales
+
+Implementacion en `Customer.Infrastructure/Security/AesGcmSensitiveDataProtector.cs`,
+abstraida via `ISensitiveDataProtector` en Application.
+
+- Algoritmo: AES-256-GCM autenticado.
+- Layout almacenado: `nonce(12) | ciphertext | tag(16)` como `varbinary(512)`.
+- Clave maestra desde `Encryption:MasterKey` en User Secrets (32 bytes en base64).
+- Blind index: HMAC-SHA256 con clave derivada por tenant via HKDF.
+- Garantia multi-tenant: el mismo SSN en dos tenants produce blind indexes distintos.
+- En claro solo se almacena `TaxIdentifierLast4` para mostrar `***-**-1234`.
+- Aplica a SSN/ITIN/EIN del customer y de las relaciones fiscalmente relevantes
+  (conyuge, dependientes, household members).
+- Identificadores fiscales y datos bancarios no aparecen en logs, eventos
+  generales ni read models.
+
+### 25.6 Endpoints
+
+Base path `/customers`. Autorizacion por rol claim del JWT firmado.
+
+| Verbo y ruta | Actor minimo |
+| --- | --- |
+| POST `/customers` | TenantEmployee |
+| GET `/customers` | TenantEmployee |
+| GET `/customers/{id}` | TenantEmployee |
+| PATCH `/customers/{id}` | TenantEmployee |
+| POST `/customers/{id}/addresses` | TenantEmployee |
+| POST `/customers/{id}/contact-points` | TenantEmployee |
+| POST `/customers/{id}/relations` | TenantEmployee |
+| POST `/customers/{id}/portal-invitations` | TenantAdmin |
+| POST `/customers/{id}/archive` | TenantAdmin |
+| PUT `/customers/{id}/fiscal-profile` | TenantAdmin |
+| PUT `/customers/{id}/relations/{relationId}/fiscal-profile` | TenantAdmin |
+
+`GET /customers/{id}` incluye `OccupationName` y `PrincipalBusinessActivityDescription`
+resueltos por JOIN via `ICustomerReadService` con `AsNoTracking` y proyeccion a DTO.
+Los demas endpoints de lectura usan el mismo read service.
+
+### 25.7 Carpeta `Requests` en Api
+
+A diferencia de Auth y Tenant que aceptan el `Command` directo en el body del
+controller, Customer expone DTOs en `TaxVision.Customer.Api/Requests/`. Razones:
+
+- El `Command` lleva `TenantId` y `ModifiedByUserId` que se extraen del JWT firmado,
+  no del body del cliente.
+- Si Command y Request fueran el mismo tipo, un cliente podria enviar `TenantId` en
+  el body e intentar operar en otro tenant.
+- Separar Request de Command permite validaciones HTTP en el borde sin contaminar
+  la capa Application.
+
+### 25.8 Eventos de integracion publicados
+
+Customer publica al exchange `taxvision-events`. Contratos en
+`BuildingBlocks/Messaging/CustomerIntegrationEvents/`.
+
+- `CustomerCreatedIntegrationEvent`
+- `CustomerUpdatedIntegrationEvent`
+- `CustomerArchivedIntegrationEvent`
+- `CustomerPortalInvitationRequestedIntegrationEvent`
+
+Ninguno transporta identificadores fiscales, contrasenas, ni datos bancarios.
+Solo `CustomerId`, `TenantId`, `DisplayName`, contacto basico, idioma, canal
+preferido y metadatos.
+
+### 25.9 Consumer en Auth
+
+Auth consume `CustomerPortalInvitationRequestedIntegrationEvent` en
+`Auth.Application/Customers/IntegrationEvents/CustomerPortalInvitationRequestedConsumer.cs`.
+
+El consumer:
+
+- valida que el tenant exista y este activo;
+- aplica idempotencia por `(TenantId, Email)`;
+- crea una `Invitation` con `ActorType=CustomerPortal` y `CustomerId`;
+- imprime el token plano en log con prefijo `[DEV]` mientras no exista Email
+  Service que consuma un segundo evento con el token.
+
+### 25.10 Wolverine y observabilidad
+
+Configuracion identica a Auth y Tenant:
+
+- `PersistMessagesWithSqlServer` y `UseDurableOutboxOnAllSendingEndpoints` sobre
+  `TaxVision_Customer`;
+- `UseEntityFrameworkCoreTransactions` con `CustomerDbContext` e `IUnitOfWork`;
+- politica de retry con cooldown 1s, 5s, 15s;
+- health checks `sql-server` y `rabbitmq` etiquetados como `ready`;
+- OpenTelemetry y Serilog desde los BuildingBlocks compartidos con servicio
+  `customer-service`.
+
+### 25.11 User Secrets requeridos
+
+Para `TaxVision.Customer.Api`:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:Default" "<CUSTOMER_CONNECTION>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:5672" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Encryption:MasterKey" "<BASE64_32_BYTES>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+```
+
+`Encryption:MasterKey` debe ser exactamente 32 bytes en base64. Generar con:
+
+```powershell
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+[Convert]::ToBase64String($bytes)
+```
+
+En produccion va a Key Vault o equivalente; nunca al repo ni al `.env`.
+
+### 25.12 Gateway
+
+Ruta YARP `/customers/{**catch-all}` enrutada al cluster `customer` en
+`http://localhost:5263/`. Health check `customer-api` agregado al endpoint
+`/health/ready` del Gateway.
+
+### 25.13 Aplicar migraciones
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Customer\TaxVision.Customer.Infrastructure\TaxVision.Customer.Infrastructure.csproj `
+  --startup-project src\Services\Customer\TaxVision.Customer.Api\TaxVision.Customer.Api.csproj
+```
+
+### 25.14 Pendientes reales
+
+- Proyeccion local de Customer en Auth para validar `CustomerId` al crear
+  invitaciones `CustomerPortal`. Diseno definido en la guia PDF; implementacion
+  no iniciada.
+- Eventos `CustomerEmailChangedIntegrationEvent` y
+  `CustomerPhoneChangedIntegrationEvent` con detector de cambios en el handler
+  de update.
+- Endpoint de bulk import y `CustomersBulkImportedIntegrationEvent` batched.
+- Asignacion Customer-preparer (`AssignedToUserId` o entity hija).
+- Segundo evento `CustomerPortalInvitationCreated` con token raw para que
+  Email Service envie el correo cuando exista.
+- Pruebas automatizadas siguiendo la guia general del proyecto.

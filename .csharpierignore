@@ -1,0 +1,6 @@
+**/bin/
+**/obj/
+**/Migrations/*.Designer.cs
+**/Migrations/*ModelSnapshot.cs
+**/wolverine_*.cs
+**/output/
