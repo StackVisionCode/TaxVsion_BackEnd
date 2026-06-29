@@ -70,6 +70,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CustomerUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerPortalInvitationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomersBulkImportedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 });
 
 var app = builder.Build();

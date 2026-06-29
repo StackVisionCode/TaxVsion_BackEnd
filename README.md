@@ -51,6 +51,7 @@ OpenTelemetry.
 22. Pruebas automatizadas
 23. Guia para nuevos microservicios y mejoras futuras
 24. Guia de implementacion Customer y Subscription
+25. Customer Service: implementacion
 
 ## 1. Introduccion y objetivo
 
@@ -1299,13 +1300,13 @@ Incluye:
 - publica eventos al exchange `taxvision-events`;
 - usa outbox transaccional EF Core + Wolverine sobre SQL Server.
 
-## 25. Customer Service: estado actual de implementacion
+## 25. Customer Service: implementacion
 
-Documenta el microservicio Customer construido sobre la guia
+Describe el microservicio Customer entregado sobre la guia
 `output/pdf/Guia_Implementacion_Customer_Subscription_TaxVision.pdf`.
-Esta seccion describe lo entregado, no lo planificado.
+Esta seccion documenta lo entregado, no lo planificado.
 
-### 25.1 Limite de bounded context
+### 25.1 Limite del bounded context
 
 Customer es el sistema de registro del cliente fiscal dentro de un tenant.
 Administra identidad de persona o negocio, contacto maestro, direcciones,
@@ -1334,10 +1335,15 @@ Cuatro proyectos en `src/Services/Customer/`:
 
 ### 25.4 Persistencia
 
-Base `TaxVision_Customer`. Migracion inicial `InitialCustomer` crea las tablas
-de dominio mas las tablas `wolverine_*` de outbox/inbox y el seed de catalogos.
+Base `TaxVision_Customer`. Migraciones aplicadas en orden:
 
-Tablas de dominio:
+- `InitialCustomer`: crea las 8 tablas de dominio mas el seed de catalogos y
+  las tablas `wolverine_*` de outbox/inbox.
+- `CustomerImports`: agrega las 3 tablas del flujo de bulk import.
+- `CustomerImportActiveJobUniqueIndex`: indice filtrado unique para garantizar
+  un solo job activo por tenant a nivel BD.
+
+Tablas de dominio core:
 
 - `Customers`
 - `CustomerAddresses`
@@ -1348,6 +1354,12 @@ Tablas de dominio:
 - `Occupations`
 - `PrincipalBusinessActivities`
 
+Tablas del flujo de bulk import:
+
+- `CustomerImportAttempts`
+- `CustomerImportRows`
+- `CustomerImportFiles`
+
 Indices clave:
 
 - `(TenantId, Status, DisplayName)` para listados;
@@ -1355,7 +1367,10 @@ Indices clave:
 - `IX_Customers_PrimaryEmailNormalized` para busqueda por email;
 - `(TenantId, TaxIdentifierBlindIndex)` en fiscal profiles para deduplicar SSN
   sin almacenar texto claro;
-- indices filtrados unique en addresses y contact points primarios por tipo.
+- indices filtrados unique en addresses y contact points primarios por tipo;
+- `UX_CustomerImportAttempts_Tenant_Active` filtrado unique sobre `TenantId`
+  donde `Status` esta en estados activos, para enforce de un solo job activo
+  por tenant a nivel BD.
 
 ### 25.5 Cifrado de identificadores fiscales
 
@@ -1373,7 +1388,7 @@ abstraida via `ISensitiveDataProtector` en Application.
 - Identificadores fiscales y datos bancarios no aparecen en logs, eventos
   generales ni read models.
 
-### 25.6 Endpoints
+### 25.6 Endpoints CRUD y child entities
 
 Base path `/customers`. Autorizacion por rol claim del JWT firmado.
 
@@ -1400,11 +1415,11 @@ Los demas endpoints de lectura usan el mismo read service.
 A diferencia de Auth y Tenant que aceptan el `Command` directo en el body del
 controller, Customer expone DTOs en `TaxVision.Customer.Api/Requests/`. Razones:
 
-- El `Command` lleva `TenantId` y `ModifiedByUserId` que se extraen del JWT firmado,
-  no del body del cliente.
-- Si Command y Request fueran el mismo tipo, un cliente podria enviar `TenantId` en
-  el body e intentar operar en otro tenant.
-- Separar Request de Command permite validaciones HTTP en el borde sin contaminar
+- el `Command` lleva `TenantId` y `ModifiedByUserId` que se extraen del JWT firmado,
+  no del body del cliente;
+- si Command y Request fueran el mismo tipo, un cliente podria enviar `TenantId`
+  en el body e intentar operar en otro tenant;
+- separar Request de Command permite validaciones HTTP en el borde sin contaminar
   la capa Application.
 
 ### 25.8 Eventos de integracion publicados
@@ -1416,8 +1431,9 @@ Customer publica al exchange `taxvision-events`. Contratos en
 - `CustomerUpdatedIntegrationEvent`
 - `CustomerArchivedIntegrationEvent`
 - `CustomerPortalInvitationRequestedIntegrationEvent`
+- `CustomersBulkImportedIntegrationEvent`
 
-Ninguno transporta identificadores fiscales, contrasenas, ni datos bancarios.
+Ninguno transporta identificadores fiscales, contrasenas ni datos bancarios.
 Solo `CustomerId`, `TenantId`, `DisplayName`, contacto basico, idioma, canal
 preferido y metadatos.
 
@@ -1434,19 +1450,151 @@ El consumer:
 - imprime el token plano en log con prefijo `[DEV]` mientras no exista Email
   Service que consuma un segundo evento con el token.
 
-### 25.10 Wolverine y observabilidad
+### 25.10 Bulk import masivo
+
+Flujo async de carga masiva desde CSV o XLSX. La entidad y el evento siguen
+los nombres dictados por la guia PDF: `CustomerImportAttempt` (pag 8, sec 4.4)
+y `CustomersBulkImportedV1` (pag 11, paso 9).
+
+#### 25.10.1 Patron async job
+
+1. POST `/customers/imports` con archivo multipart y header `Idempotency-Key`
+   retorna 202 Accepted con `importJobId`.
+2. Wolverine encola `RunCustomerImportMessage` que procesa en background.
+3. Cliente hace polling a GET `/customers/imports/{id}` cada dos segundos.
+4. Al completar se publica `CustomersBulkImportedIntegrationEvent` y se ofrece
+   reporte descargable.
+
+No hay request HTTP de larga duracion. El frontend nunca bloquea.
+
+#### 25.10.2 Endpoints
+
+Base path `/customers/imports`. Todos requieren rol `TenantAdmin`.
+
+| Verbo y ruta | Notas |
+| --- | --- |
+| POST `/customers/imports` | multipart/form-data + header `Idempotency-Key`; retorna 202. |
+| GET `/customers/imports/{id}` | Status del job para polling. |
+| GET `/customers/imports` | Listado paginado de jobs del tenant. |
+| GET `/customers/imports/{id}/report?format=csv` | Reporte por fila streamed. |
+| POST `/customers/imports/{id}/cancel` | Cancelacion cooperativa. |
+| GET `/customers/imports/template` | Plantilla CSV con headers y dos filas ejemplo. |
+
+#### 25.10.3 Reglas de procesamiento
+
+- chunking de 500 filas, transaccion por chunk: un chunk malo no aborta el job;
+- hard limit 10 000 filas por job (config `CustomerImport:MaxRows`);
+- hard limit 10 MB por archivo (config `CustomerImport:MaxFileBytes`);
+- un solo job activo por tenant garantizado a nivel BD por
+  `UX_CustomerImportAttempts_Tenant_Active`;
+- idempotency key obligatoria estilo Stripe; replay devuelve 200 con el job
+  ganador en lugar de duplicar;
+- catalogos cerrados: si `OccupationName` o `PrincipalBusinessActivityCode`
+  no existe, la fila se marca `Failed` con `Catalog.UnknownOccupation` o
+  `Catalog.UnknownNaics`; no se contamina el catalogo curado;
+- cifrado obligatorio: todo SSN/ITIN/EIN pasa por `ISensitiveDataProtector`
+  antes de tocar la BD;
+- spouse del archivo se crea como `CustomerRelation` con
+  `RelationshipKind=Spouse` y `Purposes=TaxHouseholdMember`;
+- cancelacion cooperativa: el worker chequea estado antes de cada chunk;
+- las mutaciones de rows pasan siempre por el aggregate via `RecordSuccess`,
+  `RecordFailed`, `RecordSkipped` o `RecordUpdated`; el handler nunca toca
+  `CustomerImportRow` directamente.
+
+#### 25.10.4 Estrategias de duplicado
+
+- `Skip` (default): mantiene el existente, marca la fila como Skipped.
+- `Merge`: solo completa campos vacios del existente; no pisa lo que ya hay.
+- `Overwrite`: reemplaza preferencias, telefono, email y fiscal profile.
+
+#### 25.10.5 Deteccion de duplicados
+
+El detector de BD ejecuta una sola query SQL por chunk que matchea por
+prioridad descendente:
+
+| Prioridad | Senal | Tipo de match |
+| --- | --- | --- |
+| 1 | SSN/EIN blind index (HMAC por tenant) | Hard |
+| 2 | Email normalizado | Hard |
+| 3 | Phone E.164 | High |
+| 4 | Nombre normalizado + DOB (solo Individual) | High |
+
+El blind index permite deduplicar sin descifrar SSN/EIN. Cumple la regla del
+PDF: identificadores fiscales prohibidos en queries y logs.
+
+Dedup intra-chunk paralelo en memoria del worker (cuatro HashSets) cubre las
+mismas cuatro senales para filas que se duplican entre si dentro del mismo
+chunk. Codigo de error unificado `Import.DuplicateInChunk` con mensaje segun
+la senal que disparo.
+
+#### 25.10.6 Normalizacion de telefono en el boundary
+
+`IdentifierNormalizer.NormalizePhoneToE164()` acepta formatos humanos del
+operador (`(305) 555-1234`, `305-555-1234`, `3055551234`, `+13055551234`) y
+los normaliza a E.164 antes de pasar al VO `PhoneNumber`. El VO sigue siendo
+estricto para POST directos via `/customers`; el import es el unico boundary
+amigable con formatos sucios. La plantilla descargable muestra siempre el
+formato canonico E.164.
+
+#### 25.10.7 Concurrencia
+
+- POST concurrente con misma idempotency key: el segundo recibe el job del
+  primero como replay 200, no error;
+- POST concurrente sin colision de key pero con job activo del tenant: el
+  segundo recibe 409 `Import.AlreadyRunning` limpio;
+- ambos casos los maneja `StartCustomerImportHandler` con
+  `try/catch (ConflictException)` y refetch del attempt ganador.
+  `CustomerDbContext.SaveChangesAsync` ya convierte SQL 2601/2627 a
+  `ConflictException`; Application no referencia `Microsoft.Data.SqlClient`.
+
+#### 25.10.8 Evento publicado
+
+`CustomersBulkImportedIntegrationEvent` (V1) publicado al completar el job.
+Un solo evento batched, alineado con "lotes acotados" del PDF. Payload:
+
+- `ImportJobId`, `CreatedByUserId`, `CompletedAtUtc`;
+- `TotalRows`, `SuccessCount`, `UpdatedCount`, `SkippedCount`, `FailedCount`;
+- `CreatedCustomerIds: Guid[]` y `UpdatedCustomerIds: Guid[]`.
+
+Sin nombres, sin SSN, sin emails. Consumidores que necesitan datos hacen GET
+`/customers/{id}` o se suscriben a `CustomerCreatedV1` individual.
+
+#### 25.10.9 Reporte descargable
+
+GET `/customers/imports/{id}/report?format=csv` streamea filas de
+`CustomerImportRows` sin cargar todo en memoria. Cada fila trae numero,
+status, ResultingCustomerId, DisplayName, MatchedBy, ErrorCode y Message.
+Trail de auditoria reutilizable para compliance IRS Pub 4557.
+
+#### 25.10.10 Plantilla CSV
+
+GET `/customers/imports/template` devuelve un CSV con headers en el orden que
+espera el parser y dos filas de ejemplo (Individual y Business) que el
+operador puede usar como molde. Telefonos en formato E.164.
+
+#### 25.10.11 Cleanup automatico
+
+`CustomerImportCleanupHostedService` corre como `BackgroundService` diario.
+Purga attempts terminales con `CreatedAtUtc < UtcNow - 90 dias` y sus filas
+y archivos asociados. Configurable via `CustomerImport:ReportRetentionDays`.
+
+El binario del archivo en `CustomerImportFiles` se borra inmediatamente al
+terminar el job; el cleanup de 90 dias solo aplica a attempts huerfanos
+o a la auditoria del reporte.
+
+### 25.11 Wolverine y observabilidad
 
 Configuracion identica a Auth y Tenant:
 
-- `PersistMessagesWithSqlServer` y `UseDurableOutboxOnAllSendingEndpoints` sobre
-  `TaxVision_Customer`;
+- `PersistMessagesWithSqlServer` y `UseDurableOutboxOnAllSendingEndpoints`
+  sobre `TaxVision_Customer`;
 - `UseEntityFrameworkCoreTransactions` con `CustomerDbContext` e `IUnitOfWork`;
 - politica de retry con cooldown 1s, 5s, 15s;
 - health checks `sql-server` y `rabbitmq` etiquetados como `ready`;
 - OpenTelemetry y Serilog desde los BuildingBlocks compartidos con servicio
   `customer-service`.
 
-### 25.11 User Secrets requeridos
+### 25.12 User Secrets requeridos
 
 Para `TaxVision.Customer.Api`:
 
@@ -1471,15 +1619,27 @@ $bytes = New-Object byte[] 32
 [Convert]::ToBase64String($bytes)
 ```
 
-En produccion va a Key Vault o equivalente; nunca al repo ni al `.env`.
+Variables opcionales del flujo de bulk import con defaults sanos:
 
-### 25.12 Gateway
+```powershell
+dotnet user-secrets set "CustomerImport:MaxFileBytes" "10485760" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "CustomerImport:MaxRows" "10000" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "CustomerImport:ReportRetentionDays" "90" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+```
+
+En produccion el master key va a Key Vault o equivalente; nunca al repo ni al
+`.env`.
+
+### 25.13 Gateway
 
 Ruta YARP `/customers/{**catch-all}` enrutada al cluster `customer` en
 `http://localhost:5263/`. Health check `customer-api` agregado al endpoint
 `/health/ready` del Gateway.
 
-### 25.13 Aplicar migraciones
+### 25.14 Aplicar migraciones
 
 ```powershell
 dotnet ef database update `
@@ -1487,7 +1647,7 @@ dotnet ef database update `
   --startup-project src\Services\Customer\TaxVision.Customer.Api\TaxVision.Customer.Api.csproj
 ```
 
-### 25.14 Pendientes reales
+### 25.15 Pendientes reales
 
 - Proyeccion local de Customer en Auth para validar `CustomerId` al crear
   invitaciones `CustomerPortal`. Diseno definido en la guia PDF; implementacion
@@ -1495,8 +1655,13 @@ dotnet ef database update `
 - Eventos `CustomerEmailChangedIntegrationEvent` y
   `CustomerPhoneChangedIntegrationEvent` con detector de cambios en el handler
   de update.
-- Endpoint de bulk import y `CustomersBulkImportedIntegrationEvent` batched.
 - Asignacion Customer-preparer (`AssignedToUserId` o entity hija).
 - Segundo evento `CustomerPortalInvitationCreated` con token raw para que
   Email Service envie el correo cuando exista.
+- Notificacion push al frontend cuando completa el job de bulk import. Hoy
+  solo polling; cuando exista RealTime Service, agregar SignalR.
+- Migracion de `CustomerImportFiles` a CloudStorage Service. Hoy el archivo
+  vive en BD; cuando exista el microservicio, reemplazar `IImportFileStore`
+  por un fileId externo y borrar la tabla local.
+- Notificacion por email al operador cuando completa: requiere Email Service.
 - Pruebas automatizadas siguiendo la guia general del proyecto.

@@ -360,6 +360,139 @@
           ]
         },
         {
+          "name": "Imports",
+          "item": [
+            {
+              "name": "DownloadTemplate",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/imports/template",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "imports", "template" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "StartCustomerImport",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const response = pm.response.json();",
+                      "pm.environment.set(\"importAttemptId\", response.id);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Idempotency-Key", "value": "{{$guid}}", "type": "text" }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "Strategy", "value": "Skip", "type": "text", "description": "Skip | Merge | Overwrite" },
+                    { "key": "file", "type": "file", "src": [] }
+                  ]
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/imports",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "imports" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GetImportStatus",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "imports", "{{importAttemptId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "ListImports",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/imports?page=1&size=20",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "imports" ],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "size", "value": "20" }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "DownloadImportReport",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}/report?format=csv",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "imports", "{{importAttemptId}}", "report" ],
+                  "query": [{ "key": "format", "value": "csv" }]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "CancelImport",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}/cancel",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "imports", "{{importAttemptId}}", "cancel" ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
           "name": "Fiscal Profiles",
           "item": [
             {
