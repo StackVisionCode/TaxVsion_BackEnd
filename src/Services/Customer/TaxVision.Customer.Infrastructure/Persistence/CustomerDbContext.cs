@@ -7,6 +7,7 @@ using TaxVision.Customer.Domain.Addresses;
 using TaxVision.Customer.Domain.Catalogs;
 using TaxVision.Customer.Domain.ContactPoints;
 using TaxVision.Customer.Domain.FiscalProfiles;
+using TaxVision.Customer.Domain.Imports;
 using TaxVision.Customer.Domain.Relations;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -22,6 +23,8 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
     public DbSet<CustomerRelationFiscalProfile> CustomerRelationFiscalProfiles => Set<CustomerRelationFiscalProfile>();
     public DbSet<Occupation> Occupations => Set<Occupation>();
     public DbSet<PrincipalBusinessActivity> PrincipalBusinessActivities => Set<PrincipalBusinessActivity>();
+    public DbSet<CustomerImportAttempt> CustomerImportAttempts => Set<CustomerImportAttempt>();
+    public DbSet<CustomerImportRow> CustomerImportRows => Set<CustomerImportRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
