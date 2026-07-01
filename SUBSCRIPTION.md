@@ -1,7 +1,7 @@
 
 # TaxVision — Subscription Service
 
-**Implementado por:** Jorge Turbi
+**Implementado por:** Wagner Alcantara
 **Fecha:** 01-07-2026
 
 Documentacion del microservicio `TaxVision.Subscription` y todos los cambios realizados
@@ -584,4 +584,4 @@ Variables de entorno requeridas en Postman:
 | `subscriptionId` | se captura automaticamente en Create_Subscription |
 | `pendingChangeId` | se captura automaticamente en Change_Plan |
 | `subscriptionModuleId` | se captura automaticamente en Assign_Module_To_Subscription |
-| `enrollmentId` | se captura automaticamente en Create_Enrollment |
+| `enrollmentId` | se captura automaticamente en Create_Enrollme
