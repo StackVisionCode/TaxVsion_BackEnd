@@ -36,7 +36,10 @@ public sealed class CustomerAddress : TenantEntity
         return Result.Success(entity);
     }
 
-    internal void MarkPrimary(bool isPrimary) => IsPrimary = isPrimary;
-
-    internal void UpdateAddress(AddressValue newAddress) => Address = newAddress;
+    internal void Update(AddressKind kind, AddressValue address, bool isPrimary)
+    {
+        Kind = kind;
+        Address = address;
+        IsPrimary = isPrimary;
+    }
 }

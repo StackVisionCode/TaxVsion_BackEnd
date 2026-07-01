@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
@@ -5,16 +6,32 @@ using TaxVision.Customer.Domain.Customers;
 
 namespace TaxVision.Customer.Infrastructure.Persistence;
 
-public sealed class CustomerReadService(CustomerDbContext db) : ICustomerReadService
+public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProtector protector) : ICustomerReadService
 {
-    public async Task<IReadOnlyList<CustomerSummaryResponse>> SearchAsync(
+    public async Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
         string? term,
+        CustomerStatusFilter status,
         int page,
         int size,
         CancellationToken ct = default
     )
     {
-        var query = db.Customers.AsNoTracking().Where(c => c.Status != CustomerStatus.Archived);
+        if (page < 1)
+            page = 1;
+        if (size < 1)
+            size = 20;
+
+        var query = db.Customers.AsNoTracking().AsQueryable();
+
+        query = status switch
+        {
+            CustomerStatusFilter.Active => query.Where(c => c.Status == CustomerStatus.Active),
+            CustomerStatusFilter.Inactive => query.Where(c => c.Status == CustomerStatus.Inactive),
+            CustomerStatusFilter.Archived => query.Where(c => c.Status == CustomerStatus.Archived),
+            CustomerStatusFilter.NotArchived => query.Where(c => c.Status != CustomerStatus.Archived),
+            CustomerStatusFilter.All => query,
+            _ => query.Where(c => c.Status == CustomerStatus.Active),
+        };
 
         if (!string.IsNullOrWhiteSpace(term))
         {
@@ -24,7 +41,9 @@ public sealed class CustomerReadService(CustomerDbContext db) : ICustomerReadSer
             );
         }
 
-        return await query
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
             .OrderBy(c => c.DisplayName)
             .Skip((page - 1) * size)
             .Take(size)
@@ -38,6 +57,8 @@ public sealed class CustomerReadService(CustomerDbContext db) : ICustomerReadSer
                 c.CreatedAtUtc
             ))
             .ToListAsync(ct);
+
+        return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
     }
 
     public async Task<CustomerResponse?> GetByIdAsync(Guid customerId, CancellationToken ct = default)
@@ -89,5 +110,47 @@ public sealed class CustomerReadService(CustomerDbContext db) : ICustomerReadSer
             data.NaicsDescription,
             data.CreatedAtUtc
         );
+    }
+
+    public async Task<CustomerExistsResponse> CheckExistsAsync(
+        Guid tenantId,
+        string? email,
+        string? taxIdentifier,
+        CancellationToken ct = default
+    )
+    {
+        Guid? matchId = null;
+        var emailExists = false;
+        var taxIdExists = false;
+
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            var normalized = email.Trim().ToLowerInvariant();
+            var hit = await db
+                .Customers.AsNoTracking()
+                .Where(c => c.TenantId == tenantId && c.PrimaryEmail.NormalizedValue == normalized)
+                .Select(c => (Guid?)c.Id)
+                .FirstOrDefaultAsync(ct);
+            emailExists = hit.HasValue;
+            matchId ??= hit;
+        }
+
+        if (!string.IsNullOrWhiteSpace(taxIdentifier))
+        {
+            var normalizedDigits = new string(taxIdentifier.Where(char.IsDigit).ToArray());
+            if (normalizedDigits.Length == 9)
+            {
+                var blindIndex = protector.ComputeBlindIndex(normalizedDigits, tenantId);
+                var hit = await db
+                    .CustomerFiscalProfiles.AsNoTracking()
+                    .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex)
+                    .Select(fp => (Guid?)fp.CustomerId)
+                    .FirstOrDefaultAsync(ct);
+                taxIdExists = hit.HasValue;
+                matchId ??= hit;
+            }
+        }
+
+        return new CustomerExistsResponse(emailExists, taxIdExists, matchId);
     }
 }

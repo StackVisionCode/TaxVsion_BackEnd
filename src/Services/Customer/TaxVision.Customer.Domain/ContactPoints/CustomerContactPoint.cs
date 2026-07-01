@@ -42,7 +42,14 @@ public sealed class CustomerContactPoint : TenantEntity
         return Result.Success(entity);
     }
 
-    internal void MarkPrimary(bool isPrimary) => IsPrimary = isPrimary;
+    internal void Update(ContactPointType type, string value, string normalizedValue, string? label, bool isPrimary)
+    {
+        Type = type;
+        Value = value;
+        NormalizedValue = normalizedValue;
+        Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim();
+        IsPrimary = isPrimary;
+    }
 
     internal void MarkVerified(DateTime atUtc) => VerifiedAtUtc = atUtc;
 }

@@ -110,15 +110,26 @@ public sealed class CustomerRelation : TenantEntity
         return Result.Success();
     }
 
-    public Result UpdateContact(EmailAddress? email, PhoneNumber? phone, AddressValue? address)
+    internal void Update(
+        RelationshipKind kind,
+        RelationPurpose purposes,
+        PersonalName name,
+        EmailAddress? email,
+        PhoneNumber? phone,
+        DateOnly? dateOfBirth,
+        AddressValue? address
+    )
     {
+        RelationshipKind = kind;
+        Purposes = purposes;
+        Name = name;
         PrimaryEmail = email;
         PrimaryPhone = phone;
+        DateOfBirth = dateOfBirth;
         Address = address;
-        return Result.Success();
     }
 
-    public void Deactivate() => IsActive = false;
+    internal void Deactivate() => IsActive = false;
 
-    public void Reactivate() => IsActive = true;
+    internal void Reactivate() => IsActive = true;
 }

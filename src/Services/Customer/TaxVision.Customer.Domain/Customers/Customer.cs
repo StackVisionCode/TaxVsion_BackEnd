@@ -142,6 +142,8 @@ public sealed class Customer : TenantEntity
         return Result.Success();
     }
 
+    // ============== Addresses ==============
+
     public Result<CustomerAddress> AddAddress(AddressKind kind, AddressValue address, bool isPrimary, Guid byUserId)
     {
         EnsureActive();
@@ -159,6 +161,35 @@ public sealed class Customer : TenantEntity
         Touch(byUserId);
         return created;
     }
+
+    public Result UpdateAddress(Guid addressId, AddressKind kind, AddressValue address, bool isPrimary, Guid byUserId)
+    {
+        EnsureActive();
+        var existing = _addresses.FirstOrDefault(a => a.Id == addressId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.AddressNotFound", "Address not found."));
+
+        if (isPrimary && _addresses.Any(a => a.Id != addressId && a.Kind == kind && a.IsPrimary))
+            return Result.Failure(new Error("Customer.PrimaryAddress", $"A primary {kind} address already exists."));
+
+        existing.Update(kind, address, isPrimary);
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result RemoveAddress(Guid addressId, Guid byUserId)
+    {
+        EnsureActive();
+        var existing = _addresses.FirstOrDefault(a => a.Id == addressId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.AddressNotFound", "Address not found."));
+
+        _addresses.Remove(existing);
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    // ============== Contact points ==============
 
     public Result<CustomerContactPoint> AddContactPoint(
         ContactPointType type,
@@ -190,6 +221,48 @@ public sealed class Customer : TenantEntity
         return created;
     }
 
+    public Result UpdateContactPoint(
+        Guid contactPointId,
+        ContactPointType type,
+        string value,
+        string normalizedValue,
+        string? label,
+        bool isPrimary,
+        Guid byUserId
+    )
+    {
+        EnsureActive();
+        var existing = _contactPoints.FirstOrDefault(c => c.Id == contactPointId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.ContactPointNotFound", "Contact point not found."));
+
+        if (isPrimary && _contactPoints.Any(c => c.Id != contactPointId && c.Type == type && c.IsPrimary))
+            return Result.Failure(
+                new Error("Customer.PrimaryContactPoint", $"A primary {type} contact point already exists.")
+            );
+
+        if (_contactPoints.Any(c => c.Id != contactPointId && c.Type == type && c.NormalizedValue == normalizedValue))
+            return Result.Failure(new Error("Customer.DuplicateContactPoint", "Duplicate contact point."));
+
+        existing.Update(type, value, normalizedValue, label, isPrimary);
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result RemoveContactPoint(Guid contactPointId, Guid byUserId)
+    {
+        EnsureActive();
+        var existing = _contactPoints.FirstOrDefault(c => c.Id == contactPointId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.ContactPointNotFound", "Contact point not found."));
+
+        _contactPoints.Remove(existing);
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    // ============== Relations ==============
+
     public Result<CustomerRelation> AddRelation(
         RelationshipKind kind,
         RelationPurpose purposes,
@@ -210,6 +283,42 @@ public sealed class Customer : TenantEntity
         Touch(byUserId);
         return created;
     }
+
+    public Result UpdateRelation(
+        Guid relationId,
+        RelationshipKind kind,
+        RelationPurpose purposes,
+        PersonalName name,
+        EmailAddress? email,
+        PhoneNumber? phone,
+        DateOnly? dateOfBirth,
+        AddressValue? address,
+        Guid byUserId
+    )
+    {
+        EnsureActive();
+        var existing = _relations.FirstOrDefault(r => r.Id == relationId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
+
+        existing.Update(kind, purposes, name, email, phone, dateOfBirth, address);
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result RemoveRelation(Guid relationId, Guid byUserId)
+    {
+        EnsureActive();
+        var existing = _relations.FirstOrDefault(r => r.Id == relationId);
+        if (existing is null)
+            return Result.Failure(new Error("Customer.RelationNotFound", "Relation not found."));
+
+        _relations.Remove(existing);
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    // ============== Fiscal profile ==============
 
     public Result SetFiscalProfile(
         FiscalProfiles.FiscalSubjectKind subjectKind,
@@ -273,6 +382,8 @@ public sealed class Customer : TenantEntity
         return Result.Success();
     }
 
+    // ============== Status transitions ==============
+
     public Result Archive(Guid byUserId)
     {
         if (Status == CustomerStatus.Archived)
@@ -293,6 +404,34 @@ public sealed class Customer : TenantEntity
         Status = CustomerStatus.Active;
         ArchivedAtUtc = null;
         ArchivedByUserId = null;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result Deactivate(Guid byUserId)
+    {
+        if (Status == CustomerStatus.Archived)
+            return Result.Failure(
+                new Error("Customer.Archived", "Cannot deactivate an archived customer; reactivate first.")
+            );
+        if (Status == CustomerStatus.Inactive)
+            return Result.Failure(new Error("Customer.AlreadyInactive", "Customer is already inactive."));
+
+        Status = CustomerStatus.Inactive;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result Activate(Guid byUserId)
+    {
+        if (Status == CustomerStatus.Archived)
+            return Result.Failure(
+                new Error("Customer.Archived", "Cannot activate an archived customer; reactivate first.")
+            );
+        if (Status == CustomerStatus.Active)
+            return Result.Failure(new Error("Customer.AlreadyActive", "Customer is already active."));
+
+        Status = CustomerStatus.Active;
         Touch(byUserId);
         return Result.Success();
     }
