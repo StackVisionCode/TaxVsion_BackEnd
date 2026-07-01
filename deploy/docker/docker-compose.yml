@@ -18,6 +18,26 @@ services:
       timeout: 5s
       retries: 10
 
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: taxvision-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?Set SA_PASSWORD in .env}
+      MSSQL_PID: Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "${SA_PASSWORD}", "-Q", "SELECT 1", "-No"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
   redis:
     image: redis:7.2.12-alpine
     container_name: taxvision-redis
@@ -173,6 +193,33 @@ services:
     networks:
       - taxvision-network
 
+  subscription-api:
+    image: taxvision/subscription-api:dev
+    container_name: taxvision-subscription-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Subscription/TaxVision.Subscription.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   gateway:
     image: taxvision/gateway:dev
     container_name: taxvision-gateway
@@ -190,11 +237,13 @@ services:
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
       ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
+      ReverseProxy__Clusters__subscription__Destinations__subscription1__Address: http://subscription-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
     depends_on:
       - auth-api
       - tenant-api
+      - subscription-api
       - otel-collector
     networks:
       - taxvision-network
@@ -202,6 +251,7 @@ services:
 volumes:
   rabbitmq-data:
   redis-data:
+  sqlserver-data:
   loki-data:
   tempo-data:
   prometheus-data:

@@ -8,128 +8,853 @@
   },
   "item": [
     {
-      "name": "Registro_Tenant",
-      "event": [
+      "name": "Tenant",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "\r",
-              "const response = pm.response.json();\r",
-              "\r",
-              "pm.environment.set(\"tenantId\", response.id);\r",
-              "pm.environment.set(\"invitationToken\", response.adminActivationToken);\r",
-              ""
-            ],
-            "type": "text/javascript",
-            "packages": {},
-            "requests": {}
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content",
-            "value": "application/json",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\",\r\n  \"defaultTimeZoneId\": \"America/Santo_Domingo\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Registro_Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.environment.set(\"tenantId\", response.id);",
+                  "pm.environment.set(\"invitationToken\", response.adminActivationToken);"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }
-        },
-        "url": {
-          "raw": "{{UrlBase}}/tenants",
-          "host": [
-            "{{UrlBase}}"
           ],
-          "path": [
-            "tenants"
-          ]
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\",\r\n  \"defaultTimeZoneId\": \"America/Santo_Domingo\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/tenants",
+              "host": ["{{UrlBase}}"],
+              "path": ["tenants"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get_Tenants (PlatformAdmin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tenants?page=1&size=20",
+              "host": ["{{UrlBase}}"],
+              "path": ["tenants"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Patch_Tenant_Status (PlatformAdmin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"status\": \"Suspended\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/tenants/{{tenantId}}/status",
+              "host": ["{{UrlBase}}"],
+              "path": ["tenants", "{{tenantId}}", "status"]
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "AcceptTenantAdminInvitation",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+      "name": "Auth",
+      "item": [
+        {
+          "name": "AcceptTenantAdminInvitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations/accept",
+              "host": ["{{UrlBase}}"],
+              "path": ["auth", "invitations", "accept"]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{UrlBase}}/auth/invitations/accept",
-          "host": [
-            "{{UrlBase}}"
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.environment.set(\"accessToken\", response.accessToken);",
+                  "pm.environment.set(\"refreshToken\", response.refreshToken);",
+                  "console.log(\"Access token guardado\");",
+                  "console.log(\"Refresh token guardado\");"
+                ],
+                "type": "text/javascript"
+              }
+            }
           ],
-          "path": [
-            "auth",
-            "invitations",
-            "accept"
-          ]
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/login",
+              "host": ["{{UrlBase}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login_PlatformAdmin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.environment.set(\"accessToken\", response.accessToken);",
+                  "pm.environment.set(\"refreshToken\", response.refreshToken);",
+                  "console.log(\"PlatformAdmin token guardado\");"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"tenantId\": \"8f58a521-4c25-4d91-9f4e-7ad5df14c001\",\r\n  \"email\": \"admin@taxvision.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/login",
+              "host": ["{{UrlBase}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.environment.set(\"accessToken\", response.accessToken);",
+                  "pm.environment.set(\"refreshToken\", response.refreshToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"refreshToken\": \"{{refreshToken}}\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/refresh",
+              "host": ["{{UrlBase}}"],
+              "path": ["auth", "refresh"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/revoke",
+              "host": ["{{UrlBase}}"],
+              "path": ["auth", "revoke"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invite_TenantEmployee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.environment.set(\"invitationToken\", response.invitationToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"empleado@empresa.com\",\r\n  \"actorType\": \"TenantEmployee\",\r\n  \"customerId\": null\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations",
+              "host": ["{{UrlBase}}"],
+              "path": ["auth", "invitations"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invite_PlatformAdmin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "pm.environment.set(\"invitationToken\", response.invitationToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"tenantId\": \"8f58a521-4c25-4d91-9f4e-7ad5df14c001\",\r\n  \"email\": \"admin2@taxvision.com\",\r\n  \"actorType\": \"PlatformAdmin\",\r\n  \"customerId\": null\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations",
+              "host": ["{{UrlBase}}"],
+              "path": ["auth", "invitations"]
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Login",
-      "event": [
+      "name": "Subscription / Plans",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const response = pm.response.json();\r",
-              "\r",
-              "pm.environment.set(\"accessToken\", response.accessToken);\r",
-              "pm.environment.set(\"refreshToken\", response.refreshToken);\r",
-              "\r",
-              "console.log(\"Access token guardado\");\r",
-              "console.log(\"Refresh token guardado\");"
-            ],
-            "type": "text/javascript",
-            "packages": {},
-            "requests": {}
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "name": "Get_All_Plans (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/api/plans?isActive=true",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans"],
+              "query": [{ "key": "isActive", "value": "true" }]
             }
-          }
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{UrlBase}}/auth/login",
-          "host": [
-            "{{UrlBase}}"
+        {
+          "name": "Get_Plan_By_Id (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/api/plans/{{planId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans", "{{planId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create_Plan (PlatformAdmin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.id) pm.environment.set(\"planId\", response.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
           ],
-          "path": [
-            "auth",
-            "login"
-          ]
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Starter\",\r\n  \"title\": \"Plan Starter\",\r\n  \"description\": \"Plan basico para pequenas empresas\",\r\n  \"basePriceMonthly\": 29.00,\r\n  \"basePriceAnnual\": 290.00,\r\n  \"pricePerAdditionalSeat\": 9.00,\r\n  \"includedSeats\": 3,\r\n  \"currency\": \"USD\",\r\n  \"isActive\": true,\r\n  \"serviceLevel\": \"Standard\",\r\n  \"features\": [\"Acceso basico\", \"Soporte por email\"]\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/api/plans",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update_Plan (PlatformAdmin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"id\": \"{{planId}}\",\r\n  \"name\": \"Starter\",\r\n  \"title\": \"Plan Starter Actualizado\",\r\n  \"description\": \"Plan basico actualizado\",\r\n  \"basePriceMonthly\": 29.00,\r\n  \"basePriceAnnual\": 290.00,\r\n  \"pricePerAdditionalSeat\": 9.00,\r\n  \"includedSeats\": 3,\r\n  \"currency\": \"USD\",\r\n  \"isActive\": true,\r\n  \"serviceLevel\": \"Standard\",\r\n  \"features\": [\"Acceso basico\", \"Soporte por email\", \"Reportes basicos\"]\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/api/plans/{{planId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans", "{{planId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle_Plan_Status (PlatformAdmin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"isActive\": false\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/api/plans/{{planId}}/status",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans", "{{planId}}", "status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign_Module_To_Plan (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/api/plans/{{planId}}/modules/{{moduleId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans", "{{planId}}", "modules", "{{moduleId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove_Module_From_Plan (PlatformAdmin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/api/plans/{{planId}}/modules/{{moduleId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans", "{{planId}}", "modules", "{{moduleId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete_Plan (PlatformAdmin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/api/plans/{{planId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "plans", "{{planId}}"]
+            }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
+    },
+    {
+      "name": "Subscription / Modules",
+      "item": [
+        {
+          "name": "Get_All_Modules (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/api/modules?isActive=true",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "modules"],
+              "query": [{ "key": "isActive", "value": "true" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get_Module_By_Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/api/modules/{{moduleId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "modules", "{{moduleId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create_Module (PlatformAdmin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.id) pm.environment.set(\"moduleId\", response.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Reportes Fiscales\",\r\n  \"description\": \"Modulo de reportes fiscales y declaraciones\",\r\n  \"url\": \"/modules/reports\",\r\n  \"isActive\": true\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/api/modules",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "modules"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update_Module (PlatformAdmin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"id\": \"{{moduleId}}\",\r\n  \"name\": \"Reportes Fiscales\",\r\n  \"description\": \"Modulo de reportes fiscales actualizado\",\r\n  \"url\": \"/modules/reports\",\r\n  \"isActive\": true\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/api/modules/{{moduleId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "modules", "{{moduleId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle_Module_Status (PlatformAdmin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"isActive\": false\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/api/modules/{{moduleId}}/status",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "modules", "{{moduleId}}", "status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete_Module (PlatformAdmin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/api/modules/{{moduleId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "modules", "{{moduleId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Subscription / Enrollments",
+      "item": [
+        {
+          "name": "Create_Enrollment (public)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.enrollmentId) pm.environment.set(\"enrollmentId\", response.enrollmentId);",
+                  "console.log(\"Status:\", response.status);",
+                  "console.log(\"Total:\", response.totalAmount);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"planCode\": \"Starter\",\r\n  \"billingPeriod\": \"Monthly\",\r\n  \"adminEmail\": \"admin@nuevaempresa.com\",\r\n  \"orgName\": \"Nueva Empresa SRL\",\r\n  \"subdomain\": \"nueva-empresa\",\r\n  \"timeZoneId\": \"America/Santo_Domingo\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/enrollments",
+              "host": ["{{UrlBase}}"],
+              "path": ["enrollments"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Subscription / Subscriptions",
+      "item": [
+        {
+          "name": "Create_Subscription (PlatformAdmin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.subscriptionId) pm.environment.set(\"subscriptionId\", response.subscriptionId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"serviceLevel\": \"Standard\",\r\n  \"billingPeriod\": \"Monthly\",\r\n  \"isActive\": true\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions",
+              "host": ["{{UrlBase}}"],
+              "path": ["subscriptions"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add_Seat (TenantAdmin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.seatId) pm.environment.set(\"seatId\", response.seatId);",
+                  "console.log(\"Seat status:\", response.status);",
+                  "console.log(\"Total:\", response.totalAmount);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"quantity\": 2\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/current/seats",
+              "host": ["{{UrlBase}}"],
+              "path": ["subscriptions", "current", "seats"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel_Subscription (TenantAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"reason\": \"Ya no necesitamos el servicio\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/current/cancel",
+              "host": ["{{UrlBase}}"],
+              "path": ["subscriptions", "current", "cancel"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Renew_Subscription (PlatformAdmin o TenantAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/current/renew?subscriptionId={{subscriptionId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["subscriptions", "current", "renew"],
+              "query": [{ "key": "subscriptionId", "value": "{{subscriptionId}}" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Change_Plan (TenantAdmin - aplica en renovacion)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.pendingChangeId) pm.environment.set(\"pendingChangeId\", response.pendingChangeId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"newPlanId\": \"{{planId}}\",\r\n  \"newBillingPeriod\": \"Annual\"\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/{{subscriptionId}}/change-plan",
+              "host": ["{{UrlBase}}"],
+              "path": ["subscriptions", "{{subscriptionId}}", "change-plan"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Apply_Pending_Change (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/pending-changes/{{pendingChangeId}}/apply",
+              "host": ["{{UrlBase}}"],
+              "path": ["subscriptions", "pending-changes", "{{pendingChangeId}}", "apply"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update_Price (PlatformAdmin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"newPrice\": 35.00\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/{{subscriptionId}}/price",
+              "host": ["{{UrlBase}}"],
+              "path": ["subscriptions", "{{subscriptionId}}", "price"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Subscription / SubscriptionModules",
+      "item": [
+        {
+          "name": "Get_SubscriptionModules",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/api/subscription-modules/subscription/{{subscriptionId}}?isIncluded=true",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "subscription-modules", "subscription", "{{subscriptionId}}"],
+              "query": [{ "key": "isIncluded", "value": "true" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Assign_Module_To_Subscription (PlatformAdmin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.id) pm.environment.set(\"subscriptionModuleId\", response.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"subscriptionId\": \"{{subscriptionId}}\",\r\n  \"moduleId\": \"{{moduleId}}\",\r\n  \"isIncluded\": true\r\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/api/subscription-modules",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "subscription-modules"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove_SubscriptionModule (PlatformAdmin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/api/subscription-modules/{{subscriptionModuleId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["api", "subscription-modules", "{{subscriptionModuleId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

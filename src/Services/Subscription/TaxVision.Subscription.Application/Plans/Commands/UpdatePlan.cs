@@ -1,0 +1,57 @@
+using BuildingBlocks.Persistence;
+using Microsoft.Extensions.Logging;
+using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Plans.Dtos;
+using TaxVision.Subscription.Domain.Plans;
+
+namespace TaxVision.Subscription.Application.Plans.Commands;
+
+public record UpdatePlanCommand(
+    Guid Id,
+    string Name,
+    string Title,
+    string Description,
+    decimal BasePriceMonthly,
+    decimal BasePriceAnnual,
+    decimal PricePerAdditionalSeat,
+    int IncludedSeats,
+    bool IsActive,
+    ServiceLevel ServiceLevel,
+    List<string> Features);
+
+public static class UpdatePlanHandler
+{
+    public static async Task<PlanDto> Handle(
+        UpdatePlanCommand cmd,
+        IPlanRepository repo,
+        IPlanReadService readService,
+        IUnitOfWork uow,
+        ILogger<UpdatePlanCommand> logger,
+        CancellationToken ct)
+    {
+        var plan = await repo.GetByIdAsync(cmd.Id, ct)
+            ?? throw new InvalidOperationException($"Plan {cmd.Id} not found.");
+
+        if (cmd.BasePriceMonthly < 0)
+            throw new ArgumentException("Monthly price cannot be negative.");
+        if (cmd.BasePriceAnnual > 0 && cmd.BasePriceAnnual > cmd.BasePriceMonthly * 12)
+            throw new ArgumentException("Annual price cannot be greater than monthly price * 12.");
+        if (cmd.IncludedSeats < 0)
+            throw new ArgumentException("Included seats cannot be negative.");
+
+        var updateResult = plan.Update(cmd.Name, cmd.Title, cmd.Description, cmd.IsActive, cmd.ServiceLevel);
+        if (updateResult.IsFailure)
+            throw new InvalidOperationException(updateResult.Error.Message);
+
+        var pricingResult = plan.UpdatePricing(cmd.BasePriceMonthly, cmd.BasePriceAnnual, cmd.PricePerAdditionalSeat);
+        if (pricingResult.IsFailure)
+            throw new InvalidOperationException(pricingResult.Error.Message);
+
+        plan.UpdateSeats(cmd.IncludedSeats);
+
+        await uow.SaveChangesAsync(ct);
+
+        logger.LogInformation("Plan updated: {PlanId}", plan.Id);
+        return await readService.GetByIdWithDetailsAsync(plan.Id, ct);
+    }
+}

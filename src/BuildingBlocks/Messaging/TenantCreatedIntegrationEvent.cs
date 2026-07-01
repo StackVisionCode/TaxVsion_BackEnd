@@ -10,4 +10,9 @@ public sealed record TenantCreatedIntegrationEvent : IntegrationEvent
     public required string AdminEmail { get; init; }
     public required string AdminInvitationTokenHash { get; init; }
     public DateTime? AdminInvitationExpiresAtUtc { get; init; }
+    /// <summary>
+    /// Presente solo cuando el tenant fue creado como resultado de un SubscriptionEnrollment.
+    /// Null = creación manual por Platform Admin.
+    /// </summary>
+    public Guid? EnrollmentId { get; init; }
 }
