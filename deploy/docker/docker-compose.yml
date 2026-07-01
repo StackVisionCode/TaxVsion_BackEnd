@@ -173,6 +173,35 @@ services:
     networks:
       - taxvision-network
 
+  payment-api:
+    image: taxvision/payment-api:dev
+    container_name: taxvision-payment-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Payment/TaxVision.Payment.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${PAYMENT_DB_CONNECTION:?Set PAYMENT_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY:?Set STRIPE_SECRET_KEY in .env}
+      Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET:?Set STRIPE_WEBHOOK_SECRET in .env}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   gateway:
     image: taxvision/gateway:dev
     container_name: taxvision-gateway
@@ -190,11 +219,13 @@ services:
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
       ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
+      ReverseProxy__Clusters__payment__Destinations__payment1__Address: http://payment-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
     depends_on:
       - auth-api
       - tenant-api
+      - payment-api
       - otel-collector
     networks:
       - taxvision-network
