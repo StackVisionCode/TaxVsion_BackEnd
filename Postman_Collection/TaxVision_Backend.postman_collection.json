@@ -237,6 +237,78 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "ReactivateCustomer",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/reactivate",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "reactivate" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "DeactivateCustomer",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/deactivate",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "deactivate" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "ActivateCustomer",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/activate",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "activate" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "CheckCustomerExists",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/check-exists?email=jane.doe@example.com&taxIdentifier=123-45-6789",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "check-exists" ],
+                  "query": [
+                    { "key": "email", "value": "jane.doe@example.com" },
+                    { "key": "taxIdentifier", "value": "123-45-6789" }
+                  ]
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -353,6 +425,230 @@
                   "raw": "{{UrlBase}}/customers/{{customerId}}/relations",
                   "host": [ "{{UrlBase}}" ],
                   "path": [ "customers", "{{customerId}}", "relations" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateCustomerAddress",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"kind\": \"Mailing\",\r\n  \"line1\": \"456 Updated Ave\",\r\n  \"line2\": \"Apt 12B\",\r\n  \"city\": \"Santo Domingo\",\r\n  \"region\": \"Distrito Nacional\",\r\n  \"postalCode\": \"10101\",\r\n  \"countryCode\": \"DO\",\r\n  \"isPrimary\": false\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/addresses/{{addressId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "addresses", "{{addressId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "RemoveCustomerAddress",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/addresses/{{addressId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "addresses", "{{addressId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateCustomerContactPoint",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"type\": \"Email\",\r\n  \"value\": \"maria.updated@example.com\",\r\n  \"label\": \"Personal\",\r\n  \"isPrimary\": false\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/contact-points/{{contactPointId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "contact-points", "{{contactPointId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "RemoveCustomerContactPoint",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/contact-points/{{contactPointId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "contact-points", "{{contactPointId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateCustomerRelation",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"relationshipKind\": \"Spouse\",\r\n  \"purposes\": 6,\r\n  \"firstName\": \"Juan\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": \"Alberto\",\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"primaryEmail\": \"juan.updated@example.com\",\r\n  \"primaryPhone\": \"+18095550103\",\r\n  \"dateOfBirth\": \"1983-08-22\",\r\n  \"addressLine1\": null,\r\n  \"addressLine2\": null,\r\n  \"addressCity\": null,\r\n  \"addressRegion\": null,\r\n  \"addressPostalCode\": null,\r\n  \"addressCountryCode\": null\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "relations", "{{relationId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "RemoveCustomerRelation",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}", "relations", "{{relationId}}" ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Bulk",
+          "item": [
+            {
+              "name": "BulkArchiveCustomers",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"End of season cleanup\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/bulk/archive",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "bulk", "archive" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "BulkReactivateCustomers",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Returning customers\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/bulk/reactivate",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "bulk", "reactivate" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "BulkDeactivateCustomers",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Paused this season\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/bulk/deactivate",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "bulk", "deactivate" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "BulkActivateCustomers",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "POST",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Returned from pause\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "url": {
+                  "raw": "{{UrlBase}}/customers/bulk/activate",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "bulk", "activate" ]
                 }
               },
               "response": []

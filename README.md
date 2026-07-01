@@ -1665,3 +1665,178 @@ dotnet ef database update `
   por un fileId externo y borrar la tabla local.
 - Notificacion por email al operador cuando completa: requiere Email Service.
 - Pruebas automatizadas siguiendo la guia general del proyecto.
+
+### 25.16 Operaciones de status, CRUD granular y bulk
+
+Endpoints anadidos despues de la implementacion inicial del Paso 7 del PDF. Cubren
+operaciones que el aggregate ya soportaba pero no estaban expuestas, mas operaciones
+estandar para una oficina de impuestos real (correcciones, pausa estacional, fin de
+campana).
+
+#### 25.16.1 Status del customer
+
+El enum `CustomerStatus` define tres estados explicitos:
+
+- `Active`: customer operativo, aparece en listados por default.
+- `Inactive`: pausado (no engaged este ciclo fiscal). Sigue editable; no aparece en
+  listados con filtro default.
+- `Archived`: removido de flujo operativo, requiere admin para reactivar. El aggregate
+  bloquea modificaciones (`EnsureActive()`).
+
+Transiciones expuestas como endpoints individuales. El aggregate valida la transicion;
+si es invalida, devuelve error de dominio en lugar de throw.
+
+| Verbo y ruta | Actor minimo | Transicion | Error si... |
+| --- | --- | --- | --- |
+| POST `/customers/{id}/archive` | TenantAdmin | Any -> Archived | ya esta Archived |
+| POST `/customers/{id}/reactivate` | TenantAdmin | Archived -> Active | no esta Archived |
+| POST `/customers/{id}/deactivate` | TenantAdmin | Active -> Inactive | esta Archived o ya Inactive |
+| POST `/customers/{id}/activate` | TenantAdmin | Inactive -> Active | esta Archived o ya Active |
+
+Cada transicion publica su propio evento de integracion:
+
+- `CustomerArchivedIntegrationEvent`
+- `CustomerReactivatedIntegrationEvent`
+- `CustomerActivatedIntegrationEvent`
+- `CustomerDeactivatedIntegrationEvent`
+
+Sin PII. Consumidores tipicos: proyeccion de Auth, Campaign, read models de operaciones.
+
+#### 25.16.2 CRUD granular de child entities
+
+El aggregate expone tres familias de child entities (Addresses, ContactPoints,
+Relations) con CRUD completo. Las mutaciones siempre pasan por metodos del aggregate
+root; los child entities solo tienen `Create` y `Update` internos.
+
+| Verbo y ruta | Actor minimo |
+| --- | --- |
+| POST `/customers/{id}/addresses` | TenantEmployee |
+| PATCH `/customers/{id}/addresses/{addressId}` | TenantEmployee |
+| DELETE `/customers/{id}/addresses/{addressId}` | TenantEmployee |
+| POST `/customers/{id}/contact-points` | TenantEmployee |
+| PATCH `/customers/{id}/contact-points/{contactPointId}` | TenantEmployee |
+| DELETE `/customers/{id}/contact-points/{contactPointId}` | TenantEmployee |
+| POST `/customers/{id}/relations` | TenantEmployee |
+| PATCH `/customers/{id}/relations/{relationId}` | TenantEmployee |
+| DELETE `/customers/{id}/relations/{relationId}` | TenantEmployee |
+
+Reglas validadas por el aggregate:
+
+- una sola direccion primary por `AddressKind`;
+- un solo contact point primary por `Type`;
+- no se permite duplicar `(Type, NormalizedValue)` en contact points;
+- al eliminar una relacion con fiscal profile, EF borra el
+  `CustomerRelationFiscalProfile` por cascade configurada en el modelo.
+
+Las operaciones CRUD de children no publican eventos de integracion. Si en el futuro
+algun consumidor lo necesita, se agrega via patron `CustomerUpdatedIntegrationEvent`
+con campo `ChangedFields`, no eventos por child entity.
+
+#### 25.16.3 Listado con filtro por status y paginacion
+
+GET `/customers` ahora devuelve `PagedResult<CustomerSummaryResponse>` con metadatos
+de paginacion. Acepta filtro de status via query param.
+
+| Query param | Valores | Default |
+| --- | --- | --- |
+| `term` | texto libre (matchea DisplayName o email normalizado) | null |
+| `status` | `Active`, `Inactive`, `Archived`, `NotArchived`, `All` | `Active` |
+| `page` | entero >= 1 | 1 |
+| `size` | entero >= 1 | 20 |
+
+Respuesta:
+
+```json
+{
+  "items": [ { "id": "...", "displayName": "...", "status": "Active", ... } ],
+  "page": 1,
+  "size": 20,
+  "totalCount": 254,
+  "totalPages": 13,
+  "hasMore": true,
+  "hasPrevious": false
+}
+```
+
+`PagedResult<T>` esta definido en `BuildingBlocks` para reuso en otros servicios.
+
+#### 25.16.4 Check-exists preflight
+
+GET `/customers/check-exists` permite al frontend validar duplicados antes de
+submit. Tenant-scoped: dos tenants pueden tener el mismo email o SSN sin colisionar.
+
+| Query param | Notas |
+| --- | --- |
+| `email` | normalizado a lowercase trim antes del lookup |
+| `taxIdentifier` | normalizado a solo digitos; busca via blind index HMAC por tenant; nunca descifra |
+
+Al menos uno de los dos es requerido (400 si ninguno).
+
+Respuesta:
+
+```json
+{
+  "emailExists": true,
+  "taxIdentifierExists": false,
+  "existingCustomerId": "6d005cbb-..."
+}
+```
+
+`existingCustomerId` es el id del primer match encontrado entre las dos senales; util
+para que el UI sugiera "abrir el customer existente" en lugar de crear duplicado.
+
+#### 25.16.5 Bulk status operations
+
+POST `/customers/bulk/{action}` con `action` en `archive`, `reactivate`, `activate`,
+`deactivate`. Util para fin de campana fiscal (archivar 100 customers que ya filtraron)
+o reapertura de temporada (reactivar masivamente).
+
+| Limite | Valor |
+| --- | --- |
+| Maximo customers por call | 100 |
+| Modo | sincrono (>100 devuelve 400 `Bulk.TooMany`) |
+| Autorizacion | TenantAdmin |
+
+Body:
+
+```json
+{
+  "customerIds": [ "guid1", "guid2", "..." ],
+  "reason": "End of season cleanup"
+}
+```
+
+Respuesta:
+
+```json
+{
+  "totalRequested": 100,
+  "succeeded": 97,
+  "failed": 3,
+  "failures": [
+    { "customerId": "...", "errorCode": "Customer.AlreadyArchived", "message": "..." }
+  ]
+}
+```
+
+Comportamiento:
+
+- valida ownership por tenant en cada customer antes de mutar;
+- itera secuencialmente aplicando la transicion del aggregate;
+- ids invalidos o de otro tenant se reportan en `failures` pero no abortan el batch;
+- publica un evento individual por customer exitoso (consistente con las APIs
+  single-customer). Si el volumen crece, se migrara al patron batched
+  estilo `CustomersBulkImportedV1`.
+
+Cuando se necesite procesar mas de 100 customers a la vez, debe usarse el flujo
+async de bulk import (seccion 25.10) que ya esta diseñado para eso.
+
+#### 25.16.6 Resumen de cambios
+
+- 4 endpoints status: archive, reactivate, deactivate, activate;
+- 6 endpoints CRUD granular de children (PATCH y DELETE para Address, ContactPoint, Relation);
+- 1 endpoint check-exists preflight;
+- 4 acciones bulk: archive, reactivate, deactivate, activate;
+- 3 eventos nuevos: Reactivated, Activated, Deactivated;
+- 1 wrapper `PagedResult<T>` en BuildingBlocks;
+- 0 migraciones de BD (todo es codigo).
