@@ -25,6 +25,11 @@ control plane, CorrelationId de extremo a extremo, cache con invalidacion y una
 plataforma local de observabilidad con Grafana, Loki, Prometheus, Tempo y
 OpenTelemetry.
 
+# Idea Principal de Desarrollo 
+<img width="2400" height="1560"  src="https://firebasestorage.googleapis.com/v0/b/c5iffaa-10025.firebasestorage.app/o/DiagramsBackEnd.png?alt=media&token=9daa5550-50b2-4ca2-bae3-dac0e39ed332" />
+
+
+
 ## Indice
 
 1. Introduccion y objetivo
