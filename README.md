@@ -56,6 +56,7 @@ OpenTelemetry.
 22. Pruebas automatizadas
 23. Guia para nuevos microservicios y mejoras futuras
 24. Guia de implementacion Customer y Subscription
+25. Customer Service: implementacion
 
 ## 1. Introduccion y objetivo
 
@@ -451,6 +452,8 @@ dotnet user-secrets set "RabbitMq:Uri" "amqp://user:password@localhost:5672" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
 dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
+dotnet user-secrets set "Encryption:MasterKey" "<el-base64-generado>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
 ```
 
 Tenant requiere los mismos tipos de claves y el mismo JWT secret. Gateway requiere
@@ -1290,3 +1293,555 @@ Incluye:
 - provisioning Subscription -> Payment -> Tenant -> Auth;
 - planes versionados, proration, renovacion y entitlements;
 - migracion desde las entidades legacy y orden de cutover.
+
+### Customer Service
+
+- gestiona el registro maestro del cliente fiscal dentro del tenant;
+- aggregate root `Customer` con value objects embebidos (PersonalName, BusinessIdentity, EmailAddress, PhoneNumber);
+- child entities: addresses, contact points, relations, fiscal profile y fiscal profile de relaciones;
+- catalogos seed: 171 occupations y 769 NAICS (PrincipalBusinessActivities);
+- cifra SSN/ITIN/EIN con AES-256-GCM y mantiene blind index HMAC por tenant para deduplicar;
+- expone CRUD, invitacion al portal, archive y fiscal profile;
+- publica eventos al exchange `taxvision-events`;
+- usa outbox transaccional EF Core + Wolverine sobre SQL Server.
+
+## 25. Customer Service: implementacion
+
+Describe el microservicio Customer entregado sobre la guia
+`output/pdf/Guia_Implementacion_Customer_Subscription_TaxVision.pdf`.
+Esta seccion documenta lo entregado, no lo planificado.
+
+### 25.1 Limite del bounded context
+
+Customer es el sistema de registro del cliente fiscal dentro de un tenant.
+Administra identidad de persona o negocio, contacto maestro, direcciones,
+relaciones (conyuge, dependientes, contactos) y perfil fiscal cifrado.
+No guarda credenciales, login, marketing, facturacion ni millas.
+
+### 25.2 Estructura de proyectos
+
+Cuatro proyectos en `src/Services/Customer/`:
+
+- `TaxVision.Customer.Domain`
+- `TaxVision.Customer.Application`
+- `TaxVision.Customer.Infrastructure`
+- `TaxVision.Customer.Api`
+
+### 25.3 Aggregate y child entities
+
+- `Customer` aggregate root con value objects embebidos: `PersonalName`,
+  `BusinessIdentity`, `EmailAddress`, `PhoneNumber`.
+- Child entities: `CustomerAddress`, `CustomerContactPoint`, `CustomerRelation`,
+  `CustomerFiscalProfile`, `CustomerRelationFiscalProfile`.
+- Catalogos seed global: `Occupation` (171 filas) y `PrincipalBusinessActivity`
+  (769 codigos NAICS oficiales).
+- Acceso a colecciones via backing field privado expuesto como
+  `IReadOnlyCollection`; las altas pasan por metodos del aggregate.
+
+### 25.4 Persistencia
+
+Base `TaxVision_Customer`. Migraciones aplicadas en orden:
+
+- `InitialCustomer`: crea las 8 tablas de dominio mas el seed de catalogos y
+  las tablas `wolverine_*` de outbox/inbox.
+- `CustomerImports`: agrega las 3 tablas del flujo de bulk import.
+- `CustomerImportActiveJobUniqueIndex`: indice filtrado unique para garantizar
+  un solo job activo por tenant a nivel BD.
+
+Tablas de dominio core:
+
+- `Customers`
+- `CustomerAddresses`
+- `CustomerContactPoints`
+- `CustomerRelations`
+- `CustomerFiscalProfiles`
+- `CustomerRelationFiscalProfiles`
+- `Occupations`
+- `PrincipalBusinessActivities`
+
+Tablas del flujo de bulk import:
+
+- `CustomerImportAttempts`
+- `CustomerImportRows`
+- `CustomerImportFiles`
+
+Indices clave:
+
+- `(TenantId, Status, DisplayName)` para listados;
+- `(TenantId, OccupationId)`;
+- `IX_Customers_PrimaryEmailNormalized` para busqueda por email;
+- `(TenantId, TaxIdentifierBlindIndex)` en fiscal profiles para deduplicar SSN
+  sin almacenar texto claro;
+- indices filtrados unique en addresses y contact points primarios por tipo;
+- `UX_CustomerImportAttempts_Tenant_Active` filtrado unique sobre `TenantId`
+  donde `Status` esta en estados activos, para enforce de un solo job activo
+  por tenant a nivel BD.
+
+### 25.5 Cifrado de identificadores fiscales
+
+Implementacion en `Customer.Infrastructure/Security/AesGcmSensitiveDataProtector.cs`,
+abstraida via `ISensitiveDataProtector` en Application.
+
+- Algoritmo: AES-256-GCM autenticado.
+- Layout almacenado: `nonce(12) | ciphertext | tag(16)` como `varbinary(512)`.
+- Clave maestra desde `Encryption:MasterKey` en User Secrets (32 bytes en base64).
+- Blind index: HMAC-SHA256 con clave derivada por tenant via HKDF.
+- Garantia multi-tenant: el mismo SSN en dos tenants produce blind indexes distintos.
+- En claro solo se almacena `TaxIdentifierLast4` para mostrar `***-**-1234`.
+- Aplica a SSN/ITIN/EIN del customer y de las relaciones fiscalmente relevantes
+  (conyuge, dependientes, household members).
+- Identificadores fiscales y datos bancarios no aparecen en logs, eventos
+  generales ni read models.
+
+### 25.6 Endpoints CRUD y child entities
+
+Base path `/customers`. Autorizacion por rol claim del JWT firmado.
+
+| Verbo y ruta | Actor minimo |
+| --- | --- |
+| POST `/customers` | TenantEmployee |
+| GET `/customers` | TenantEmployee |
+| GET `/customers/{id}` | TenantEmployee |
+| PATCH `/customers/{id}` | TenantEmployee |
+| POST `/customers/{id}/addresses` | TenantEmployee |
+| POST `/customers/{id}/contact-points` | TenantEmployee |
+| POST `/customers/{id}/relations` | TenantEmployee |
+| POST `/customers/{id}/portal-invitations` | TenantAdmin |
+| POST `/customers/{id}/archive` | TenantAdmin |
+| PUT `/customers/{id}/fiscal-profile` | TenantAdmin |
+| PUT `/customers/{id}/relations/{relationId}/fiscal-profile` | TenantAdmin |
+
+`GET /customers/{id}` incluye `OccupationName` y `PrincipalBusinessActivityDescription`
+resueltos por JOIN via `ICustomerReadService` con `AsNoTracking` y proyeccion a DTO.
+Los demas endpoints de lectura usan el mismo read service.
+
+### 25.7 Carpeta `Requests` en Api
+
+A diferencia de Auth y Tenant que aceptan el `Command` directo en el body del
+controller, Customer expone DTOs en `TaxVision.Customer.Api/Requests/`. Razones:
+
+- el `Command` lleva `TenantId` y `ModifiedByUserId` que se extraen del JWT firmado,
+  no del body del cliente;
+- si Command y Request fueran el mismo tipo, un cliente podria enviar `TenantId`
+  en el body e intentar operar en otro tenant;
+- separar Request de Command permite validaciones HTTP en el borde sin contaminar
+  la capa Application.
+
+### 25.8 Eventos de integracion publicados
+
+Customer publica al exchange `taxvision-events`. Contratos en
+`BuildingBlocks/Messaging/CustomerIntegrationEvents/`.
+
+- `CustomerCreatedIntegrationEvent`
+- `CustomerUpdatedIntegrationEvent`
+- `CustomerArchivedIntegrationEvent`
+- `CustomerPortalInvitationRequestedIntegrationEvent`
+- `CustomersBulkImportedIntegrationEvent`
+
+Ninguno transporta identificadores fiscales, contrasenas ni datos bancarios.
+Solo `CustomerId`, `TenantId`, `DisplayName`, contacto basico, idioma, canal
+preferido y metadatos.
+
+### 25.9 Consumer en Auth
+
+Auth consume `CustomerPortalInvitationRequestedIntegrationEvent` en
+`Auth.Application/Customers/IntegrationEvents/CustomerPortalInvitationRequestedConsumer.cs`.
+
+El consumer:
+
+- valida que el tenant exista y este activo;
+- aplica idempotencia por `(TenantId, Email)`;
+- crea una `Invitation` con `ActorType=CustomerPortal` y `CustomerId`;
+- imprime el token plano en log con prefijo `[DEV]` mientras no exista Email
+  Service que consuma un segundo evento con el token.
+
+### 25.10 Bulk import masivo
+
+Flujo async de carga masiva desde CSV o XLSX. La entidad y el evento siguen
+los nombres dictados por la guia PDF: `CustomerImportAttempt` (pag 8, sec 4.4)
+y `CustomersBulkImportedV1` (pag 11, paso 9).
+
+#### 25.10.1 Patron async job
+
+1. POST `/customers/imports` con archivo multipart y header `Idempotency-Key`
+   retorna 202 Accepted con `importJobId`.
+2. Wolverine encola `RunCustomerImportMessage` que procesa en background.
+3. Cliente hace polling a GET `/customers/imports/{id}` cada dos segundos.
+4. Al completar se publica `CustomersBulkImportedIntegrationEvent` y se ofrece
+   reporte descargable.
+
+No hay request HTTP de larga duracion. El frontend nunca bloquea.
+
+#### 25.10.2 Endpoints
+
+Base path `/customers/imports`. Todos requieren rol `TenantAdmin`.
+
+| Verbo y ruta | Notas |
+| --- | --- |
+| POST `/customers/imports` | multipart/form-data + header `Idempotency-Key`; retorna 202. |
+| GET `/customers/imports/{id}` | Status del job para polling. |
+| GET `/customers/imports` | Listado paginado de jobs del tenant. |
+| GET `/customers/imports/{id}/report?format=csv` | Reporte por fila streamed. |
+| POST `/customers/imports/{id}/cancel` | Cancelacion cooperativa. |
+| GET `/customers/imports/template` | Plantilla CSV con headers y dos filas ejemplo. |
+
+#### 25.10.3 Reglas de procesamiento
+
+- chunking de 500 filas, transaccion por chunk: un chunk malo no aborta el job;
+- hard limit 10 000 filas por job (config `CustomerImport:MaxRows`);
+- hard limit 10 MB por archivo (config `CustomerImport:MaxFileBytes`);
+- un solo job activo por tenant garantizado a nivel BD por
+  `UX_CustomerImportAttempts_Tenant_Active`;
+- idempotency key obligatoria estilo Stripe; replay devuelve 200 con el job
+  ganador en lugar de duplicar;
+- catalogos cerrados: si `OccupationName` o `PrincipalBusinessActivityCode`
+  no existe, la fila se marca `Failed` con `Catalog.UnknownOccupation` o
+  `Catalog.UnknownNaics`; no se contamina el catalogo curado;
+- cifrado obligatorio: todo SSN/ITIN/EIN pasa por `ISensitiveDataProtector`
+  antes de tocar la BD;
+- spouse del archivo se crea como `CustomerRelation` con
+  `RelationshipKind=Spouse` y `Purposes=TaxHouseholdMember`;
+- cancelacion cooperativa: el worker chequea estado antes de cada chunk;
+- las mutaciones de rows pasan siempre por el aggregate via `RecordSuccess`,
+  `RecordFailed`, `RecordSkipped` o `RecordUpdated`; el handler nunca toca
+  `CustomerImportRow` directamente.
+
+#### 25.10.4 Estrategias de duplicado
+
+- `Skip` (default): mantiene el existente, marca la fila como Skipped.
+- `Merge`: solo completa campos vacios del existente; no pisa lo que ya hay.
+- `Overwrite`: reemplaza preferencias, telefono, email y fiscal profile.
+
+#### 25.10.5 Deteccion de duplicados
+
+El detector de BD ejecuta una sola query SQL por chunk que matchea por
+prioridad descendente:
+
+| Prioridad | Senal | Tipo de match |
+| --- | --- | --- |
+| 1 | SSN/EIN blind index (HMAC por tenant) | Hard |
+| 2 | Email normalizado | Hard |
+| 3 | Phone E.164 | High |
+| 4 | Nombre normalizado + DOB (solo Individual) | High |
+
+El blind index permite deduplicar sin descifrar SSN/EIN. Cumple la regla del
+PDF: identificadores fiscales prohibidos en queries y logs.
+
+Dedup intra-chunk paralelo en memoria del worker (cuatro HashSets) cubre las
+mismas cuatro senales para filas que se duplican entre si dentro del mismo
+chunk. Codigo de error unificado `Import.DuplicateInChunk` con mensaje segun
+la senal que disparo.
+
+#### 25.10.6 Normalizacion de telefono en el boundary
+
+`IdentifierNormalizer.NormalizePhoneToE164()` acepta formatos humanos del
+operador (`(305) 555-1234`, `305-555-1234`, `3055551234`, `+13055551234`) y
+los normaliza a E.164 antes de pasar al VO `PhoneNumber`. El VO sigue siendo
+estricto para POST directos via `/customers`; el import es el unico boundary
+amigable con formatos sucios. La plantilla descargable muestra siempre el
+formato canonico E.164.
+
+#### 25.10.7 Concurrencia
+
+- POST concurrente con misma idempotency key: el segundo recibe el job del
+  primero como replay 200, no error;
+- POST concurrente sin colision de key pero con job activo del tenant: el
+  segundo recibe 409 `Import.AlreadyRunning` limpio;
+- ambos casos los maneja `StartCustomerImportHandler` con
+  `try/catch (ConflictException)` y refetch del attempt ganador.
+  `CustomerDbContext.SaveChangesAsync` ya convierte SQL 2601/2627 a
+  `ConflictException`; Application no referencia `Microsoft.Data.SqlClient`.
+
+#### 25.10.8 Evento publicado
+
+`CustomersBulkImportedIntegrationEvent` (V1) publicado al completar el job.
+Un solo evento batched, alineado con "lotes acotados" del PDF. Payload:
+
+- `ImportJobId`, `CreatedByUserId`, `CompletedAtUtc`;
+- `TotalRows`, `SuccessCount`, `UpdatedCount`, `SkippedCount`, `FailedCount`;
+- `CreatedCustomerIds: Guid[]` y `UpdatedCustomerIds: Guid[]`.
+
+Sin nombres, sin SSN, sin emails. Consumidores que necesitan datos hacen GET
+`/customers/{id}` o se suscriben a `CustomerCreatedV1` individual.
+
+#### 25.10.9 Reporte descargable
+
+GET `/customers/imports/{id}/report?format=csv` streamea filas de
+`CustomerImportRows` sin cargar todo en memoria. Cada fila trae numero,
+status, ResultingCustomerId, DisplayName, MatchedBy, ErrorCode y Message.
+Trail de auditoria reutilizable para compliance IRS Pub 4557.
+
+#### 25.10.10 Plantilla CSV
+
+GET `/customers/imports/template` devuelve un CSV con headers en el orden que
+espera el parser y dos filas de ejemplo (Individual y Business) que el
+operador puede usar como molde. Telefonos en formato E.164.
+
+#### 25.10.11 Cleanup automatico
+
+`CustomerImportCleanupHostedService` corre como `BackgroundService` diario.
+Purga attempts terminales con `CreatedAtUtc < UtcNow - 90 dias` y sus filas
+y archivos asociados. Configurable via `CustomerImport:ReportRetentionDays`.
+
+El binario del archivo en `CustomerImportFiles` se borra inmediatamente al
+terminar el job; el cleanup de 90 dias solo aplica a attempts huerfanos
+o a la auditoria del reporte.
+
+### 25.11 Wolverine y observabilidad
+
+Configuracion identica a Auth y Tenant:
+
+- `PersistMessagesWithSqlServer` y `UseDurableOutboxOnAllSendingEndpoints`
+  sobre `TaxVision_Customer`;
+- `UseEntityFrameworkCoreTransactions` con `CustomerDbContext` e `IUnitOfWork`;
+- politica de retry con cooldown 1s, 5s, 15s;
+- health checks `sql-server` y `rabbitmq` etiquetados como `ready`;
+- OpenTelemetry y Serilog desde los BuildingBlocks compartidos con servicio
+  `customer-service`.
+
+### 25.12 User Secrets requeridos
+
+Para `TaxVision.Customer.Api`:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:Default" "<CUSTOMER_CONNECTION>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:5672" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Encryption:MasterKey" "<BASE64_32_BYTES>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+```
+
+`Encryption:MasterKey` debe ser exactamente 32 bytes en base64. Generar con:
+
+```powershell
+$bytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+[Convert]::ToBase64String($bytes)
+```
+
+Variables opcionales del flujo de bulk import con defaults sanos:
+
+```powershell
+dotnet user-secrets set "CustomerImport:MaxFileBytes" "10485760" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "CustomerImport:MaxRows" "10000" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "CustomerImport:ReportRetentionDays" "90" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+```
+
+En produccion el master key va a Key Vault o equivalente; nunca al repo ni al
+`.env`.
+
+### 25.13 Gateway
+
+Ruta YARP `/customers/{**catch-all}` enrutada al cluster `customer` en
+`http://localhost:5263/`. Health check `customer-api` agregado al endpoint
+`/health/ready` del Gateway.
+
+### 25.14 Aplicar migraciones
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Customer\TaxVision.Customer.Infrastructure\TaxVision.Customer.Infrastructure.csproj `
+  --startup-project src\Services\Customer\TaxVision.Customer.Api\TaxVision.Customer.Api.csproj
+```
+
+### 25.15 Pendientes reales
+
+- Proyeccion local de Customer en Auth para validar `CustomerId` al crear
+  invitaciones `CustomerPortal`. Diseno definido en la guia PDF; implementacion
+  no iniciada.
+- Eventos `CustomerEmailChangedIntegrationEvent` y
+  `CustomerPhoneChangedIntegrationEvent` con detector de cambios en el handler
+  de update.
+- Asignacion Customer-preparer (`AssignedToUserId` o entity hija).
+- Segundo evento `CustomerPortalInvitationCreated` con token raw para que
+  Email Service envie el correo cuando exista.
+- Notificacion push al frontend cuando completa el job de bulk import. Hoy
+  solo polling; cuando exista RealTime Service, agregar SignalR.
+- Migracion de `CustomerImportFiles` a CloudStorage Service. Hoy el archivo
+  vive en BD; cuando exista el microservicio, reemplazar `IImportFileStore`
+  por un fileId externo y borrar la tabla local.
+- Notificacion por email al operador cuando completa: requiere Email Service.
+- Pruebas automatizadas siguiendo la guia general del proyecto.
+
+### 25.16 Operaciones de status, CRUD granular y bulk
+
+Endpoints anadidos despues de la implementacion inicial del Paso 7 del PDF. Cubren
+operaciones que el aggregate ya soportaba pero no estaban expuestas, mas operaciones
+estandar para una oficina de impuestos real (correcciones, pausa estacional, fin de
+campana).
+
+#### 25.16.1 Status del customer
+
+El enum `CustomerStatus` define tres estados explicitos:
+
+- `Active`: customer operativo, aparece en listados por default.
+- `Inactive`: pausado (no engaged este ciclo fiscal). Sigue editable; no aparece en
+  listados con filtro default.
+- `Archived`: removido de flujo operativo, requiere admin para reactivar. El aggregate
+  bloquea modificaciones (`EnsureActive()`).
+
+Transiciones expuestas como endpoints individuales. El aggregate valida la transicion;
+si es invalida, devuelve error de dominio en lugar de throw.
+
+| Verbo y ruta | Actor minimo | Transicion | Error si... |
+| --- | --- | --- | --- |
+| POST `/customers/{id}/archive` | TenantAdmin | Any -> Archived | ya esta Archived |
+| POST `/customers/{id}/reactivate` | TenantAdmin | Archived -> Active | no esta Archived |
+| POST `/customers/{id}/deactivate` | TenantAdmin | Active -> Inactive | esta Archived o ya Inactive |
+| POST `/customers/{id}/activate` | TenantAdmin | Inactive -> Active | esta Archived o ya Active |
+
+Cada transicion publica su propio evento de integracion:
+
+- `CustomerArchivedIntegrationEvent`
+- `CustomerReactivatedIntegrationEvent`
+- `CustomerActivatedIntegrationEvent`
+- `CustomerDeactivatedIntegrationEvent`
+
+Sin PII. Consumidores tipicos: proyeccion de Auth, Campaign, read models de operaciones.
+
+#### 25.16.2 CRUD granular de child entities
+
+El aggregate expone tres familias de child entities (Addresses, ContactPoints,
+Relations) con CRUD completo. Las mutaciones siempre pasan por metodos del aggregate
+root; los child entities solo tienen `Create` y `Update` internos.
+
+| Verbo y ruta | Actor minimo |
+| --- | --- |
+| POST `/customers/{id}/addresses` | TenantEmployee |
+| PATCH `/customers/{id}/addresses/{addressId}` | TenantEmployee |
+| DELETE `/customers/{id}/addresses/{addressId}` | TenantEmployee |
+| POST `/customers/{id}/contact-points` | TenantEmployee |
+| PATCH `/customers/{id}/contact-points/{contactPointId}` | TenantEmployee |
+| DELETE `/customers/{id}/contact-points/{contactPointId}` | TenantEmployee |
+| POST `/customers/{id}/relations` | TenantEmployee |
+| PATCH `/customers/{id}/relations/{relationId}` | TenantEmployee |
+| DELETE `/customers/{id}/relations/{relationId}` | TenantEmployee |
+
+Reglas validadas por el aggregate:
+
+- una sola direccion primary por `AddressKind`;
+- un solo contact point primary por `Type`;
+- no se permite duplicar `(Type, NormalizedValue)` en contact points;
+- al eliminar una relacion con fiscal profile, EF borra el
+  `CustomerRelationFiscalProfile` por cascade configurada en el modelo.
+
+Las operaciones CRUD de children no publican eventos de integracion. Si en el futuro
+algun consumidor lo necesita, se agrega via patron `CustomerUpdatedIntegrationEvent`
+con campo `ChangedFields`, no eventos por child entity.
+
+#### 25.16.3 Listado con filtro por status y paginacion
+
+GET `/customers` ahora devuelve `PagedResult<CustomerSummaryResponse>` con metadatos
+de paginacion. Acepta filtro de status via query param.
+
+| Query param | Valores | Default |
+| --- | --- | --- |
+| `term` | texto libre (matchea DisplayName o email normalizado) | null |
+| `status` | `Active`, `Inactive`, `Archived`, `NotArchived`, `All` | `Active` |
+| `page` | entero >= 1 | 1 |
+| `size` | entero >= 1 | 20 |
+
+Respuesta:
+
+```json
+{
+  "items": [ { "id": "...", "displayName": "...", "status": "Active", ... } ],
+  "page": 1,
+  "size": 20,
+  "totalCount": 254,
+  "totalPages": 13,
+  "hasMore": true,
+  "hasPrevious": false
+}
+```
+
+`PagedResult<T>` esta definido en `BuildingBlocks` para reuso en otros servicios.
+
+#### 25.16.4 Check-exists preflight
+
+GET `/customers/check-exists` permite al frontend validar duplicados antes de
+submit. Tenant-scoped: dos tenants pueden tener el mismo email o SSN sin colisionar.
+
+| Query param | Notas |
+| --- | --- |
+| `email` | normalizado a lowercase trim antes del lookup |
+| `taxIdentifier` | normalizado a solo digitos; busca via blind index HMAC por tenant; nunca descifra |
+
+Al menos uno de los dos es requerido (400 si ninguno).
+
+Respuesta:
+
+```json
+{
+  "emailExists": true,
+  "taxIdentifierExists": false,
+  "existingCustomerId": "6d005cbb-..."
+}
+```
+
+`existingCustomerId` es el id del primer match encontrado entre las dos senales; util
+para que el UI sugiera "abrir el customer existente" en lugar de crear duplicado.
+
+#### 25.16.5 Bulk status operations
+
+POST `/customers/bulk/{action}` con `action` en `archive`, `reactivate`, `activate`,
+`deactivate`. Util para fin de campana fiscal (archivar 100 customers que ya filtraron)
+o reapertura de temporada (reactivar masivamente).
+
+| Limite | Valor |
+| --- | --- |
+| Maximo customers por call | 100 |
+| Modo | sincrono (>100 devuelve 400 `Bulk.TooMany`) |
+| Autorizacion | TenantAdmin |
+
+Body:
+
+```json
+{
+  "customerIds": [ "guid1", "guid2", "..." ],
+  "reason": "End of season cleanup"
+}
+```
+
+Respuesta:
+
+```json
+{
+  "totalRequested": 100,
+  "succeeded": 97,
+  "failed": 3,
+  "failures": [
+    { "customerId": "...", "errorCode": "Customer.AlreadyArchived", "message": "..." }
+  ]
+}
+```
+
+Comportamiento:
+
+- valida ownership por tenant en cada customer antes de mutar;
+- itera secuencialmente aplicando la transicion del aggregate;
+- ids invalidos o de otro tenant se reportan en `failures` pero no abortan el batch;
+- publica un evento individual por customer exitoso (consistente con las APIs
+  single-customer). Si el volumen crece, se migrara al patron batched
+  estilo `CustomersBulkImportedV1`.
+
+Cuando se necesite procesar mas de 100 customers a la vez, debe usarse el flujo
+async de bulk import (seccion 25.10) que ya esta diseñado para eso.
+
+#### 25.16.6 Resumen de cambios
+
+- 4 endpoints status: archive, reactivate, deactivate, activate;
+- 6 endpoints CRUD granular de children (PATCH y DELETE para Address, ContactPoint, Relation);
+- 1 endpoint check-exists preflight;
+- 4 acciones bulk: archive, reactivate, deactivate, activate;
+- 3 eventos nuevos: Reactivated, Activated, Deactivated;
+- 1 wrapper `PagedResult<T>` en BuildingBlocks;
+- 0 migraciones de BD (todo es codigo).
