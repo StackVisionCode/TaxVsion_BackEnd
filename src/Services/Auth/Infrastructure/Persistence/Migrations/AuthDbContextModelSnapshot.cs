@@ -22,6 +22,185 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Audit.AuthAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("TargetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TargetType")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Action");
+
+                    b.HasIndex("TenantId", "OccurredAtUtc")
+                        .IsDescending(false, true);
+
+                    b.HasIndex("TenantId", "UserId", "OccurredAtUtc");
+
+                    b.ToTable("AuthAuditLogs", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.EmailVerificationToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NewEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("EmailVerificationTokens", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RequestedIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "UsedAtUtc");
+
+                    b.ToTable("PasswordResetTokens", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.PhoneVerificationToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "UsedAtUtc");
+
+                    b.ToTable("PhoneVerificationTokens", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Invitations.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -62,6 +241,16 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InvitedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("LastSentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ResendCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleIdsJson")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -87,6 +276,192 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.ToTable("Invitations", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.MfaChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LoginTicketHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("MfaMethodId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OtpHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("LoginTicketHash")
+                        .IsUnique();
+
+                    b.ToTable("MfaChallenges", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.MfaMethod", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Destination")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("IsConfirmed")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPreferred")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastUsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SecretCiphertext")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Type")
+                        .IsUnique();
+
+                    b.ToTable("MfaMethods", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.RecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "UsedAtUtc");
+
+                    b.ToTable("RecoveryCodes", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.TenantMfaPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("RequireForAdmins")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireForCustomerPortal")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireForEmployees")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("TrustedDeviceDays")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TenantMfaPolicies", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.TrustedDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeviceTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "RevokedAtUtc");
+
+                    b.ToTable("TrustedDevices", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.RefreshTokens.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -99,8 +474,21 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("ReplacedByTokenId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
@@ -112,12 +500,341 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("SessionId");
+
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
                     b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.Permission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("IsCustomerPortal")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Permissions", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000001"),
+                            Code = "users.view",
+                            Description = "Ver usuarios del tenant",
+                            IsCustomerPortal = false,
+                            Module = "users"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000002"),
+                            Code = "users.invite",
+                            Description = "Invitar usuarios",
+                            IsCustomerPortal = false,
+                            Module = "users"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000003"),
+                            Code = "users.manage",
+                            Description = "Activar, desactivar y editar usuarios",
+                            IsCustomerPortal = false,
+                            Module = "users"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000004"),
+                            Code = "roles.manage",
+                            Description = "Gestionar roles y permisos",
+                            IsCustomerPortal = false,
+                            Module = "users"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000005"),
+                            Code = "audit.view",
+                            Description = "Consultar auditoría",
+                            IsCustomerPortal = false,
+                            Module = "audit"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000006"),
+                            Code = "settings.manage",
+                            Description = "Gestionar configuración del tenant",
+                            IsCustomerPortal = false,
+                            Module = "settings"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000007"),
+                            Code = "billing.view",
+                            Description = "Ver facturación y suscripción",
+                            IsCustomerPortal = false,
+                            Module = "billing"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000008"),
+                            Code = "billing.manage",
+                            Description = "Gestionar métodos de pago y facturación",
+                            IsCustomerPortal = false,
+                            Module = "billing"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000009"),
+                            Code = "subscription.manage",
+                            Description = "Cambiar plan y gestionar suscripción",
+                            IsCustomerPortal = false,
+                            Module = "billing"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000010"),
+                            Code = "customers.view",
+                            Description = "Ver clientes",
+                            IsCustomerPortal = false,
+                            Module = "customers"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000011"),
+                            Code = "customers.manage",
+                            Description = "Crear y editar clientes",
+                            IsCustomerPortal = false,
+                            Module = "customers"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000012"),
+                            Code = "signatures.request",
+                            Description = "Solicitar firmas",
+                            IsCustomerPortal = false,
+                            Module = "signatures"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000013"),
+                            Code = "documents.view",
+                            Description = "Ver documentos",
+                            IsCustomerPortal = false,
+                            Module = "documents"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000014"),
+                            Code = "documents.manage",
+                            Description = "Gestionar documentos",
+                            IsCustomerPortal = false,
+                            Module = "documents"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000015"),
+                            Code = "email.use",
+                            Description = "Usar el módulo de correo",
+                            IsCustomerPortal = false,
+                            Module = "email"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000016"),
+                            Code = "comms.calls",
+                            Description = "Realizar llamadas y meetings",
+                            IsCustomerPortal = false,
+                            Module = "comms"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000017"),
+                            Code = "campaigns.manage",
+                            Description = "Gestionar campañas",
+                            IsCustomerPortal = false,
+                            Module = "campaigns"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000018"),
+                            Code = "reports.view",
+                            Description = "Ver dashboard y reportes",
+                            IsCustomerPortal = false,
+                            Module = "reports"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000019"),
+                            Code = "portal.calls.use",
+                            Description = "El cliente puede realizar llamadas",
+                            IsCustomerPortal = true,
+                            Module = "portal"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000020"),
+                            Code = "portal.miles.use",
+                            Description = "El cliente puede usar el módulo de millas",
+                            IsCustomerPortal = true,
+                            Module = "portal"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000021"),
+                            Code = "portal.folders.view",
+                            Description = "El cliente puede ver folders de su perfil",
+                            IsCustomerPortal = true,
+                            Module = "portal"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000022"),
+                            Code = "portal.signatures.sign",
+                            Description = "El cliente puede firmar documentos",
+                            IsCustomerPortal = true,
+                            Module = "portal"
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.Role", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Roles", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.RolePermission", b =>
+                {
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PermissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RoleId", "PermissionId");
+
+                    b.HasIndex("PermissionId");
+
+                    b.ToTable("RolePermissions", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.UserRole", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AssignedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("AssignedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("UserId", "RoleId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("UserRoles", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Sessions.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeviceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<DateTime>("LastSeenAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId", "RevokedAtUtc");
+
+                    b.ToTable("UserSessions", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.Tenants.Tenant", b =>
@@ -172,6 +889,41 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Tenants.TenantPlanLimits", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EnabledModulesJson")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<bool>("IsSuspendedForBilling")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxPendingInvitations")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxUsers")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<long>("StorageQuotaBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TenantPlanLimits", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -183,13 +935,25 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeactivatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("EmailVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("FailedLoginCount")
+                        .HasColumnType("int");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -199,18 +963,41 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTime?>("LockoutEndUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("MfaEnabled")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("PasswordChangedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("PhoneVerified")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("_roles")
                         .IsRequired()
@@ -230,13 +1017,116 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Auth.Domain.RefreshTokens.RefreshToken", b =>
+            modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.EmailVerificationToken", b =>
                 {
                     b.HasOne("TaxVision.Auth.Domain.Users.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.PasswordResetToken", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Credentials.PhoneVerificationToken", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.MfaMethod", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.RecoveryCode", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Mfa.TrustedDevice", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.RefreshTokens.RefreshToken", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Sessions.UserSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.RolePermission", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Roles.Permission", null)
+                        .WithMany()
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaxVision.Auth.Domain.Roles.Role", null)
+                        .WithMany("Permissions")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.UserRole", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Roles.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Sessions.UserSession", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Roles.Role", b =>
+                {
+                    b.Navigation("Permissions");
                 });
 #pragma warning restore 612, 618
         }

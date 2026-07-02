@@ -36,4 +36,36 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
         Invitation invitation,
         CancellationToken ct = default) =>
         await db.Invitations.AddAsync(invitation, ct);
+
+    public Task<int> CountPendingAsync(Guid tenantId, CancellationToken ct = default) =>
+        db.Invitations.CountAsync(
+            invitation =>
+                invitation.TenantId == tenantId &&
+                invitation.Status == InvitationStatus.Pending &&
+                invitation.ExpiresAtUtc > DateTime.UtcNow,
+            ct);
+
+    public async Task<(IReadOnlyList<Invitation> Items, int TotalCount)> GetPagedAsync(
+        Guid tenantId,
+        InvitationStatus? status,
+        int page,
+        int size,
+        CancellationToken ct = default)
+    {
+        var query = db.Invitations
+            .AsNoTracking()
+            .Where(invitation => invitation.TenantId == tenantId);
+
+        if (status is not null)
+            query = query.Where(invitation => invitation.Status == status);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(invitation => invitation.CreatedAtUtc)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
 }

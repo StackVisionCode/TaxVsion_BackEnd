@@ -97,6 +97,10 @@ if (!app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Resuelve el tenant desde X-Tenant-Id (propagado por el Gateway desde el JWT)
+// hacia ITenantContext, consistente con el resto de la plataforma.
+app.UseMiddleware<TenantResolutionMiddleware>();
+
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 

@@ -3,6 +3,7 @@ using TaxVision.Customer.Domain.Addresses;
 namespace TaxVision.Customer.Application.Customers.Commands.AddAddress;
 
 public sealed record AddAddressCommand(
+    Guid TenantId,
     Guid CustomerId,
     Guid ModifiedByUserId,
     AddressKind Kind,

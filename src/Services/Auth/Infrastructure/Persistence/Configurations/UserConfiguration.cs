@@ -23,6 +23,14 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasMaxLength(30)
             .IsRequired();
         builder.Property(user => user.IsActive).IsRequired();
+        builder.Property(user => user.TimeZoneId).HasMaxLength(64);
+        builder.Property(user => user.PhoneNumber).HasMaxLength(20);
+        builder.Property(user => user.EmailVerified).IsRequired();
+        builder.Property(user => user.PhoneVerified).IsRequired();
+        builder.Property(user => user.MfaEnabled).IsRequired();
+        builder.Property(user => user.FailedLoginCount).IsRequired();
+        builder.Property(user => user.PermissionsVersion).IsRequired();
+        builder.Property(user => user.CreatedAtUtc).IsRequired();
         builder.HasIndex(user => new { user.TenantId, user.Email })
             .IsUnique();
         builder.HasIndex(user => new { user.TenantId, user.ActorType });

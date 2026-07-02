@@ -23,6 +23,20 @@
     <Project Path="src/Services/Customer/TaxVision.Customer.Domain/TaxVision.Customer.Domain.csproj" />
     <Project Path="src/Services/Customer/TaxVision.Customer.Infrastructure/TaxVision.Customer.Infrastructure.csproj" />
   </Folder>
+  <!-- SubscriptionService -->
+  <Folder Name="/src/Services/Subscription/">
+    <Project Path="src/Services/Subscription/TaxVision.Subscription.Api/TaxVision.Subscription.Api.csproj" />
+    <Project Path="src/Services/Subscription/TaxVision.Subscription.Application/TaxVision.Subscription.Application.csproj" />
+    <Project Path="src/Services/Subscription/TaxVision.Subscription.Domain/TaxVision.Subscription.Domain.csproj" />
+    <Project Path="src/Services/Subscription/TaxVision.Subscription.Infrastructure/TaxVision.Subscription.Infrastructure.csproj" />
+  </Folder>
+  <!-- NotificationService -->
+  <Folder Name="/src/Services/Notification/">
+    <Project Path="src/Services/Notification/TaxVision.Notification.Api/TaxVision.Notification.Api.csproj" />
+    <Project Path="src/Services/Notification/TaxVision.Notification.Application/TaxVision.Notification.Application.csproj" />
+    <Project Path="src/Services/Notification/TaxVision.Notification.Domain/TaxVision.Notification.Domain.csproj" />
+    <Project Path="src/Services/Notification/TaxVision.Notification.Infrastructure/TaxVision.Notification.Infrastructure.csproj" />
+  </Folder>
   <!-- TenantService -->
   <Folder Name="/src/Services/Tenant/">
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Api/TaxVision.Tenant.Api.csproj" />

@@ -1,8 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Users;
 
@@ -12,41 +10,62 @@ public sealed class JwtOptions
 {
     public const string SectionName = "Jwt";
 
-    public string Secret { get; init; } = default!;
-    public string Issuer { get; init; } = default!;
-    public string Audience { get; init; } = default!;
-    public int AccessMinutes { get; init; } = 15;
+    public string? Secret { get; set; }
+    public string Issuer { get; set; } = default!;
+    public string Audience { get; set; } = default!;
+    public int AccessMinutes { get; set; } = 15;
+
+    /// <summary>Clave privada RSA en PEM (activa RS256). Preferir PrivateKeyPath con un secret montado.</summary>
+    public string? PrivateKeyPem { get; set; }
+
+    /// <summary>Ruta a un archivo PEM con la clave privada RSA (activa RS256).</summary>
+    public string? PrivateKeyPath { get; set; }
 }
 
-public sealed class JwtTokenGenerator(IOptions<JwtOptions> options) : IJwtTokenGenerator
+public sealed class JwtTokenGenerator(
+    IOptions<JwtOptions> options,
+    SigningKeyProvider signingKeys) : IJwtTokenGenerator
 {
     private readonly JwtOptions _options = options.Value;
 
-    public string Generate(User user, string effectiveTimeZoneId)
+    public AccessToken Generate(
+        User user,
+        string effectiveTimeZoneId,
+        Guid sessionId,
+        IReadOnlyCollection<string> roles,
+        IReadOnlyCollection<string> permissions,
+        IReadOnlyCollection<string> authMethods)
     {
+        var now = DateTime.UtcNow;
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+            new("sid", sessionId.ToString()),
             new("tenant_id", user.TenantId.ToString()),
             new("actor_type", user.ActorType.ToString()),
-            new("zoneinfo", effectiveTimeZoneId)
+            new("zoneinfo", effectiveTimeZoneId),
+            new("perm_v", user.PermissionsVersion.ToString())
         };
 
         if (user.CustomerId is Guid customerId)
             claims.Add(new Claim("customer_id", customerId.ToString()));
 
-        claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
+        claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
+        claims.AddRange(permissions.Select(permission => new Claim("perm", permission)));
+        claims.AddRange(authMethods.Select(method => new Claim(JwtRegisteredClaimNames.Amr, method)));
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Secret));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
             audience: _options.Audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(_options.AccessMinutes),
-            signingCredentials: credentials);
+            notBefore: now,
+            expires: now.AddMinutes(_options.AccessMinutes),
+            signingCredentials: signingKeys.GetSigningCredentials());
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        return new AccessToken(
+            new JwtSecurityTokenHandler().WriteToken(token),
+            _options.AccessMinutes * 60);
     }
 }

@@ -14,6 +14,8 @@ public static class TenantCreatedConsumer
         TenantCreatedIntegrationEvent evt,
         ITenantRegistry tenants,
         IInvitationRepository invitations,
+        IRoleRepository roles,
+        IMfaRepository mfa,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct)
@@ -38,6 +40,14 @@ public static class TenantCreatedConsumer
 
             if (kind == TenantKind.Customer)
             {
+                // Roles de sistema y política MFA por defecto (idempotente).
+                await roles.EnsureSystemRolesAsync(evt.NewTenantId, ct);
+                if (await mfa.GetPolicyAsync(evt.NewTenantId, ct) is null)
+                {
+                    await mfa.AddPolicyAsync(
+                        Domain.Mfa.TenantMfaPolicy.CreateDefault(evt.NewTenantId), ct);
+                }
+
                 var existing = await invitations.GetByTokenHashAsync(
                     evt.AdminInvitationTokenHash,
                     ct);

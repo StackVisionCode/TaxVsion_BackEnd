@@ -31,6 +31,12 @@ public sealed class Invitation : TenantEntity
     public DateTime? CancelledAtUtc { get; private set; }
     public Guid? CancelledByUserId { get; private set; }
 
+    /// <summary>Roles (JSON array de GUID) que se asignarán al usuario al aceptar.</summary>
+    public string? RoleIdsJson { get; private set; }
+
+    public int ResendCount { get; private set; }
+    public DateTime? LastSentAtUtc { get; private set; }
+
     public static Result<Invitation> Create(
         Guid tenantId,
         string email,
@@ -38,7 +44,8 @@ public sealed class Invitation : TenantEntity
         Guid? customerId,
         Guid? invitedByUserId,
         string tokenHash,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        string? roleIdsJson = null)
     {
         if (tenantId == Guid.Empty)
         {
@@ -108,12 +115,47 @@ public sealed class Invitation : TenantEntity
             TokenHash = tokenHash,
             Status = InvitationStatus.Pending,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = expiresAtUtc
+            ExpiresAtUtc = expiresAtUtc,
+            RoleIdsJson = roleIdsJson
         };
         invitation.SetTenant(tenantId);
 
         return Result.Success(invitation);
     }
+
+    public const int MaxResends = 5;
+
+    /// <summary>
+    /// Regenera el token de una invitación pendiente (reenvío). El token anterior queda inválido.
+    /// </summary>
+    public Result Reissue(string newTokenHash, DateTime newExpiresAtUtc)
+    {
+        if (Status != InvitationStatus.Pending)
+        {
+            return Result.Failure(
+                new Error("Invitation.NotPending", "Invitation is no longer pending."));
+        }
+
+        if (ResendCount >= MaxResends)
+        {
+            return Result.Failure(
+                new Error("Invitation.ResendLimit", "Invitation resend limit reached."));
+        }
+
+        if (string.IsNullOrWhiteSpace(newTokenHash) || newTokenHash.Length != 64)
+        {
+            return Result.Failure(
+                new Error("Invitation.Token", "Invitation token hash is invalid."));
+        }
+
+        TokenHash = newTokenHash;
+        ExpiresAtUtc = newExpiresAtUtc;
+        ResendCount++;
+        LastSentAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    public void MarkSent() => LastSentAtUtc = DateTime.UtcNow;
 
     public bool MatchesTokenHash(string tokenHash)
     {

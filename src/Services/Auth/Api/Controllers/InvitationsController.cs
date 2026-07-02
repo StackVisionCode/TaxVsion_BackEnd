@@ -1,11 +1,15 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Auth.Api.Authorization;
+using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Invitations.Commands;
+using TaxVision.Auth.Application.Invitations.Queries;
 using TaxVision.Auth.Application.Users;
+using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -23,7 +27,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
         CreateInvitationRequest request,
         CancellationToken ct)
     {
-        if (!TryGetUserId(out var userId))
+        if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<CreateInvitationResponse>>(
@@ -32,11 +36,32 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
                 request.TenantId,
                 request.Email,
                 request.ActorType,
-                request.CustomerId),
+                request.CustomerId,
+                request.RoleIds),
             ct);
 
         return result.IsSuccess
             ? Created($"/auth/invitations/{result.Value.InvitationId}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpGet]
+    [HasPermission(PermissionCatalog.UsersInvite)]
+    [ProducesResponseType<PagedResult<InvitationResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetInvitations(
+        [FromQuery] InvitationStatus? status = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 20,
+        CancellationToken ct = default)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<PagedResult<InvitationResponse>>>(
+            new GetInvitationsQuery(tenantId, status, page, size), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -55,6 +80,25 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    [HttpPost("{invitationId:guid}/resend")]
+    [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Resend(
+        Guid invitationId,
+        CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new ResendInvitationCommand(invitationId, userId, tenantId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("{invitationId:guid}/cancel")]
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -63,7 +107,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
         Guid invitationId,
         CancellationToken ct)
     {
-        if (!TryGetUserId(out var userId))
+        if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -74,17 +118,11 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
             ? NoContent()
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
-
-    private bool TryGetUserId(out Guid userId)
-    {
-        var raw = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ??
-                  User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(raw, out userId);
-    }
 }
 
 public sealed record CreateInvitationRequest(
     Guid TenantId,
     string Email,
     UserActorType ActorType,
-    Guid? CustomerId);
+    Guid? CustomerId,
+    IReadOnlyList<Guid>? RoleIds = null);

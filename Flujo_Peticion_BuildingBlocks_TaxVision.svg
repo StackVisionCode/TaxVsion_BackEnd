@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 900" font-family="Segoe UI, Arial, sans-serif" role="img" aria-labelledby="titulo desc">
+  <title id="titulo">Flujo de una peticion en TaxVision a traves de BuildingBlocks</title>
+  <desc id="desc">Una peticion entra por el Gateway YARP, pasa por el pipeline de BuildingBlocks (correlacion, JWT, tenant, denylist), llega al handler CQRS de Wolverine que aplica reglas de dominio y persiste con EF Core, y publica eventos de integracion por RabbitMQ que consumen otros microservicios. Incluye los servicios Auth, Tenant, Customer, Subscription y Notification.</desc>
+
+  <rect x="0" y="0" width="1180" height="900" fill="#ffffff"/>
+
+  <!-- Titulo -->
+  <text x="590" y="38" text-anchor="middle" font-size="24" font-weight="700" fill="#1a365d">TaxVision — Flujo de una peticion (BuildingBlocks)</text>
+  <text x="590" y="60" text-anchor="middle" font-size="13" fill="#4a5568">Actualizado 02-07-2026 · CorrelationId de extremo a extremo · multi-tenant · outbox/inbox durable</text>
+
+  <!-- ============ CLIENTE ============ -->
+  <rect x="60" y="90" width="200" height="64" rx="8" fill="#ebf4ff" stroke="#2b6cb0" stroke-width="2"/>
+  <text x="160" y="118" text-anchor="middle" font-size="15" font-weight="700" fill="#1a365d">Cliente</text>
+  <text x="160" y="138" text-anchor="middle" font-size="11" fill="#4a5568">SPA Angular / App movil</text>
+
+  <!-- flecha cliente -> gateway -->
+  <line x1="260" y1="122" x2="360" y2="122" stroke="#2b6cb0" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="310" y="112" text-anchor="middle" font-size="10" fill="#2b6cb0">HTTPS + JWT</text>
+
+  <!-- ============ GATEWAY ============ -->
+  <rect x="360" y="82" width="440" height="118" rx="10" fill="#f7fafc" stroke="#2b6cb0" stroke-width="2"/>
+  <text x="580" y="104" text-anchor="middle" font-size="15" font-weight="700" fill="#1a365d">Gateway (YARP)</text>
+  <g font-size="11" fill="#2d3748">
+    <rect x="376" y="116" width="128" height="26" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="440" y="133" text-anchor="middle">CORS + headers</text>
+    <rect x="512" y="116" width="128" height="26" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="576" y="133" text-anchor="middle">Rate limiting</text>
+    <rect x="648" y="116" width="136" height="26" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="716" y="133" text-anchor="middle">Autenticacion JWT</text>
+    <rect x="376" y="150" width="200" height="26" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="476" y="167" text-anchor="middle">CorrelationId (genera/propaga)</text>
+    <rect x="584" y="150" width="200" height="26" rx="4" fill="#fefcbf" stroke="#d69e2e"/>
+    <text x="684" y="167" text-anchor="middle">TenantPropagation (X-Tenant-Id)</text>
+  </g>
+
+  <!-- flecha gateway -> microservicio -->
+  <line x1="580" y1="200" x2="580" y2="238" stroke="#2b6cb0" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="700" y="224" text-anchor="middle" font-size="10" fill="#2b6cb0">enruta al microservicio destino</text>
+
+  <!-- ============ PIPELINE MICROSERVICIO ============ -->
+  <rect x="120" y="240" width="920" height="150" rx="10" fill="#f7fafc" stroke="#4a5568" stroke-width="2"/>
+  <text x="140" y="262" font-size="15" font-weight="700" fill="#1a365d">Microservicio .NET 10 — pipeline BuildingBlocks.Web</text>
+
+  <g font-size="10.5" fill="#2d3748">
+    <rect x="138" y="276" width="150" height="40" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="213" y="292" text-anchor="middle" font-weight="600">CorrelationId</text>
+    <text x="213" y="307" text-anchor="middle" fill="#718096">Middleware</text>
+
+    <rect x="298" y="276" width="150" height="40" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="373" y="292" text-anchor="middle" font-weight="600">ExceptionHandling</text>
+    <text x="373" y="307" text-anchor="middle" fill="#718096">ProblemDetails</text>
+
+    <rect x="458" y="276" width="150" height="40" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="533" y="292" text-anchor="middle" font-weight="600">Authn / Authz</text>
+    <text x="533" y="307" text-anchor="middle" fill="#718096">roles + [HasPermission]</text>
+
+    <rect x="618" y="276" width="180" height="40" rx="4" fill="#fefcbf" stroke="#d69e2e"/>
+    <text x="708" y="292" text-anchor="middle" font-weight="600">SessionDenylist (Redis)</text>
+    <text x="708" y="307" text-anchor="middle" fill="#718096">revoca sid al instante</text>
+
+    <rect x="808" y="276" width="150" height="40" rx="4" fill="#fefcbf" stroke="#d69e2e"/>
+    <text x="883" y="292" text-anchor="middle" font-weight="600">TenantResolution</text>
+    <text x="883" y="307" text-anchor="middle" fill="#718096">ITenantContext</text>
+
+    <!-- capa controller/handler -->
+    <rect x="138" y="330" width="240" height="44" rx="4" fill="#ebf4ff" stroke="#2b6cb0"/>
+    <text x="258" y="348" text-anchor="middle" font-weight="600" fill="#1a365d">Controller (delgado)</text>
+    <text x="258" y="364" text-anchor="middle" fill="#4a5568">bus.InvokeAsync(command/query)</text>
+
+    <rect x="392" y="330" width="300" height="44" rx="4" fill="#ebf4ff" stroke="#2b6cb0"/>
+    <text x="542" y="348" text-anchor="middle" font-weight="600" fill="#1a365d">Handler CQRS (Wolverine)</text>
+    <text x="542" y="364" text-anchor="middle" fill="#4a5568">Result&lt;T&gt; · reglas de dominio · sin excepciones</text>
+
+    <rect x="706" y="330" width="252" height="44" rx="4" fill="#e6fffa" stroke="#319795"/>
+    <text x="832" y="348" text-anchor="middle" font-weight="600" fill="#234e52">Dominio (TenantEntity)</text>
+    <text x="832" y="364" text-anchor="middle" fill="#4a5568">factory Result&lt;T&gt; · invariantes</text>
+  </g>
+
+  <!-- flechas hacia persistencia y bus -->
+  <line x1="360" y1="390" x2="360" y2="430" stroke="#319795" stroke-width="2" marker-end="url(#arrowT)"/>
+  <line x1="820" y1="390" x2="820" y2="430" stroke="#805ad5" stroke-width="2" marker-end="url(#arrowP)"/>
+
+  <!-- ============ PERSISTENCIA + OUTBOX ============ -->
+  <rect x="120" y="432" width="480" height="96" rx="10" fill="#f0fff4" stroke="#319795" stroke-width="2"/>
+  <text x="140" y="454" font-size="14" font-weight="700" fill="#234e52">Persistencia transaccional (EF Core + SQL Server)</text>
+  <g font-size="10.5" fill="#2d3748">
+    <rect x="138" y="466" width="210" height="48" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="243" y="484" text-anchor="middle" font-weight="600">SaveChangesAsync</text>
+    <text x="243" y="500" text-anchor="middle" fill="#718096">1 BD por servicio · filtro TenantId</text>
+    <rect x="358" y="466" width="228" height="48" rx="4" fill="#ffffff" stroke="#cbd5e0"/>
+    <text x="472" y="484" text-anchor="middle" font-weight="600">Outbox durable (Wolverine)</text>
+    <text x="472" y="500" text-anchor="middle" fill="#718096">evento atomico con la transaccion</text>
+  </g>
+
+  <!-- ============ BUS DE EVENTOS ============ -->
+  <rect x="640" y="432" width="400" height="96" rx="10" fill="#faf5ff" stroke="#805ad5" stroke-width="2"/>
+  <text x="660" y="454" font-size="14" font-weight="700" fill="#44337a">RabbitMQ — exchange taxvision-events</text>
+  <text x="660" y="474" font-size="10.5" fill="#4a5568">Publica eventos de integracion con CorrelationId.</text>
+  <text x="660" y="490" font-size="10.5" fill="#4a5568">Los consumidores usan inbox durable (idempotente).</text>
+  <text x="660" y="510" font-size="10.5" fill="#805ad5" font-weight="600">TenantCreated · UserRegistered · InvitationCreated · SubscriptionActivated ...</text>
+
+  <!-- outbox -> bus -->
+  <line x1="586" y1="490" x2="640" y2="480" stroke="#805ad5" stroke-width="2" marker-end="url(#arrowP)"/>
+
+  <!-- ============ SERVICIOS ============ -->
+  <text x="590" y="566" text-anchor="middle" font-size="15" font-weight="700" fill="#1a365d">Microservicios (cada uno con su BD, Serilog, OpenTelemetry y health checks)</text>
+
+  <g font-size="11">
+    <!-- Auth -->
+    <rect x="60" y="582" width="212" height="150" rx="8" fill="#ebf4ff" stroke="#2b6cb0" stroke-width="2"/>
+    <text x="166" y="604" text-anchor="middle" font-size="14" font-weight="700" fill="#1a365d">Auth</text>
+    <text x="76" y="626" fill="#2d3748">Login 2 pasos + MFA (TOTP/OTP)</text>
+    <text x="76" y="644" fill="#2d3748">Sesiones + reuse detection</text>
+    <text x="76" y="662" fill="#2d3748">RBAC (roles/permisos)</text>
+    <text x="76" y="680" fill="#2d3748">Credenciales + auditoria</text>
+    <text x="76" y="698" fill="#2d3748">Limites de plan · RS256/JWKS</text>
+    <text x="76" y="720" fill="#718096" font-size="10">consume TenantCreated / Subscription*</text>
+
+    <!-- Tenant -->
+    <rect x="288" y="582" width="200" height="150" rx="8" fill="#f7fafc" stroke="#4a5568" stroke-width="2"/>
+    <text x="388" y="604" text-anchor="middle" font-size="14" font-weight="700" fill="#1a365d">Tenant</text>
+    <text x="304" y="626" fill="#2d3748">Alta y ciclo de vida</text>
+    <text x="304" y="644" fill="#2d3748">Estado (activo/suspendido)</text>
+    <text x="304" y="662" fill="#2d3748">Cache Redis del listado</text>
+    <text x="304" y="686" fill="#805ad5" font-size="10">publica TenantCreated /</text>
+    <text x="304" y="700" fill="#805ad5" font-size="10">TenantStatusChanged</text>
+
+    <!-- Customer -->
+    <rect x="504" y="582" width="200" height="150" rx="8" fill="#f7fafc" stroke="#4a5568" stroke-width="2"/>
+    <text x="604" y="604" text-anchor="middle" font-size="14" font-weight="700" fill="#1a365d">Customer</text>
+    <text x="520" y="626" fill="#2d3748">Clientes, direcciones,</text>
+    <text x="520" y="644" fill="#2d3748">contactos, relaciones</text>
+    <text x="520" y="662" fill="#2d3748">Perfil fiscal (AES-GCM)</text>
+    <text x="520" y="680" fill="#2d3748">Import CSV/XLSX</text>
+    <text x="520" y="704" fill="#718096" font-size="10">filtro TenantId en queries</text>
+
+    <!-- Subscription -->
+    <rect x="720" y="582" width="200" height="150" rx="8" fill="#f0fff4" stroke="#319795" stroke-width="2"/>
+    <text x="820" y="604" text-anchor="middle" font-size="14" font-weight="700" fill="#234e52">Subscription</text>
+    <text x="736" y="626" fill="#2d3748">Planes (Starter/Pro/Ent.)</text>
+    <text x="736" y="644" fill="#2d3748">Suscripcion trial por tenant</text>
+    <text x="736" y="662" fill="#2d3748">Upgrade · asientos · cancelar</text>
+    <text x="736" y="686" fill="#805ad5" font-size="10">publica SubscriptionActivated,</text>
+    <text x="736" y="700" fill="#805ad5" font-size="10">PlanChanged, SeatsPurchased</text>
+
+    <!-- Notification -->
+    <rect x="936" y="582" width="184" height="150" rx="8" fill="#faf5ff" stroke="#805ad5" stroke-width="2"/>
+    <text x="1028" y="604" text-anchor="middle" font-size="14" font-weight="700" fill="#44337a">Notification</text>
+    <text x="952" y="626" fill="#2d3748">Consume eventos Auth</text>
+    <text x="952" y="644" fill="#2d3748">Email SMTP + plantillas</text>
+    <text x="952" y="662" fill="#2d3748">OTP / reset / alertas</text>
+    <text x="952" y="680" fill="#2d3748">Historial por tenant</text>
+    <text x="952" y="704" fill="#718096" font-size="10">invitaciones por correo</text>
+  </g>
+
+  <!-- ============ OBSERVABILIDAD ============ -->
+  <rect x="120" y="756" width="920" height="60" rx="10" fill="#fffaf0" stroke="#dd6b20" stroke-width="2"/>
+  <text x="140" y="778" font-size="13" font-weight="700" fill="#7b341e">Observabilidad transversal (OpenTelemetry)</text>
+  <text x="140" y="800" font-size="11" fill="#4a5568">Serilog → OTEL Collector → Loki (logs) · Tempo (trazas) · Prometheus (metricas) · Grafana. El mismo CorrelationId enlaza toda la peticion entre servicios.</text>
+
+  <!-- Leyenda -->
+  <g font-size="10.5" fill="#4a5568">
+    <rect x="60" y="838" width="16" height="12" fill="#fefcbf" stroke="#d69e2e"/>
+    <text x="82" y="848">Novedades multi-tenant / seguridad</text>
+    <rect x="330" y="838" width="16" height="12" fill="#faf5ff" stroke="#805ad5"/>
+    <text x="352" y="848">Mensajeria / eventos</text>
+    <rect x="520" y="838" width="16" height="12" fill="#f0fff4" stroke="#319795"/>
+    <text x="542" y="848">Servicio nuevo de esta iteracion</text>
+  </g>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2b6cb0"/>
+    </marker>
+    <marker id="arrowT" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#319795"/>
+    </marker>
+    <marker id="arrowP" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#805ad5"/>
+    </marker>
+  </defs>
+</svg>

@@ -9,6 +9,7 @@ namespace TaxVision.Customer.Infrastructure.Persistence;
 public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProtector protector) : ICustomerReadService
 {
     public async Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
+        Guid tenantId,
         string? term,
         CustomerStatusFilter status,
         int page,
@@ -21,7 +22,8 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         if (size < 1)
             size = 20;
 
-        var query = db.Customers.AsNoTracking().AsQueryable();
+        // Aislamiento multi-tenant: siempre se filtra por el tenant del solicitante.
+        var query = db.Customers.AsNoTracking().Where(c => c.TenantId == tenantId);
 
         query = status switch
         {
@@ -61,11 +63,15 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
     }
 
-    public async Task<CustomerResponse?> GetByIdAsync(Guid customerId, CancellationToken ct = default)
+    public async Task<CustomerResponse?> GetByIdAsync(
+        Guid tenantId,
+        Guid customerId,
+        CancellationToken ct = default
+    )
     {
         var data = await (
             from c in db.Customers.AsNoTracking()
-            where c.Id == customerId
+            where c.Id == customerId && c.TenantId == tenantId
             from o in db.Occupations.Where(x => x.Id == c.OccupationId).DefaultIfEmpty()
             from naics in db
                 .PrincipalBusinessActivities.Where(x =>

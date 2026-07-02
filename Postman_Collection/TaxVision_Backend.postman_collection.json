@@ -1,942 +1,3045 @@
 {
-  "info": {
-    "_postman_id": "4a101daa-23f7-4027-a8aa-43dce5855659",
-    "name": "TaxVision_Backend",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "50989378",
-    "_collection_link": "https://go.postman.co/collection/50989378-4a101daa-23f7-4027-a8aa-43dce5855659?source=collection_link"
-  },
-  "item": [
-    {
-      "name": "Tenant",
-      "item": [
-        {
-          "name": "Registro_Tenant",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "\r",
-                  "const response = pm.response.json();\r",
-                  "\r",
-                  "pm.environment.set(\"tenantId\", response.id);\r",
-                  "pm.environment.set(\"invitationToken\", response.adminActivationToken);\r",
-                  ""
-                ],
-                "type": "text/javascript",
-                "packages": {},
-                "requests": {}
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content", "value": "application/json", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\",\r\n  \"defaultTimeZoneId\": \"America/Santo_Domingo\"\r\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/tenants",
-              "host": [ "{{UrlBase}}" ],
-              "path": [ "tenants" ]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Auth",
-      "item": [
-        {
-          "name": "AcceptTenantAdminInvitation",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/auth/invitations/accept",
-              "host": [ "{{UrlBase}}" ],
-              "path": [ "auth", "invitations", "accept" ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Login",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "const response = pm.response.json();\r",
-                  "\r",
-                  "pm.environment.set(\"accessToken\", response.accessToken);\r",
-                  "pm.environment.set(\"refreshToken\", response.refreshToken);\r",
-                  "\r",
-                  "console.log(\"Access token guardado\");\r",
-                  "console.log(\"Refresh token guardado\");"
-                ],
-                "type": "text/javascript",
-                "packages": {},
-                "requests": {}
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/auth/login",
-              "host": [ "{{UrlBase}}" ],
-              "path": [ "auth", "login" ]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Customer",
-      "item": [
-        {
-          "name": "CRUD",
-          "item": [
-            {
-              "name": "CreateCustomer",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "const response = pm.response.json();\r",
-                      "\r",
-                      "pm.environment.set(\"customerId\", response.id);\r",
-                      "pm.environment.set(\"customerEmail\", response.primaryEmail);\r",
-                      "\r",
-                      "console.log(\"customerId guardado: \" + response.id);"
-                    ],
-                    "type": "text/javascript",
-                    "packages": {},
-                    "requests": {}
-                  }
-                }
-              ],
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"kind\": \"Individual\",\r\n  \"firstName\": \"Maria\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": null,\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"legalName\": null,\r\n  \"businessStructure\": null,\r\n  \"dba\": null,\r\n  \"formationDate\": null,\r\n  \"principalBusinessActivityId\": null,\r\n  \"dateOfBirth\": \"1985-03-12\",\r\n  \"occupationId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550101\",\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Email\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "GetCustomerById",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "SearchCustomers",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers?term=maria&page=1&size=20",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers" ],
-                  "query": [
-                    { "key": "term", "value": "maria" },
-                    { "key": "page", "value": "1" },
-                    { "key": "size", "value": "20" }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "UpdateCustomer",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Sms\",\r\n  \"occupationId\": null,\r\n  \"profilePictureFileId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550102\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "ArchiveCustomer",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/archive",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "archive" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "ReactivateCustomer",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/reactivate",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "reactivate" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "DeactivateCustomer",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/deactivate",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "deactivate" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "ActivateCustomer",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/activate",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "activate" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "CheckCustomerExists",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/check-exists?email=jane.doe@example.com&taxIdentifier=123-45-6789",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "check-exists" ],
-                  "query": [
-                    { "key": "email", "value": "jane.doe@example.com" },
-                    { "key": "taxIdentifier", "value": "123-45-6789" }
-                  ]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Children",
-          "item": [
-            {
-              "name": "AddCustomerAddress",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "const response = pm.response.json();\r",
-                      "pm.environment.set(\"addressId\", response.id);"
-                    ],
-                    "type": "text/javascript",
-                    "packages": {},
-                    "requests": {}
-                  }
-                }
-              ],
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"kind\": \"Home\",\r\n  \"line1\": \"123 Main Street\",\r\n  \"line2\": null,\r\n  \"city\": \"Santo Domingo\",\r\n  \"region\": \"Distrito Nacional\",\r\n  \"postalCode\": \"10101\",\r\n  \"countryCode\": \"DO\",\r\n  \"isPrimary\": true\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/addresses",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "addresses" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "AddCustomerContactPoint",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "const response = pm.response.json();\r",
-                      "pm.environment.set(\"contactPointId\", response.id);"
-                    ],
-                    "type": "text/javascript",
-                    "packages": {},
-                    "requests": {}
-                  }
-                }
-              ],
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"type\": \"Email\",\r\n  \"value\": \"maria.work@example.com\",\r\n  \"label\": \"Work\",\r\n  \"isPrimary\": false\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/contact-points",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "contact-points" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "AddCustomerRelation",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "const response = pm.response.json();\r",
-                      "pm.environment.set(\"relationId\", response.id);"
-                    ],
-                    "type": "text/javascript",
-                    "packages": {},
-                    "requests": {}
-                  }
-                }
-              ],
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"relationshipKind\": \"Spouse\",\r\n  \"purposes\": 6,\r\n  \"firstName\": \"Juan\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": null,\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"primaryEmail\": \"juan.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550103\",\r\n  \"dateOfBirth\": \"1983-08-22\",\r\n  \"addressLine1\": null,\r\n  \"addressLine2\": null,\r\n  \"addressCity\": null,\r\n  \"addressRegion\": null,\r\n  \"addressPostalCode\": null,\r\n  \"addressCountryCode\": null\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "relations" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "UpdateCustomerAddress",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"kind\": \"Mailing\",\r\n  \"line1\": \"456 Updated Ave\",\r\n  \"line2\": \"Apt 12B\",\r\n  \"city\": \"Santo Domingo\",\r\n  \"region\": \"Distrito Nacional\",\r\n  \"postalCode\": \"10101\",\r\n  \"countryCode\": \"DO\",\r\n  \"isPrimary\": false\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/addresses/{{addressId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "addresses", "{{addressId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "RemoveCustomerAddress",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "DELETE",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/addresses/{{addressId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "addresses", "{{addressId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "UpdateCustomerContactPoint",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"type\": \"Email\",\r\n  \"value\": \"maria.updated@example.com\",\r\n  \"label\": \"Personal\",\r\n  \"isPrimary\": false\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/contact-points/{{contactPointId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "contact-points", "{{contactPointId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "RemoveCustomerContactPoint",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "DELETE",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/contact-points/{{contactPointId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "contact-points", "{{contactPointId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "UpdateCustomerRelation",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"relationshipKind\": \"Spouse\",\r\n  \"purposes\": 6,\r\n  \"firstName\": \"Juan\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": \"Alberto\",\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"primaryEmail\": \"juan.updated@example.com\",\r\n  \"primaryPhone\": \"+18095550103\",\r\n  \"dateOfBirth\": \"1983-08-22\",\r\n  \"addressLine1\": null,\r\n  \"addressLine2\": null,\r\n  \"addressCity\": null,\r\n  \"addressRegion\": null,\r\n  \"addressPostalCode\": null,\r\n  \"addressCountryCode\": null\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "relations", "{{relationId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "RemoveCustomerRelation",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "DELETE",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "relations", "{{relationId}}" ]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Bulk",
-          "item": [
-            {
-              "name": "BulkArchiveCustomers",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"End of season cleanup\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/bulk/archive",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "bulk", "archive" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "BulkReactivateCustomers",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Returning customers\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/bulk/reactivate",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "bulk", "reactivate" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "BulkDeactivateCustomers",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Paused this season\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/bulk/deactivate",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "bulk", "deactivate" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "BulkActivateCustomers",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Returned from pause\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/bulk/activate",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "bulk", "activate" ]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Imports",
-          "item": [
-            {
-              "name": "DownloadTemplate",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/imports/template",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "imports", "template" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "StartCustomerImport",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "const response = pm.response.json();",
-                      "pm.environment.set(\"importAttemptId\", response.id);"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ],
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [
-                  { "key": "Idempotency-Key", "value": "{{$guid}}", "type": "text" }
-                ],
-                "body": {
-                  "mode": "formdata",
-                  "formdata": [
-                    { "key": "Strategy", "value": "Skip", "type": "text", "description": "Skip | Merge | Overwrite" },
-                    { "key": "file", "type": "file", "src": [] }
-                  ]
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/imports",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "imports" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "GetImportStatus",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "imports", "{{importAttemptId}}" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "ListImports",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/imports?page=1&size=20",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "imports" ],
-                  "query": [
-                    { "key": "page", "value": "1" },
-                    { "key": "size", "value": "20" }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "DownloadImportReport",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}/report?format=csv",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "imports", "{{importAttemptId}}", "report" ],
-                  "query": [{ "key": "format", "value": "csv" }]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "CancelImport",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}/cancel",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "imports", "{{importAttemptId}}", "cancel" ]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Fiscal Profiles",
-          "item": [
-            {
-              "name": "SetCustomerFiscalProfile",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "PUT",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"subjectKind\": \"Individual\",\r\n  \"taxIdentifier\": \"123-45-6789\",\r\n  \"filingStatus\": \"Single\",\r\n  \"priorYearAgi\": 45000.00,\r\n  \"isReturningCustomer\": false,\r\n  \"refundBankAccount\": null,\r\n  \"refundBankRouting\": null\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/fiscal-profile",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "fiscal-profile" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "SetRelationFiscalProfile",
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "PUT",
-                "header": [
-                  { "key": "Content", "value": "application/json", "type": "text" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"role\": \"Spouse\",\r\n  \"taxIdentifier\": \"987-65-4321\",\r\n  \"taxYear\": 2025,\r\n  \"qualifiesAsDependent\": false,\r\n  \"livedWithTaxpayer\": true\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}/fiscal-profile",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "relations", "{{relationId}}", "fiscal-profile" ]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Portal Access",
-          "item": [
-            {
-              "name": "RequestCustomerPortalInvitation",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "console.log(\"Portal invitation requested. El token plain aparece en los logs de Auth.Api con prefijo [DEV].\");\r",
-                      "console.log(\"Copialo y pegalo en la variable customerPortalToken del environment.\");"
-                    ],
-                    "type": "text/javascript",
-                    "packages": {},
-                    "requests": {}
-                  }
-                }
-              ],
-              "request": {
-                "auth": {
-                  "type": "bearer",
-                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
-                },
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/customers/{{customerId}}/portal-invitations",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "customers", "{{customerId}}", "portal-invitations" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "AcceptCustomerPortalInvitation",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"invitationToken\": \"{{customerPortalToken}}\",\r\n  \"name\": \"Maria\",\r\n  \"lastName\": \"Perez\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/auth/invitations/accept",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "auth", "invitations", "accept" ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "LoginCustomerPortal",
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "const response = pm.response.json();\r",
-                      "\r",
-                      "pm.environment.set(\"customerPortalAccessToken\", response.accessToken);\r",
-                      "pm.environment.set(\"customerPortalRefreshToken\", response.refreshToken);\r",
-                      "\r",
-                      "console.log(\"Customer portal access token guardado\");"
-                    ],
-                    "type": "text/javascript",
-                    "packages": {},
-                    "requests": {}
-                  }
-                }
-              ],
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"{{customerEmail}}\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{UrlBase}}/auth/login",
-                  "host": [ "{{UrlBase}}" ],
-                  "path": [ "auth", "login" ]
-                }
-              },
-              "response": []
-            }
-          ]
-        }
-      ]
-    }
-  ]
+	"info": {
+		"_postman_id": "4a101daa-23f7-4027-a8aa-43dce5855659",
+		"name": "TaxVision_Backend",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50989378",
+		"_collection_link": "https://go.postman.co/collection/50989378-4a101daa-23f7-4027-a8aa-43dce5855659?source=collection_link"
+	},
+	"item": [
+		{
+			"name": "Tenant",
+			"item": [
+				{
+					"name": "Registro_Tenant",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"\r",
+									"const response = pm.response.json();\r",
+									"\r",
+									"pm.environment.set(\"tenantId\", response.id);\r",
+									"pm.environment.set(\"invitationToken\", response.adminActivationToken);\r",
+									""
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"name\": \"FreedomTax\",\r\n  \"subdomain\": \"freedomtax\",\r\n  \"adminEmail\": \"marcos@gmail.com\",\r\n  \"defaultTimeZoneId\": \"America/Santo_Domingo\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/tenants",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"tenants"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "AcceptTenantAdminInvitation",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/invitations/accept",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"invitations",
+								"accept"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r = pm.response.json();",
+									"if (r.mfaRequired) {",
+									"  pm.environment.set('loginTicket', r.loginTicket);",
+									"  console.log('MFA requerido. loginTicket guardado. Usa Auth/MFA/VerifyMfaChallenge.');",
+									"} else if (r.tokens) {",
+									"  pm.environment.set('accessToken', r.tokens.accessToken);",
+									"  pm.environment.set('refreshToken', r.tokens.refreshToken);",
+									"  if (r.tokens.deviceToken) pm.environment.set('deviceToken', r.tokens.deviceToken);",
+									"  console.log('accessToken y refreshToken guardados' + (r.mfaSetupRequired ? ' (mfaSetupRequired=true)' : ''));",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/login",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetMe",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/me",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"me"
+							]
+						},
+						"description": "Perfil, roles, permisos, plan y zona horaria del usuario autenticado."
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/refresh",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"refresh"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Rota el refresh token y emite un nuevo access token. Reutilizar un token ya rotado revoca la sesion."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r = pm.response.json();",
+									"if (r.accessToken) { pm.environment.set('accessToken', r.accessToken); pm.environment.set('refreshToken', r.refreshToken); console.log('tokens actualizados'); }"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/logout",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"logout"
+							]
+						},
+						"description": "Cierra la sesion actual (revoca su familia de refresh tokens)."
+					},
+					"response": []
+				},
+				{
+					"name": "Jwks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/.well-known/jwks.json",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								".well-known",
+								"jwks.json"
+							]
+						},
+						"description": "JWKS publico (RS256). Con HS256 devuelve un set vacio."
+					},
+					"response": []
+				},
+				{
+					"name": "MFA",
+					"item": [
+						{
+							"name": "SetupTotp",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/totp/setup",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"totp",
+										"setup"
+									]
+								},
+								"description": "Devuelve el secreto y el otpauthUri para escanear con Authenticator."
+							},
+							"response": []
+						},
+						{
+							"name": "ConfirmTotp",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/totp/confirm",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"totp",
+										"confirm"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"code\": \"123456\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"description": "Confirma el TOTP con un codigo y devuelve los recovery codes (una sola vez)."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r=pm.response.json(); if(r.recoveryCodes){console.log('Recovery codes:', r.recoveryCodes.join(', '));}"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "VerifyMfaChallenge",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/verify",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"verify"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"loginTicket\": \"{{loginTicket}}\",\n  \"code\": \"123456\",\n  \"rememberDevice\": true\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"description": "Paso 2 del login: verifica el codigo del desafio MFA y emite tokens."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r=pm.response.json();",
+											"if(r.accessToken){pm.environment.set('accessToken',r.accessToken);pm.environment.set('refreshToken',r.refreshToken);if(r.deviceToken)pm.environment.set('deviceToken',r.deviceToken);console.log('MFA verificado, tokens guardados');}"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "MfaStatus",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/status",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"status"
+									]
+								},
+								"description": "Metodos MFA registrados, recovery codes restantes y dispositivos confiables."
+							},
+							"response": []
+						},
+						{
+							"name": "DisableMfa",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/disable",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"disable"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"password\": \"Brittany040238.\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"description": "Desactiva MFA (bloqueado si la politica del tenant lo exige)."
+							},
+							"response": []
+						},
+						{
+							"name": "RegenerateRecoveryCodes",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/recovery-codes/regenerate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"recovery-codes",
+										"regenerate"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"password\": \"Brittany040238.\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetMfaPolicy",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/policy",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"policy"
+									]
+								},
+								"description": "Politica MFA del tenant (requiere settings.manage)."
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateMfaPolicy",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/mfa/policy",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"mfa",
+										"policy"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"requireForEmployees\": false,\n  \"requireForCustomerPortal\": false,\n  \"trustedDeviceDays\": 30\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Credentials",
+					"item": [
+						{
+							"name": "ForgotPassword",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/auth/password/forgot",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"password",
+										"forgot"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"jturbi@example.com\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"description": "Siempre responde 202 (anti-enumeracion)."
+							},
+							"response": []
+						},
+						{
+							"name": "ResetPassword",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/auth/password/reset",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"password",
+										"reset"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ChangePassword",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/password/change",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"password",
+										"change"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"currentPassword\": \"Brittany040238.\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "RequestEmailChange",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/me/email/change-request",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"me",
+										"email",
+										"change-request"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"newEmail\": \"nuevo@example.com\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ConfirmEmailChange",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/auth/me/email/confirm",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"me",
+										"email",
+										"confirm"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"token\": \"{{emailChangeToken}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "RequestPhoneVerification",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/me/phone/change-request",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"me",
+										"phone",
+										"change-request"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"phoneNumber\": \"+18095551234\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ConfirmPhoneVerification",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/me/phone/confirm",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"me",
+										"phone",
+										"confirm"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"code\": \"123456\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Sessions",
+					"item": [
+						{
+							"name": "MySessions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/sessions/me",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"sessions",
+										"me"
+									]
+								},
+								"description": "Sesiones activas del usuario autenticado."
+							},
+							"response": []
+						},
+						{
+							"name": "RevokeSession",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/sessions/{{sessionId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"sessions",
+										"{{sessionId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "RevokeAllMySessions",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/sessions?includeCurrent=false",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"sessions"
+									],
+									"query": [
+										{
+											"key": "includeCurrent",
+											"value": "false"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Invitations",
+					"item": [
+						{
+							"name": "CreateInvitation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/invitations",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"invitations"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"empleado@example.com\",\n  \"actorType\": \"TenantEmployee\",\n  \"customerId\": null,\n  \"roleIds\": []\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"description": "Crea una invitacion (requiere TenantAdmin/PlatformAdmin). Valida limites del plan."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r=pm.response.json(); if(r.invitationToken){pm.environment.set('invitationToken', r.invitationToken);}"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "ListInvitations",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/invitations?status=Pending&page=1&size=20",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"invitations"
+									],
+									"query": [
+										{
+											"key": "status",
+											"value": "Pending"
+										},
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ResendInvitation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/resend",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"invitations",
+										"{{invitationId}}",
+										"resend"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "CancelInvitation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/cancel",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"invitations",
+										"{{invitationId}}",
+										"cancel"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Users",
+					"item": [
+						{
+							"name": "GetUsers",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/users?page=1&size=20",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"users"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetUserById",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/users/{{userId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"users",
+										"{{userId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "DeactivateUser",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/users/{{userId}}/deactivate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"users",
+										"{{userId}}",
+										"deactivate"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ReactivateUser",
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/users/{{userId}}/reactivate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"users",
+										"{{userId}}",
+										"reactivate"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AssignUserRoles",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/users/{{userId}}/roles",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"users",
+										"{{userId}}",
+										"roles"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"roleIds\": [\n    \"{{roleId}}\"\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateMyProfile",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/users/me/profile",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"users",
+										"me",
+										"profile"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Jorge\",\n  \"lastName\": \"Turbi\",\n  \"timeZoneId\": \"America/Santo_Domingo\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetTenantLimits",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/tenants/limits",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"tenants",
+										"limits"
+									]
+								},
+								"description": "Plan, asientos usados/disponibles e invitaciones restantes."
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Roles",
+					"item": [
+						{
+							"name": "GetRoles",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/roles",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"roles"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetPermissionsCatalog",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/permissions",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"permissions"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "CreateRole",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/roles",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"roles"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Equipo comercial\",\n  \"permissionIds\": []\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r=pm.response.json(); if(r.id){pm.environment.set('roleId', r.id);}"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "UpdateRole",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/roles/{{roleId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"roles",
+										"{{roleId}}"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Actualizado\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "SetRolePermissions",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/roles/{{roleId}}/permissions",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"roles",
+										"{{roleId}}",
+										"permissions"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"permissionIds\": []\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "DeactivateRole",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/roles/{{roleId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"roles",
+										"{{roleId}}"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Audit",
+					"item": [
+						{
+							"name": "GetAuditLogs",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/auth/audit?page=1&size=50",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"audit"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "50"
+										}
+									]
+								},
+								"description": "Eventos de seguridad del tenant (requiere audit.view)."
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Subscription",
+			"item": [
+				{
+					"name": "GetPlans",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/plans",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"plans"
+							]
+						},
+						"description": "Catalogo publico de planes para la landing."
+					},
+					"response": []
+				},
+				{
+					"name": "GetMySubscription",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/me",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"me"
+							]
+						},
+						"description": "Suscripcion del tenant: plan, limites, renovacion, estado."
+					},
+					"response": []
+				},
+				{
+					"name": "ChangePlan",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/change-plan",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"change-plan"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"planCode\": \"pro\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Upgrade/downgrade de plan (TenantAdmin)."
+					},
+					"response": []
+				},
+				{
+					"name": "PurchaseSeats",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/seats",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"seats"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"additionalSeats\": 5\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "CancelSubscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/cancel",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"cancel"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SuspendSubscription",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/suspend",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"{{tenantId}}",
+								"suspend"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"payment_failed\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Solo PlatformAdmin."
+					},
+					"response": []
+				},
+				{
+					"name": "ReactivateSubscription",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/reactivate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"{{tenantId}}",
+								"reactivate"
+							]
+						},
+						"description": "Solo PlatformAdmin."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Notification",
+			"item": [
+				{
+					"name": "GetNotifications",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notifications?page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Historial de notificaciones del tenant (email/SMS/in-app)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Customer",
+			"item": [
+				{
+					"name": "CRUD",
+					"item": [
+						{
+							"name": "CreateCustomer",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"const response = pm.response.json();\r",
+											"\r",
+											"pm.environment.set(\"customerId\", response.id);\r",
+											"pm.environment.set(\"customerEmail\", response.primaryEmail);\r",
+											"\r",
+											"console.log(\"customerId guardado: \" + response.id);"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"kind\": \"Individual\",\r\n  \"firstName\": \"Maria\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": null,\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"legalName\": null,\r\n  \"businessStructure\": null,\r\n  \"dba\": null,\r\n  \"formationDate\": null,\r\n  \"principalBusinessActivityId\": null,\r\n  \"dateOfBirth\": \"1985-03-12\",\r\n  \"occupationId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550101\",\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Email\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetCustomerById",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "SearchCustomers",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers?term=maria&page=1&size=20",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers"
+									],
+									"query": [
+										{
+											"key": "term",
+											"value": "maria"
+										},
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateCustomer",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Sms\",\r\n  \"occupationId\": null,\r\n  \"profilePictureFileId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550102\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ArchiveCustomer",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/archive",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"archive"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ReactivateCustomer",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/reactivate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"reactivate"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "DeactivateCustomer",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/deactivate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"deactivate"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ActivateCustomer",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/activate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"activate"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "CheckCustomerExists",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/check-exists?email=jane.doe@example.com&taxIdentifier=123-45-6789",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"check-exists"
+									],
+									"query": [
+										{
+											"key": "email",
+											"value": "jane.doe@example.com"
+										},
+										{
+											"key": "taxIdentifier",
+											"value": "123-45-6789"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Children",
+					"item": [
+						{
+							"name": "AddCustomerAddress",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"const response = pm.response.json();\r",
+											"pm.environment.set(\"addressId\", response.id);"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"kind\": \"Home\",\r\n  \"line1\": \"123 Main Street\",\r\n  \"line2\": null,\r\n  \"city\": \"Santo Domingo\",\r\n  \"region\": \"Distrito Nacional\",\r\n  \"postalCode\": \"10101\",\r\n  \"countryCode\": \"DO\",\r\n  \"isPrimary\": true\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/addresses",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"addresses"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AddCustomerContactPoint",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"const response = pm.response.json();\r",
+											"pm.environment.set(\"contactPointId\", response.id);"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"type\": \"Email\",\r\n  \"value\": \"maria.work@example.com\",\r\n  \"label\": \"Work\",\r\n  \"isPrimary\": false\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/contact-points",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"contact-points"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AddCustomerRelation",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"const response = pm.response.json();\r",
+											"pm.environment.set(\"relationId\", response.id);"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"relationshipKind\": \"Spouse\",\r\n  \"purposes\": 6,\r\n  \"firstName\": \"Juan\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": null,\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"primaryEmail\": \"juan.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550103\",\r\n  \"dateOfBirth\": \"1983-08-22\",\r\n  \"addressLine1\": null,\r\n  \"addressLine2\": null,\r\n  \"addressCity\": null,\r\n  \"addressRegion\": null,\r\n  \"addressPostalCode\": null,\r\n  \"addressCountryCode\": null\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/relations",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"relations"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateCustomerAddress",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"kind\": \"Mailing\",\r\n  \"line1\": \"456 Updated Ave\",\r\n  \"line2\": \"Apt 12B\",\r\n  \"city\": \"Santo Domingo\",\r\n  \"region\": \"Distrito Nacional\",\r\n  \"postalCode\": \"10101\",\r\n  \"countryCode\": \"DO\",\r\n  \"isPrimary\": false\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/addresses/{{addressId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"addresses",
+										"{{addressId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "RemoveCustomerAddress",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/addresses/{{addressId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"addresses",
+										"{{addressId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateCustomerContactPoint",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"type\": \"Email\",\r\n  \"value\": \"maria.updated@example.com\",\r\n  \"label\": \"Personal\",\r\n  \"isPrimary\": false\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/contact-points/{{contactPointId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"contact-points",
+										"{{contactPointId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "RemoveCustomerContactPoint",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/contact-points/{{contactPointId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"contact-points",
+										"{{contactPointId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateCustomerRelation",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"relationshipKind\": \"Spouse\",\r\n  \"purposes\": 6,\r\n  \"firstName\": \"Juan\",\r\n  \"lastName\": \"Perez\",\r\n  \"middleName\": \"Alberto\",\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"primaryEmail\": \"juan.updated@example.com\",\r\n  \"primaryPhone\": \"+18095550103\",\r\n  \"dateOfBirth\": \"1983-08-22\",\r\n  \"addressLine1\": null,\r\n  \"addressLine2\": null,\r\n  \"addressCity\": null,\r\n  \"addressRegion\": null,\r\n  \"addressPostalCode\": null,\r\n  \"addressCountryCode\": null\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"relations",
+										"{{relationId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "RemoveCustomerRelation",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"relations",
+										"{{relationId}}"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Bulk",
+					"item": [
+						{
+							"name": "BulkArchiveCustomers",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"End of season cleanup\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/bulk/archive",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"bulk",
+										"archive"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "BulkReactivateCustomers",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Returning customers\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/bulk/reactivate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"bulk",
+										"reactivate"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "BulkDeactivateCustomers",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Paused this season\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/bulk/deactivate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"bulk",
+										"deactivate"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "BulkActivateCustomers",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"customerIds\": [\r\n    \"{{customerId}}\"\r\n  ],\r\n  \"reason\": \"Returned from pause\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/bulk/activate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"bulk",
+										"activate"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Imports",
+					"item": [
+						{
+							"name": "DownloadTemplate",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/imports/template",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"imports",
+										"template"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "StartCustomerImport",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"const response = pm.response.json();",
+											"pm.environment.set(\"importAttemptId\", response.id);"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "Idempotency-Key",
+										"value": "{{$guid}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "Strategy",
+											"value": "Skip",
+											"type": "text",
+											"description": "Skip | Merge | Overwrite"
+										},
+										{
+											"key": "file",
+											"type": "file",
+											"src": []
+										}
+									]
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/imports",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"imports"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetImportStatus",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"imports",
+										"{{importAttemptId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ListImports",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/imports?page=1&size=20",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"imports"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "DownloadImportReport",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}/report?format=csv",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"imports",
+										"{{importAttemptId}}",
+										"report"
+									],
+									"query": [
+										{
+											"key": "format",
+											"value": "csv"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "CancelImport",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{UrlBase}}/customers/imports/{{importAttemptId}}/cancel",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"imports",
+										"{{importAttemptId}}",
+										"cancel"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Fiscal Profiles",
+					"item": [
+						{
+							"name": "SetCustomerFiscalProfile",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"subjectKind\": \"Individual\",\r\n  \"taxIdentifier\": \"123-45-6789\",\r\n  \"filingStatus\": \"Single\",\r\n  \"priorYearAgi\": 45000.00,\r\n  \"isReturningCustomer\": false,\r\n  \"refundBankAccount\": null,\r\n  \"refundBankRouting\": null\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/fiscal-profile",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"fiscal-profile"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "SetRelationFiscalProfile",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"role\": \"Spouse\",\r\n  \"taxIdentifier\": \"987-65-4321\",\r\n  \"taxYear\": 2025,\r\n  \"qualifiesAsDependent\": false,\r\n  \"livedWithTaxpayer\": true\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/relations/{{relationId}}/fiscal-profile",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"relations",
+										"{{relationId}}",
+										"fiscal-profile"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Portal Access",
+					"item": [
+						{
+							"name": "RequestCustomerPortalInvitation",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"console.log(\"Portal invitation requested. El token plain aparece en los logs de Auth.Api con prefijo [DEV].\");\r",
+											"console.log(\"Copialo y pegalo en la variable customerPortalToken del environment.\");"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{accessToken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/customers/{{customerId}}/portal-invitations",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"customers",
+										"{{customerId}}",
+										"portal-invitations"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AcceptCustomerPortalInvitation",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"invitationToken\": \"{{customerPortalToken}}\",\r\n  \"name\": \"Maria\",\r\n  \"lastName\": \"Perez\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/auth/invitations/accept",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"invitations",
+										"accept"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "LoginCustomerPortal",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"const response = pm.response.json();\r",
+											"\r",
+											"pm.environment.set(\"customerPortalAccessToken\", response.accessToken);\r",
+											"pm.environment.set(\"customerPortalRefreshToken\", response.refreshToken);\r",
+											"\r",
+											"console.log(\"Customer portal access token guardado\");"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"{{customerEmail}}\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{UrlBase}}/auth/login",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"auth",
+										"login"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		}
+	]
 }

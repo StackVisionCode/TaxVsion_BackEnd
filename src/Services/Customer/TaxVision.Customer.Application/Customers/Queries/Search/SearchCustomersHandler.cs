@@ -9,5 +9,5 @@ public static class SearchCustomersHandler
         SearchCustomersQuery query,
         ICustomerReadService reader,
         CancellationToken ct
-    ) => reader.SearchAsync(query.Term, query.Status, query.Page, query.Size, ct);
+    ) => reader.SearchAsync(query.TenantId, query.Term, query.Status, query.Page, query.Size, ct);
 }

@@ -20,7 +20,7 @@ public static class UpdateCustomerHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null)
+        if (customer is null || customer.TenantId != cmd.TenantId)
             return Result.Failure<CustomerResponse>(new Error("Customer.NotFound", "Customer not found."));
 
         var emailResult = EmailAddress.Create(cmd.PrimaryEmail);

@@ -12,7 +12,7 @@ public static class GetCustomerByIdHandler
         CancellationToken ct
     )
     {
-        var customer = await reader.GetByIdAsync(query.CustomerId, ct);
+        var customer = await reader.GetByIdAsync(query.TenantId, query.CustomerId, ct);
         return customer is null
             ? Result.Failure<CustomerResponse>(new Error("Customer.NotFound", "Customer not found."))
             : Result.Success(customer);
