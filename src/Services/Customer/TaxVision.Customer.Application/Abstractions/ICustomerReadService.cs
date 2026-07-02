@@ -6,6 +6,7 @@ namespace TaxVision.Customer.Application.Abstractions;
 public interface ICustomerReadService
 {
     Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
+        Guid tenantId,
         string? term,
         CustomerStatusFilter status,
         int page,
@@ -13,7 +14,7 @@ public interface ICustomerReadService
         CancellationToken ct = default
     );
 
-    Task<CustomerResponse?> GetByIdAsync(Guid customerId, CancellationToken ct = default);
+    Task<CustomerResponse?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
 
     Task<CustomerExistsResponse> CheckExistsAsync(
         Guid tenantId,

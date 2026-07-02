@@ -12,23 +12,27 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "IX_CustomerRelationFiscalProfiles_TenantId_TaxIdentifierBlindIndex",
-                table: "CustomerRelationFiscalProfiles");
+                table: "CustomerRelationFiscalProfiles"
+            );
 
             migrationBuilder.DropIndex(
                 name: "IX_CustomerFiscalProfiles_TenantId_TaxIdentifierBlindIndex",
-                table: "CustomerFiscalProfiles");
+                table: "CustomerFiscalProfiles"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_CustomerRelationFiscalProfiles_Tenant_BlindIndex",
                 table: "CustomerRelationFiscalProfiles",
                 columns: new[] { "TenantId", "TaxIdentifierBlindIndex" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_CustomerFiscalProfiles_Tenant_BlindIndex",
                 table: "CustomerFiscalProfiles",
                 columns: new[] { "TenantId", "TaxIdentifierBlindIndex" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
@@ -36,21 +40,25 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "UX_CustomerRelationFiscalProfiles_Tenant_BlindIndex",
-                table: "CustomerRelationFiscalProfiles");
+                table: "CustomerRelationFiscalProfiles"
+            );
 
             migrationBuilder.DropIndex(
                 name: "UX_CustomerFiscalProfiles_Tenant_BlindIndex",
-                table: "CustomerFiscalProfiles");
+                table: "CustomerFiscalProfiles"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CustomerRelationFiscalProfiles_TenantId_TaxIdentifierBlindIndex",
                 table: "CustomerRelationFiscalProfiles",
-                columns: new[] { "TenantId", "TaxIdentifierBlindIndex" });
+                columns: new[] { "TenantId", "TaxIdentifierBlindIndex" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CustomerFiscalProfiles_TenantId_TaxIdentifierBlindIndex",
                 table: "CustomerFiscalProfiles",
-                columns: new[] { "TenantId", "TaxIdentifierBlindIndex" });
+                columns: new[] { "TenantId", "TaxIdentifierBlindIndex" }
+            );
         }
     }
 }

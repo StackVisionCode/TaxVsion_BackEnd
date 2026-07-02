@@ -90,8 +90,11 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct = default
     )
     {
+        if (!TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
         var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
-            new SearchCustomersQuery(term, status, page, size),
+            new SearchCustomersQuery(tenantId, term, status, page, size),
             ct
         );
         return Ok(result);
@@ -128,7 +131,10 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<CustomerResponse>>(new GetCustomerByIdQuery(id), ct);
+        if (!TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CustomerResponse>>(new GetCustomerByIdQuery(tenantId, id), ct);
 
         if (result.IsSuccess)
             return Ok(result.Value);
