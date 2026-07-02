@@ -1,8 +1,14 @@
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Middleware;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.AspNetCore.Authorization;
+using TaxVision.Auth.Api.Authorization;
+using TaxVision.Auth.Api.Common;
+using TaxVision.Auth.Api.Jobs;
+using TaxVision.Auth.Api.Middleware;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.IntegrationEvents;
 using TaxVision.Auth.Infrastructure;
@@ -35,8 +41,17 @@ builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.Configure<PlatformBootstrapOptions>(
     builder.Configuration.GetSection(PlatformBootstrapOptions.SectionName));
 builder.Services.AddHostedService<PlatformAdminBootstrapService>();
+builder.Services.AddHostedService<AuthMaintenanceService>();
+
+// Contexto de request (IP/user-agent) para auditoría y sesiones.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IRequestContext, RequestContext>();
 
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
+
+// Autorización por permisos: [HasPermission("users.invite")] ⇒ claim "perm".
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "auth-service");
 
 var authRabbitUri = new Uri(builder.Configuration["RabbitMq:Uri"]
@@ -73,9 +88,25 @@ builder.Host.UseWolverine(options =>
         .WithDbContextAbstraction<IUnitOfWork, AuthDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    // Eventos publicados por Auth
     options.PublishMessage<UserRegisteredIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<InvitationCreatedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserDeactivatedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserRolesChangedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PasswordResetRequestedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<MfaChallengeRequestedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SecurityAlertIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<EmailChangeRequestedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
+    // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
     options.ListenToRabbitQueue("auth-tenant-events", queue =>
     {
         queue.BindExchange("taxvision-events", string.Empty);
@@ -106,6 +137,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Revocación inmediata de access tokens de sesiones denylistadas (Redis).
+app.UseMiddleware<SessionDenylistMiddleware>();
+
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
     Predicate = _ => false

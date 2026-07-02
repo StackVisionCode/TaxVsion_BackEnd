@@ -14,7 +14,7 @@ Backend multitenant de TaxVision construido con microservicios en .NET 10.
 
 **Autor de las implementaciones documentadas:** Jorge Turbi
 
-**Actualizado:** 27-06-2026
+**Actualizado:** 02-07-2026
 
 **Licencia del codigo propio:** propietaria; consulte [LICENSE](LICENSE).
 
@@ -24,6 +24,11 @@ autenticacion exclusivamente por invitaciones, un tenant interno reservado para 
 control plane, CorrelationId de extremo a extremo, cache con invalidacion y una
 plataforma local de observabilidad con Grafana, Loki, Prometheus, Tempo y
 OpenTelemetry.
+
+# Idea Principal de Desarrollo 
+<img width="2400" height="1560"  src="https://firebasestorage.googleapis.com/v0/b/c5iffaa-10025.firebasestorage.app/o/DiagramsBackEnd.png?alt=media&token=9daa5550-50b2-4ca2-bae3-dac0e39ed332" />
+
+
 
 ## Indice
 
@@ -52,6 +57,7 @@ OpenTelemetry.
 23. Guia para nuevos microservicios y mejoras futuras
 24. Guia de implementacion Customer y Subscription
 25. Customer Service: implementacion
+26. Iteracion 02-07-2026: Auth avanzado, Subscription, Notification y correcciones Customer
 
 ## 1. Introduccion y objetivo
 
@@ -1973,3 +1979,302 @@ PATCH /customers/{id}
   "businessStructure": "SCorp"
 }
 ```
+
+---
+
+# 26. Iteracion 02-07-2026: Auth avanzado, Subscription, Notification y correcciones Customer
+
+Esta seccion documenta de forma detallada el trabajo incorporado en la iteracion
+del 2 de julio de 2026. Complementa (no reemplaza) las secciones anteriores. El
+objetivo fue completar la seguridad del microservicio **Auth** para un SaaS real
+de oficinas de taxes en EE. UU., levantar los microservicios **Subscription** y
+**Notification** que estaban vacios, y corregir fugas multi-tenant detectadas en
+**Customer**. Todo respeta la arquitectura existente: Clean Architecture por
+capas, CQRS con handlers estaticos de Wolverine, patron Result, multi-tenancy con
+`TenantEntity`/`X-Tenant-Id`, outbox/inbox durable sobre SQL Server, eventos por
+el exchange `taxvision-events`, `CorrelationId` de extremo a extremo y
+observabilidad OTEL.
+
+### Diagrama del flujo de una peticion (actualizado)
+
+El siguiente diagrama muestra el recorrido de una peticion a traves del Gateway y
+el pipeline de BuildingBlocks hasta el handler CQRS, la persistencia transaccional
+con outbox y la propagacion de eventos por RabbitMQ hacia los microservicios
+(incluidos los nuevos Subscription y Notification):
+
+![Flujo de una peticion en TaxVision](Flujo_Peticion_BuildingBlocks_TaxVision.svg)
+
+## 26.1 Resumen ejecutivo de la iteracion
+
+| Area | Antes | Despues |
+|---|---|---|
+| Auth | Login, refresh basico, invitaciones, bootstrap | + Sesiones con reuse detection, MFA (TOTP/OTP/recovery/device trust), RBAC granular, recuperacion/cambio de contrasena, verificacion email/telefono, lockout, auditoria de seguridad, limites por plan, denylist Redis, RS256/JWKS dual, gestion de usuarios y queries de lectura |
+| Subscription | Carpeta vacia | Microservicio completo: planes sembrados, suscripcion trial por tenant, upgrade/downgrade, compra de asientos, suspension/cancelacion, eventos de limites hacia Auth |
+| Notification | Carpeta vacia | Microservicio completo: consumers de eventos de Auth, plantillas de correo en espanol, envio SMTP, historial por tenant |
+| Customer | Fugas cross-tenant en queries y comandos | Filtro de `TenantId` en GetById y Search, validacion de tenant en comandos, `TenantResolutionMiddleware` registrado |
+| Gateway | Rutas auth/tenant/customer | + Rutas plans/subscriptions/notifications, CORS explicito, cabeceras de seguridad |
+
+## 26.2 Microservicio Auth: lo implementado
+
+Todo el codigo nuevo respeta el patron del servicio: entidades de dominio con
+constructor privado y factory estatica que devuelve `Result<T>`, handlers
+estaticos de Wolverine, repositorios detras de interfaces en `Application/
+Abstractions`, e implementaciones EF en `Infrastructure`.
+
+### 26.2.1 Sesiones y refresh tokens con deteccion de reuso
+
+- Nueva entidad `UserSession` (`Domain/Sessions/UserSession.cs`): representa una
+  sesion = dispositivo + familia de refresh tokens, con IP, user-agent, ultima
+  actividad y revocacion.
+- `RefreshToken` migrado de `BaseEntity` a `TenantEntity` (corrige la deuda #1 de
+  la auditoria): ahora guarda `TenantId`, `SessionId`, `ReplacedByTokenId` y
+  `RevokedReason`, habilitando la cadena de rotacion.
+- **Reuse detection**: si se presenta un refresh token ya rotado/revocado, se
+  interpreta como robo, se revoca la **sesion completa**, se registra en auditoria
+  y se publica `SecurityAlertIntegrationEvent`. Esto convierte la rotacion
+  (antes cosmetica) en una defensa real.
+- Revocaciones masivas: por sesion, por usuario (cambio de contrasena,
+  desactivacion) y por tenant (suspension). El consumer
+  `TenantStatusChangedConsumer` ahora corta todas las sesiones al suspender un
+  tenant.
+
+### 26.2.2 MFA (autenticacion multifactor)
+
+- Entidades: `MfaMethod`, `MfaChallenge`, `RecoveryCode`, `TrustedDevice`,
+  `TenantMfaPolicy` (carpeta `Domain/Mfa`).
+- **TOTP** (RFC 6238) implementado a mano en `Infrastructure/Security/
+  TotpService.cs`, sin dependencias externas, compatible con Google/Microsoft
+  Authenticator, Authy y 1Password.
+- Secretos TOTP cifrados en reposo con **AES-256-GCM** (`AesGcmSecretProtector`),
+  clave `Mfa:EncryptionKey` (deriva del `Jwt:Secret` como fallback de desarrollo).
+- **OTP por email/SMS**: se generan codigos numericos y se publican via
+  `MfaChallengeRequestedIntegrationEvent` hacia Notification.
+- **Recovery codes** (10 por usuario, un solo uso, hasheados) y **device trust**
+  ("recordar este dispositivo" durante N dias segun politica del tenant).
+- **Login en dos pasos**: el paso 1 (`/auth/login`) devuelve un `loginTicket`
+  cuando se requiere MFA; el paso 2 (`/auth/mfa/verify`) valida el codigo y emite
+  tokens. Si la politica exige MFA y el usuario aun no lo configuro, el login
+  responde `mfaSetupRequired: true` para que el frontend fuerce el enrolamiento.
+- Politica por tenant: MFA obligatorio para administradores por diseno (no
+  desactivable), opcional para empleados y portal.
+
+### 26.2.3 RBAC granular (roles y permisos)
+
+- Entidades: `Role`, `Permission`, `RolePermission`, `UserRole` (carpeta
+  `Domain/Roles`), con un catalogo de 22 permisos (`PermissionCatalog`) sembrado
+  por migracion con GUID fijos.
+- Permisos operativos internos (usuarios, roles, clientes, firmas, documentos,
+  correo, campanas, reportes) **y de cara al portal del cliente final**
+  (llamadas, modulo de millas, folders visibles, firma de documentos).
+- Al crear un tenant se siembran los roles de sistema (`Tenant Admin`,
+  `Employee`, `Customer Portal`) con sus permisos por defecto.
+- El JWT ahora incluye los claims `perm` (permisos efectivos) y `perm_v`
+  (version de permisos para invalidacion). La autorizacion por permiso se aplica
+  con el atributo `[HasPermission("...")]` y un `PermissionPolicyProvider`.
+
+### 26.2.4 Credenciales, verificacion y anti-fuerza bruta
+
+- Recuperacion de contrasena (`/auth/password/forgot` y `/reset`), cambio
+  autenticado (`/auth/password/change`), con revocacion de sesiones al cambiar.
+- Verificacion de cambio de email (enlace a la direccion nueva + aviso a la
+  anterior) y verificacion de telefono por OTP.
+- Politica de contrasenas (`PasswordPolicy`) alineada con NIST 800-63B.
+- **Lockout por cuenta** (10 intentos, en `User`) mas throttle por IP en Redis
+  (`LoginThrottler`), y respuesta unificada anti-enumeracion en el login.
+
+### 26.2.5 Auditoria, JWT endurecido y limites de plan
+
+- `AuthAuditLog` (append-only) registra todos los eventos de seguridad (login,
+  fallos, MFA, revocaciones, cambios de rol, invitaciones); consultable en
+  `/auth/audit` con permiso `audit.view`.
+- JWT: se anaden `jti`, `sid`, `amr`, `iat`; migracion a **RS256/JWKS en modo
+  dual** (`SigningKeyProvider` + endpoint `/auth/.well-known/jwks.json`), con
+  fallback a HS256 para no romper la configuracion actual.
+- **Denylist en Redis** por `sid` (`AccessTokenDenylist` +
+  `SessionDenylistMiddleware`) para revocar access tokens vigentes de inmediato.
+- Proyeccion `TenantPlanLimits` alimentada por eventos de Subscription; las
+  invitaciones y la reactivacion de usuarios validan asientos disponibles
+  (`PlanGuard`).
+
+### 26.2.6 Gestion de usuarios y queries
+
+- Comandos: desactivar/reactivar usuario, actualizar perfil (incluida zona
+  horaria propia con herencia del tenant), asignar roles.
+- Queries de lectura que antes no existian: `GetMe`, listado y detalle de
+  usuarios, sesiones activas, estado MFA, auditoria y limites del plan.
+
+## 26.3 Microservicio Subscription (nuevo)
+
+Ruta: `src/Services/Subscription`. Cuatro proyectos (Domain, Application,
+Infrastructure, Api) siguiendo el patron de Tenant/Auth.
+
+- **Dominio**: `Plan` (catalogo sembrado: Starter 49 USD/3 usuarios, Pro
+  129 USD/10, Enterprise 299 USD/25, con modulos habilitados por plan) y
+  `TenantSubscription` (estados Trial/Active/Suspended/Cancelled, asientos extra,
+  periodos).
+- **Flujo de alta**: al crear un tenant, el consumer `TenantCreatedConsumer` crea
+  la suscripcion en periodo de prueba (14 dias) con el plan por defecto y publica
+  `SubscriptionActivatedIntegrationEvent` con los limites, que Auth proyecta.
+- **Operaciones**: upgrade/downgrade de plan, compra de asientos, cancelacion por
+  el tenant, suspension/reactivacion administrativa (impago). Cada operacion
+  publica el evento correspondiente para que Auth actualice los limites.
+- **API**: `GET /plans` (publico, para la landing), `GET /subscriptions/me`,
+  `change-plan`, `seats`, `cancel`, y `suspend`/`reactivate` (PlatformAdmin).
+- La factoria de eventos (`SubscriptionEventFactory`) es el unico punto donde se
+  calculan los limites efectivos (plan + asientos extra), evitando duplicacion.
+
+## 26.4 Microservicio Notification (nuevo)
+
+Ruta: `src/Services/Notification`. Cierra el circuito: los eventos que Auth ya
+publicaba ahora se entregan al usuario final.
+
+- **Consumers**: invitaciones (empleados, admins y portal cliente), recuperacion
+  de contrasena, OTP (login MFA y verificacion de telefono), cambio de email y
+  alertas de seguridad. Todos hacen `correlation.Push()` del `CorrelationId` del
+  evento, de modo que una invitacion se traza de punta a punta
+  (Customer/Tenant -> Auth -> Notification) con el mismo id en Loki/Tempo.
+- **Plantillas** de correo en espanol (`EmailTemplates`), HTML con enlaces
+  construidos desde `Portal:BaseUrl` y codificacion HTML de los valores de
+  usuario para evitar inyeccion.
+- **Envio SMTP** con `System.Net.Mail` (sustituible por MailKit/SendGrid detras
+  de `IEmailSender`). Sin `Smtp:Host` configurado opera en modo desarrollo:
+  registra el envio en el log sin exponer tokens.
+- **SMS** provisional (`LoggingSmsSender`, enmascara el numero) hasta integrar un
+  proveedor tipo Twilio/SNS.
+- **Historial** `NotificationLogs` por tenant (nunca persiste el cuerpo, que
+  contiene tokens), consultable en `GET /notifications`.
+
+## 26.5 Correcciones en Customer
+
+Se audito el microservicio Customer y se corrigieron fugas de aislamiento
+multi-tenant (riesgo de acceso a PII de otros tenants):
+
+- **Fuga en `GET /customers/{id}`**: `GetCustomerByIdQuery` no llevaba `TenantId`
+  y el read service no filtraba; ahora recibe y filtra por el tenant del
+  solicitante.
+- **Fuga en `GET /customers` (search)**: `SearchCustomersQuery` y
+  `CustomerReadService.SearchAsync` no filtraban por tenant; devolvian clientes de
+  toda la plataforma. Corregido con filtro obligatorio `Where(c => c.TenantId ==
+  tenantId)`.
+- **Validacion de tenant** anadida en los comandos `Update`, `Archive`,
+  `AddAddress`, `AddContactPoint` y `AddRelation` (antes cargaban el customer sin
+  comparar `TenantId`).
+- Registrado `TenantResolutionMiddleware` en el pipeline de Customer, consistente
+  con el resto de la plataforma.
+- Corregido el consumer `CustomerPortalInvitationRequestedConsumer`: ya no
+  registra el token de invitacion en claro en los logs; ahora publica
+  `InvitationCreatedIntegrationEvent` para que Notification envie el correo.
+
+## 26.6 Cambios en Gateway y BuildingBlocks
+
+- Gateway: rutas YARP nuevas para `/plans`, `/subscriptions` y `/notifications`;
+  politica CORS explicita (`Cors:Origins`) y cabeceras de seguridad
+  (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, HSTS).
+- BuildingBlocks/Messaging: nuevos contratos de eventos en
+  `AuthIntegrationEvents/` (7 eventos) y `SubscriptionIntegrationEvents/`
+  (4 eventos).
+- `ErrorHttpMapping` ampliado con los nuevos codigos de error (429 para lockout y
+  throttle, 409 para limites de plan, etc.).
+- `JwtAuthenticationRegistration` con validacion dual HS256/RS256.
+
+## 26.7 Cambios de contrato (breaking changes)
+
+Al integrar el frontend o actualizar la coleccion Postman, tener en cuenta:
+
+1. **`POST /auth/login`** ya no devuelve `{accessToken, refreshToken}` planos.
+   Ahora devuelve un objeto con `mfaRequired`, `mfaSetupRequired`, `tokens`
+   (`tokens.accessToken`, `tokens.refreshToken`, `tokens.expiresInSeconds`),
+   `loginTicket` y `mfaMethods`.
+2. **`POST /auth/refresh`** devuelve `{accessToken, refreshToken,
+   expiresInSeconds, deviceToken}` sin envoltura.
+3. **`POST /auth/invitations`** ya no devuelve el token en claro salvo que
+   `Invitations:ReturnRawToken=true` (solo desarrollo). En produccion el token
+   viaja por el evento hacia Notification.
+4. Los refresh tokens emitidos antes de la migracion de Auth quedan invalidos (no
+   tienen `SessionId`): los usuarios existentes deben re-loguear una vez.
+
+## 26.8 Bases de datos, migraciones y despliegue
+
+- Cada microservicio mantiene su propia base: `TaxVision_Auth`,
+  `TaxVision_Tenants`, `TaxVision_Customers`, `TaxVision_Subscriptions`,
+  `TaxVision_Notifications`.
+- Se anadio un `IDesignTimeDbContextFactory` por servicio para que `dotnet ef`
+  pueda crear/aplicar migraciones sin levantar el host (JWT/RabbitMQ), tomando la
+  cadena de `--connection` o de `ConnectionStrings__Default`.
+- El paquete `Microsoft.EntityFrameworkCore.Design` incluye ahora el asset
+  `compile` en los proyectos Infrastructure (necesario para que el tipo
+  `IDesignTimeDbContextFactory` sea visible en compilacion).
+- Migraciones de esta iteracion:
+  - Auth: `AddSecurityRbacMfaSessionsAndPlanLimits` (sesiones, MFA, RBAC con seed
+    de permisos, credenciales, auditoria, limites, campos nuevos en `Users`).
+  - Subscription: `InitialSubscription` (incluye seed de los 3 planes).
+  - Notification: `InitialNotification`.
+- Docker Compose: se anadieron los servicios `customer-api`, `subscription-api` y
+  `notification-api`, con sus variables (`*_DB_CONNECTION`, `Portal__BaseUrl`,
+  `Smtp__*`) en el `.env`. Se incluye el wrapper
+  `deploy/docker/compose.ps1` que fuerza siempre el `.env` de la raiz.
+
+### 26.8.1 Comandos de puesta en marcha
+
+```powershell
+# 1. Compilar
+dotnet build TaxVision.slnx
+
+# 2. Migraciones (una por servicio; ejemplo Auth)
+dotnet ef database update `
+  --project src/Services/Auth/Infrastructure/TaxVision.Auth.Infrastructure.csproj `
+  --startup-project src/Services/Auth/Api/TaxVision.Auth.Api.csproj `
+  --connection "Server=localhost,1433;Database=TaxVision_Auth;User Id=sa;Password=<clave>;TrustServerCertificate=True"
+# (repetir para TaxVision_Tenants, TaxVision_Customers, TaxVision_Subscriptions, TaxVision_Notifications)
+
+# 3. Levantar el stack
+.\deploy\docker\compose.ps1 up -d --build
+.\deploy\docker\compose.ps1 ps
+```
+
+## 26.9 Prueba de humo end-to-end
+
+```powershell
+# 1. Crear tenant (dispara suscripcion trial + invitacion + limites)
+$tenant = Invoke-RestMethod -Method Post -Uri http://localhost:5047/tenants -ContentType application/json -Body (@{
+  name = "Oficina Demo"; subdomain = "demo1"; adminEmail = "admin@demo.com"; defaultTimeZoneId = "America/New_York"
+} | ConvertTo-Json)
+
+# 2. Aceptar invitacion y login
+Invoke-RestMethod -Method Post -Uri http://localhost:5047/auth/invitations/accept -ContentType application/json -Body (@{
+  invitationToken = $tenant.adminActivationToken; name = "Admin"; lastName = "Demo"; password = "MiClaveSegura2026!"
+} | ConvertTo-Json)
+$login = Invoke-RestMethod -Method Post -Uri http://localhost:5047/auth/login -ContentType application/json -Body (@{
+  tenantId = $tenant.id; email = "admin@demo.com"; password = "MiClaveSegura2026!"
+} | ConvertTo-Json)
+$headers = @{ Authorization = "Bearer $($login.tokens.accessToken)" }
+
+# 3. Identidad, plan y limites (los 3 servicios juntos)
+Invoke-RestMethod http://localhost:5047/auth/me -Headers $headers
+Invoke-RestMethod http://localhost:5047/subscriptions/me -Headers $headers
+Invoke-RestMethod http://localhost:5047/auth/tenants/limits -Headers $headers
+```
+
+## 26.10 Documentacion del codigo
+
+Todo el codigo nuevo de esta iteracion incluye comentarios XML (`/// <summary>`)
+en espanol a nivel de clase, interfaz, record y en los metodos publicos cuyo
+proposito no es evidente por el nombre. Las entidades de dominio documentan sus
+invariantes y factories; los handlers, su responsabilidad y efectos (eventos
+publicados, revocaciones); los servicios de seguridad, sus garantias
+criptograficas.
+
+## 26.11 Trabajo pendiente (siguiente iteracion)
+
+- Pruebas automatizadas (xUnit): dominio (lockout, rotacion/reuse, TOTP, limites
+  de plan) e integracion de endpoints con Testcontainers. Es la deuda de mayor
+  prioridad.
+- Microservicio Billing (facturas, pagos, metodos de pago), que ya puede
+  engancharse a los contratos de Subscription.
+- Actualizar la coleccion Postman al nuevo formato de login.
+- Refactor SOLID del `RunCustomerImportHandler` (**hecho en ms-customer** — commit `775ec64` con
+  metodos privados que separan el codigo por responsabilidades).
+- Activar RS256/JWKS en produccion (generar par de claves y distribuir la publica).
+- Restaurar filtro por `TenantId` en `CustomerReadService.SearchAsync` y `GetByIdAsync`
+  (**hecho en ms-customer** — commit `2a84ff3` con el tenant filter re-aplicado por seguridad
+  multi-tenant).

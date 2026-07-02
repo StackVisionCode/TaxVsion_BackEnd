@@ -1,13 +1,20 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Users;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.Customers.IntegrationEvents;
 
+/// <summary>
+/// El servicio Customer solicita invitar a un cliente al portal. Auth crea la
+/// invitación CustomerPortal y publica InvitationCreated para que Notification
+/// envíe el email. El token nunca se registra en logs.
+/// </summary>
 public static class CustomerPortalInvitationRequestedConsumer
 {
     private static readonly TimeSpan InvitationValidity = TimeSpan.FromDays(7);
@@ -19,6 +26,7 @@ public static class CustomerPortalInvitationRequestedConsumer
         IInvitationRepository invitations,
         IInvitationTokenService tokenService,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<CustomerPortalInvitationRequestedIntegrationEvent> logger,
         CancellationToken ct
@@ -90,18 +98,31 @@ public static class CustomerPortalInvitationRequestedConsumer
                 throw new InvalidOperationException(invitationResult.Error.Message);
             }
 
+            invitationResult.Value.MarkSent();
             await invitations.AddAsync(invitationResult.Value, ct);
+
+            // 5) Notification entrega el email con el enlace de activación.
+            //    El token viaja solo por el bus interno (outbox durable).
+            await bus.PublishAsync(new InvitationCreatedIntegrationEvent
+            {
+                TenantId = evt.TenantId,
+                InvitationId = invitationResult.Value.Id,
+                Email = normalizedEmail,
+                ActorType = UserActorType.CustomerPortal.ToString(),
+                RawToken = token.RawToken,
+                ExpiresAtUtc = expiresAtUtc,
+                TenantName = tenant.Name,
+                InviterName = evt.DisplayName,
+                CorrelationId = correlationId
+            });
+
             await unitOfWork.SaveChangesAsync(ct);
 
-            // 5) TEMP DEV ONLY: loguear el token plain hasta que exista Email Service.
-            // En producción Auth publicará CustomerPortalInvitationCreatedV1 con el token raw
-            // para que Email Service lo consuma y envíe el correo.
             logger.LogInformation(
-                "[DEV] Portal invitation created for customer {CustomerId} in tenant {TenantId}. "
-                    + "Token (use to activate): {Token}",
+                "Portal invitation {InvitationId} created for customer {CustomerId} in tenant {TenantId}.",
+                invitationResult.Value.Id,
                 evt.CustomerId,
-                evt.TenantId,
-                token.RawToken
+                evt.TenantId
             );
         }
     }

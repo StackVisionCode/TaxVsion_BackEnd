@@ -12,6 +12,15 @@ using TaxVision.Gateway.Middleware;
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("gateway");
 builder.Services.AddBuildingBlocks();
+
+// CORS explícito para la SPA (orígenes en Cors:Origins).
+var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
+builder.Services.AddCors(options => options.AddPolicy("spa", policy => policy
+    .WithOrigins(corsOrigins)
+    .AllowAnyHeader()
+    .AllowAnyMethod()
+    .AllowCredentials()));
+
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionGatewayRateLimiting();
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "gateway");
@@ -57,6 +66,22 @@ var app = builder.Build();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+// Headers de seguridad para todas las respuestas.
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    if (!app.Environment.IsDevelopment())
+    {
+        context.Response.Headers["Strict-Transport-Security"] =
+            "max-age=63072000; includeSubDomains";
+    }
+    await next();
+});
+
+app.UseCors("spa");
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();

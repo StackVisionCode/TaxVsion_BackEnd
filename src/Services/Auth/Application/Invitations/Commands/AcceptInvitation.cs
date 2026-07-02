@@ -1,10 +1,14 @@
+using System.Text.Json;
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using BuildingBlocks.Common;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Application.Users.IntegrationEvents;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Invitations;
+using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -25,6 +29,9 @@ public static class AcceptInvitationHandler
         IUserRepository users,
         ITenantRegistry tenants,
         IPasswordHasher passwordHasher,
+        IRoleRepository roles,
+        IAuthAuditWriter audit,
+        IRequestContext request,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -67,11 +74,9 @@ public static class AcceptInvitationHandler
                 new Error("Tenant.Inactive", "Tenant does not exist or is inactive."));
         }
 
-        if (string.IsNullOrWhiteSpace(command.Password) || command.Password.Length < 12)
-        {
-            return Result.Failure<UserResponse>(
-                new Error("User.Password", "Password must contain at least 12 characters."));
-        }
+        var passwordResult = PasswordPolicy.Validate(command.Password, invitation.Email);
+        if (passwordResult.IsFailure)
+            return Result.Failure<UserResponse>(passwordResult.Error);
 
         if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, ct))
         {
@@ -90,24 +95,74 @@ public static class AcceptInvitationHandler
         if (userResult.IsFailure)
             return Result.Failure<UserResponse>(userResult.Error);
 
-        var acceptResult = invitation.Accept(userResult.Value.Id, now);
+        var user = userResult.Value;
+
+        // El token llegó al buzón del invitado: el email queda verificado.
+        user.VerifyEmail();
+
+        var acceptResult = invitation.Accept(user.Id, now);
         if (acceptResult.IsFailure)
             return Result.Failure<UserResponse>(acceptResult.Error);
 
-        await users.AddAsync(userResult.Value, ct);
+        await users.AddAsync(user, ct);
+
+        // Roles RBAC: los indicados en la invitación o el rol de sistema del actor.
+        var roleIds = ResolveInvitationRoleIds(invitation);
+        if (roleIds.Count == 0)
+        {
+            var systemRoleName = invitation.ActorType switch
+            {
+                UserActorType.TenantAdmin => Role.SystemTenantAdmin,
+                UserActorType.TenantEmployee => Role.SystemEmployee,
+                UserActorType.CustomerPortal => Role.SystemCustomerPortal,
+                _ => null
+            };
+            if (systemRoleName is not null)
+            {
+                var systemRole = await roles.GetSystemRoleAsync(
+                    invitation.TenantId, systemRoleName, ct);
+                if (systemRole is not null)
+                    roleIds = [systemRole.Id];
+            }
+        }
+
+        if (roleIds.Count > 0)
+            await roles.ReplaceUserRolesAsync(user.Id, roleIds, invitation.InvitedByUserId, ct);
+
+        await audit.AddAsync(
+            AuthAuditLog.Record(
+                invitation.TenantId, user.Id, AuthAuditAction.InvitationAccepted, true,
+                request.IpAddress, request.UserAgent, correlation.CorrelationId,
+                targetType: "Invitation", targetId: invitation.Id),
+            ct);
         await unitOfWork.SaveChangesAsync(ct);
 
         await bus.PublishAsync(new UserRegisteredIntegrationEvent
         {
-            UserId = userResult.Value.Id,
-            TenantId = userResult.Value.TenantId,
-            Email = userResult.Value.Email,
-            ActorType = userResult.Value.ActorType.ToString(),
-            CustomerId = userResult.Value.CustomerId,
+            UserId = user.Id,
+            TenantId = user.TenantId,
+            Email = user.Email,
+            ActorType = user.ActorType.ToString(),
+            CustomerId = user.CustomerId,
             CorrelationId = correlation.CorrelationId
         });
 
-        return Result.Success(ToResponse(userResult.Value));
+        return Result.Success(ToResponse(user));
+    }
+
+    private static List<Guid> ResolveInvitationRoleIds(Invitation invitation)
+    {
+        if (string.IsNullOrWhiteSpace(invitation.RoleIdsJson))
+            return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<Guid>>(invitation.RoleIdsJson) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private static UserResponse ToResponse(User user) =>

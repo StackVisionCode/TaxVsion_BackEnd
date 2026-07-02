@@ -21,6 +21,16 @@ public static class RateLimitingRegistration
                     var isSensitiveAuthEndpoint =
                         path.Equals("/auth/login", StringComparison.OrdinalIgnoreCase) ||
                         path.Equals("/auth/refresh", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals("/auth/mfa/verify", StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals(
+                            "/auth/password/forgot",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals(
+                            "/auth/password/reset",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals(
+                            "/auth/me/email/confirm",
+                            StringComparison.OrdinalIgnoreCase) ||
                         path.Equals(
                             "/auth/invitations/accept",
                             StringComparison.OrdinalIgnoreCase) ||

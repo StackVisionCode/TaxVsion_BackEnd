@@ -1,6 +1,8 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Invitations.Commands;
@@ -15,6 +17,9 @@ public static class CancelInvitationHandler
         CancelInvitationCommand command,
         IInvitationRepository invitations,
         IUserRepository users,
+        IAuthAuditWriter audit,
+        IRequestContext request,
+        ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         CancellationToken ct)
     {
@@ -42,6 +47,12 @@ public static class CancelInvitationHandler
         if (result.IsFailure)
             return result;
 
+        await audit.AddAsync(
+            AuthAuditLog.Record(
+                invitation.TenantId, actor.Id, AuthAuditAction.InvitationCancelled, true,
+                request.IpAddress, request.UserAgent, correlation.CorrelationId,
+                targetType: "Invitation", targetId: invitation.Id),
+            ct);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
