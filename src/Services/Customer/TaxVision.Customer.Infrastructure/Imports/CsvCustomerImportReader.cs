@@ -93,9 +93,14 @@ internal sealed class CsvCustomerImportReader : ICustomerImportReader
             var value = csv.GetField(name);
             return string.IsNullOrWhiteSpace(value) ? null : value;
         }
-        catch
+        catch (CsvHelper.MissingFieldException)
         {
             // Columna no presente en el header
+            return null;
+        }
+        catch (ReaderException)
+        {
+            // Errores de lookup del campo dentro de CsvHelper
             return null;
         }
     }

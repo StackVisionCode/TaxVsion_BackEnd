@@ -5,6 +5,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
 using Wolverine;
+using CustomerEntity = TaxVision.Customer.Domain.Customers.Customer;
 
 namespace TaxVision.Customer.Application.Customers.Commands.BulkChangeStatus;
 
@@ -21,91 +22,123 @@ public static class BulkChangeStatusHandler
         CancellationToken ct
     )
     {
-        if (cmd.CustomerIds.Count == 0)
-            return Result.Failure<BulkStatusActionResponse>(
-                new Error("Bulk.Empty", "At least one customerId is required.")
-            );
-        if (cmd.CustomerIds.Count > MaxItemsPerCall)
-            return Result.Failure<BulkStatusActionResponse>(
-                new Error("Bulk.TooMany", $"Bulk operations support max {MaxItemsPerCall} items per call.")
-            );
+        var validation = ValidateInput(cmd);
+        if (validation.IsFailure)
+            return Result.Failure<BulkStatusActionResponse>(validation.Error);
 
+        var uniqueIds = cmd.CustomerIds.Distinct().ToList();
+
+        // 1 sola query BD para los N customers (evita N+1)
+        var customers = await repository.GetByIdsAsync(cmd.TenantId, uniqueIds, ct);
+        var customerById = customers.ToDictionary(c => c.Id);
+
+        // Estrategias resueltas UNA vez fuera del loop
+        var applyAction = ResolveActionRunner(cmd.Action);
+        var makeEvent = ResolveEventFactory(cmd.Action, cmd.TenantId, cmd.ModifiedByUserId, correlation.CorrelationId);
+
+        var succeededIds = new List<Guid>(uniqueIds.Count);
         var failures = new List<BulkFailedItem>();
-        var succeededIds = new List<Guid>();
-        var nowUtc = DateTime.UtcNow;
 
-        foreach (var customerId in cmd.CustomerIds.Distinct())
+        foreach (var id in uniqueIds)
         {
-            var customer = await repository.GetByIdAsync(customerId, ct);
-            if (customer is null || customer.TenantId != cmd.TenantId)
+            if (!customerById.TryGetValue(id, out var customer))
             {
-                failures.Add(new BulkFailedItem(customerId, "Customer.NotFound", "Customer not found."));
+                failures.Add(new BulkFailedItem(id, "Customer.NotFound", "Customer not found."));
                 continue;
             }
 
-            var result = cmd.Action switch
-            {
-                BulkStatusAction.Archive => customer.Archive(cmd.ModifiedByUserId),
-                BulkStatusAction.Reactivate => customer.Reactivate(cmd.ModifiedByUserId),
-                BulkStatusAction.Activate => customer.Activate(cmd.ModifiedByUserId),
-                BulkStatusAction.Deactivate => customer.Deactivate(cmd.ModifiedByUserId),
-                _ => Result.Failure(new Error("Bulk.UnknownAction", $"Unknown action {cmd.Action}.")),
-            };
-
+            var result = applyAction(customer, cmd.ModifiedByUserId);
             if (result.IsFailure)
             {
-                failures.Add(new BulkFailedItem(customerId, result.Error.Code, result.Error.Message));
+                failures.Add(new BulkFailedItem(id, result.Error.Code, result.Error.Message));
                 continue;
             }
 
-            succeededIds.Add(customerId);
+            succeededIds.Add(id);
         }
 
         await unitOfWork.SaveChangesAsync(ct);
 
         foreach (var id in succeededIds)
-        {
-            IntegrationEvent? evt = cmd.Action switch
-            {
-                BulkStatusAction.Archive => new CustomerArchivedIntegrationEvent
-                {
-                    TenantId = cmd.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    CustomerId = id,
-                    ArchivedByUserId = cmd.ModifiedByUserId,
-                },
-                BulkStatusAction.Reactivate => new CustomerReactivatedIntegrationEvent
-                {
-                    TenantId = cmd.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    CustomerId = id,
-                    ReactivatedByUserId = cmd.ModifiedByUserId,
-                    ReactivatedAtUtc = nowUtc,
-                },
-                BulkStatusAction.Activate => new CustomerActivatedIntegrationEvent
-                {
-                    TenantId = cmd.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    CustomerId = id,
-                    ActivatedByUserId = cmd.ModifiedByUserId,
-                    ActivatedAtUtc = nowUtc,
-                },
-                BulkStatusAction.Deactivate => new CustomerDeactivatedIntegrationEvent
-                {
-                    TenantId = cmd.TenantId,
-                    CorrelationId = correlation.CorrelationId,
-                    CustomerId = id,
-                    DeactivatedByUserId = cmd.ModifiedByUserId,
-                    DeactivatedAtUtc = nowUtc,
-                },
-                _ => null,
-            };
-            if (evt is not null)
-                await bus.PublishAsync(evt);
-        }
+            await bus.PublishAsync(makeEvent(id));
 
         return Result.Success(
-            new BulkStatusActionResponse(cmd.CustomerIds.Count, succeededIds.Count, failures.Count, failures)
+            new BulkStatusActionResponse(uniqueIds.Count, succeededIds.Count, failures.Count, failures)
         );
+    }
+
+    private static Result ValidateInput(BulkChangeStatusCommand cmd)
+    {
+        if (cmd.CustomerIds.Count == 0)
+            return Result.Failure(new Error("Bulk.Empty", "At least one customerId is required."));
+        if (cmd.CustomerIds.Count > MaxItemsPerCall)
+            return Result.Failure(
+                new Error("Bulk.TooMany", $"Bulk operations support max {MaxItemsPerCall} items per call.")
+            );
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Strategy: mapea el enum BulkStatusAction al metodo correspondiente del aggregate Customer.
+    /// Delegado devuelto se invoca N veces sin re-evaluar el switch.
+    /// </summary>
+    private static Func<CustomerEntity, Guid, Result> ResolveActionRunner(BulkStatusAction action) =>
+        action switch
+        {
+            BulkStatusAction.Archive => (c, u) => c.Archive(u),
+            BulkStatusAction.Reactivate => (c, u) => c.Reactivate(u),
+            BulkStatusAction.Activate => (c, u) => c.Activate(u),
+            BulkStatusAction.Deactivate => (c, u) => c.Deactivate(u),
+            _ => (_, _) => Result.Failure(new Error("Bulk.UnknownAction", $"Unknown action {action}.")),
+        };
+
+    /// <summary>
+    /// Strategy: mapea el enum BulkStatusAction al factory de su evento de integracion.
+    /// Captura las variables del contexto (tenant, user, correlation, timestamp) una sola vez.
+    /// </summary>
+    private static Func<Guid, IntegrationEvent> ResolveEventFactory(
+        BulkStatusAction action,
+        Guid tenantId,
+        Guid userId,
+        string correlationId
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+
+        return action switch
+        {
+            BulkStatusAction.Archive => id => new CustomerArchivedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CorrelationId = correlationId,
+                CustomerId = id,
+                ArchivedByUserId = userId,
+            },
+            BulkStatusAction.Reactivate => id => new CustomerReactivatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CorrelationId = correlationId,
+                CustomerId = id,
+                ReactivatedByUserId = userId,
+                ReactivatedAtUtc = nowUtc,
+            },
+            BulkStatusAction.Activate => id => new CustomerActivatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CorrelationId = correlationId,
+                CustomerId = id,
+                ActivatedByUserId = userId,
+                ActivatedAtUtc = nowUtc,
+            },
+            BulkStatusAction.Deactivate => id => new CustomerDeactivatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CorrelationId = correlationId,
+                CustomerId = id,
+                DeactivatedByUserId = userId,
+                DeactivatedAtUtc = nowUtc,
+            },
+            _ => throw new InvalidOperationException($"Unknown action {action}"),
+        };
     }
 }
