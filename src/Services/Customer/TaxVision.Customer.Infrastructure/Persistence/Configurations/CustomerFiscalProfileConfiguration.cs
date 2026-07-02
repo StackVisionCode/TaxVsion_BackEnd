@@ -25,6 +25,11 @@ public sealed class CustomerFiscalProfileConfiguration : IEntityTypeConfiguratio
         b.Property(fp => fp.UpdatedByUserId).IsRequired();
 
         b.HasIndex(fp => fp.CustomerId).IsUnique();
-        b.HasIndex(fp => new { fp.TenantId, fp.TaxIdentifierBlindIndex });
+
+        // Un mismo SSN/EIN no puede aparecer en dos customers del mismo tenant.
+        // El blind index es HMAC-tenant, asi que la unicidad se computa sin exponer texto claro.
+        b.HasIndex(fp => new { fp.TenantId, fp.TaxIdentifierBlindIndex })
+            .IsUnique()
+            .HasDatabaseName("UX_CustomerFiscalProfiles_Tenant_BlindIndex");
     }
 }

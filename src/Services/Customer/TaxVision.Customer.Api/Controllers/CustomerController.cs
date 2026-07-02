@@ -154,7 +154,18 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
             body.OccupationId,
             body.ProfilePictureFileId,
             body.PrimaryEmail,
-            body.PrimaryPhone
+            body.PrimaryPhone,
+            body.FirstName,
+            body.MiddleName,
+            body.LastName,
+            body.Prefix,
+            body.Suffix,
+            body.DateOfBirth,
+            body.LegalName,
+            body.Dba,
+            body.BusinessStructure,
+            body.FormationDate,
+            body.PrincipalBusinessActivityId
         );
 
         var result = await bus.InvokeAsync<Result<CustomerResponse>>(cmd, ct);

@@ -210,9 +210,60 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Sms\",\r\n  \"occupationId\": null,\r\n  \"profilePictureFileId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550102\"\r\n}",
+                  "raw": "{\r\n  \"language\": \"Es\",\r\n  \"preferredChannel\": \"Sms\",\r\n  \"occupationId\": null,\r\n  \"profilePictureFileId\": null,\r\n  \"primaryEmail\": \"maria.perez@example.com\",\r\n  \"primaryPhone\": \"+18095550102\",\r\n  \"firstName\": null,\r\n  \"middleName\": null,\r\n  \"lastName\": null,\r\n  \"prefix\": null,\r\n  \"suffix\": null,\r\n  \"dateOfBirth\": null,\r\n  \"legalName\": null,\r\n  \"dba\": null,\r\n  \"businessStructure\": null,\r\n  \"formationDate\": null,\r\n  \"principalBusinessActivityId\": null\r\n}",
                   "options": { "raw": { "language": "json" } }
                 },
+                "description": "PATCH parcial. Todos los campos son opcionales; solo se actualiza lo que viene con valor.\n\nCampos base (siempre validos): language, preferredChannel, occupationId, profilePictureFileId, primaryEmail, primaryPhone.\n\nCampos de identidad Individual (solo si Kind=Individual): firstName, middleName, lastName, prefix, suffix, dateOfBirth. El aggregate rechaza con Customer.NotIndividual si se usan en un Business.\n\nCampos de identidad Business (solo si Kind=Business): legalName, dba, businessStructure, formationDate, principalBusinessActivityId. El aggregate rechaza con Customer.NotBusiness si se usan en un Individual.\n\nMerge inteligente: si solo mandas lastName, el resto de PersonalName (firstName/middleName/etc.) conserva su valor actual.\n\nDisplayName se recalcula automaticamente cuando cambia el nombre. Publica CustomerUpdatedIntegrationEvent con el nuevo DisplayName.",
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateCustomer_IndividualName",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"language\": \"En\",\r\n  \"preferredChannel\": \"Email\",\r\n  \"primaryEmail\": \"maria.new@example.com\",\r\n  \"lastName\": \"Garcia-Lopez\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "description": "Ejemplo: individual corrige apellido (ej. casamiento). Solo cambian los campos que trae; el resto de PersonalName se conserva.",
+                "url": {
+                  "raw": "{{UrlBase}}/customers/{{customerId}}",
+                  "host": [ "{{UrlBase}}" ],
+                  "path": [ "customers", "{{customerId}}" ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "UpdateCustomer_BusinessStructure",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+                },
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content", "value": "application/json", "type": "text" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"language\": \"En\",\r\n  \"preferredChannel\": \"Email\",\r\n  \"primaryEmail\": \"contact@acme.com\",\r\n  \"businessStructure\": \"SCorp\"\r\n}",
+                  "options": { "raw": { "language": "json" } }
+                },
+                "description": "Ejemplo: business cambia de LLC a SCorp. Solo se actualiza businessStructure; el resto de BusinessIdentity se conserva.",
                 "url": {
                   "raw": "{{UrlBase}}/customers/{{customerId}}",
                   "host": [ "{{UrlBase}}" ],

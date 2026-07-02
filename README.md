@@ -1342,6 +1342,10 @@ Base `TaxVision_Customer`. Migraciones aplicadas en orden:
 - `CustomerImports`: agrega las 3 tablas del flujo de bulk import.
 - `CustomerImportActiveJobUniqueIndex`: indice filtrado unique para garantizar
   un solo job activo por tenant a nivel BD.
+- `UniqueFiscalProfileBlindIndex`: convierte los indices
+  `(TenantId, TaxIdentifierBlindIndex)` de fiscal profiles (customer y relation)
+  en unique. Garantiza a nivel BD que un mismo SSN/EIN no puede aparecer en dos
+  customers o dos relaciones del mismo tenant.
 
 Tablas de dominio core:
 
@@ -1365,8 +1369,11 @@ Indices clave:
 - `(TenantId, Status, DisplayName)` para listados;
 - `(TenantId, OccupationId)`;
 - `IX_Customers_PrimaryEmailNormalized` para busqueda por email;
-- `(TenantId, TaxIdentifierBlindIndex)` en fiscal profiles para deduplicar SSN
-  sin almacenar texto claro;
+- `UX_CustomerFiscalProfiles_Tenant_BlindIndex` unique sobre
+  `(TenantId, TaxIdentifierBlindIndex)` en `CustomerFiscalProfiles`; imposibilita
+  dos customers del mismo tenant con el mismo SSN/EIN a nivel BD (ver sec 25.17);
+- `UX_CustomerRelationFiscalProfiles_Tenant_BlindIndex` mismo enforce para
+  spouses y dependientes;
 - indices filtrados unique en addresses y contact points primarios por tipo;
 - `UX_CustomerImportAttempts_Tenant_Active` filtrado unique sobre `TenantId`
   donde `Status` esta en estados activos, para enforce de un solo job activo
@@ -1840,3 +1847,129 @@ async de bulk import (seccion 25.10) que ya esta diseñado para eso.
 - 3 eventos nuevos: Reactivated, Activated, Deactivated;
 - 1 wrapper `PagedResult<T>` en BuildingBlocks;
 - 0 migraciones de BD (todo es codigo).
+
+### 25.17 Unicidad del identificador fiscal (SSN/EIN)
+
+Regla de negocio: en el mismo tenant, un SSN/ITIN/EIN no puede pertenecer a dos
+customers ni a dos relaciones. Deriva del PDF sec 5 ("el mismo SSN cifrado debe
+detectarse mediante un blind index") y del compliance IRS Pub 4557.
+
+Enforce con tres lineas de defensa complementarias:
+
+#### 25.17.1 Nivel base de datos
+
+Migracion `UniqueFiscalProfileBlindIndex` crea dos indices unique:
+
+- `UX_CustomerFiscalProfiles_Tenant_BlindIndex` en
+  `(TenantId, TaxIdentifierBlindIndex)` de `CustomerFiscalProfiles`;
+- `UX_CustomerRelationFiscalProfiles_Tenant_BlindIndex` en
+  `(TenantId, TaxIdentifierBlindIndex)` de `CustomerRelationFiscalProfiles`.
+
+Es la barrera fisica: incluso con race conditions o codigo bugueado, la BD
+rechaza el INSERT/UPDATE con `SqlException 2601/2627` que el DbContext
+convierte a `ConflictException`.
+
+#### 25.17.2 Nivel aplicacion (pre-check)
+
+`SetCustomerFiscalProfileHandler` y `SetRelationFiscalProfileHandler` invocan
+al repositorio antes del `SaveChanges`:
+
+- `ICustomerRepository.FindCustomerIdByFiscalBlindIndexAsync(tenantId,
+  blindIndex, excludeCustomerId, ct)`
+- `ICustomerRepository.FindRelationIdByFiscalBlindIndexAsync(tenantId,
+  blindIndex, excludeRelationId, ct)`
+
+Si existe otro registro con el mismo blind index en el tenant, devuelve
+`FiscalProfile.TaxIdentifierAlreadyExists` (o
+`RelationFiscalProfile.TaxIdentifierAlreadyExists`) como error de dominio 409.
+El usuario recibe un mensaje limpio en lugar de la excepcion SQL.
+
+El parametro `excludeCustomerId`/`excludeRelationId` evita falsos positivos
+cuando se actualiza el mismo profile (update permite pasar por el mismo blind
+index del propio registro).
+
+#### 25.17.3 Nivel bulk import
+
+`SqlServerCustomerDuplicateDetector` sigue usando el blind index para dedup
+batch en el flujo de import; los HashSets del worker cubren dedup intra-chunk.
+Nada cambia en ese flujo: ya operaba correctamente antes del enforce estructural.
+
+#### 25.17.4 Como se computa el blind index
+
+Sin cambios respecto a implementaciones previas:
+
+- Normalizar el identificador (solo digitos, 9 caracteres para SSN/EIN).
+- `ISensitiveDataProtector.ComputeBlindIndex(normalized, tenantId)` produce
+  HMAC-SHA256 con clave derivada por tenant via HKDF sobre `Encryption:MasterKey`.
+- El resultado es determinista por tenant: mismo SSN en dos tenants distintos
+  produce blind indexes distintos.
+- El SSN en texto claro nunca se guarda ni se compara directamente.
+
+### 25.18 Identidad editable del customer
+
+El endpoint PATCH `/customers/{id}` acepta ahora todos los campos de identidad
+para casos operativos comunes (correccion de tipeo, cambio de apellido post
+matrimonio, cambio de estructura empresarial). Antes solo permitia editar
+preferencias y contacto; ahora tambien nombre, DOB e identidad de negocio.
+
+#### 25.18.1 Metodos nuevos del aggregate
+
+- `Customer.ChangePersonalName(PersonalName newName, Guid byUserId)` solo
+  aplica a `Kind == Individual`; recalcula `DisplayName`.
+- `Customer.ChangeBusinessIdentity(BusinessIdentity newIdentity, Guid byUserId)`
+  solo aplica a `Kind == Business`; recalcula `DisplayName`.
+- `Customer.ChangeDateOfBirth(DateOnly? dob, Guid byUserId)` aplica a
+  cualquier `Kind`.
+
+El aggregate rechaza combinaciones invalidas: `ChangePersonalName` sobre un
+Business devuelve `Customer.NotIndividual`; `ChangeBusinessIdentity` sobre un
+Individual devuelve `Customer.NotBusiness`.
+
+#### 25.18.2 Body del PATCH
+
+Todos los campos son opcionales (patron PATCH puro). El handler solo aplica lo
+que viene con valor.
+
+| Grupo | Campos |
+| --- | --- |
+| Preferencias y contacto | `language`, `preferredChannel`, `occupationId`, `profilePictureFileId`, `primaryEmail`, `primaryPhone` |
+| Identidad Individual | `firstName`, `middleName`, `lastName`, `prefix`, `suffix`, `dateOfBirth` |
+| Identidad Business | `legalName`, `dba`, `businessStructure`, `formationDate`, `principalBusinessActivityId` |
+
+Merge inteligente: si solo mandas `lastName`, el resto del nombre conserva su
+valor actual del aggregate. Aplica igual para business identity.
+
+#### 25.18.3 Efecto en downstream
+
+- `DisplayName` recalcula automaticamente cuando cambia el nombre o el
+  `legalName`; el evento `CustomerUpdatedIntegrationEvent` publica el nuevo
+  `DisplayName` para que proyecciones (Auth, Campaign, futuros) se actualicen.
+- Los eventos `CustomerEmailChangedV1` y `CustomerPhoneChangedV1` mencionados
+  en el PDF siguen sin implementarse: cuando existan consumers, se detectan
+  cambios en el handler antes de publicar.
+
+#### 25.18.4 Ejemplos
+
+Individual corrige apellido despues de casarse:
+
+```json
+PATCH /customers/{id}
+{
+  "language": "En",
+  "preferredChannel": "Email",
+  "primaryEmail": "maria.new@example.com",
+  "lastName": "Garcia-Lopez"
+}
+```
+
+Business cambia de LLC a SCorp:
+
+```json
+PATCH /customers/{id}
+{
+  "language": "En",
+  "preferredChannel": "Email",
+  "primaryEmail": "contact@acme.com",
+  "businessStructure": "SCorp"
+}
+```

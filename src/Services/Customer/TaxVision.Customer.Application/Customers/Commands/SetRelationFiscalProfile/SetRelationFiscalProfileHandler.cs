@@ -28,34 +28,31 @@ public static class SetRelationFiscalProfileHandler
                 new Error("Relation.NotFound", "Relation not found within the customer.")
             );
 
-        // Solo relaciones fiscalmente relevantes pueden tener fiscal profile
-        var taxRelevant =
-            relation.Purposes.HasFlag(RelationPurpose.Dependent)
-            || relation.Purposes.HasFlag(RelationPurpose.TaxHouseholdMember)
-            || relation.RelationshipKind == RelationshipKind.Spouse;
-        if (!taxRelevant)
-            return Result.Failure<RelationFiscalProfileResponse>(
-                new Error(
-                    "Relation.NotFiscal",
-                    "Only spouse, dependent or tax-household relations can have a fiscal profile."
-                )
-            );
+        var relevanceCheck = EnsureTaxRelevantRelation(relation);
+        if (relevanceCheck.IsFailure)
+            return Result.Failure<RelationFiscalProfileResponse>(relevanceCheck.Error);
 
-        var normalizedIdent = new string(cmd.TaxIdentifier.Where(char.IsDigit).ToArray());
-        if (normalizedIdent.Length != 9)
-            return Result.Failure<RelationFiscalProfileResponse>(
-                new Error("Relation.TaxId", "Tax identifier must be 9 digits.")
-            );
+        var taxIdValidation = ValidateAndNormalizeTaxIdentifier(cmd.TaxIdentifier);
+        if (taxIdValidation.IsFailure)
+            return Result.Failure<RelationFiscalProfileResponse>(taxIdValidation.Error);
 
-        var cipher = protector.Protect(normalizedIdent);
-        var blindIndex = protector.ComputeBlindIndex(normalizedIdent, cmd.TenantId);
-        var last4 = normalizedIdent[^4..];
+        var encryption = EncryptTaxIdentifier(taxIdValidation.Value, cmd.TenantId, protector);
+
+        var uniquenessCheck = await EnsureNoBlindIndexConflictAsync(
+            repository,
+            cmd.TenantId,
+            encryption.BlindIndex,
+            cmd.RelationId,
+            ct
+        );
+        if (uniquenessCheck.IsFailure)
+            return Result.Failure<RelationFiscalProfileResponse>(uniquenessCheck.Error);
 
         var setResult = relation.SetFiscalProfile(
             role: cmd.Role,
-            taxIdentifierCipher: cipher,
-            taxIdentifierBlindIndex: blindIndex,
-            taxIdentifierLast4: last4,
+            taxIdentifierCipher: encryption.Cipher,
+            taxIdentifierBlindIndex: encryption.BlindIndex,
+            taxIdentifierLast4: encryption.Last4,
             taxYear: cmd.TaxYear,
             qualifiesAsDependent: cmd.QualifiesAsDependent,
             livedWithTaxpayer: cmd.LivedWithTaxpayer,
@@ -66,7 +63,85 @@ public static class SetRelationFiscalProfileHandler
             return Result.Failure<RelationFiscalProfileResponse>(setResult.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
+        LogAudit(logger, cmd);
 
+        return Result.Success(MapResponse(relation, cmd.RelationId));
+    }
+
+    // ============== Reglas de negocio ==============
+
+    private static Result EnsureTaxRelevantRelation(CustomerRelation relation)
+    {
+        var taxRelevant =
+            relation.Purposes.HasFlag(RelationPurpose.Dependent)
+            || relation.Purposes.HasFlag(RelationPurpose.TaxHouseholdMember)
+            || relation.RelationshipKind == RelationshipKind.Spouse;
+        return taxRelevant
+            ? Result.Success()
+            : Result.Failure(
+                new Error(
+                    "Relation.NotFiscal",
+                    "Only spouse, dependent or tax-household relations can have a fiscal profile."
+                )
+            );
+    }
+
+    // ============== Validacion + normalizacion del tax identifier ==============
+
+    private static Result<string> ValidateAndNormalizeTaxIdentifier(string raw)
+    {
+        var normalized = new string(raw.Where(char.IsDigit).ToArray());
+        return normalized.Length != 9
+            ? Result.Failure<string>(new Error("Relation.TaxId", "Tax identifier must be 9 digits."))
+            : Result.Success(normalized);
+    }
+
+    // ============== Cifrado ==============
+
+    private sealed record EncryptedTaxIdentifier(byte[] Cipher, string BlindIndex, string Last4);
+
+    private static EncryptedTaxIdentifier EncryptTaxIdentifier(
+        string normalizedTaxId,
+        Guid tenantId,
+        ISensitiveDataProtector protector
+    ) =>
+        new(
+            protector.Protect(normalizedTaxId),
+            protector.ComputeBlindIndex(normalizedTaxId, tenantId),
+            normalizedTaxId[^4..]
+        );
+
+    // ============== Unicidad del blind index (dentro del tenant) ==============
+
+    private static async Task<Result> EnsureNoBlindIndexConflictAsync(
+        ICustomerRepository repository,
+        Guid tenantId,
+        string blindIndex,
+        Guid currentRelationId,
+        CancellationToken ct
+    )
+    {
+        var conflictingRelationId = await repository.FindRelationIdByFiscalBlindIndexAsync(
+            tenantId,
+            blindIndex,
+            excludeRelationId: currentRelationId,
+            ct
+        );
+
+        if (conflictingRelationId is not null)
+            return Result.Failure(
+                new Error(
+                    "RelationFiscalProfile.TaxIdentifierAlreadyExists",
+                    "Another relation in this tenant already has this tax identifier."
+                )
+            );
+
+        return Result.Success();
+    }
+
+    // ============== Audit log (sin PII) ==============
+
+    private static void LogAudit(ILogger logger, SetRelationFiscalProfileCommand cmd) =>
         logger.LogInformation(
             "Relation fiscal profile updated for relation {RelationId} (customer {CustomerId}) in tenant {TenantId} by user {UserId}",
             cmd.RelationId,
@@ -75,18 +150,20 @@ public static class SetRelationFiscalProfileHandler
             cmd.ModifiedByUserId
         );
 
+    // ============== Mapeo ==============
+
+    private static RelationFiscalProfileResponse MapResponse(CustomerRelation relation, Guid relationId)
+    {
         var fp = relation.FiscalProfile!;
-        return Result.Success(
-            new RelationFiscalProfileResponse(
-                CustomerRelationId: cmd.RelationId,
-                Role: fp.Role,
-                TaxIdentifierLast4: fp.TaxIdentifierLast4,
-                TaxYear: fp.TaxYear,
-                QualifiesAsDependent: fp.QualifiesAsDependent,
-                LivedWithTaxpayer: fp.LivedWithTaxpayer,
-                UpdatedAtUtc: fp.UpdatedAtUtc,
-                UpdatedByUserId: fp.UpdatedByUserId
-            )
+        return new RelationFiscalProfileResponse(
+            CustomerRelationId: relationId,
+            Role: fp.Role,
+            TaxIdentifierLast4: fp.TaxIdentifierLast4,
+            TaxYear: fp.TaxYear,
+            QualifiesAsDependent: fp.QualifiesAsDependent,
+            LivedWithTaxpayer: fp.LivedWithTaxpayer,
+            UpdatedAtUtc: fp.UpdatedAtUtc,
+            UpdatedByUserId: fp.UpdatedByUserId
         );
     }
 }
