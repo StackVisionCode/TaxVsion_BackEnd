@@ -3,7 +3,6 @@ using TaxVision.Customer.Domain.Relations;
 namespace TaxVision.Customer.Application.Customers.Commands.AddRelation;
 
 public sealed record AddRelationCommand(
-    Guid TenantId,
     Guid CustomerId,
     Guid ModifiedByUserId,
     RelationshipKind RelationshipKind,

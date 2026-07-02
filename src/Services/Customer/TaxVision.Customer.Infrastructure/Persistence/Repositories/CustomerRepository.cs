@@ -24,9 +24,41 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
         if (ids.Count == 0)
             return [];
 
-        // Sin Includes: las operaciones bulk (status) solo tocan campos raiz del aggregate.
-        // Cargar navegaciones seria trabajo perdido para 100 customers.
         return await db.Customers.Where(c => c.TenantId == tenantId && ids.Contains(c.Id)).ToListAsync(ct);
+    }
+
+    public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
+        Guid tenantId,
+        string blindIndex,
+        Guid? excludeCustomerId,
+        CancellationToken ct
+    )
+    {
+        var query = db
+            .CustomerFiscalProfiles.AsNoTracking()
+            .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex);
+
+        if (excludeCustomerId.HasValue)
+            query = query.Where(fp => fp.CustomerId != excludeCustomerId.Value);
+
+        return await query.Select(fp => (Guid?)fp.CustomerId).FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<Guid?> FindRelationIdByFiscalBlindIndexAsync(
+        Guid tenantId,
+        string blindIndex,
+        Guid? excludeRelationId,
+        CancellationToken ct
+    )
+    {
+        var query = db
+            .CustomerRelationFiscalProfiles.AsNoTracking()
+            .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex);
+
+        if (excludeRelationId.HasValue)
+            query = query.Where(fp => fp.CustomerRelationId != excludeRelationId.Value);
+
+        return await query.Select(fp => (Guid?)fp.CustomerRelationId).FirstOrDefaultAsync(ct);
     }
 
     public async Task AddAsync(DomainCustomer customer, CancellationToken ct = default)

@@ -15,7 +15,7 @@ public static class AddRelationHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null || customer.TenantId != cmd.TenantId)
+        if (customer is null)
             return Result.Failure<RelationResponse>(new Error("Customer.NotFound", "Customer not found."));
 
         var nameResult = PersonalName.Create(cmd.FirstName, cmd.LastName, cmd.MiddleName, cmd.Prefix, cmd.Suffix);
