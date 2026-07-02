@@ -9,7 +9,6 @@ using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Application.Imports.Helpers;
 using TaxVision.Customer.Domain.Addresses;
-using TaxVision.Customer.Domain.ContactPoints;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Imports;
 using TaxVision.Customer.Domain.Relations;
@@ -237,6 +236,11 @@ public static class RunCustomerImportHandler
                     failed
                 );
             }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            logger.LogInformation("Import {AttemptId} interrupted by host shutdown", attemptId);
+            throw;
         }
         catch (Exception ex)
         {

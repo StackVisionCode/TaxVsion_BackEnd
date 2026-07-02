@@ -47,26 +47,7 @@ public static class StartCustomerImportHandler
                 )
             );
 
-        // ---- File size guard: max bytes desde config (default 10MB) ----
-        var maxBytes = config.GetValue<int?>("CustomerImport:MaxFileBytes") ?? 10 * 1024 * 1024;
-        if (cmd.FileBytes.Length == 0)
-            return Result.Failure<CustomerImportAttemptResponse>(
-                new Error("Import.EmptyFile", "Uploaded file is empty.")
-            );
-        if (cmd.FileBytes.Length > maxBytes)
-            return Result.Failure<CustomerImportAttemptResponse>(
-                new Error("Import.FileTooLarge", $"File exceeds maximum allowed size of {maxBytes} bytes.")
-            );
-
-        // ---- Crear aggregate ----
-        var attemptResult = CustomerImportAttempt.Create(
-            tenantId: cmd.TenantId,
-            createdByUserId: cmd.CreatedByUserId,
-            idempotencyKey: cmd.IdempotencyKey,
-            strategy: cmd.Strategy,
-            sourceKind: cmd.SourceKind,
-            sourceFileName: cmd.SourceFileName
-        );
+        var attemptResult = MaxByFileCustomerImport(cmd, config);
 
         if (attemptResult.IsFailure)
             return Result.Failure<CustomerImportAttemptResponse>(attemptResult.Error);
@@ -146,4 +127,33 @@ public static class StartCustomerImportHandler
             a.CanceledByUserId,
             a.FailureReason
         );
+
+    private static Result<CustomerImportAttempt> MaxByFileCustomerImport(
+        StartCustomerImportCommand cmd,
+        IConfiguration config
+    )
+    {
+        var maxBytes = config.GetValue<int?>("CustomerImport:MaxFileBytes") ?? 10 * 1024 * 1024;
+        if (cmd.FileBytes.Length == 0)
+            return Result.Failure<CustomerImportAttempt>(new Error("Import.EmptyFile", "Uploaded file is empty."));
+        if (cmd.FileBytes.Length > maxBytes)
+            return Result.Failure<CustomerImportAttempt>(
+                new Error("Import.FileTooLarge", $"File exceeds maximum allowed size of {maxBytes} bytes.")
+            );
+
+        // ---- Crear aggregate ----
+        var attemptResult = CustomerImportAttempt.Create(
+            tenantId: cmd.TenantId,
+            createdByUserId: cmd.CreatedByUserId,
+            idempotencyKey: cmd.IdempotencyKey,
+            strategy: cmd.Strategy,
+            sourceKind: cmd.SourceKind,
+            sourceFileName: cmd.SourceFileName
+        );
+
+        if (attemptResult.IsFailure)
+            return Result.Failure<CustomerImportAttempt>(attemptResult.Error);
+
+        return attemptResult;
+    }
 }
