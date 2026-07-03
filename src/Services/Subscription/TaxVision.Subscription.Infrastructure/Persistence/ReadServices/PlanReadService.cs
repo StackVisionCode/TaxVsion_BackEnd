@@ -1,3 +1,4 @@
+using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Plans.Dtos;
@@ -52,7 +53,7 @@ public sealed class PlanReadService(SubscriptionDbContext db) : IPlanReadService
         }).OrderBy(p => p.Name).ToList();
     }
 
-    public async Task<PlanDto> GetByIdWithDetailsAsync(Guid planId, CancellationToken ct = default)
+    public async Task<Result<PlanDto>> GetByIdWithDetailsAsync(Guid planId, CancellationToken ct = default)
     {
         var flatRows = await (
             from p in db.Plans.AsNoTracking()
@@ -74,10 +75,10 @@ public sealed class PlanReadService(SubscriptionDbContext db) : IPlanReadService
             }).ToListAsync(ct);
 
         if (flatRows.Count == 0)
-            throw new InvalidOperationException($"Plan {planId} not found.");
+            return Result.Failure<PlanDto>(new Error("Plan.NotFound", $"Plan {planId} not found."));
 
         var first = flatRows.First();
-        return new PlanDto
+        return Result.Success(new PlanDto
         {
             Id                   = first.Id,
             Name                 = first.Name,
@@ -94,6 +95,6 @@ public sealed class PlanReadService(SubscriptionDbContext db) : IPlanReadService
             Features   = flatRows.Where(r => r.FeatureCode != null).Select(r => r.FeatureCode!).Distinct().ToList(),
             ModuleIds  = flatRows.Where(r => r.ModuleId.HasValue).Select(r => r.ModuleId!.Value).Distinct().ToList(),
             ModuleNames = flatRows.Where(r => r.ModuleName != null).Select(r => r.ModuleName!).Distinct().ToList()
-        };
+        });
     }
 }

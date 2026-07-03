@@ -1,10 +1,9 @@
-using TaxVision.Subscription.Domain.Plans;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Subscriptions.Commands;
 using TaxVision.Subscription.Application.Subscriptions.Dtos;
-using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
@@ -18,118 +17,114 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         Guid.Parse(User.FindFirst("tenant_id")?.Value
             ?? throw new InvalidOperationException("tenant_id claim is missing."));
 
-    public sealed record AddSeatRequest(int Quantity);
-    public sealed record CancelSubscriptionRequest(string? Reason);
-    public sealed record ChangePlanRequestBody(Guid? NewPlanId, BillingPeriod? NewBillingPeriod, string? GiftCardCode);
-
-    // ─── EXISTING SEAT/CANCEL ENDPOINTS ───────────────────────────────────────
-
-    /// <summary>Buy additional seats. Returns SeatId in PendingPayment state.</summary>
-    [HttpPost("current/seats")]
-    [Authorize(Roles = "TenantAdmin")]
-    public async Task<IActionResult> AddSeat([FromBody] AddSeatRequest req, CancellationToken ct)
+    [HttpPost]
+    [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType<CreateSubscriptionResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Create(
+        [FromBody] CreateSubscriptionCommand command,
+        CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<AddSeatResponse>>(
-            new AddSeatCommand(CurrentTenantId, req.Quantity), ct);
+        var result = await bus.InvokeAsync<Result<CreateSubscriptionResponse>>(command, ct);
 
         return result.IsSuccess
-            ? Accepted(new
-            {
-                result.Value.SeatId,
-                result.Value.Status,
-                result.Value.Quantity,
-                result.Value.TotalAmount,
-                result.Value.Currency,
-                result.Value.BillingAnchorDay,
-                result.Value.PeriodEndUtc
-            })
-            : UnprocessableEntity(new { result.Error.Code, result.Error.Message });
+            ? Created($"/subscriptions/{result.Value.SubscriptionId}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Cancel the subscription at the end of the current period.</summary>
+    [HttpPost("current/seats")]
+    [Authorize(Roles = "TenantAdmin")]
+    [ProducesResponseType<AddSeatResponse>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddSeat(
+        [FromBody] AddSeatRequest request,
+        CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<AddSeatResponse>>(
+            new AddSeatCommand(CurrentTenantId, request.Quantity), ct);
+
+        return result.IsSuccess
+            ? Accepted(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("current/cancel")]
     [Authorize(Roles = "TenantAdmin")]
-    public async Task<IActionResult> Cancel([FromBody] CancelSubscriptionRequest req, CancellationToken ct)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Cancel(CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(
             new CancelAtPeriodEndCommand(CurrentTenantId), ct);
 
         return result.IsSuccess
-            ? Ok(new { message = "Subscription will be cancelled at the end of the current period." })
-            : UnprocessableEntity(new { result.Error.Code, result.Error.Message });
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    // ─── NEW SUBSCRIPTION MANAGEMENT ENDPOINTS ────────────────────────────────
-
-    /// <summary>Create a subscription for a tenant (Developer only).</summary>
-    [HttpPost]
-    [Authorize(Roles = "PlatformAdmin")]
-    public async Task<IActionResult> Create([FromBody] CreateSubscriptionRequest req, CancellationToken ct)
-    {
-        var cmd = new CreateSubscriptionCommand(
-            TenantId: req.TenantId,
-            ServiceLevel: req.ServiceLevel,
-            BillingPeriod: req.BillingPeriod,
-            IsActive: req.IsActive,
-            StartDate: req.StartDate);
-
-        var result = await bus.InvokeAsync<CreateSubscriptionResponse>(cmd, ct);
-        return Ok(result);
-    }
-
-    /// <summary>Renew the current tenant's subscription (Developer or system).</summary>
     [HttpPost("current/renew")]
     [Authorize(Roles = "PlatformAdmin,TenantAdmin")]
-    public async Task<IActionResult> Renew(Guid subscriptionId, CancellationToken ct)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Renew([FromQuery] Guid subscriptionId, CancellationToken ct)
     {
-        await bus.InvokeAsync<bool>(new RenewSubscriptionCommand(subscriptionId, false), ct);
-        return Ok(new { message = "Subscription renewed successfully." });
+        var result = await bus.InvokeAsync<Result>(
+            new RenewSubscriptionCommand(subscriptionId, false), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Initiate a plan change (upgrade/downgrade/billing period). Returns payment link info.</summary>
     [HttpPost("{subscriptionId:guid}/change-plan")]
     [Authorize(Roles = "TenantAdmin")]
+    [ProducesResponseType<ChangePlanResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ChangePlan(
         Guid subscriptionId,
-        [FromBody] ChangePlanRequestBody req,
+        [FromBody] ChangePlanRequest request,
         CancellationToken ct)
     {
-        var cmd = new ChangePlanCommand(
-            SubscriptionId: subscriptionId,
-            NewPlanId: req.NewPlanId,
-            NewBillingPeriod: req.NewBillingPeriod);
+        var result = await bus.InvokeAsync<Result<ChangePlanResponse>>(
+            new ChangePlanCommand(subscriptionId, request.NewPlanId, request.NewBillingPeriod), ct);
 
-        var result = await bus.InvokeAsync<ChangePlanResponse>(cmd, ct);
-        return Ok(result);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Apply a pending plan change after payment confirmation (Developer/system only).</summary>
     [HttpPost("pending-changes/{pendingChangeId:guid}/apply")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ApplyPendingChange(Guid pendingChangeId, CancellationToken ct)
     {
-        await bus.InvokeAsync<bool>(new ApplyPendingChangeCommand(pendingChangeId), ct);
-        return Ok(new { message = "Pending plan change applied successfully." });
+        var result = await bus.InvokeAsync<Result>(
+            new ApplyPendingChangeCommand(pendingChangeId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Update the subscription price (Developer only).</summary>
     [HttpPatch("{subscriptionId:guid}/price")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdatePrice(
         Guid subscriptionId,
-        [FromBody] UpdatePriceRequest req,
+        [FromBody] UpdatePriceRequest request,
         CancellationToken ct)
     {
-        await bus.InvokeAsync<bool>(new UpdateSubscriptionPriceCommand(subscriptionId, req.NewPrice), ct);
-        return Ok(new { message = "Price updated successfully." });
+        var result = await bus.InvokeAsync<Result>(
+            new UpdateSubscriptionPriceCommand(subscriptionId, request.NewPrice), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
-
-    public sealed record CreateSubscriptionRequest(
-        Guid TenantId,
-        ServiceLevel ServiceLevel,
-        BillingPeriod BillingPeriod,
-        bool IsActive = true,
-        DateTime? StartDate = null);
-
-    public sealed record UpdatePriceRequest(decimal NewPrice);
 }

@@ -73,4 +73,14 @@ public static class TenantCreatedConsumer
             },
             subscription.PeriodEndUtc);
 
-        await bus.PublishAsync(new TenantEntitlements
+        await bus.PublishAsync(new TenantEntitlementsChangedIntegrationEvent
+        {
+            TenantId = subscription.TenantId,
+            SubscriptionId = subscription.Id,
+            TotalAvailableSeats = subscription.TotalAvailableSeats,
+            CorrelationId = correlation.CorrelationId
+        });
+
+        await uow.SaveChangesAsync(ct);
+    }
+}

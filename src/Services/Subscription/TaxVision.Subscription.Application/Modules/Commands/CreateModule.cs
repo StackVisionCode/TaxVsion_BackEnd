@@ -1,4 +1,5 @@
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Modules.Dtos;
@@ -6,11 +7,11 @@ using TaxVision.Subscription.Domain.Modules;
 
 namespace TaxVision.Subscription.Application.Modules.Commands;
 
-public record CreateModuleCommand(string Name, string Description, string? Url, bool IsActive);
+public sealed record CreateModuleCommand(string Name, string Description, string? Url, bool IsActive);
 
 public static class CreateModuleHandler
 {
-    public static async Task<ModuleDto> Handle(
+    public static async Task<Result<ModuleDto>> Handle(
         CreateModuleCommand cmd,
         IModuleRepository repo,
         IModuleReadService readService,
@@ -19,14 +20,19 @@ public static class CreateModuleHandler
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(cmd.Name))
-            throw new ArgumentException("Name is required.");
+            return Result.Failure<ModuleDto>(new Error("Module.NameRequired", "Name is required."));
+
         if (string.IsNullOrWhiteSpace(cmd.Description))
-            throw new ArgumentException("Description is required.");
+            return Result.Failure<ModuleDto>(new Error("Module.DescriptionRequired", "Description is required."));
 
         if (await repo.ExistsWithNameAsync(cmd.Name, null, ct))
-            throw new InvalidOperationException($"Module name '{cmd.Name}' already exists.");
+            return Result.Failure<ModuleDto>(new Error("Module.NameConflict", $"Module name '{cmd.Name}' already exists."));
 
-        var module = Module.Create(cmd.Name, cmd.Description, cmd.Url, cmd.IsActive);
+        var createResult = Module.Create(cmd.Name, cmd.Description, cmd.Url, cmd.IsActive);
+        if (createResult.IsFailure)
+            return Result.Failure<ModuleDto>(createResult.Error);
+
+        var module = createResult.Value;
         await repo.AddAsync(module, ct);
         await uow.SaveChangesAsync(ct);
 

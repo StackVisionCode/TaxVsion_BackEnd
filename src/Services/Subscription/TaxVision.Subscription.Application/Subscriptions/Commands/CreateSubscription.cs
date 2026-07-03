@@ -1,4 +1,5 @@
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Domain.Plans;
@@ -7,12 +8,12 @@ using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Application.Subscriptions.Commands;
 
-public record CreateSubscriptionCommand(
+public sealed record CreateSubscriptionCommand(
     Guid TenantId,
     ServiceLevel ServiceLevel,
     BillingPeriod BillingPeriod,
-    bool IsActive,
-    DateTime? StartDate);
+    bool IsActive = true,
+    DateTime? StartDate = null);
 
 public sealed record CreateSubscriptionResponse(
     Guid SubscriptionId,
@@ -24,7 +25,7 @@ public sealed record CreateSubscriptionResponse(
 
 public static class CreateSubscriptionHandler
 {
-    public static async Task<CreateSubscriptionResponse> Handle(
+    public static async Task<Result<CreateSubscriptionResponse>> Handle(
         CreateSubscriptionCommand cmd,
         ISubscriptionRepository subscriptionRepo,
         IPlanRepository planRepo,
@@ -34,10 +35,13 @@ public static class CreateSubscriptionHandler
         CancellationToken ct)
     {
         if (await subscriptionRepo.ExistsForTenantAsync(cmd.TenantId, ct))
-            throw new InvalidOperationException($"Tenant {cmd.TenantId} already has a subscription.");
+            return Result.Failure<CreateSubscriptionResponse>(
+                new Error("Subscription.AlreadyExists", $"Tenant {cmd.TenantId} already has a subscription."));
 
-        var plan = await planRepo.GetByServiceLevelAsync(cmd.ServiceLevel, ct)
-            ?? throw new InvalidOperationException($"No active plan found for ServiceLevel {cmd.ServiceLevel}.");
+        var plan = await planRepo.GetByServiceLevelAsync(cmd.ServiceLevel, ct);
+        if (plan is null)
+            return Result.Failure<CreateSubscriptionResponse>(
+                new Error("Plan.NotFound", $"No active plan found for ServiceLevel {cmd.ServiceLevel}."));
 
         var start = cmd.StartDate?.ToUniversalTime() ?? DateTime.UtcNow;
         var periodPrice = plan.GetPriceForPeriod(cmd.BillingPeriod);
@@ -45,7 +49,7 @@ public static class CreateSubscriptionHandler
             ? start.AddYears(1)
             : start.AddMonths(1);
 
-        var subResult = Domain.Subscriptions.Subscription.Activate(
+        var subResult = Subscription.Activate(
             tenantId: cmd.TenantId,
             enrollmentId: Guid.NewGuid(),
             planId: plan.Id,
@@ -59,7 +63,7 @@ public static class CreateSubscriptionHandler
             autoRenew: true);
 
         if (subResult.IsFailure)
-            throw new InvalidOperationException(subResult.Error.Message);
+            return Result.Failure<CreateSubscriptionResponse>(subResult.Error);
 
         var subscription = subResult.Value;
         await subscriptionRepo.AddAsync(subscription, ct);
@@ -71,16 +75,14 @@ public static class CreateSubscriptionHandler
         }
 
         await uow.SaveChangesAsync(ct);
+        logger.LogInformation("Subscription created: {SubId} for Tenant {TenantId}", subscription.Id, cmd.TenantId);
 
-        logger.LogInformation("Subscription created: {SubId} for Tenant {TenantId} with Plan {PlanCode}",
-            subscription.Id, cmd.TenantId, plan.Code);
-
-        return new CreateSubscriptionResponse(
+        return Result.Success(new CreateSubscriptionResponse(
             SubscriptionId: subscription.Id,
             TenantId: cmd.TenantId,
             Price: periodPrice,
             BillingPeriod: cmd.BillingPeriod,
             StartDate: start,
-            RenewDate: renewDate);
+            RenewDate: renewDate));
     }
 }

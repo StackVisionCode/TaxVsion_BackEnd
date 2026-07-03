@@ -1,10 +1,11 @@
+using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Modules.Dtos;
 
 namespace TaxVision.Subscription.Application.Modules.Queries;
 
-public record GetAllModulesQuery(bool? IsActive = null, Guid? PlanId = null);
-public record GetModuleByIdQuery(Guid ModuleId);
+public sealed record GetAllModulesQuery(bool? IsActive = null, Guid? PlanId = null);
+public sealed record GetModuleByIdQuery(Guid ModuleId);
 
 public static class GetAllModulesHandler
 {
@@ -17,7 +18,7 @@ public static class GetAllModulesHandler
 
 public static class GetModuleByIdHandler
 {
-    public static Task<ModuleDto> Handle(
+    public static Task<Result<ModuleDto>> Handle(
         GetModuleByIdQuery query,
         IModuleReadService readService,
         CancellationToken ct)

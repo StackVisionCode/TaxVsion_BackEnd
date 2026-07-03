@@ -82,8 +82,19 @@ public sealed class Plan : BaseEntity
         return Result.Success();
     }
 
-    public void Activate() { IsActive = true; UpdatedAtUtc = DateTime.UtcNow; }
-    public void Deactivate() { IsActive = false; UpdatedAtUtc = DateTime.UtcNow; }
+    public Result Activate()
+    {
+        IsActive = true;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    public Result Deactivate()
+    {
+        IsActive = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
 
     /// <summary>
     /// El dueño actualiza precios. El cambio aplica en la PRÓXIMA renovación de cada suscriptor.

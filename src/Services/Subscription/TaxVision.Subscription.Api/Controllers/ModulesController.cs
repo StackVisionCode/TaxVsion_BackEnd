@@ -1,8 +1,10 @@
+using BuildingBlocks.Results;
+using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Modules.Commands;
-using TaxVision.Subscription.Application.Modules.Queries;
 using TaxVision.Subscription.Application.Modules.Dtos;
+using TaxVision.Subscription.Application.Modules.Queries;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
@@ -11,61 +13,91 @@ namespace TaxVision.Subscription.Api.Controllers;
 [Route("api/modules")]
 public sealed class ModulesController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>Get all modules, optionally filtered by active status or plan. PUBLIC.</summary>
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> GetAll([FromQuery] bool? isActive, [FromQuery] Guid? planId, CancellationToken ct)
+    [ProducesResponseType<List<ModuleDto>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] bool? isActive,
+        [FromQuery] Guid? planId,
+        CancellationToken ct)
     {
         var result = await bus.InvokeAsync<List<ModuleDto>>(new GetAllModulesQuery(isActive, planId), ct);
         return Ok(result);
     }
 
-    /// <summary>Get a single module by ID.</summary>
     [HttpGet("{id:guid}")]
+    [Authorize]
+    [ProducesResponseType<ModuleDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<ModuleDto>(new GetModuleByIdQuery(id), ct);
-        return Ok(result);
+        var result = await bus.InvokeAsync<Result<ModuleDto>>(new GetModuleByIdQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Create a new module (Developer only).</summary>
     [HttpPost]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType<ModuleDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] CreateModuleRequest request, CancellationToken ct)
     {
-        var cmd = new CreateModuleCommand(request.Name, request.Description, request.Url, request.IsActive);
-        var result = await bus.InvokeAsync<ModuleDto>(cmd, ct);
-        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+        var result = await bus.InvokeAsync<Result<ModuleDto>>(
+            new CreateModuleCommand(request.Name, request.Description, request.Url, request.IsActive), ct);
+
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(GetById), new { id = result.Value.Id }, result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Update a module (Developer only).</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType<ModuleDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateModuleRequest request, CancellationToken ct)
     {
-        if (id != request.Id) return BadRequest("Route ID does not match body ID.");
-        var cmd = new UpdateModuleCommand(request.Id, request.Name, request.Description, request.Url, request.IsActive);
-        var result = await bus.InvokeAsync<ModuleDto>(cmd, ct);
-        return Ok(result);
+        if (id != request.Id)
+            return BadRequest(new Error("Module.IdMismatch", "Route ID does not match body ID."));
+
+        var result = await bus.InvokeAsync<Result<ModuleDto>>(
+            new UpdateModuleCommand(request.Id, request.Name, request.Description, request.Url, request.IsActive), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Delete a module (Developer only). Soft-deletes if in use.</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        await bus.InvokeAsync<bool>(new DeleteModuleCommand(id), ct);
-        return NoContent();
+        var result = await bus.InvokeAsync<Result>(new DeleteModuleCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Toggle module active status (Developer only).</summary>
     [HttpPatch("{id:guid}/status")]
     [Authorize(Roles = "PlatformAdmin")]
-    public async Task<IActionResult> ToggleStatus(Guid id, [FromBody] ToggleStatusRequest request, CancellationToken ct)
+    [ProducesResponseType<ModuleDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ToggleStatus(
+        Guid id,
+        [FromBody] ToggleModuleStatusRequest request,
+        CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<ModuleDto>(new ToggleModuleStatusCommand(id, request.IsActive), ct);
-        return Ok(result);
-    }
+        var result = await bus.InvokeAsync<Result<ModuleDto>>(
+            new ToggleModuleStatusCommand(id, request.IsActive), ct);
 
-    public sealed record ToggleStatusRequest(bool IsActive);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }

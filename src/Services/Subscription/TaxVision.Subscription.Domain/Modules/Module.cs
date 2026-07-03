@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using BuildingBlocks.Results;
 
 namespace TaxVision.Subscription.Domain.Modules;
 
@@ -17,27 +18,54 @@ public sealed class Module : BaseEntity
 
     private Module() { }
 
-    public static Module Create(string name, string description, string? url = null, bool isActive = true)
+    public static Result<Module> Create(string name, string description, string? url = null, bool isActive = true)
     {
-        return new Module
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Failure<Module>(new Error("Module.NameRequired", "Name is required."));
+
+        if (string.IsNullOrWhiteSpace(description))
+            return Result.Failure<Module>(new Error("Module.DescriptionRequired", "Description is required."));
+
+        return Result.Success(new Module
         {
             Id = Guid.NewGuid(),
             Name = name.Trim(),
             Description = description.Trim(),
             Url = url?.Trim(),
             IsActive = isActive
-        };
+        });
     }
 
-    public void Update(string name, string description, string? url, bool isActive)
+    public Result Update(string name, string description, string? url, bool isActive)
     {
+        if (string.IsNullOrWhiteSpace(name))
+            return Result.Failure(new Error("Module.NameRequired", "Name is required."));
+
+        if (string.IsNullOrWhiteSpace(description))
+            return Result.Failure(new Error("Module.DescriptionRequired", "Description is required."));
+
         Name = name.Trim();
         Description = description.Trim();
         Url = url?.Trim();
         IsActive = isActive;
+        return Result.Success();
     }
 
-    public void Activate() => IsActive = true;
-    public void Deactivate() => IsActive = false;
-    public void SoftDelete() => IsActive = false;
+    public Result Activate()
+    {
+        IsActive = true;
+        return Result.Success();
+    }
+
+    public Result Deactivate()
+    {
+        IsActive = false;
+        return Result.Success();
+    }
+
+    public Result SoftDelete()
+    {
+        IsActive = false;
+        return Result.Success();
+    }
 }

@@ -240,6 +240,41 @@ public sealed class Subscription : TenantEntity
     }
 
     // ═════════════════════════════════════════════════════════════════════════
+    // PLAN CHANGE
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Applies an approved pending plan or billing-period change.
+    /// Called by ApplyPendingChangeHandler after payment confirmation.
+    /// No proration — effective immediately from this point forward.
+    /// </summary>
+    public Result ApplyPlanChange(
+        Guid newPlanId,
+        string newPlanCode,
+        string newPlanName,
+        int newIncludedSeats,
+        BillingPeriod? newBillingPeriod,
+        Money? newBasePrice)
+    {
+        PlanId = newPlanId;
+        PlanCode = newPlanCode;
+        PlanName = newPlanName;
+        IncludedSeats = newIncludedSeats;
+        if (newBillingPeriod.HasValue)
+            BillingPeriod = newBillingPeriod.Value;
+        if (newBasePrice is not null)
+            CurrentBasePrice = newBasePrice;
+
+        // Clear pending change shadow fields
+        PendingPlanId = null;
+        PendingPlanCode = null;
+        PendingPlanName = null;
+        PendingIncludedSeats = null;
+
+        return Result.Success();
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
     // SEAT MANAGEMENT
     // ═════════════════════════════════════════════════════════════════════════
 
@@ -271,4 +306,59 @@ public sealed class Subscription : TenantEntity
     public Result CancelPendingSeat(Guid seatId)
     {
         var seat = _seats.FirstOrDefault(s => s.Id == seatId);
-     
+        if (seat is null)
+            return Result.Failure(new Error("Subscription.SeatNotFound", "Seat not found."));
+        seat.Cancel();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Renews a seat after successful payment.
+    /// If the seat was marked CancelAtPeriodEnd, cancels it instead of renewing.
+    /// </summary>
+    public Result RenewSeat(Guid seatId, Guid invoiceId, DateTime newPeriodEnd, Money newPricePerSeat)
+    {
+        var seat = _seats.FirstOrDefault(s => s.Id == seatId);
+        if (seat is null)
+            return Result.Failure(new Error("Subscription.SeatNotFound", "Seat not found."));
+
+        if (seat.Status == SeatStatus.CancelAtPeriodEnd)
+        {
+            seat.Cancel();
+            return Result.Success();
+        }
+
+        seat.Renew(invoiceId, newPeriodEnd, newPricePerSeat);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Marks a seat PastDue when its renewal payment fails.
+    /// </summary>
+    public Result MarkSeatPastDue(Guid seatId)
+    {
+        var seat = _seats.FirstOrDefault(s => s.Id == seatId);
+        if (seat is null)
+            return Result.Failure(new Error("Subscription.SeatNotFound", "Seat not found."));
+        seat.MarkPastDue();
+        return Result.Success();
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // HELPERS
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Calculates the next billing period end date anchored to a specific day of the month.
+    /// AnchorDay is always capped to 28 to avoid end-of-month ambiguities.
+    /// Used by seats and the subscription itself.
+    /// </summary>
+    public static DateTime CalculateNextPeriodEnd(DateTime from, BillingPeriod period, int anchorDay)
+    {
+        var months = period == BillingPeriod.Annual ? 12 : 1;
+        var next = from.AddMonths(months);
+        var daysInMonth = DateTime.DaysInMonth(next.Year, next.Month);
+        var day = Math.Min(anchorDay, daysInMonth);
+        return new DateTime(next.Year, next.Month, day, 0, 0, 0, DateTimeKind.Utc);
+    }
+}

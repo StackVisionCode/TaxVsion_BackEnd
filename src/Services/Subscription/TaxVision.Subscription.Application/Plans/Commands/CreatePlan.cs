@@ -1,4 +1,5 @@
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Plans.Dtos;
@@ -6,7 +7,7 @@ using TaxVision.Subscription.Domain.Plans;
 
 namespace TaxVision.Subscription.Application.Plans.Commands;
 
-public record CreatePlanCommand(
+public sealed record CreatePlanCommand(
     string Name,
     string Title,
     string Description,
@@ -21,7 +22,7 @@ public record CreatePlanCommand(
 
 public static class CreatePlanHandler
 {
-    public static async Task<PlanDto> Handle(
+    public static async Task<Result<PlanDto>> Handle(
         CreatePlanCommand cmd,
         IPlanRepository repo,
         IPlanReadService readService,
@@ -30,14 +31,16 @@ public static class CreatePlanHandler
         CancellationToken ct)
     {
         if (await repo.ExistsWithNameAsync(cmd.Name, ct))
-            throw new InvalidOperationException($"Plan name '{cmd.Name}' already exists.");
+            return Result.Failure<PlanDto>(new Error("Plan.NameConflict", $"Plan name '{cmd.Name}' already exists."));
 
         if (cmd.BasePriceMonthly < 0)
-            throw new ArgumentException("Monthly price cannot be negative.");
+            return Result.Failure<PlanDto>(new Error("Plan.InvalidPrice", "Monthly price cannot be negative."));
+
         if (cmd.BasePriceAnnual > 0 && cmd.BasePriceAnnual > cmd.BasePriceMonthly * 12)
-            throw new ArgumentException("Annual price cannot be greater than monthly price * 12.");
+            return Result.Failure<PlanDto>(new Error("Plan.InvalidPrice", "Annual price cannot exceed monthly * 12."));
+
         if (cmd.IncludedSeats < 0)
-            throw new ArgumentException("Included seats cannot be negative.");
+            return Result.Failure<PlanDto>(new Error("Plan.InvalidSeats", "Included seats cannot be negative."));
 
         var features = cmd.Features
             .Where(f => !string.IsNullOrWhiteSpace(f))
@@ -46,9 +49,9 @@ public static class CreatePlanHandler
             .ToList();
 
         if (features.Count == 0)
-            throw new ArgumentException("At least one feature is required.");
+            return Result.Failure<PlanDto>(new Error("Plan.NoFeatures", "At least one feature is required."));
 
-        var result = Plan.Create(
+        var createResult = Plan.Create(
             code: cmd.Name.ToLowerInvariant().Replace(" ", "-"),
             name: cmd.Name,
             description: cmd.Description,
@@ -61,10 +64,10 @@ public static class CreatePlanHandler
             title: cmd.Title,
             serviceLevel: cmd.ServiceLevel);
 
-        if (result.IsFailure)
-            throw new InvalidOperationException(result.Error.Message);
+        if (createResult.IsFailure)
+            return Result.Failure<PlanDto>(createResult.Error);
 
-        var plan = result.Value;
+        var plan = createResult.Value;
         await repo.AddAsync(plan, ct);
         await uow.SaveChangesAsync(ct);
 

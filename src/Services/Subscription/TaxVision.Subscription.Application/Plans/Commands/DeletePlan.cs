@@ -1,25 +1,26 @@
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 
 namespace TaxVision.Subscription.Application.Plans.Commands;
 
-public record DeletePlanCommand(Guid PlanId);
+public sealed record DeletePlanCommand(Guid PlanId);
 
 public static class DeletePlanHandler
 {
-    public static async Task<bool> Handle(
+    public static async Task<Result> Handle(
         DeletePlanCommand cmd,
         IPlanRepository repo,
         IUnitOfWork uow,
         ILogger<DeletePlanCommand> logger,
         CancellationToken ct)
     {
-        var plan = await repo.GetByIdAsync(cmd.PlanId, ct)
-            ?? throw new InvalidOperationException($"Plan {cmd.PlanId} not found.");
+        var plan = await repo.GetByIdAsync(cmd.PlanId, ct);
+        if (plan is null)
+            return Result.Failure(new Error("Plan.NotFound", $"Plan {cmd.PlanId} not found."));
 
         var activeSubsCount = await repo.CountSubscriptionsAsync(cmd.PlanId, ct);
-
         if (activeSubsCount > 0)
         {
             plan.Deactivate();
@@ -32,6 +33,6 @@ public static class DeletePlanHandler
         }
 
         await uow.SaveChangesAsync(ct);
-        return true;
+        return Result.Success();
     }
 }

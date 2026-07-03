@@ -1,10 +1,11 @@
+using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Plans.Dtos;
 
 namespace TaxVision.Subscription.Application.Plans.Queries;
 
-public record GetAllPlansQuery(bool? IsActive = null);
-public record GetPlanByIdQuery(Guid PlanId);
+public sealed record GetAllPlansQuery(bool? IsActive = null);
+public sealed record GetPlanByIdQuery(Guid PlanId);
 
 public static class GetAllPlansHandler
 {
@@ -17,7 +18,7 @@ public static class GetAllPlansHandler
 
 public static class GetPlanByIdHandler
 {
-    public static Task<PlanDto> Handle(
+    public static Task<Result<PlanDto>> Handle(
         GetPlanByIdQuery query,
         IPlanReadService readService,
         CancellationToken ct)

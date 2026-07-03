@@ -1,11 +1,12 @@
+using BuildingBlocks.Results;
+using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Subscription.Application.Plans.Commands;
-using TaxVision.Subscription.Application.Plans.Queries;
 using TaxVision.Subscription.Application.Modules.Commands;
-using TaxVision.Subscription.Application.Plans.Dtos;
 using TaxVision.Subscription.Application.Modules.Dtos;
-using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Application.Plans.Commands;
+using TaxVision.Subscription.Application.Plans.Dtos;
+using TaxVision.Subscription.Application.Plans.Queries;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
@@ -14,108 +15,135 @@ namespace TaxVision.Subscription.Api.Controllers;
 [Route("api/plans")]
 public sealed class PlansController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>Get all plans, optionally filtered by active status. PUBLIC.</summary>
     [HttpGet]
     [AllowAnonymous]
+    [ProducesResponseType<List<PlanDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll([FromQuery] bool? isActive, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<List<PlanDto>>(new GetAllPlansQuery(isActive), ct);
         return Ok(result);
     }
 
-    /// <summary>Get a single plan by ID. PUBLIC.</summary>
     [HttpGet("{id:guid}")]
     [AllowAnonymous]
+    [ProducesResponseType<PlanDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<PlanDto>(new GetPlanByIdQuery(id), ct);
-        return Ok(result);
+        var result = await bus.InvokeAsync<Result<PlanDto>>(new GetPlanByIdQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Create a new plan (Developer only).</summary>
     [HttpPost]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType<PlanDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] CreatePlanRequest request, CancellationToken ct)
     {
-        var cmd = new CreatePlanCommand(
-            Name: request.Name,
-            Title: request.Title,
-            Description: request.Description,
-            BasePriceMonthly: request.BasePriceMonthly,
-            BasePriceAnnual: request.BasePriceAnnual,
+        var result = await bus.InvokeAsync<Result<PlanDto>>(new CreatePlanCommand(
+            Name:                   request.Name,
+            Title:                  request.Title,
+            Description:            request.Description,
+            BasePriceMonthly:       request.BasePriceMonthly,
+            BasePriceAnnual:        request.BasePriceAnnual,
             PricePerAdditionalSeat: request.PricePerAdditionalSeat,
-            IncludedSeats: request.IncludedSeats,
-            Currency: request.Currency,
-            IsActive: request.IsActive,
-            ServiceLevel: request.ServiceLevel,
-            Features: request.Features);
+            IncludedSeats:          request.IncludedSeats,
+            Currency:               request.Currency,
+            IsActive:               request.IsActive,
+            ServiceLevel:           request.ServiceLevel,
+            Features:               request.Features), ct);
 
-        var result = await bus.InvokeAsync<PlanDto>(cmd, ct);
-        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(GetById), new { id = result.Value.Id }, result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Update an existing plan (Developer only).</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType<PlanDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePlanRequest request, CancellationToken ct)
     {
         if (id != request.Id)
-            return BadRequest("Route ID does not match body ID.");
+            return BadRequest(new Error("Plan.IdMismatch", "Route ID does not match body ID."));
 
-        var cmd = new UpdatePlanCommand(
-            Id: request.Id,
-            Name: request.Name,
-            Title: request.Title,
-            Description: request.Description,
-            BasePriceMonthly: request.BasePriceMonthly,
-            BasePriceAnnual: request.BasePriceAnnual,
+        var result = await bus.InvokeAsync<Result<PlanDto>>(new UpdatePlanCommand(
+            Id:                     request.Id,
+            Name:                   request.Name,
+            Title:                  request.Title,
+            Description:            request.Description,
+            BasePriceMonthly:       request.BasePriceMonthly,
+            BasePriceAnnual:        request.BasePriceAnnual,
             PricePerAdditionalSeat: request.PricePerAdditionalSeat,
-            IncludedSeats: request.IncludedSeats,
-            IsActive: request.IsActive,
-            ServiceLevel: request.ServiceLevel,
-            Features: request.Features);
+            IncludedSeats:          request.IncludedSeats,
+            IsActive:               request.IsActive,
+            ServiceLevel:           request.ServiceLevel,
+            Features:               request.Features), ct);
 
-        var result = await bus.InvokeAsync<PlanDto>(cmd, ct);
-        return Ok(result);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Delete a plan (Developer only). Soft-deletes if subscriptions exist.</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        await bus.InvokeAsync<bool>(new DeletePlanCommand(id), ct);
-        return NoContent();
+        var result = await bus.InvokeAsync<Result>(new DeletePlanCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Toggle plan active status (Developer only).</summary>
     [HttpPatch("{id:guid}/status")]
     [Authorize(Roles = "PlatformAdmin")]
-    public async Task<IActionResult> ToggleStatus(Guid id, [FromBody] ToggleStatusRequest request, CancellationToken ct)
+    [ProducesResponseType<PlanDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ToggleStatus(
+        Guid id,
+        [FromBody] TogglePlanStatusRequest request,
+        CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<PlanDto>(new TogglePlanStatusCommand(id, request.IsActive), ct);
-        return Ok(result);
+        var result = await bus.InvokeAsync<Result<PlanDto>>(
+            new TogglePlanStatusCommand(id, request.IsActive), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Assign a module to a plan (Developer only).</summary>
     [HttpPost("{id:guid}/modules/{moduleId:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType<ModuleDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> AssignModule(Guid id, Guid moduleId, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<ModuleDto>(
+        var result = await bus.InvokeAsync<Result<ModuleDto>>(
             new AssignModuleToPlanCommand(moduleId, id), ct);
-        return Ok(result);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Unassign a module from a plan (Developer only).</summary>
     [HttpDelete("{id:guid}/modules/{moduleId:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UnassignModule(Guid id, Guid moduleId, CancellationToken ct)
     {
-        await bus.InvokeAsync<bool>(
+        var result = await bus.InvokeAsync<Result>(
             new UnassignModuleFromPlanCommand(moduleId, id), ct);
-        return NoContent();
-    }
 
-    public sealed record ToggleStatusRequest(bool IsActive);
+        return result.IsSuccess
+            ? NoContent()
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }

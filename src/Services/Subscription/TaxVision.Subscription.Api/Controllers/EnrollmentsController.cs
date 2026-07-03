@@ -1,8 +1,8 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Enrollments.Commands;
-using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
@@ -11,14 +11,6 @@ namespace TaxVision.Subscription.Api.Controllers;
 [Route("enrollments")]
 public sealed class EnrollmentsController(IMessageBus bus) : ControllerBase
 {
-    public sealed record CreateEnrollmentRequest(
-        string PlanCode,
-        BillingPeriod BillingPeriod,
-        string AdminEmail,
-        string OrgName,
-        string Subdomain,
-        string TimeZoneId);
-
     /// <summary>
     /// Endpoint público — sin autenticación.
     /// El cliente selecciona el plan y paga antes de que exista el tenant.
@@ -26,18 +18,16 @@ public sealed class EnrollmentsController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpPost]
     [AllowAnonymous]
+    [ProducesResponseType<CreateEnrollmentResponse>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(
-        [FromBody] CreateEnrollmentRequest req,
+        [FromBody] CreateEnrollmentCommand command,
         CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<CreateEnrollmentResponse>>(
-            new CreateEnrollmentCommand(
-                req.PlanCode, req.BillingPeriod,
-                req.AdminEmail, req.OrgName,
-                req.Subdomain, req.TimeZoneId), ct);
+        var result = await bus.InvokeAsync<Result<CreateEnrollmentResponse>>(command, ct);
 
         return result.IsSuccess
-            ? Accepted(new { result.Value.EnrollmentId, result.Value.Status, result.Value.TotalAmount })
-            : UnprocessableEntity(new { result.Error.Code, result.Error.Message });
+            ? Accepted(result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

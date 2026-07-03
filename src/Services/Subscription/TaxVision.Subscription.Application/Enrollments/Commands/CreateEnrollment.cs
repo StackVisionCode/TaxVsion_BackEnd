@@ -18,6 +18,7 @@ public sealed record CreateEnrollmentCommand(
     string Subdomain,
     string TimeZoneId);
 
+
 public sealed record CreateEnrollmentResponse(
     Guid EnrollmentId,
     string PlanCode,
