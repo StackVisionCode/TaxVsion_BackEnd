@@ -9,10 +9,15 @@ using Wolverine;
 
 namespace TaxVision.Payment.Api.Controllers;
 
+/// <summary>
+/// Read-only API for SaaS platform payments (TaxVision → tenant charges via Stripe).
+/// Restricted to <c>PlatformAdmin</c>; tenant admins cannot access each other's billing records.
+/// </summary>
 [ApiController]
 [Route("payments/saas")]
 public sealed class SaaSPaymentsController(IMessageBus bus) : ControllerBase
 {
+    /// <summary>Returns a single SaaS payment by ID. Returns 404 if not found.</summary>
     [HttpGet("{id:guid}")]
     [Authorize(Roles = "PlatformAdmin")]
     [ProducesResponseType<SaaSPaymentDto>(StatusCodes.Status200OK)]

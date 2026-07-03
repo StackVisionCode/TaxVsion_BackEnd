@@ -7,8 +7,14 @@ using Wolverine;
 
 namespace TaxVision.Payment.Application.SaaSPayments.IntegrationEvents;
 
+/// <summary>
+/// Wolverine handler for <see cref="SeatRenewalPaymentRequestedIntegrationEvent"/>.
+/// Processes a Stripe charge for seat subscription renewals.
+/// Publishes <c>SeatRenewalPaymentCompletedIntegrationEvent</c> or <c>SeatRenewalPaymentFailedIntegrationEvent</c>.
+/// </summary>
 public static class SeatRenewalPaymentRequestedHandler
 {
+    /// <summary>Processes the seat renewal payment request end-to-end.</summary>
     public static async Task Handle(
         SeatRenewalPaymentRequestedIntegrationEvent evt,
         ISaaSPaymentRepository payments,

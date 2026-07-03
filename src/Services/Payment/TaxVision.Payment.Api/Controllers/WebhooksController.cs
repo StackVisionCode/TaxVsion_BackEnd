@@ -6,12 +6,30 @@ using Wolverine;
 
 namespace TaxVision.Payment.Api.Controllers;
 
+/// <summary>
+/// Receives verified webhook events from Stripe and dispatches them to the Application layer.
+/// <para>
+/// The endpoint is anonymous — authentication is performed by validating the
+/// <c>Stripe-Signature</c> header via <see cref="IStripeGateway.VerifyWebhookSignatureAsync"/>.
+/// The <c>Stripe:WebhookSecret</c> used for verification must be set via environment variable.
+/// </para>
+/// Supported events:
+/// <list type="bullet">
+///   <item><c>payment_intent.succeeded</c> → transitions the matching SaaS payment to <c>Completed</c>.</item>
+///   <item><c>payment_intent.payment_failed</c> → transitions it to <c>Failed</c>.</item>
+/// </list>
+/// </summary>
 [ApiController]
 [Route("webhooks")]
 public sealed class WebhooksController(
     IStripeGateway stripeGateway,
     IMessageBus bus) : ControllerBase
 {
+    /// <summary>
+    /// Stripe webhook receiver. Validates the <c>Stripe-Signature</c> header before processing.
+    /// Returns <c>200 OK</c> for all recognized events (including no-op cases) to prevent
+    /// Stripe from re-delivering. Returns <c>400 Bad Request</c> only on signature failure.
+    /// </summary>
     [HttpPost("stripe")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]

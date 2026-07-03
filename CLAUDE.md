@@ -14,7 +14,7 @@ Backend multitenant de TaxVision construido con microservicios en .NET 10.
 
 **Autor de las implementaciones documentadas:** Jorge Turbi
 
-**Actualizado:** 01-07-2026 (Payment service)
+**Actualizado:** 02-07-2026 (Payment service — Stripe SaaS + adaptadores tenant)
 
 **Licencia del codigo propio:** propietaria; consulte [LICENSE](LICENSE).
 
@@ -54,6 +54,7 @@ para pagos de los propios tenants.
 22. Pruebas automatizadas
 23. Guia para nuevos microservicios y mejoras futuras
 24. Guia de implementacion Customer y Subscription
+25. Payment Service — Stripe SaaS y adaptadores tenant
 
 ## 1. Introduccion y objetivo
 
@@ -1028,11 +1029,622 @@ El limite actual es 10 requests por minuto, sin cola.
 /api/subscription-modules/{**catch-all}-> subscription-api:8080
 /payments/{**catch-all}               -> payment-api:8080
 /webhooks/{**catch-all}               -> payment-api:8080  (anonimo, verificacion Stripe-Signature)
-```
 
 Solo Gateway publica API al host. Los servicios se exponen internamente en el
 puerto 8080 dentro de `taxvision-network`.
 
+## 25. Payment Service — Stripe SaaS y adaptadores tenant
+
+El microservicio de Payment encapsula **dos contextos de cobro completamente independientes**
+dentro de un solo servicio. En el futuro estos contextos seran separados en dos microservicios
+distintos (`TaxVision.PaymentApp` y `TaxVision.PaymentClient`). El plan de separacion
+arquitectonica se documentara antes de implementar.
+
+### Contexto 1: SaaS / Control Plane
+
+TaxVision cobra a los tenants por sus suscripciones usando Stripe.
+
+```text
+Subscription publica evento de pago
+    |
+    | taxvision-events → payment-service-events
+    v
+Payment Service consume evento (inbox durable Wolverine)
+    |
+    | GetOrCreateStripeCustomer (busca por TenantId en Stripe API)
+    | CreatePaymentIntent (Stripe API)
+    | ConfirmPaymentIntent (Stripe API)  ← dev: pm_card_visa; prod: token del frontend
+    v
+SaaSPayment.Status = Processing
+    |
+    | Stripe webhook → POST /webhooks/stripe
+    | Verifica Stripe-Signature
+    v
+ProcessSaaSPaymentCommand → ProcessSaaSPaymentHandler
+    |
+    | GetByStripePaymentIntentIdAsync → SaaSPayment
+    | MarkCompleted() o MarkFailed()
+    v
+Publica EnrollmentPaymentCompletedIntegrationEvent (u otro segun tipo)
+    → Subscription consume y completa el ciclo
+```
+
+Tablas: `SaaSPayments`, `StripeCustomers`, `wolverine_*`.
+
+Variables de entorno requeridas:
+
+```env
+STRIPE_SECRET_KEY=sk_test_...      # clave secreta Stripe (nunca en appsettings.json)
+STRIPE_WEBHOOK_SECRET=whsec_...    # secret para verificar firma del webhook
+```
+
+Eventos consumidos (`payment-service-events`):
+
+| Evento | Handler |
+| --- | --- |
+| `EnrollmentPaymentRequestedIntegrationEvent` | `EnrollmentPaymentRequestedHandler` |
+| `SeatPurchaseRequestedIntegrationEvent` | `SeatPurchaseRequestedHandler` |
+| `SeatRenewalPaymentRequestedIntegrationEvent` | `SeatRenewalPaymentRequestedHandler` |
+| `SubscriptionRenewalPaymentRequestedIntegrationEvent` | `SubscriptionRenewalPaymentRequestedHandler` |
+
+Eventos publicados (`taxvision-events`):
+
+- `EnrollmentPaymentCompletedIntegrationEvent` / `EnrollmentPaymentFailedIntegrationEvent`
+- `SeatPaymentCompletedIntegrationEvent` / `SeatPaymentFailedIntegrationEvent`
+- `SeatRenewalPaymentCompletedIntegrationEvent` / `SeatRenewalPaymentFailedIntegrationEvent`
+- `SubscriptionRenewalPaymentCompletedIntegrationEvent` / `SubscriptionRenewalPaymentFailedIntegrationEvent`
+
+### Contexto 2: Tenant / Aplicacion del cliente
+
+Los tenants cobran a sus propios clientes usando su propio proveedor de pago.
+
+```text
+TenantAdmin configura su proveedor
+    POST /payments/tenant/config
+    → TenantPaymentConfig (SecretKeyEncrypted en AES — pendiente cifrado real)
+
+TenantAdmin inicia un cobro
+    POST /payments/tenant/charge
+    → ProcessTenantPaymentHandler
+    → IPaymentAdapterFactory.GetAdapter(provider)
+    → IPaymentAdapter.ChargeAsync(...)
+    → TenantTransaction.MarkCompleted() o MarkFailed()
+```
+
+Tablas: `TenantPaymentConfigs`, `TenantTransactions`.
+
+Proveedores soportados:
+
+| Proveedor | Estado |
+| --- | --- |
+| Stripe | Implementado (`StripePaymentAdapter`) |
+| PayPal | Stub extensible (`PayPalPaymentAdapter`) |
+| Square, MercadoPago, Manual | Enum declarado; adaptor pendiente |
+
+### Endpoints
+
+| Metodo | Ruta | Rol | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/payments/saas/{id}` | `PlatformAdmin` | Consultar un cobro SaaS por ID |
+| `GET` | `/payments/saas` | `PlatformAdmin` | Listar cobros SaaS del tenant en contexto |
+| `GET` | `/payments/tenant/config` | `TenantAdmin` | Ver config del proveedor del tenant |
+| `POST` | `/payments/tenant/config` | `TenantAdmin` | Crear o actualizar config del proveedor |
+| `POST` | `/payments/tenant/charge` | `TenantAdmin` | Cobrar a un cliente del tenant |
+| `GET` | `/payments/tenant/transactions` | `TenantAdmin` | Listar transacciones del tenant |
+| `POST` | `/webhooks/stripe` | Anonimo | Receptor de webhooks Stripe (verifica firma) |
+
+### Pendientes de produccion
+
+- Implementar cifrado AES real para `SecretKeyEncrypted` y `WebhookSecretEncrypted`
+  en `TenantPaymentConfig`; actualmente se almacenan como texto.
+- Reemplazar `pm_card_visa` en `StripeGateway.ConfirmPaymentIntentAsync` con el
+  `paymentMethodId` real proveniente del frontend (Stripe Elements / Stripe.js).
+- Implementar PayPal REST Orders API en `PayPalPaymentAdapter`.
+- Mover confirmacion del PaymentIntent a flujo asincrono via webhooks en produccion.
+
+`AddTenantInfrastructure` registra repositorios y lecturas.
+
+`AddSubscriptionInfrastructure` registra:
+
+- `SubscriptionDbContext` como `IUnitOfWork`;
+- `IPlanRepository`, `IModuleRepository`, `IEnrollmentRepository`, `ISubscriptionRepository`, `ISubscriptionModuleRepository`, `IPendingChangeRepository`;
+- `IPlanReadService`, `IModuleReadService`, `ISubscriptionModuleReadService`.
+
+`AddPaymentInfrastructure` registra:
+
+- `PaymentDbContext` como `IUnitOfWork`;
+- `ISaaSPaymentRepository`, `IStripeCustomerRepository`, `ITenantPaymentConfigRepository`, `ITenantTransactionRepository`;
+- `IStripeGateway` (implementado con Stripe.net);
+- `IPaymentAdapter` adaptadores (`StripePaymentAdapter`, `PayPalPaymentAdapter`);
+- `IPaymentAdapterFactory`.
+
+`AddTaxVisionJwtAuthentication`, `AddTaxVisionOpenTelemetry` y
+`AddTaxVisionGatewayRateLimiting` son extensiones reutilizables para nuevos hosts.
+
+## 18. Buenas practicas
+
+| Practica | Implementacion |
+| --- | --- |
+| Database per service | bases Auth, Tenant, Subscription y Payment |
+| Identidad multitenant | filtro e indice `(TenantId, Email)` |
+| Registro cerrado | solo invitaciones con actor y alcance validados |
+| Secrets fuera de Git | `.env`, User Secrets |
+| Password hashing | PBKDF2 |
+| Token storage seguro | hash SHA-256 |
+| Tenant header confiable | derivado del JWT |
+| Error mapping | status HTTP por codigo |
+| Race protection | indices + `ConflictException` |
+| Atomic outbox | middleware EF Core Wolverine |
+| Durable inbox | queues Auth, Subscription y Payment |
+| Idempotencia | upsert e invitacion reentrante |
+| Control plane aislado | tenant interno no comercial |
+| Correlation completo | HTTP, eventos, logs y traces |
+| Cache responsable | solo lectura + invalidacion + fallback |
+| Health checks | SQL, Redis, Rabbit y downstream |
+| Imagenes reproducibles | tags exactos |
+| Observabilidad central | OTLP, Loki, Prometheus y Tempo |
+| Capas compartidas | base, infrastructure y web |
+| Sin prorrateo | cambios de plan aplican en siguiente renovacion |
+| ReadService | joins complejos en Infrastructure, interfaz en Application |
+| Handlers en Application | ningun handler en Infrastructure; solo repositorios e implementaciones tecnicas |
+| Stripe secrets en env | `Stripe:SecretKey` y `Stripe:WebhookSecret` nunca en appsettings.json |
+| Claves de tenant cifradas | `SecretKeyEncrypted` en `TenantPaymentConfigs`; nunca expuestas en HTTP |
+| Adaptadores pluggables | `IPaymentAdapter` / `IPaymentAdapterFactory` para pagos de tenants |
+| Webhook verificado | signature Stripe validada antes de procesar eventos |
+
+## 19. Endpoints y ejemplos
+
+Base:
+
+```text
+http://localhost:5047
+```
+
+### Crear tenant
+
+```http
+POST /tenants
+```
+
+```json
+{
+  "name": "Empresa Demo",
+  "subdomain": "empresa-demo",
+  "adminEmail": "admin@empresa-demo.com",
+  "defaultTimeZoneId": "America/Santo_Domingo"
+}
+```
+
+### Enrollment (onboarding publico)
+
+```http
+POST /enrollments
+```
+
+```json
+{
+  "planCode": "Starter",
+  "billingPeriod": "Monthly",
+  "adminEmail": "admin@empresa.com",
+  "orgName": "Mi Empresa",
+  "subdomain": "mi-empresa",
+  "timeZoneId": "America/Santo_Domingo"
+}
+```
+
+### Login
+
+```http
+POST /auth/login
+```
+
+```json
+{
+  "tenantId": "tenant-guid",
+  "email": "ana@example.com",
+  "password": "Use-A-Strong-Password-123!"
+}
+```
+
+### Cambiar estado de tenant
+
+```http
+PATCH /tenants/{tenantId}/status
+Authorization: Bearer <platform-admin-jwt>
+```
+
+```json
+{ "status": "Suspended" }
+```
+
+### Crear plan
+
+```http
+POST /api/plans
+Authorization: Bearer <platform-admin-jwt>
+```
+
+```json
+{
+  "name": "Starter",
+  "title": "Plan Starter",
+  "description": "Plan basico",
+  "basePriceMonthly": 29.00,
+  "basePriceAnnual": 290.00,
+  "pricePerAdditionalSeat": 9.00,
+  "includedSeats": 3,
+  "currency": "USD",
+  "isActive": true,
+  "serviceLevel": "Standard",
+  "features": ["Acceso basico", "Soporte por email"]
+}
+```
+
+### Crear suscripcion
+
+```http
+POST /subscriptions
+Authorization: Bearer <platform-admin-jwt>
+```
+
+```json
+{
+  "tenantId": "tenant-guid",
+  "serviceLevel": "Standard",
+  "billingPeriod": "Monthly",
+  "isActive": true
+}
+```
+
+### Comprar asientos adicionales
+
+```http
+POST /subscriptions/current/seats
+Authorization: Bearer <tenant-admin-jwt>
+```
+
+```json
+{ "quantity": 2 }
+```
+
+### Consultar pago SaaS
+
+```http
+GET /payments/saas/{paymentId}
+Authorization: Bearer <platform-admin-jwt>
+```
+
+Respuesta:
+
+```json
+{
+  "id": "guid",
+  "tenantId": "tenant-guid",
+  "paymentType": "Enrollment",
+  "status": "Completed",
+  "amountCents": 2900,
+  "currency": "USD",
+  "stripePaymentIntentId": "pi_...",
+  "referenceId": "enrollment-guid",
+  "createdAtUtc": "2026-07-01T00:00:00Z",
+  "failureReason": null
+}
+```
+
+### Configurar proveedor de pago del tenant
+
+```http
+POST /payments/tenant/config
+Authorization: Bearer <tenant-admin-jwt>
+```
+
+```json
+{
+  "provider": "Stripe",
+  "publicKey": "pk_live_...",
+  "secretKeyEncrypted": "<AES-encrypted-sk_live_...>",
+  "webhookSecretEncrypted": "<AES-encrypted-whsec_...>"
+}
+```
+
+### Procesar pago del tenant
+
+```http
+POST /payments/tenant/charge
+Authorization: Bearer <tenant-admin-jwt>
+```
+
+```json
+{
+  "customerId": "customer-guid",
+  "amountCents": 5000,
+  "currency": "USD",
+  "description": "Factura #INV-001"
+}
+```
+
+### Webhook Stripe
+
+```http
+POST /webhooks/stripe
+Stripe-Signature: t=...,v1=...
+```
+
+Recibe `payment_intent.succeeded` o `payment_intent.payment_failed` y actualiza el
+estado del `SaaSPayment` correspondiente.
+
+## 20. Ejecucion local y Docker
+
+### Requisitos
+
+- .NET SDK 10.0.300;
+- Docker Engine/Desktop;
+- SQL Server;
+- `dotnet-ef` 10.0.9.
+
+```powershell
+dotnet tool update --global dotnet-ef --version 10.0.9
+dotnet restore
+dotnet build
+```
+
+### Stack completo
+
+```powershell
+docker compose --env-file .env `
+  -f deploy\docker\docker-compose.yml `
+  up -d --build
+```
+
+El archivo canonico del stack completo es
+`deploy/docker/docker-compose.yml`. RabbitMQ crea el usuario de `RABBITMQ_USER`
+unicamente al inicializar un volumen nuevo.
+
+Estado:
+
+```powershell
+docker compose --env-file .env `
+  -f deploy\docker\docker-compose.yml `
+  ps
+```
+
+Actualizar un servicio:
+
+```powershell
+docker compose --env-file .env `
+  -f deploy\docker\docker-compose.yml `
+  up -d --build --force-recreate payment-api
+```
+
+Detener sin eliminar datos:
+
+```powershell
+docker compose --env-file .env `
+  -f deploy\docker\docker-compose.yml `
+  down
+```
+
+No use `down -v` salvo que quiera eliminar los volumenes.
+
+## 21. Depuracion
+
+### Health
+
+```powershell
+curl.exe -i http://localhost:5047/health/live
+curl.exe -i http://localhost:5047/health/ready
+```
+
+### Logs Docker
+
+```powershell
+docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f gateway
+docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f auth-api
+docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f tenant-api
+docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f subscription-api
+docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f payment-api
+docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f otel-collector
+```
+
 ### RabbitMQ
 
-`taxvision-events` es un exch
+Abra `http://localhost:15672` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD`.
+
+Revise:
+
+- `taxvision-events`;
+- `auth-tenant-events`;
+- `subscription-service-events`;
+- `payment-service-events`;
+- consumidores;
+- ready/unacked.
+
+### Wolverine SQL
+
+```sql
+SELECT * FROM dbo.wolverine_outgoing_envelopes;
+SELECT * FROM dbo.wolverine_incoming_envelopes;
+SELECT * FROM dbo.wolverine_dead_letters;
+```
+
+Ejecutar en la base correspondiente (`TaxVision_Auth`, `TaxVision_Tenants`,
+`TaxVision_Subscription` o `TaxVision_Payment`) segun el servicio que se depura.
+
+### Grafana — queries utiles
+
+```logql
+{service_name="payment-service"}
+{service_name="payment-service"} |= "Stripe"
+{service_name="payment-service"} |= "Enrollment"
+```
+
+## 22. Pruebas automatizadas
+
+Por solicitud, no se crearon proyectos ni pruebas automatizadas.
+
+La guia completa esta en:
+
+```text
+D:\TaxVision Docs\Guia_Implementacion_Pruebas_Automatizadas_TaxVision.pdf
+```
+
+La guia cubre unitarias, integracion, arquitectura, E2E, outbox/inbox, multitenancy,
+cache, correlation y observabilidad para los 25 microservicios planeados.
+
+## 23. Guia para nuevos microservicios y mejoras futuras
+
+### Plantilla obligatoria
+
+Cada microservicio nuevo debe tener:
+
+```text
+Service.Domain
+Service.Application
+Service.Infrastructure
+Service.Api
+```
+
+Use BuildingBlocks segun necesidad:
+
+- base para contratos y resultados;
+- Infrastructure para Redis;
+- Web para middleware, JWT, health y observabilidad.
+
+Checklist:
+
+1. Base de datos propia.
+2. Migracion inicial.
+3. `IUnitOfWork`.
+4. Filtro de TenantId.
+5. Correlation HTTP y eventos.
+6. Outbox si publica.
+7. Inbox e idempotencia si consume.
+8. Health live/ready.
+9. JWT y autorizacion.
+10. OTLP.
+11. Dockerfile con version exacta.
+12. Servicio en `taxvision-network`.
+13. Ruta YARP en `appsettings.json` del Gateway.
+14. Pruebas siguiendo la guia PDF.
+15. Handlers en Application layer; ningun handler en Infrastructure.
+16. ReadService para consultas con joins multiples.
+
+### Pendientes reales
+
+- reemplazar credenciales locales por un secret manager en produccion;
+- mover el bootstrap de `PlatformAdmin` a un secret manager/Job de provisioning en produccion;
+- habilitar TLS externo e interno segun el entorno;
+- agregar CI/CD, SBOM y escaneo de secretos;
+- implementar las pruebas de la guia;
+- definir retencion y almacenamiento object storage para observabilidad productiva;
+- crear el microservicio de Customer;
+- crear `UserProfile` y aplicar la sobrescritura personal de `TimeZoneId`;
+- versionar contratos de eventos antes de incorporar mas consumidores;
+- agregar cache en Subscription para lectura de planes y modulos;
+- agregar ruta YARP para health checks de subscription-api en el Gateway agregado;
+- implementar cifrado real para `SecretKeyEncrypted` y `WebhookSecretEncrypted` en Payment;
+- implementar PayPal SDK real en `PayPalPaymentAdapter`;
+- mover confirmacion de PaymentIntent a webhooks asincronos en produccion (actualmente sincrono para desarrollo).
+
+## 24. Guia de implementacion Customer y Subscription
+
+La guia detallada se encuentra en:
+
+```text
+output/pdf/Guia_Implementacion_Customer_Subscription_TaxVision.pdf
+```
+
+Incluye modelo final del aggregate `Customer`, `CustomerRelation`,
+`CustomerFiscalProfile`, separacion de bounded contexts, implementacion por capas,
+tablas, indices, endpoints, eventos y pruebas.
+
+Nota: la seccion de prorrateo de la guia original queda obsoleta. TaxVision aplica
+el modelo Google Workspace: sin cargos parciales, los cambios de plan aplican al
+inicio del siguiente ciclo de renovacion.ange fanout.
+
+| Cola | Consumidor |
+| --- | --- |
+| `auth-tenant-events` | Auth Service |
+| `subscription-service-events` | Subscription Service |
+| `payment-service-events` | Payment Service |
+
+El consumidor de creacion de tenant en Subscription usa upsert. Los tres servicios usan
+inbox durable y correlation.
+
+`TenantCreatedIntegrationEvent` incluye `DefaultTimeZoneId`. Auth lo conserva en su
+tabla `Tenants`, por lo que login y refresh no consultan la base de Tenant ni realizan
+una llamada HTTP entre microservicios.
+
+El mismo evento lleva el hash y la expiracion de la invitacion inicial. Auth crea una
+fila `Invitation` de tipo `TenantAdmin`; las columnas especiales de invitacion que
+antes estaban dentro de su proyeccion `Tenant` fueron eliminadas.
+
+### Redis
+
+Solo el listado de tenants usa cache. La estrategia es:
+
+1. obtener `tenants:list:v2:version`;
+2. incluir version, page y size en la clave;
+3. guardar pagina durante 5 minutos;
+4. crear tenant cambia la version;
+5. claves antiguas expiran;
+6. si Redis falla, la lectura usa SQL Server.
+
+No se cachean credenciales, tokens ni operaciones de escritura. Subscription no usa
+Redis en su estado actual.
+
+## 16. Persistencia y migraciones
+
+### Auth
+
+Tablas:
+
+- `Tenants`;
+- `Users`;
+- `Invitations`;
+- `RefreshTokens`;
+- `wolverine_*`.
+
+La migracion `AddAuthTenantDefaultTimeZone` agrega `DefaultTimeZoneId` a la
+proyeccion local de tenants. Los registros anteriores reciben `Etc/UTC`.
+
+La migracion `AddInvitationActorsAndPlatformTenant`:
+
+- crea `Invitations`;
+- agrega `ActorType` y `CustomerId` a `Users`;
+- convierte roles existentes a los cuatro actores fijos;
+- migra invitaciones iniciales desde las columnas antiguas de `Tenants`;
+- elimina esas columnas despues de preservar sus datos;
+- agrega `Kind` y siembra `TaxVision Platform`.
+
+### Tenant
+
+- `Tenants`;
+- `wolverine_*`.
+
+La migracion `AddTenantDefaultTimeZone` agrega `DefaultTimeZoneId`; los tenants
+anteriores reciben `Etc/UTC`.
+
+La migracion `AddTenantKindAndPlatformTenant` agrega `Kind`, clasifica los registros
+anteriores como `Customer` y siembra el tenant interno. Las lecturas comerciales
+filtran `Kind = Customer`.
+
+### Subscription
+
+Tablas:
+
+- `Plans`;
+- `PlanFeatures`;
+- `PlanVersions`;
+- `Modules`;
+- `PlanModules`;
+- `Subscriptions`;
+- `SeatSubscriptions`;
+- `SubscriptionModules`;
+- `PendingSubscriptionChanges`;
+- `SubscriptionEnrollments`;
+- `wolverine_*`.
+
+Migraciones aplicadas:
+
+-

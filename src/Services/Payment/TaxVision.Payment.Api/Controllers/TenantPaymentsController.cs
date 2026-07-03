@@ -10,10 +10,19 @@ using Wolverine;
 
 namespace TaxVision.Payment.Api.Controllers;
 
+/// <summary>
+/// API for tenant-side payments: configuring a payment provider and charging the tenant's own customers.
+/// Restricted to <c>TenantAdmin</c>. All operations are scoped to the calling tenant's context.
+/// <para>
+/// Provider credentials are stored AES-encrypted. Secret keys are accepted in requests but never
+/// returned in responses — <see cref="TenantPaymentConfigDto"/> exposes only the public key.
+/// </para>
+/// </summary>
 [ApiController]
 [Route("payments/tenant")]
 public sealed class TenantPaymentsController(IMessageBus bus) : ControllerBase
 {
+    /// <summary>Returns the current payment provider configuration for the calling tenant. Returns 404 if not configured.</summary>
     [HttpGet("config")]
     [Authorize(Roles = "TenantAdmin")]
     [ProducesResponseType<TenantPaymentConfigDto>(StatusCodes.Status200OK)]

@@ -7,8 +7,21 @@ using Wolverine;
 
 namespace TaxVision.Payment.Application.SaaSPayments.IntegrationEvents;
 
+/// <summary>
+/// Wolverine handler for <see cref="EnrollmentPaymentRequestedIntegrationEvent"/>.
+/// <para>
+/// Flow: get or create a Stripe customer → create a <see cref="SaaSPayment"/> record →
+/// create a Stripe PaymentIntent → confirm it → publish
+/// <c>EnrollmentPaymentCompletedIntegrationEvent</c> or <c>EnrollmentPaymentFailedIntegrationEvent</c>.
+/// </para>
+/// <remarks>
+/// In production the PaymentIntent confirmation step should be moved to an asynchronous Stripe
+/// webhook flow instead of the current synchronous confirm call.
+/// </remarks>
+/// </summary>
 public static class EnrollmentPaymentRequestedHandler
 {
+    /// <summary>Processes the enrollment payment request end-to-end.</summary>
     public static async Task Handle(
         EnrollmentPaymentRequestedIntegrationEvent evt,
         ISaaSPaymentRepository payments,

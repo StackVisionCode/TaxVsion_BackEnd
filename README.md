@@ -51,6 +51,7 @@ OpenTelemetry.
 22. Pruebas automatizadas
 23. Guia para nuevos microservicios y mejoras futuras
 24. Guia de implementacion Customer y Subscription
+25. Payment Service — Stripe SaaS y adaptadores tenant
 
 ## 1. Introduccion y objetivo
 
@@ -1285,3 +1286,255 @@ Incluye:
 - provisioning Subscription -> Payment -> Tenant -> Auth;
 - planes versionados, proration, renovacion y entitlements;
 - migracion desde las entidades legacy y orden de cutover.
+
+## 25. Payment Service — Stripe SaaS y adaptadores tenant
+
+**Actualizado:** 02-07-2026
+
+Payment es el cuarto microservicio de TaxVision. Encapsula dos contextos de cobro
+completamente independientes que no comparten base de datos ni eventos entre si.
+
+### Contexto 1: SaaS / Control Plane
+
+TaxVision cobra a los tenants usando Stripe como procesador global de la plataforma.
+
+Flujo:
+
+```text
+Subscription publica evento de pago solicitado
+    → taxvision-events → payment-service-events (queue durable)
+    → Payment Service consume (inbox Wolverine)
+    → GetOrCreateStripeCustomer (por TenantId, cacheado en StripeCustomers)
+    → CreatePaymentIntent (Stripe API)
+    → ConfirmPaymentIntent (Stripe API)
+    → SaaSPayment.MarkProcessing(intentId)
+    → Stripe webhook POST /webhooks/stripe  [verifica Stripe-Signature]
+    → ProcessSaaSPaymentCommand
+    → SaaSPayment.MarkCompleted() o MarkFailed()
+    → publica *PaymentCompleted o *PaymentFailed → Subscription
+```
+
+Eventos consumidos (`payment-service-events`):
+
+| Evento | Tipo |
+| --- | --- |
+| `EnrollmentPaymentRequestedIntegrationEvent` | Enrollment onboarding |
+| `SeatPurchaseRequestedIntegrationEvent` | Compra de asientos adicionales |
+| `SeatRenewalPaymentRequestedIntegrationEvent` | Renovacion de asientos |
+| `SubscriptionRenewalPaymentRequestedIntegrationEvent` | Renovacion de suscripcion |
+
+Eventos publicados (`taxvision-events`):
+
+- `EnrollmentPaymentCompletedIntegrationEvent` / `EnrollmentPaymentFailedIntegrationEvent`
+- `SeatPaymentCompletedIntegrationEvent` / `SeatPaymentFailedIntegrationEvent`
+- `SeatRenewalPaymentCompletedIntegrationEvent` / `SeatRenewalPaymentFailedIntegrationEvent`
+- `SubscriptionRenewalPaymentCompletedIntegrationEvent` / `SubscriptionRenewalPaymentFailedIntegrationEvent`
+
+Tablas: `SaaSPayments`, `StripeCustomers`, `wolverine_*`.
+
+### Contexto 2: Tenant / Aplicacion del cliente
+
+Los tenants cobran a sus propios clientes con cualquier proveedor que configuren.
+
+```text
+POST /payments/tenant/config  (TenantAdmin)
+    → TenantPaymentConfig.Create(provider, publicKey, secretKeyEncrypted, ...)
+    → claves almacenadas cifradas; nunca expuestas en respuestas HTTP
+
+POST /payments/tenant/charge  (TenantAdmin)
+    → ProcessTenantPaymentHandler
+    → IPaymentAdapterFactory.GetAdapter(provider)
+    → IPaymentAdapter.ChargeAsync(amount, currency, description)
+    → TenantTransaction.MarkCompleted(externalId) o MarkFailed(reason)
+```
+
+Proveedores:
+
+| Proveedor | Estado |
+| --- | --- |
+| Stripe | Implementado (`StripePaymentAdapter`) |
+| PayPal | Stub (`PayPalPaymentAdapter`) — SDK pendiente |
+| Square, MercadoPago, Manual | Enum declarado; adaptador pendiente |
+
+Tablas: `TenantPaymentConfigs`, `TenantTransactions`. Sin eventos ni Redis.
+
+### Variables de entorno requeridas
+
+```env
+PAYMENT_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Payment;...
+STRIPE_SECRET_KEY=sk_live_...          # clave secreta Stripe (nunca en appsettings.json)
+STRIPE_WEBHOOK_SECRET=whsec_...        # verifica firma del webhook de Stripe
+```
+
+### Endpoints
+
+| Metodo | Ruta | Rol | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/payments/saas/{id}` | `PlatformAdmin` | Consultar cobro SaaS por ID |
+| `GET` | `/payments/saas` | `PlatformAdmin` | Listar cobros SaaS del tenant en JWT |
+| `GET` | `/payments/tenant/config` | `TenantAdmin` | Ver config del proveedor del tenant |
+| `POST` | `/payments/tenant/config` | `TenantAdmin` | Crear o actualizar proveedor |
+| `POST` | `/payments/tenant/charge` | `TenantAdmin` | Cobrar a un cliente del tenant |
+| `GET` | `/payments/tenant/transactions` | `TenantAdmin` | Listar transacciones del tenant |
+| `POST` | `/webhooks/stripe` | Anonimo | Receptor webhooks Stripe (verifica firma) |
+
+### Estructura del servicio
+
+```text
+src/Services/Payment/
+├── TaxVision.Payment.Domain/
+│   ├── SaaSPayments/          (SaaSPayment, SaaSPaymentType, PaymentStatus)
+│   ├── StripeCustomers/       (StripeCustomer)
+│   └── TenantPayments/        (TenantPaymentConfig, TenantTransaction,
+│                               TenantPaymentProvider, IPaymentAdapter,
+│                               IPaymentAdapterFactory)
+├── TaxVision.Payment.Application/
+│   ├── Abstractions/          (ISaaSPaymentRepository, IStripeCustomerRepository,
+│   │                           ITenantPaymentConfigRepository,
+│   │                           ITenantTransactionRepository, IStripeGateway)
+│   ├── SaaSPayments/
+│   │   ├── Commands/          (ProcessSaaSPayment)
+│   │   ├── Queries/           (GetSaaSPayment, GetSaaSPaymentsByTenant)
+│   │   └── IntegrationEvents/ (4 handlers de eventos de Subscription)
+│   └── TenantPayments/
+│       ├── Commands/          (ConfigureTenantProvider, ProcessTenantPayment)
+│       └── Queries/           (GetTenantPaymentConfig, GetTenantTransactions)
+├── TaxVision.Payment.Infrastructure/
+│   ├── Payments/              (StripeGateway, StripeOptions,
+│   │                           StripePaymentAdapter, PayPalPaymentAdapter,
+│   │                           PaymentAdapterFactory)
+│   ├── Persistence/
+│   │   ├── PaymentDbContext
+│   │   ├── Configurations/    (EF Core mappings)
+│   │   └── Repositories/      (4 repositorios)
+│   └── DependencyInjection.cs
+└── TaxVision.Payment.Api/
+    ├── Controllers/           (SaaSPaymentsController, TenantPaymentsController,
+    │                           WebhooksController)
+    └── Program.cs             (Wolverine outbox + inbox + retry 1s/5s/15s)
+```
+
+### Pendientes de produccion
+
+- Cifrado AES real para `SecretKeyEncrypted` / `WebhookSecretEncrypted` en `TenantPaymentConfig`.
+- Reemplazar `pm_card_visa` en `StripeGateway.ConfirmPaymentIntentAsync` con el
+  `paymentMethodId` real del frontend (Stripe Elements / Stripe.js).
+- Implementar PayPal REST Orders API en `PayPalPaymentAdapter`.
+- Mover confirmacion del PaymentIntent a flujo asincrono (webhook) en produccion.
+- Separar en dos microservicios: `TaxVision.PaymentApp` (SaaS) y `TaxVision.PaymentClient`
+  (tenant-side) — ver plan de arquitectura pendiente.
+migracion desde las entidades legacy y orden de cutover.
+
+## 25. Payment Service — Guia de implementacion
+
+**Actualizado:** 01-07-2026
+
+### Descripcion
+
+Payment es el cuarto microservicio de TaxVision. Resuelve dos contextos de pago
+independientes que no deben mezclarse:
+
+**SaaS / Control Plane** — TaxVision cobra a los tenants usando Stripe como
+procesador global. Cuando Subscription publica un evento de pago solicitado
+(`EnrollmentPaymentRequestedIntegrationEvent`, `SeatPurchaseRequestedIntegrationEvent`,
+etc.), Payment lo consume, crea o reutiliza un `StripeCustomer`, genera un
+`PaymentIntent`, lo confirma y publica el evento de resultado
+(`*PaymentCompleted` o `*PaymentFailed`) de vuelta a `taxvision-events`.
+
+**Tenant / Aplicacion del cliente** — el tenant puede cobrar a sus propios clientes
+con cualquier proveedor que elija (Stripe, PayPal, Square, MercadoPago, etc.). El
+patron `IPaymentAdapter` / `IPaymentAdapterFactory` permite agregar nuevos adaptadores
+sin tocar el dominio ni la aplicacion. Las credenciales del proveedor se almacenan
+cifradas y nunca se exponen en respuestas HTTP.
+
+### Variables de entorno requeridas
+
+```env
+PAYMENT_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Payment;...
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+Nunca coloque `STRIPE_SECRET_KEY` ni `STRIPE_WEBHOOK_SECRET` en `appsettings.json`.
+
+### Estructura
+
+```text
+src/Services/Payment/
+├── TaxVision.Payment.Domain/
+│   ├── SaaSPayments/    (SaaSPayment, SaaSPaymentType, PaymentStatus)
+│   ├── StripeCustomers/ (StripeCustomer)
+│   └── TenantPayments/  (TenantPaymentConfig, TenantTransaction, TenantPaymentProvider)
+├── TaxVision.Payment.Application/
+│   ├── Abstractions/    (7 interfaces)
+│   ├── SaaSPayments/    (Commands, Queries, IntegrationEvents — 4 handlers)
+│   └── TenantPayments/  (Commands, Queries)
+├── TaxVision.Payment.Infrastructure/
+│   ├── Persistence/     (PaymentDbContext, 4 configuraciones EF, 4 repos)
+│   └── Payments/        (StripeGateway, StripePaymentAdapter, PayPalPaymentAdapter, Factory)
+└── TaxVision.Payment.Api/
+    └── Controllers/     (SaaSPaymentsController, WebhooksController, TenantPaymentsController)
+```
+
+### Eventos de integracion consumidos
+
+Payment escucha la cola `payment-service-events` ligada al exchange `taxvision-events`:
+
+- `EnrollmentPaymentRequestedIntegrationEvent`
+- `SeatPurchaseRequestedIntegrationEvent`
+- `SeatRenewalPaymentRequestedIntegrationEvent`
+- `SubscriptionRenewalPaymentRequestedIntegrationEvent`
+
+### Eventos de integracion publicados
+
+Payment publica hacia `taxvision-events` (cola `subscription-service-events`):
+
+- `EnrollmentPaymentCompletedIntegrationEvent` / `EnrollmentPaymentFailedIntegrationEvent`
+- `SeatPaymentCompletedIntegrationEvent` / `SeatPaymentFailedIntegrationEvent`
+- `SeatRenewalPaymentCompletedIntegrationEvent` / `SeatRenewalPaymentFailedIntegrationEvent`
+- `SubscriptionRenewalPaymentCompletedIntegrationEvent` / `SubscriptionRenewalPaymentFailedIntegrationEvent`
+
+Todos estos contratos se definieron en `BuildingBlocks.Messaging` para ser compartidos
+con el Subscription service.
+
+### Tablas (TaxVision_Payment)
+
+- `SaaSPayments` — registro de cada cobro de la plataforma;
+- `StripeCustomers` — mapping `TenantId` → `StripeCustomerId`;
+- `TenantPaymentConfigs` — configuracion de proveedor del tenant;
+- `TenantTransactions` — transacciones del lado del tenant.
+
+### Migracion inicial
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Payment\TaxVision.Payment.Infrastructure\TaxVision.Payment.Infrastructure.csproj `
+  --startup-project src\Services\Payment\TaxVision.Payment.Api\TaxVision.Payment.Api.csproj `
+  --connection "Server=localhost,1433;Database=TaxVision_Payment;User Id=sa;Password=<SA_PASSWORD>;TrustServerCertificate=true"
+```
+
+### Rutas YARP (Gateway)
+
+```
+/payments/{**catch-all}  → payment-api:8080  (autenticado)
+/webhooks/{**catch-all}  → payment-api:8080  (anonimo, verificacion Stripe-Signature)
+```
+
+### Endpoints
+
+| Metodo | Ruta | Acceso | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/payments/saas/{id}` | `PlatformAdmin` | Detalle de un cobro SaaS |
+| `GET` | `/payments/saas` | `PlatformAdmin` | Lista de cobros del tenant |
+| `POST` | `/webhooks/stripe` | anonimo | Recibe eventos de Stripe |
+| `GET` | `/payments/tenant/config` | `TenantAdmin` | Configuracion de proveedor |
+| `POST` | `/payments/tenant/config` | `TenantAdmin` | Configura proveedor del tenant |
+| `POST` | `/payments/tenant/charge` | `TenantAdmin` | Procesa un cobro del tenant |
+| `GET` | `/payments/tenant/transactions` | `TenantAdmin` | Lista de transacciones |
+
+### Proximos pasos
+
+- implementar cifrado real (AES-256) para `SecretKeyEncrypted` y `WebhookSecretEncrypted`;
+- completar `PayPalPaymentAdapter` con el SDK real de PayPal;
+- mover la confirmacion del `PaymentIntent` a webhooks asincronos (flujo actual es sincrono, adecuado solo para pruebas);
+- agregar health check del endpoint de Stripe (`https://status.stripe.com/api/v2/status.json`).

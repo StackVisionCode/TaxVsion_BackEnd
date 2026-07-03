@@ -4,6 +4,19 @@ using TaxVision.Payment.Application.Abstractions;
 
 namespace TaxVision.Payment.Infrastructure.Payments;
 
+/// <summary>
+/// Stripe.net implementation of <see cref="IStripeGateway"/>.
+/// <para>
+/// Reads <c>Stripe:SecretKey</c> and <c>Stripe:WebhookSecret</c> from <see cref="StripeOptions"/>
+/// (injected via <c>IOptions&lt;StripeOptions&gt;</c>). These values MUST come from environment
+/// variables or user secrets — never from <c>appsettings.json</c>.
+/// </para>
+/// <remarks>
+/// <see cref="ConfirmPaymentIntentAsync"/> currently uses a test payment method (<c>pm_card_visa</c>)
+/// for development. In production this should be replaced with a real payment method token
+/// supplied by the frontend (Stripe Elements / Stripe.js).
+/// </remarks>
+/// </summary>
 public sealed class StripeGateway : IStripeGateway
 {
     private readonly CustomerService _customerService;
