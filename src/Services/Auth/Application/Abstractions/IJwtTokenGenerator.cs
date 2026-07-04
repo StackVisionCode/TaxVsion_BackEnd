@@ -16,7 +16,8 @@ public interface IJwtTokenGenerator
         Guid sessionId,
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> permissions,
-        IReadOnlyCollection<string> authMethods);
+        IReadOnlyCollection<string> authMethods
+    );
 }
 
 /// <summary>Expone el JSON Web Key Set público cuando se firma con RS256.</summary>

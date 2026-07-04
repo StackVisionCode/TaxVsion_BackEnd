@@ -14,11 +14,7 @@ using Wolverine;
 
 namespace TaxVision.Auth.Application.Invitations.Commands;
 
-public sealed record AcceptInvitationCommand(
-    string InvitationToken,
-    string Name,
-    string LastName,
-    string Password);
+public sealed record AcceptInvitationCommand(string InvitationToken, string Name, string LastName, string Password);
 
 public static class AcceptInvitationHandler
 {
@@ -35,18 +31,19 @@ public static class AcceptInvitationHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var tokenHash = tokens.Hash(command.InvitationToken);
         var invitation = await invitations.GetByTokenHashAsync(tokenHash, ct);
         if (invitation is null || !invitation.MatchesTokenHash(tokenHash))
         {
             return Result.Failure<UserResponse>(
-                new Error("Auth.InvalidInvitation", "Invitation is invalid or expired."));
+                new Error("Auth.InvalidInvitation", "Invitation is invalid or expired.")
+            );
         }
 
-        if (invitation.Status == InvitationStatus.Accepted &&
-            invitation.AcceptedByUserId is Guid existingUserId)
+        if (invitation.Status == InvitationStatus.Accepted && invitation.AcceptedByUserId is Guid existingUserId)
         {
             var existing = await users.GetByIdAsync(existingUserId, ct);
             if (existing is not null)
@@ -58,20 +55,21 @@ public static class AcceptInvitationHandler
         {
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<UserResponse>(
-                new Error("Auth.InvalidInvitation", "Invitation is invalid or expired."));
+                new Error("Auth.InvalidInvitation", "Invitation is invalid or expired.")
+            );
         }
 
         if (invitation.Status != InvitationStatus.Pending)
         {
             return Result.Failure<UserResponse>(
-                new Error("Auth.InvalidInvitation", "Invitation is invalid or expired."));
+                new Error("Auth.InvalidInvitation", "Invitation is invalid or expired.")
+            );
         }
 
         var tenant = await tenants.GetByIdAsync(invitation.TenantId, ct);
         if (tenant is null || !tenant.IsActive)
         {
-            return Result.Failure<UserResponse>(
-                new Error("Tenant.Inactive", "Tenant does not exist or is inactive."));
+            return Result.Failure<UserResponse>(new Error("Tenant.Inactive", "Tenant does not exist or is inactive."));
         }
 
         var passwordResult = PasswordPolicy.Validate(command.Password, invitation.Email);
@@ -81,7 +79,8 @@ public static class AcceptInvitationHandler
         if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, ct))
         {
             return Result.Failure<UserResponse>(
-                new Error("User.EmailConflict", "Email is already registered in this tenant."));
+                new Error("User.EmailConflict", "Email is already registered in this tenant.")
+            );
         }
 
         var userResult = User.Register(
@@ -91,7 +90,8 @@ public static class AcceptInvitationHandler
             invitation.Email,
             passwordHasher.Hash(command.Password),
             invitation.ActorType,
-            invitation.CustomerId);
+            invitation.CustomerId
+        );
         if (userResult.IsFailure)
             return Result.Failure<UserResponse>(userResult.Error);
 
@@ -115,12 +115,11 @@ public static class AcceptInvitationHandler
                 UserActorType.TenantAdmin => Role.SystemTenantAdmin,
                 UserActorType.TenantEmployee => Role.SystemEmployee,
                 UserActorType.CustomerPortal => Role.SystemCustomerPortal,
-                _ => null
+                _ => null,
             };
             if (systemRoleName is not null)
             {
-                var systemRole = await roles.GetSystemRoleAsync(
-                    invitation.TenantId, systemRoleName, ct);
+                var systemRole = await roles.GetSystemRoleAsync(invitation.TenantId, systemRoleName, ct);
                 if (systemRole is not null)
                     roleIds = [systemRole.Id];
             }
@@ -131,21 +130,31 @@ public static class AcceptInvitationHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                invitation.TenantId, user.Id, AuthAuditAction.InvitationAccepted, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Invitation", targetId: invitation.Id),
-            ct);
+                invitation.TenantId,
+                user.Id,
+                AuthAuditAction.InvitationAccepted,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Invitation",
+                targetId: invitation.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(new UserRegisteredIntegrationEvent
-        {
-            UserId = user.Id,
-            TenantId = user.TenantId,
-            Email = user.Email,
-            ActorType = user.ActorType.ToString(),
-            CustomerId = user.CustomerId,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new UserRegisteredIntegrationEvent
+            {
+                UserId = user.Id,
+                TenantId = user.TenantId,
+                Email = user.Email,
+                ActorType = user.ActorType.ToString(),
+                CustomerId = user.CustomerId,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success(ToResponse(user));
     }
@@ -166,12 +175,5 @@ public static class AcceptInvitationHandler
     }
 
     private static UserResponse ToResponse(User user) =>
-        new(
-            user.Id,
-            user.TenantId,
-            user.Name,
-            user.LastName,
-            user.Email,
-            user.ActorType,
-            user.CustomerId);
+        new(user.Id, user.TenantId, user.Name, user.LastName, user.Email, user.ActorType, user.CustomerId);
 }

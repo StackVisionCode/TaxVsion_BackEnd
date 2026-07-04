@@ -10,19 +10,17 @@ public sealed record MfaMethodResponse(
     bool IsConfirmed,
     bool IsPreferred,
     string? MaskedDestination,
-    DateTime? LastUsedAtUtc);
+    DateTime? LastUsedAtUtc
+);
 
-public sealed record TrustedDeviceResponse(
-    Guid Id,
-    string? UserAgent,
-    DateTime CreatedAtUtc,
-    DateTime ExpiresAtUtc);
+public sealed record TrustedDeviceResponse(Guid Id, string? UserAgent, DateTime CreatedAtUtc, DateTime ExpiresAtUtc);
 
 public sealed record MfaStatusResponse(
     bool MfaEnabled,
     IReadOnlyList<MfaMethodResponse> Methods,
     int RecoveryCodesRemaining,
-    IReadOnlyList<TrustedDeviceResponse> TrustedDevices);
+    IReadOnlyList<TrustedDeviceResponse> TrustedDevices
+);
 
 public sealed record GetMyMfaStatusQuery(Guid UserId);
 
@@ -32,7 +30,8 @@ public static class GetMyMfaStatusHandler
         GetMyMfaStatusQuery query,
         IUserRepository users,
         IMfaRepository mfa,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(query.UserId, ct);
         if (user is null)
@@ -42,20 +41,31 @@ public static class GetMyMfaStatusHandler
         var recoveryCodes = await mfa.GetRecoveryCodesAsync(query.UserId, ct);
         var devices = await mfa.GetTrustedDevicesAsync(query.UserId, ct);
 
-        return Result.Success(new MfaStatusResponse(
-            user.MfaEnabled,
-            methods.Select(method => new MfaMethodResponse(
-                method.Id,
-                method.Type.ToString(),
-                method.IsConfirmed,
-                method.IsPreferred,
-                Mask(method.Destination),
-                method.LastUsedAtUtc)).ToList(),
-            recoveryCodes.Count(code => code.IsUsable),
-            devices.Where(device => device.IsActive)
-                .Select(device => new TrustedDeviceResponse(
-                    device.Id, device.UserAgent, device.CreatedAtUtc, device.ExpiresAtUtc))
-                .ToList()));
+        return Result.Success(
+            new MfaStatusResponse(
+                user.MfaEnabled,
+                methods
+                    .Select(method => new MfaMethodResponse(
+                        method.Id,
+                        method.Type.ToString(),
+                        method.IsConfirmed,
+                        method.IsPreferred,
+                        Mask(method.Destination),
+                        method.LastUsedAtUtc
+                    ))
+                    .ToList(),
+                recoveryCodes.Count(code => code.IsUsable),
+                devices
+                    .Where(device => device.IsActive)
+                    .Select(device => new TrustedDeviceResponse(
+                        device.Id,
+                        device.UserAgent,
+                        device.CreatedAtUtc,
+                        device.ExpiresAtUtc
+                    ))
+                    .ToList()
+            )
+        );
     }
 
     private static string? Mask(string? destination)
@@ -71,9 +81,7 @@ public static class GetMyMfaStatusHandler
             return $"{visible}***@{parts[1]}";
         }
 
-        return destination.Length <= 4
-            ? "***"
-            : $"***{destination[^4..]}";
+        return destination.Length <= 4 ? "***" : $"***{destination[^4..]}";
     }
 }
 
@@ -83,22 +91,26 @@ public sealed record TenantMfaPolicyResponse(
     bool RequireForAdmins,
     bool RequireForEmployees,
     bool RequireForCustomerPortal,
-    int TrustedDeviceDays);
+    int TrustedDeviceDays
+);
 
 public static class GetTenantMfaPolicyHandler
 {
     public static async Task<Result<TenantMfaPolicyResponse>> Handle(
         GetTenantMfaPolicyQuery query,
         IMfaRepository mfa,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
-        var policy = await mfa.GetPolicyAsync(query.TenantId, ct)
-            ?? TenantMfaPolicy.CreateDefault(query.TenantId);
+        var policy = await mfa.GetPolicyAsync(query.TenantId, ct) ?? TenantMfaPolicy.CreateDefault(query.TenantId);
 
-        return Result.Success(new TenantMfaPolicyResponse(
-            policy.RequireForAdmins,
-            policy.RequireForEmployees,
-            policy.RequireForCustomerPortal,
-            policy.TrustedDeviceDays));
+        return Result.Success(
+            new TenantMfaPolicyResponse(
+                policy.RequireForAdmins,
+                policy.RequireForEmployees,
+                policy.RequireForCustomerPortal,
+                policy.TrustedDeviceDays
+            )
+        );
     }
 }

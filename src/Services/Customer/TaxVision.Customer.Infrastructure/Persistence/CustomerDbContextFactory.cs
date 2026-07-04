@@ -17,9 +17,7 @@ public sealed class CustomerDbContextFactory : IDesignTimeDbContextFactory<Custo
             Environment.GetEnvironmentVariable("ConnectionStrings__Default")
             ?? "Server=localhost,1433;Database=TaxVision_Customers;Trusted_Connection=True;TrustServerCertificate=True";
 
-        var options = new DbContextOptionsBuilder<CustomerDbContext>()
-            .UseSqlServer(connectionString)
-            .Options;
+        var options = new DbContextOptionsBuilder<CustomerDbContext>().UseSqlServer(connectionString).Options;
 
         return new CustomerDbContext(options);
     }

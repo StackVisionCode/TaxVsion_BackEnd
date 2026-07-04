@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Customer.Api.Filters;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Commands.CancelCustomerImport;
@@ -22,11 +23,9 @@ namespace TaxVision.Customer.Api.Controllers;
 [Authorize(Roles = "TenantAdmin")]
 public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 {
-    private const int MaxUploadBytes = 10 * 1024 * 1024; // 10 MB; el handler tambien valida
-
     // ---------- POST /customers/imports ----------
     [HttpPost]
-    [RequestSizeLimit(MaxUploadBytes)]
+    [ConfigurableImportSizeLimit] // limite de tamano tomado de CustomerImportOptions; el handler tambien valida
     [Consumes("multipart/form-data")]
     [ProducesResponseType<CustomerImportAttemptResponse>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]

@@ -15,6 +15,7 @@ public interface IMfaRepository
     void RemoveMethod(MfaMethod method);
 
     Task AddChallengeAsync(MfaChallenge challenge, CancellationToken ct = default);
+
     /// <summary>Recupera el desafío MFA pendiente asociado al hash del ticket de login.</summary>
     Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default);
 

@@ -17,9 +17,7 @@ public sealed class TenantDbContextFactory : IDesignTimeDbContextFactory<TenantD
             Environment.GetEnvironmentVariable("ConnectionStrings__Default")
             ?? "Server=localhost,1433;Database=TaxVision_Tenants;Trusted_Connection=True;TrustServerCertificate=True";
 
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseSqlServer(connectionString)
-            .Options;
+        var options = new DbContextOptionsBuilder<TenantDbContext>().UseSqlServer(connectionString).Options;
 
         return new TenantDbContext(options);
     }

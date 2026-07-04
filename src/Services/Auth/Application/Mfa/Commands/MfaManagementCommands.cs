@@ -27,7 +27,8 @@ public static class DisableMfaHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
@@ -37,13 +38,12 @@ public static class DisableMfaHandler
             return Result.Failure(new Error("Auth.Invalid", "Invalid credentials."));
 
         var policy = await mfa.GetPolicyAsync(user.TenantId, ct);
-        var requiredByPolicy = policy?.RequiresFor(user.ActorType)
-            ?? user.ActorType is Domain.Users.UserActorType.TenantAdmin
-                or Domain.Users.UserActorType.PlatformAdmin;
+        var requiredByPolicy =
+            policy?.RequiresFor(user.ActorType)
+            ?? user.ActorType is Domain.Users.UserActorType.TenantAdmin or Domain.Users.UserActorType.PlatformAdmin;
         if (requiredByPolicy)
         {
-            return Result.Failure(
-                new Error("Mfa.RequiredByPolicy", "MFA is required by your tenant policy."));
+            return Result.Failure(new Error("Mfa.RequiredByPolicy", "MFA is required by your tenant policy."));
         }
 
         user.DisableMfa();
@@ -59,21 +59,30 @@ public static class DisableMfaHandler
         foreach (var device in devices)
             device.Revoke();
 
-        await bus.PublishAsync(new SecurityAlertIntegrationEvent
-        {
-            TenantId = user.TenantId,
-            UserId = user.Id,
-            AlertType = SecurityAlertType.MfaDisabled,
-            IpAddress = request.IpAddress,
-            UserAgent = request.UserAgent,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new SecurityAlertIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                AlertType = SecurityAlertType.MfaDisabled,
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.MfaDisabled, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.MfaDisabled,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -99,19 +108,18 @@ public static class RegenerateRecoveryCodesHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive || !user.MfaEnabled)
         {
-            return Result.Failure<RegenerateRecoveryCodesResponse>(
-                new Error("Mfa.NotEnabled", "MFA is not enabled."));
+            return Result.Failure<RegenerateRecoveryCodesResponse>(new Error("Mfa.NotEnabled", "MFA is not enabled."));
         }
 
         if (!hasher.Verify(command.Password, user.PasswordHash))
         {
-            return Result.Failure<RegenerateRecoveryCodesResponse>(
-                new Error("Auth.Invalid", "Invalid credentials."));
+            return Result.Failure<RegenerateRecoveryCodesResponse>(new Error("Auth.Invalid", "Invalid credentials."));
         }
 
         var existing = await mfa.GetRecoveryCodesAsync(user.Id, ct);
@@ -129,9 +137,16 @@ public static class RegenerateRecoveryCodesHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.RecoveryCodesRegenerated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.RecoveryCodesRegenerated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(new RegenerateRecoveryCodesResponse(rawCodes));
@@ -154,7 +169,8 @@ public static class RevokeTrustedDeviceHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null)
@@ -168,10 +184,18 @@ public static class RevokeTrustedDeviceHandler
         device.Revoke();
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.TrustedDeviceRevoked, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "TrustedDevice", targetId: device.Id),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.TrustedDeviceRevoked,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "TrustedDevice",
+                targetId: device.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -186,7 +210,8 @@ public sealed record UpdateTenantMfaPolicyCommand(
     Guid UpdatedByUserId,
     bool RequireForEmployees,
     bool RequireForCustomerPortal,
-    int TrustedDeviceDays);
+    int TrustedDeviceDays
+);
 
 public static class UpdateTenantMfaPolicyHandler
 {
@@ -197,7 +222,8 @@ public static class UpdateTenantMfaPolicyHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var policy = await mfa.GetPolicyAsync(command.TenantId, ct);
         if (policy is null)
@@ -209,15 +235,23 @@ public static class UpdateTenantMfaPolicyHandler
         var result = policy.Update(
             command.RequireForEmployees,
             command.RequireForCustomerPortal,
-            command.TrustedDeviceDays);
+            command.TrustedDeviceDays
+        );
         if (result.IsFailure)
             return result;
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.UpdatedByUserId, AuthAuditAction.MfaPolicyUpdated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                command.TenantId,
+                command.UpdatedByUserId,
+                AuthAuditAction.MfaPolicyUpdated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

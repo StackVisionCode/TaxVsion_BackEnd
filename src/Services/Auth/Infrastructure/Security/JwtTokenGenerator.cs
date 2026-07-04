@@ -22,9 +22,7 @@ public sealed class JwtOptions
     public string? PrivateKeyPath { get; set; }
 }
 
-public sealed class JwtTokenGenerator(
-    IOptions<JwtOptions> options,
-    SigningKeyProvider signingKeys) : IJwtTokenGenerator
+public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyProvider signingKeys) : IJwtTokenGenerator
 {
     private readonly JwtOptions _options = options.Value;
 
@@ -34,7 +32,8 @@ public sealed class JwtTokenGenerator(
         Guid sessionId,
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> permissions,
-        IReadOnlyCollection<string> authMethods)
+        IReadOnlyCollection<string> authMethods
+    )
     {
         var now = DateTime.UtcNow;
         var claims = new List<Claim>
@@ -46,7 +45,7 @@ public sealed class JwtTokenGenerator(
             new("tenant_id", user.TenantId.ToString()),
             new("actor_type", user.ActorType.ToString()),
             new("zoneinfo", effectiveTimeZoneId),
-            new("perm_v", user.PermissionsVersion.ToString())
+            new("perm_v", user.PermissionsVersion.ToString()),
         };
 
         if (user.CustomerId is Guid customerId)
@@ -62,10 +61,9 @@ public sealed class JwtTokenGenerator(
             claims: claims,
             notBefore: now,
             expires: now.AddMinutes(_options.AccessMinutes),
-            signingCredentials: signingKeys.GetSigningCredentials());
+            signingCredentials: signingKeys.GetSigningCredentials()
+        );
 
-        return new AccessToken(
-            new JwtSecurityTokenHandler().WriteToken(token),
-            _options.AccessMinutes * 60);
+        return new AccessToken(new JwtSecurityTokenHandler().WriteToken(token), _options.AccessMinutes * 60);
     }
 }

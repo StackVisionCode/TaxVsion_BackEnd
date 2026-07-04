@@ -9,7 +9,8 @@ public sealed record SessionResponse(
     string? IpAddress,
     string? UserAgent,
     DateTime CreatedAtUtc,
-    DateTime LastSeenAtUtc);
+    DateTime LastSeenAtUtc
+);
 
 /// <summary>Sesiones activas del usuario autenticado.</summary>
 public sealed record GetMySessionsQuery(Guid UserId);
@@ -19,7 +20,8 @@ public static class GetMySessionsHandler
     public static async Task<Result<IReadOnlyList<SessionResponse>>> Handle(
         GetMySessionsQuery query,
         ISessionRepository sessions,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var active = await sessions.GetActiveSessionsByUserAsync(query.UserId, ct);
         IReadOnlyList<SessionResponse> response = active
@@ -29,7 +31,8 @@ public static class GetMySessionsHandler
                 session.IpAddress,
                 session.UserAgent,
                 session.CreatedAtUtc,
-                session.LastSeenAtUtc))
+                session.LastSeenAtUtc
+            ))
             .ToList();
         return Result.Success(response);
     }
@@ -44,13 +47,15 @@ public static class GetUserSessionsHandler
         GetUserSessionsQuery query,
         IUserRepository users,
         ISessionRepository sessions,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var target = await users.GetByIdAsync(query.TargetUserId, ct);
         if (target is null || target.TenantId != query.TenantId)
         {
             return Result.Failure<IReadOnlyList<SessionResponse>>(
-                new Error("User.NotFound", "User does not exist in this tenant."));
+                new Error("User.NotFound", "User does not exist in this tenant.")
+            );
         }
 
         var active = await sessions.GetActiveSessionsByUserAsync(query.TargetUserId, ct);
@@ -61,7 +66,8 @@ public static class GetUserSessionsHandler
                 session.IpAddress,
                 session.UserAgent,
                 session.CreatedAtUtc,
-                session.LastSeenAtUtc))
+                session.LastSeenAtUtc
+            ))
             .ToList();
         return Result.Success(response);
     }

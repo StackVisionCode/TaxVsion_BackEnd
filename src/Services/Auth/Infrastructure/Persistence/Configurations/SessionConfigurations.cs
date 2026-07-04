@@ -25,9 +25,6 @@ public sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSess
         builder.HasIndex(session => new { session.UserId, session.RevokedAtUtc });
         builder.HasIndex(session => session.TenantId);
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(session => session.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(session => session.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }

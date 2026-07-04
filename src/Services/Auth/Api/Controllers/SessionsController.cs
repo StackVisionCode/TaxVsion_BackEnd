@@ -22,39 +22,32 @@ public sealed class SessionsController(IMessageBus bus) : ControllerBase
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<SessionResponse>>>(
-            new GetMySessionsQuery(userId), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<SessionResponse>>>(new GetMySessionsQuery(userId), ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Sesiones activas de un usuario del tenant (requiere users.manage).</summary>
     [HttpGet("users/{targetUserId:guid}")]
     [Authorization.HasPermission(PermissionCatalog.UsersManage)]
     [ProducesResponseType<IReadOnlyList<SessionResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> UserSessions(
-        Guid targetUserId,
-        CancellationToken ct)
+    public async Task<IActionResult> UserSessions(Guid targetUserId, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<IReadOnlyList<SessionResponse>>>(
-            new GetUserSessionsQuery(tenantId, targetUserId), ct);
+            new GetUserSessionsQuery(tenantId, targetUserId),
+            ct
+        );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Revoca una sesión (propia o, con users.manage, de otro usuario del tenant).</summary>
     [HttpDelete("{sessionId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> RevokeSession(
-        Guid sessionId,
-        CancellationToken ct)
+    public async Task<IActionResult> RevokeSession(Guid sessionId, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
@@ -64,20 +57,18 @@ public sealed class SessionsController(IMessageBus bus) : ControllerBase
                 userId,
                 tenantId,
                 sessionId,
-                CanManageOthers: User.HasPermission(PermissionCatalog.UsersManage)),
-            ct);
+                CanManageOthers: User.HasPermission(PermissionCatalog.UsersManage)
+            ),
+            ct
+        );
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>"Cerrar sesión en todos los dispositivos" (conserva la sesión actual).</summary>
     [HttpDelete]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> RevokeAllMySessions(
-        [FromQuery] bool includeCurrent,
-        CancellationToken ct)
+    public async Task<IActionResult> RevokeAllMySessions([FromQuery] bool includeCurrent, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
@@ -87,10 +78,10 @@ public sealed class SessionsController(IMessageBus bus) : ControllerBase
             exceptSessionId = currentSessionId;
 
         var result = await bus.InvokeAsync<Result>(
-            new RevokeAllMySessionsCommand(userId, tenantId, exceptSessionId), ct);
+            new RevokeAllMySessionsCommand(userId, tenantId, exceptSessionId),
+            ct
+        );
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

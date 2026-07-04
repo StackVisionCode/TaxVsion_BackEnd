@@ -23,9 +23,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
     [ProducesResponseType<CreateInvitationResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Create(
-        CreateInvitationRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> Create(CreateInvitationRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
@@ -37,8 +35,10 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
                 request.Email,
                 request.ActorType,
                 request.CustomerId,
-                request.RoleIds),
-            ct);
+                request.RoleIds
+            ),
+            ct
+        );
 
         return result.IsSuccess
             ? Created($"/auth/invitations/{result.Value.InvitationId}", result.Value)
@@ -52,71 +52,57 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
         [FromQuery] InvitationStatus? status = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<InvitationResponse>>>(
-            new GetInvitationsQuery(tenantId, status, page, size), ct);
+            new GetInvitationsQuery(tenantId, status, page, size),
+            ct
+        );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("accept")]
     [AllowAnonymous]
     [ProducesResponseType<UserResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Accept(
-        AcceptInvitationCommand command,
-        CancellationToken ct)
+    public async Task<IActionResult> Accept(AcceptInvitationCommand command, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<UserResponse>>(command, ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("{invitationId:guid}/resend")]
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Resend(
-        Guid invitationId,
-        CancellationToken ct)
+    public async Task<IActionResult> Resend(Guid invitationId, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(
-            new ResendInvitationCommand(invitationId, userId, tenantId), ct);
+        var result = await bus.InvokeAsync<Result>(new ResendInvitationCommand(invitationId, userId, tenantId), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("{invitationId:guid}/cancel")]
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Cancel(
-        Guid invitationId,
-        CancellationToken ct)
+    public async Task<IActionResult> Cancel(Guid invitationId, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(
-            new CancelInvitationCommand(invitationId, userId),
-            ct);
+        var result = await bus.InvokeAsync<Result>(new CancelInvitationCommand(invitationId, userId), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }
 
@@ -125,4 +111,5 @@ public sealed record CreateInvitationRequest(
     string Email,
     UserActorType ActorType,
     Guid? CustomerId,
-    IReadOnlyList<Guid>? RoleIds = null);
+    IReadOnlyList<Guid>? RoleIds = null
+);

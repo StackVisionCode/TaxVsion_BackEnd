@@ -29,17 +29,17 @@ public sealed class AuditController(IMessageBus bus) : ControllerBase
         [FromQuery] DateTime? toUtc = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 50,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<AuditLogResponse>>>(
             new GetAuditLogsQuery(tenantId, userId, action, fromUtc, toUtc, page, size),
-            ct);
+            ct
+        );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

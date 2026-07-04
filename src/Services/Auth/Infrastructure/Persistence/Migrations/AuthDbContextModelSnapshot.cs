@@ -717,6 +717,54 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "El cliente puede firmar documentos",
                             IsCustomerPortal = true,
                             Module = "portal"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000023"),
+                            Code = "cloudstorage.file.view",
+                            Description = "Ver metadatos de archivos",
+                            IsCustomerPortal = false,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000024"),
+                            Code = "cloudstorage.file.upload",
+                            Description = "Subir archivos mediante el gateway seguro",
+                            IsCustomerPortal = false,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000025"),
+                            Code = "cloudstorage.file.download",
+                            Description = "Descargar archivos disponibles",
+                            IsCustomerPortal = false,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000026"),
+                            Code = "cloudstorage.file.delete",
+                            Description = "Eliminar archivos",
+                            IsCustomerPortal = false,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000027"),
+                            Code = "cloudstorage.settings.manage",
+                            Description = "Gestionar políticas de almacenamiento",
+                            IsCustomerPortal = false,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000028"),
+                            Code = "cloudstorage.audit.view",
+                            Description = "Consultar auditoría de archivos",
+                            IsCustomerPortal = false,
+                            Module = "cloudstorage"
                         });
                 });
 

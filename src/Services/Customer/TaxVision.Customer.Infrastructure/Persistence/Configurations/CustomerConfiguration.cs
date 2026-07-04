@@ -79,19 +79,19 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
 
         // ---- Child entities navigation ----
 
-        b.HasMany(c => c.Addresses).WithOne().HasForeignKey(a => a.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        b.HasMany(c => c.Addresses).WithOne().HasForeignKey(a => a.CustomerId).OnDelete(DeleteBehavior.NoAction);
         b.Navigation(c => c.Addresses).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        b.HasMany(c => c.ContactPoints).WithOne().HasForeignKey(cp => cp.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        b.HasMany(c => c.ContactPoints).WithOne().HasForeignKey(cp => cp.CustomerId).OnDelete(DeleteBehavior.NoAction);
         b.Navigation(c => c.ContactPoints).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        b.HasMany(c => c.Relations).WithOne().HasForeignKey(r => r.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        b.HasMany(c => c.Relations).WithOne().HasForeignKey(r => r.CustomerId).OnDelete(DeleteBehavior.NoAction);
         b.Navigation(c => c.Relations).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         b.HasOne(c => c.FiscalProfile)
             .WithOne()
             .HasForeignKey<TaxVision.Customer.Domain.FiscalProfiles.CustomerFiscalProfile>(fp => fp.CustomerId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.NoAction);
 
         // ---- Indices del PDF (sec. 5 - Paso 5) ----
 

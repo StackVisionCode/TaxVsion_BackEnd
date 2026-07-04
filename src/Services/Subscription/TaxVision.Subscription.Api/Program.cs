@@ -25,8 +25,7 @@ builder.Host.UseTaxVisionSerilog("subscription-service");
 
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options =>
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -38,8 +37,8 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "subscription-service");
 
 var rabbitUri = new Uri(
-    builder.Configuration["RabbitMq:Uri"]
-        ?? throw new InvalidOperationException("RabbitMq:Uri is missing."));
+    builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
+);
 
 builder
     .Services.AddHealthChecks()
@@ -58,31 +57,29 @@ builder.Host.UseWolverine(options =>
     options.UseRabbitMq(rabbitUri).AutoProvision();
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
-    options.UseEntityFrameworkCoreTransactions()
-        .WithDbContextAbstraction<IUnitOfWork, SubscriptionDbContext>();
+    options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, SubscriptionDbContext>();
     options.Policies.AutoApplyTransactions();
 
     // Eventos publicados hacia Auth (límites) y demás servicios.
-    options.PublishMessage<SubscriptionActivatedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SubscriptionPlanChangedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SubscriptionSuspendedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SeatsPurchasedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionPlanChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionSuspendedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatsPurchasedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated (alta de suscripción trial).
-    options.ListenToRabbitQueue("subscription-events", queue =>
-    {
-        queue.BindExchange("taxvision-events", string.Empty);
-    }).UseDurableInbox();
+    options
+        .ListenToRabbitQueue(
+            "subscription-events",
+            queue =>
+            {
+                queue.BindExchange("taxvision-events", string.Empty);
+            }
+        )
+        .UseDurableInbox();
 
-    options.Policies.OnException<Exception>()
-        .RetryWithCooldown(
-            TimeSpan.FromSeconds(1),
-            TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(15));
+    options
+        .Policies.OnException<Exception>()
+        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
 });
 
 var app = builder.Build();
@@ -91,8 +88,7 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.UseSwagger();
-    app.UseSwaggerUI(options =>
-        options.SwaggerEndpoint("/openapi/v1.json", "Subscription API v1"));
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Subscription API v1"));
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -105,10 +101,7 @@ app.UseAuthorization();
 app.UseMiddleware<TenantResolutionMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/health/ready", new HealthCheckOptions
-{
-    Predicate = check => check.Tags.Contains("ready")
-});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapControllers();
 
 app.Run();

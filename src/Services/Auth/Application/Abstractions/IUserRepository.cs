@@ -15,5 +15,6 @@ public interface IUserRepository
         int size,
         string? search,
         bool? isActive,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 }

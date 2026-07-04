@@ -9,4 +9,5 @@ public sealed record UserResponse(
     string LastName,
     string Email,
     UserActorType ActorType,
-    Guid? CustomerId);
+    Guid? CustomerId
+);

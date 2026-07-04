@@ -7907,7 +7907,7 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Customer.Domain.Customers.Customer", null)
                         .WithMany("Addresses")
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.OwnsOne("TaxVision.Customer.Domain.Customers.ValueObjects.AddressValue", "Address", b1 =>
@@ -7966,7 +7966,7 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Customer.Domain.Customers.Customer", null)
                         .WithMany("ContactPoints")
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
 
@@ -8112,7 +8112,7 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Customer.Domain.Customers.Customer", null)
                         .WithOne("FiscalProfile")
                         .HasForeignKey("TaxVision.Customer.Domain.FiscalProfiles.CustomerFiscalProfile", "CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
 
@@ -8121,7 +8121,7 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Customer.Domain.Imports.CustomerImportAttempt", null)
                         .WithMany("Rows")
                         .HasForeignKey("CustomerImportAttemptId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
 
@@ -8130,7 +8130,7 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Customer.Domain.Customers.Customer", null)
                         .WithMany("Relations")
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.OwnsOne("TaxVision.Customer.Domain.Customers.ValueObjects.AddressValue", "Address", b1 =>
@@ -8279,7 +8279,7 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Customer.Domain.Relations.CustomerRelation", null)
                         .WithOne("FiscalProfile")
                         .HasForeignKey("TaxVision.Customer.Domain.Relations.CustomerRelationFiscalProfile", "CustomerRelationId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
 

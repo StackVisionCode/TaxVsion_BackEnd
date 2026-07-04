@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -29,5 +28,4 @@
     <ProjectReference Include="..\TaxVision.Tenant.Application\TaxVision.Tenant.Application.csproj" />
     <ProjectReference Include="..\TaxVision.Tenant.Infrastructure\TaxVision.Tenant.Infrastructure.csproj" />
   </ItemGroup>
-
 </Project>

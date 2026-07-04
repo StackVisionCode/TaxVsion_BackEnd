@@ -22,16 +22,17 @@ public sealed class NotificationsController(IMessageBus bus) : ControllerBase
         [FromQuery] NotificationStatus? status = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (!Guid.TryParse(User.FindFirst("tenant_id")?.Value, out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<NotificationResponse>>>(
-            new GetNotificationsQuery(tenantId, status, page, size), ct);
+            new GetNotificationsQuery(tenantId, status, page, size),
+            ct
+        );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

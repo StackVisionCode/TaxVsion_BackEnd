@@ -1,6 +1,4 @@
-﻿
-
-using BuildingBlocks.Persistence;
+﻿using BuildingBlocks.Persistence;
 
 namespace TaxVision.Tenant.Application.Tenants.Abstractions;
 

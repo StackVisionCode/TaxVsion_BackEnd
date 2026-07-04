@@ -21,11 +21,7 @@ public sealed class Role : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public IReadOnlyCollection<RolePermission> Permissions => _permissions.AsReadOnly();
 
-    public static Result<Role> Create(
-        Guid tenantId,
-        string name,
-        string? description,
-        bool isSystem = false)
+    public static Result<Role> Create(Guid tenantId, string name, string? description, bool isSystem = false)
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<Role>(new Error("Role.Tenant", "Tenant is required."));
@@ -41,7 +37,7 @@ public sealed class Role : TenantEntity
             Description = description?.Trim(),
             IsSystem = isSystem,
             IsActive = true,
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
         };
         role.SetTenant(tenantId);
         return Result.Success(role);
@@ -68,8 +64,7 @@ public sealed class Role : TenantEntity
             return Result.Failure(new Error("Role.System", "System roles cannot be modified."));
 
         _permissions.Clear();
-        _permissions.AddRange(
-            permissionIds.Distinct().Select(id => RolePermission.Create(Id, id)));
+        _permissions.AddRange(permissionIds.Distinct().Select(id => RolePermission.Create(Id, id)));
         return Result.Success();
     }
 

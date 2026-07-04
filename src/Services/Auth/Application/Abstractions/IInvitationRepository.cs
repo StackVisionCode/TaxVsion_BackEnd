@@ -14,5 +14,6 @@ public interface IInvitationRepository
         InvitationStatus? status,
         int page,
         int size,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 }

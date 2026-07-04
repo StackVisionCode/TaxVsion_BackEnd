@@ -20,7 +20,8 @@ public sealed class PasswordResetToken : TenantEntity
         Guid userId,
         string tokenHash,
         string? requestedIp,
-        TimeSpan validity)
+        TimeSpan validity
+    )
     {
         var token = new PasswordResetToken
         {
@@ -29,7 +30,7 @@ public sealed class PasswordResetToken : TenantEntity
             TokenHash = tokenHash,
             RequestedIp = requestedIp is { Length: > 45 } ? requestedIp[..45] : requestedIp,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.Add(validity)
+            ExpiresAtUtc = DateTime.UtcNow.Add(validity),
         };
         token.SetTenant(tenantId);
         return token;

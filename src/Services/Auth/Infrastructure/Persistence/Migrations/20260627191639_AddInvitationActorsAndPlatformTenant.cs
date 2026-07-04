@@ -17,13 +17,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 type: "nvarchar(30)",
                 maxLength: 30,
                 nullable: false,
-                defaultValue: "TenantEmployee");
+                defaultValue: "TenantEmployee"
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "CustomerId",
                 table: "Users",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "Kind",
@@ -31,7 +33,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 type: "nvarchar(20)",
                 maxLength: 20,
                 nullable: false,
-                defaultValue: "Customer");
+                defaultValue: "Customer"
+            );
 
             migrationBuilder.CreateTable(
                 name: "Invitations",
@@ -50,12 +53,13 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     AcceptedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CancelledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CancelledByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Invitations", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.Sql(
                 """
@@ -74,7 +78,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         WHEN [Roles] LIKE '%CustomerPortal%' THEN N'["CustomerPortal"]'
                         ELSE N'["TenantEmployee"]'
                     END;
-                """);
+                """
+            );
 
             migrationBuilder.Sql(
                 """
@@ -120,114 +125,115 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 FROM [Tenants]
                 WHERE [AdminEmail] IS NOT NULL
                   AND [AdminInvitationTokenHash] IS NOT NULL;
-                """);
+                """
+            );
 
-            migrationBuilder.DropIndex(
-                name: "IX_Tenants_AdminEmail",
-                table: "Tenants");
+            migrationBuilder.DropIndex(name: "IX_Tenants_AdminEmail", table: "Tenants");
 
-            migrationBuilder.DropColumn(
-                name: "AdminEmail",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "AdminEmail", table: "Tenants");
 
-            migrationBuilder.DropColumn(
-                name: "AdminInvitationConsumedAtUtc",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "AdminInvitationConsumedAtUtc", table: "Tenants");
 
-            migrationBuilder.DropColumn(
-                name: "AdminInvitationTokenHash",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "AdminInvitationTokenHash", table: "Tenants");
 
-            migrationBuilder.DropColumn(
-                name: "AdminUserId",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "AdminUserId", table: "Tenants");
 
             migrationBuilder.InsertData(
                 table: "Tenants",
                 columns: new[] { "Id", "CreatedAtUtc", "DefaultTimeZoneId", "IsActive", "Kind", "Name", "SubDomain" },
-                values: new object[] { new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"), new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc), "Etc/UTC", true, "Platform", "TaxVision Platform", "platform-internal" });
+                values: new object[]
+                {
+                    new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"),
+                    new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc),
+                    "Etc/UTC",
+                    true,
+                    "Platform",
+                    "TaxVision Platform",
+                    "platform-internal",
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_TenantId_ActorType",
                 table: "Users",
-                columns: new[] { "TenantId", "ActorType" });
+                columns: new[] { "TenantId", "ActorType" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_TenantId_CustomerId",
                 table: "Users",
                 columns: new[] { "TenantId", "CustomerId" },
-                filter: "[CustomerId] IS NOT NULL");
+                filter: "[CustomerId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Invitations_ExpiresAtUtc",
                 table: "Invitations",
-                column: "ExpiresAtUtc");
+                column: "ExpiresAtUtc"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Invitations_TenantId_Email_Status",
                 table: "Invitations",
-                columns: new[] { "TenantId", "Email", "Status" });
+                columns: new[] { "TenantId", "Email", "Status" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Invitations_TokenHash",
                 table: "Invitations",
                 column: "TokenHash",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_Users_TenantId_ActorType",
-                table: "Users");
+            migrationBuilder.DropIndex(name: "IX_Users_TenantId_ActorType", table: "Users");
 
-            migrationBuilder.DropIndex(
-                name: "IX_Users_TenantId_CustomerId",
-                table: "Users");
+            migrationBuilder.DropIndex(name: "IX_Users_TenantId_CustomerId", table: "Users");
 
             migrationBuilder.DeleteData(
                 table: "Tenants",
                 keyColumn: "Id",
-                keyValue: new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"));
+                keyValue: new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001")
+            );
 
-            migrationBuilder.DropColumn(
-                name: "ActorType",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "ActorType", table: "Users");
 
-            migrationBuilder.DropColumn(
-                name: "CustomerId",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "CustomerId", table: "Users");
 
-            migrationBuilder.DropColumn(
-                name: "Kind",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "Kind", table: "Tenants");
 
             migrationBuilder.AddColumn<string>(
                 name: "AdminEmail",
                 table: "Tenants",
                 type: "nvarchar(320)",
                 maxLength: 320,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "AdminInvitationConsumedAtUtc",
                 table: "Tenants",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "AdminInvitationTokenHash",
                 table: "Tenants",
                 type: "nvarchar(64)",
                 maxLength: 64,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "AdminUserId",
                 table: "Tenants",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.Sql(
                 """
@@ -242,15 +248,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     ON invitation.[TenantId] = tenant.[Id]
                 WHERE invitation.[ActorType] = 'TenantAdmin'
                   AND invitation.[InvitedByUserId] IS NULL;
-                """);
+                """
+            );
 
-            migrationBuilder.DropTable(
-                name: "Invitations");
+            migrationBuilder.DropTable(name: "Invitations");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Tenants_AdminEmail",
-                table: "Tenants",
-                column: "AdminEmail");
+            migrationBuilder.CreateIndex(name: "IX_Tenants_AdminEmail", table: "Tenants", column: "AdminEmail");
         }
     }
 }

@@ -24,8 +24,7 @@ builder.Host.UseTaxVisionSerilog("notification-service");
 
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options =>
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -37,8 +36,8 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "notification-service");
 
 var rabbitUri = new Uri(
-    builder.Configuration["RabbitMq:Uri"]
-        ?? throw new InvalidOperationException("RabbitMq:Uri is missing."));
+    builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
+);
 
 builder
     .Services.AddHealthChecks()
@@ -57,21 +56,23 @@ builder.Host.UseWolverine(options =>
     options.UseRabbitMq(rabbitUri).AutoProvision();
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
-    options.UseEntityFrameworkCoreTransactions()
-        .WithDbContextAbstraction<IUnitOfWork, NotificationDbContext>();
+    options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, NotificationDbContext>();
     options.Policies.AutoApplyTransactions();
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
-    options.ListenToRabbitQueue("notification-events", queue =>
-    {
-        queue.BindExchange("taxvision-events", string.Empty);
-    }).UseDurableInbox();
+    options
+        .ListenToRabbitQueue(
+            "notification-events",
+            queue =>
+            {
+                queue.BindExchange("taxvision-events", string.Empty);
+            }
+        )
+        .UseDurableInbox();
 
-    options.Policies.OnException<Exception>()
-        .RetryWithCooldown(
-            TimeSpan.FromSeconds(1),
-            TimeSpan.FromSeconds(5),
-            TimeSpan.FromSeconds(15));
+    options
+        .Policies.OnException<Exception>()
+        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
 });
 
 var app = builder.Build();
@@ -80,8 +81,7 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.UseSwagger();
-    app.UseSwaggerUI(options =>
-        options.SwaggerEndpoint("/openapi/v1.json", "Notification API v1"));
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Notification API v1"));
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -94,10 +94,7 @@ app.UseAuthorization();
 app.UseMiddleware<TenantResolutionMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/health/ready", new HealthCheckOptions
-{
-    Predicate = check => check.Tags.Contains("ready")
-});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapControllers();
 
 app.Run();

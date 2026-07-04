@@ -13,18 +13,17 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddSubscriptionInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration
+    )
     {
         var connectionString =
             configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
         services.AddDbContext<SubscriptionDbContext>(options => options.UseSqlServer(connectionString));
-        services.Configure<SubscriptionOptions>(
-            configuration.GetSection(SubscriptionOptions.SectionName));
+        services.Configure<SubscriptionOptions>(configuration.GetSection(SubscriptionOptions.SectionName));
 
-        services.AddScoped<IUnitOfWork>(provider =>
-            provider.GetRequiredService<SubscriptionDbContext>());
+        services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<SubscriptionDbContext>());
         services.AddScoped<IPlanRepository, PlanRepository>();
         services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 

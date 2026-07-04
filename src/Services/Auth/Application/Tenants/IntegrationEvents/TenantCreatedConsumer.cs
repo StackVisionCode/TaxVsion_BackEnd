@@ -1,8 +1,8 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Common;
-using TaxVision.Auth.Application.Abstractions;
 using BuildingBlocks.Tenancy;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Users;
 
@@ -18,7 +18,8 @@ public static class TenantCreatedConsumer
         IMfaRepository mfa,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
             ? evt.EventId.ToString("N")
@@ -26,17 +27,9 @@ public static class TenantCreatedConsumer
 
         using (correlation.Push(correlationId))
         {
-            var kind = Enum.TryParse<TenantKind>(evt.Kind, true, out var parsedKind)
-                ? parsedKind
-                : TenantKind.Customer;
+            var kind = Enum.TryParse<TenantKind>(evt.Kind, true, out var parsedKind) ? parsedKind : TenantKind.Customer;
 
-            await tenants.UpsertCreatedAsync(
-                evt.NewTenantId,
-                evt.Name,
-                evt.SubDomain,
-                kind,
-                evt.DefaultTimeZoneId,
-                ct);
+            await tenants.UpsertCreatedAsync(evt.NewTenantId, evt.Name, evt.SubDomain, kind, evt.DefaultTimeZoneId, ct);
 
             if (kind == TenantKind.Customer)
             {
@@ -44,17 +37,13 @@ public static class TenantCreatedConsumer
                 await roles.EnsureSystemRolesAsync(evt.NewTenantId, ct);
                 if (await mfa.GetPolicyAsync(evt.NewTenantId, ct) is null)
                 {
-                    await mfa.AddPolicyAsync(
-                        Domain.Mfa.TenantMfaPolicy.CreateDefault(evt.NewTenantId), ct);
+                    await mfa.AddPolicyAsync(Domain.Mfa.TenantMfaPolicy.CreateDefault(evt.NewTenantId), ct);
                 }
 
-                var existing = await invitations.GetByTokenHashAsync(
-                    evt.AdminInvitationTokenHash,
-                    ct);
+                var existing = await invitations.GetByTokenHashAsync(evt.AdminInvitationTokenHash, ct);
                 if (existing is null)
                 {
-                    var expiresAtUtc =
-                        evt.AdminInvitationExpiresAtUtc ?? DateTime.UtcNow.AddDays(7);
+                    var expiresAtUtc = evt.AdminInvitationExpiresAtUtc ?? DateTime.UtcNow.AddDays(7);
 
                     if (expiresAtUtc <= DateTime.UtcNow)
                     {
@@ -69,7 +58,8 @@ public static class TenantCreatedConsumer
                         customerId: null,
                         invitedByUserId: null,
                         tokenHash: evt.AdminInvitationTokenHash,
-                        expiresAtUtc: expiresAtUtc);
+                        expiresAtUtc: expiresAtUtc
+                    );
                     if (invitationResult.IsFailure)
                         throw new InvalidOperationException(invitationResult.Error.Message);
 

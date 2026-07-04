@@ -21,51 +21,46 @@ public sealed class Tenant : BaseEntity
         string name,
         string subDomain,
         TenantKind kind,
-        string defaultTimeZoneId)
+        string defaultTimeZoneId
+    )
     {
         if (id == Guid.Empty)
         {
-            return Result.Failure<Tenant>(
-                new Error("Tenant.Id", "Tenant id is required."));
+            return Result.Failure<Tenant>(new Error("Tenant.Id", "Tenant id is required."));
         }
 
         if (string.IsNullOrWhiteSpace(name))
         {
-            return Result.Failure<Tenant>(
-                new Error("Tenant.Name", "Tenant name is required."));
+            return Result.Failure<Tenant>(new Error("Tenant.Name", "Tenant name is required."));
         }
 
         if (string.IsNullOrWhiteSpace(subDomain))
         {
-            return Result.Failure<Tenant>(
-                new Error("Tenant.SubDomain", "Tenant subdomain is required."));
+            return Result.Failure<Tenant>(new Error("Tenant.SubDomain", "Tenant subdomain is required."));
         }
 
         if (!IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalizedTimeZoneId))
         {
             return Result.Failure<Tenant>(
-                new Error(
-                    "Tenant.DefaultTimeZoneId",
-                    "Tenant default time zone must be a valid IANA identifier."));
+                new Error("Tenant.DefaultTimeZoneId", "Tenant default time zone must be a valid IANA identifier.")
+            );
         }
 
-        return Result.Success(new Tenant
-        {
-            Id = id,
-            Name = name.Trim(),
-            SubDomain = subDomain.Trim().ToLowerInvariant(),
-            Kind = kind,
-            DefaultTimeZoneId = normalizedTimeZoneId,
-            IsActive = true,
-            CreatedAtUtc = DateTime.UtcNow
-        });
+        return Result.Success(
+            new Tenant
+            {
+                Id = id,
+                Name = name.Trim(),
+                SubDomain = subDomain.Trim().ToLowerInvariant(),
+                Kind = kind,
+                DefaultTimeZoneId = normalizedTimeZoneId,
+                IsActive = true,
+                CreatedAtUtc = DateTime.UtcNow,
+            }
+        );
     }
 
-    public void UpdateFromCreatedEvent(
-        string name,
-        string subDomain,
-        TenantKind kind,
-        string defaultTimeZoneId)
+    public void UpdateFromCreatedEvent(string name, string subDomain, TenantKind kind, string defaultTimeZoneId)
     {
         Name = name.Trim();
         SubDomain = subDomain.Trim().ToLowerInvariant();
@@ -74,7 +69,8 @@ public sealed class Tenant : BaseEntity
         {
             throw new ArgumentException(
                 "Tenant default time zone must be a valid IANA identifier.",
-                nameof(defaultTimeZoneId));
+                nameof(defaultTimeZoneId)
+            );
         }
 
         DefaultTimeZoneId = normalizedTimeZoneId;
@@ -86,5 +82,4 @@ public sealed class Tenant : BaseEntity
     public void Activate() => IsActive = true;
 
     public void SetActive(bool isActive) => IsActive = isActive;
-
 }

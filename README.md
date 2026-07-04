@@ -58,6 +58,7 @@ OpenTelemetry.
 24. Guia de implementacion Customer y Subscription
 25. Customer Service: implementacion
 26. Iteracion 02-07-2026: Auth avanzado, Subscription, Notification y correcciones Customer
+27. CloudStorage / Media Security Gateway
 
 ## 1. Introduccion y objetivo
 
@@ -141,13 +142,20 @@ TaxVision/
 |-- TaxVision.slnx
 |-- global.json
 |-- LICENSE
-|-- .env.example
+|-- .env
 |-- README.md
 |-- Postman_Collection/
 |-- deploy/
 |   |-- docker-compose.yml
 |   |-- docker/
 |   |   `-- docker-compose.yml
+|   |-- tests/
+|   |   |-- TaxVision.Auth.Tests/
+|   |   |-- TaxVision.Tenant.Tests/
+|   |   |-- TaxVision.Customer.Tests/
+|   |   |-- TaxVision.Subscription.Tests/
+|   |   |-- TaxVision.Notification.Tests/
+|   |   `-- TaxVision.CloudStorage.Tests/
 |   `-- observability/
 |       |-- loki.yml
 |       |-- tempo.yml
@@ -166,11 +174,16 @@ TaxVision/
         |   |-- Application/
         |   |-- Domain/
         |   `-- Infrastructure/
-        `-- Tenant/
+        |-- Tenant/
             |-- TaxVision.Tenant.Api/
             |-- TaxVision.Tenant.Application/
             |-- TaxVision.Tenant.Domain/
             `-- TaxVision.Tenant.Infrastructure/
+        `-- CloudStorage/
+            |-- TaxVision.CloudStorage.Api/
+            |-- TaxVision.CloudStorage.Application/
+            |-- TaxVision.CloudStorage.Domain/
+            `-- TaxVision.CloudStorage.Infrastructure/
 ```
 
 ### BuildingBlocks separados
@@ -419,11 +432,9 @@ PATCH /tenants/{id}/status
 
 ## 8. Configuracion y secretos
 
-Copie `.env.example` a `.env` y cambie todos los placeholders:
-
-```powershell
-Copy-Item .env.example .env
-```
+La configuracion local de Docker vive exclusivamente en `.env`. El archivo esta
+ignorado por Git y debe protegerse como secreto del entorno; no se mantiene una
+copia de ejemplo en el repositorio.
 
 Estructura:
 
@@ -431,9 +442,15 @@ Estructura:
 JWT_SECRET=replace-with-a-random-secret-of-at-least-32-bytes
 AUTH_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Auth;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
 TENANT_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Tenants;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+CUSTOMER_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Customer;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+SUBSCRIPTION_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Subscription;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+NOTIFICATION_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Notification;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+CLOUDSTORAGE_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_CloudStorage;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
 RABBITMQ_USER=taxvision
 RABBITMQ_PASSWORD=replace-with-a-strong-rabbitmq-password
 RABBITMQ_CONNECTION=amqp://taxvision:replace-with-url-encoded-password@rabbitmq:5672
+MINIO_ROOT_USER=taxvision-storage
+MINIO_ROOT_PASSWORD=replace-with-a-strong-minio-password
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=replace-with-a-strong-grafana-password
 ```
@@ -1195,36 +1212,29 @@ docker network inspect taxvision-network
 
 ## 22. Pruebas automatizadas
 
-Por solicitud, no se crearon proyectos ni pruebas automatizadas.
+Los proyectos xUnit se encuentran bajo `deploy/tests`, uno por cada
+microservicio implementado:
 
-Se genero una guia completa en:
+- `TaxVision.Auth.Tests`;
+- `TaxVision.Tenant.Tests`;
+- `TaxVision.Customer.Tests`;
+- `TaxVision.Subscription.Tests`;
+- `TaxVision.Notification.Tests`;
+- `TaxVision.CloudStorage.Tests`.
 
-```text
-D:\TaxVision Docs\Guia_Implementacion_Pruebas_Automatizadas_TaxVision.pdf
+`Billing` no tiene tests porque aun no contiene un proyecto o dominio.
+
+```powershell
+# Host
+dotnet test TaxVision.slnx
+
+# Docker
+docker compose -f deploy/tests/docker-compose.tests.yml build
+docker compose -f deploy/tests/docker-compose.tests.yml run --rm tests
 ```
 
-Tambien se conserva la fuente Markdown:
-
-```text
-D:\TaxVision Docs\Guia_Implementacion_Pruebas_Automatizadas_TaxVision.md
-```
-
-La guia explica:
-
-- estructura de proyectos;
-- comandos de creacion;
-- referencias y paquetes;
-- fixtures Testcontainers;
-- pruebas unitarias, integracion, arquitectura y E2E;
-- multitenancy;
-- outbox/inbox;
-- admin idempotente;
-- refresh/revoke;
-- authorization y rate limiting;
-- cache;
-- correlation;
-- observabilidad;
-- criterios para los 25 microservicios.
+Los comandos completos de build, migraciones y despliegue estan documentados en
+`deploy/tests/README.md`.
 
 ## 23. Guia para nuevos microservicios y mejoras futuras
 
@@ -2130,11 +2140,153 @@ criptograficas.
 
 ## 26.11 Trabajo pendiente (siguiente iteracion)
 
-- Pruebas automatizadas (xUnit): dominio (lockout, rotacion/reuse, TOTP, limites
-  de plan) e integracion de endpoints con Testcontainers. Es la deuda de mayor
-  prioridad.
+- Ampliar las pruebas existentes con integracion de endpoints mediante
+  Testcontainers y escenarios E2E.
 - Microservicio Billing (facturas, pagos, metodos de pago), que ya puede
   engancharse a los contratos de Subscription.
 - Actualizar la coleccion Postman al nuevo formato de login.
 - Refactor SOLID del `RunCustomerImportHandler` (responsabilidad unica).
 - Activar RS256/JWKS en produccion (generar par de claves y distribuir la publica).
+
+# 27. CloudStorage / Media Security Gateway
+
+`CloudStorage` es el unico microservicio autorizado para poseer bytes de archivos.
+Los demas bounded contexts conservan solamente referencias `FileId`; no guardan
+archivos en filesystem local ni acceden directamente a MinIO.
+
+La implementacion sigue la arquitectura del resto de TaxVision:
+
+- Domain, Application, Infrastructure y Api separados;
+- CQRS y handlers descubiertos por Wolverine;
+- SQL Server para metadata, cuota, estado y auditoria;
+- outbox/inbox durable y eventos sobre `taxvision-events`;
+- JWT, roles y permisos emitidos por Auth;
+- aislamiento por `TenantId` en consultas y claves de objetos;
+- MinIO para almacenamiento y ClamAV para antivirus.
+
+## 27.1 Flujo seguro de subida
+
+1. `POST /storage/files/uploads` valida permiso, tenant, owner, folder fiscal,
+   extension, MIME declarado, limite por archivo y cuota disponible.
+2. La cuota se reserva usando `UsedBytes + ReservedBytes` y concurrencia
+   optimista mediante `RowVersion`.
+3. CloudStorage devuelve una politica POST de MinIO con cinco minutos de vida,
+   `ObjectKey`, MIME y tamano exacto. No entrega credenciales de MinIO.
+4. El cliente envia el archivo directamente al bucket `taxvision-temp` usando la
+   URL y los campos de formulario recibidos.
+5. `POST /storage/files/{fileId}/complete` comprueba que el objeto exista y que
+   su tamano real coincida con el declarado.
+6. Un mensaje durable `ScanFileCommand` calcula SHA-256, detecta MIME por magic
+   bytes, compara extension y contenido, limita expansion/ratio de ZIP y envia el
+   stream a ClamAV.
+7. Si esta limpio, se copia al bucket versionado `taxvision-storage`, cambia a
+   `Available`, la reserva pasa a uso real y se publica
+   `FileAvailableIntegrationEvent`.
+8. Si esta infectado, se mueve a `taxvision-quarantine`, se libera la reserva,
+   se registra el incidente y se publica
+   `FileInfectedDetectedIntegrationEvent`.
+9. Una reserva que no se completa expira a las 24 horas: se elimina el objeto
+   temporal, se libera cuota y se registra auditoria.
+10. Solo un archivo `Available` puede recibir una URL temporal de descarga.
+
+## 27.2 Comunicacion con los demas microservicios
+
+| Origen | Destino | Canal | Accion implementada |
+| --- | --- | --- | --- |
+| Cliente web/movil | Gateway -> CloudStorage | HTTPS/REST `/storage/*` | Iniciar/completar upload, consultar, listar, descargar, eliminar, uso y auditoria |
+| Cliente web/movil | MinIO | HTTPS con POST policy temporal | Subir exactamente el objeto autorizado, sin conocer credenciales |
+| Auth | Gateway y CloudStorage | JWT firmado | Propaga `tenant_id`, `sub`, `actor_type`, `customer_id`, roles y claims `perm` |
+| Subscription | CloudStorage | RabbitMQ/Wolverine | `SubscriptionActivated`, `SubscriptionPlanChanged` y `SubscriptionSuspended` actualizan `TenantStorageLimits` |
+| CloudStorage | Modulos consumidores | RabbitMQ/Wolverine | Publica archivo disponible, archivo infectado, eliminacion, cuota excedida y accesos auditados |
+| CloudStorage | Notification | RabbitMQ/Wolverine | Notification registra alertas in-app para malware y cuota excedida |
+| CloudStorage | Audit futuro | RabbitMQ/Wolverine | Publica `FileAccessAuditedIntegrationEvent`; la auditoria local ya se persiste aunque el Audit Service global aun no existe |
+| Gateway | CloudStorage | Health HTTP | Incluye `cloudstorage-api` en readiness |
+
+Los modulos Media Manager, Signature, Communication, Email, Billing e IRS deben
+guardar unicamente el `FileId` y proyectar la metadata que necesiten al consumir
+los eventos. Para archivos seleccionados por un usuario utilizan el flujo REST +
+POST policy anterior. La integracion de archivos generados exclusivamente en
+backend mediante un comando de integracion todavia no esta implementada; no se
+debe introducir acceso directo de esos servicios a MinIO como atajo.
+
+## 27.3 Acciones, roles y permisos
+
+Auth es la unica fuente de verdad de RBAC. CloudStorage no posee tablas propias de
+usuarios, sesiones, roles o permisos. Auth incluye el catalogo `cloudstorage.*`,
+lo incorpora al JWT como claims `perm` y permite asignarlo a roles administrados
+por el tenant.
+
+| Accion | Endpoint | Permiso requerido | Roles de sistema por defecto |
+| --- | --- | --- | --- |
+| Ver metadata/listar | `GET /storage/files*` | `cloudstorage.file.view` | Tenant Admin, Employee, Customer Portal |
+| Iniciar/completar subida | `POST /storage/files/uploads`, `POST .../complete` | `cloudstorage.file.upload` | Tenant Admin, Employee, Customer Portal |
+| Emitir URL de descarga | `POST /storage/files/{id}/download-url` | `cloudstorage.file.download` | Tenant Admin, Employee, Customer Portal |
+| Soft-delete | `DELETE /storage/files/{id}` | `cloudstorage.file.delete` | Tenant Admin |
+| Ver uso/cuota | `GET /storage/usage` | `cloudstorage.settings.manage` | Tenant Admin |
+| Consultar auditoria | `GET /storage/audit` | `cloudstorage.audit.view` | Tenant Admin |
+| Gestion futura de politicas | Sin endpoint todavia | `cloudstorage.settings.manage` | Tenant Admin |
+
+La autorizacion tiene varias barreras acumulativas:
+
+1. **JWT valido**: identidad emitida por Auth.
+2. **Permiso efectivo**: policy ASP.NET exige el claim `perm` exacto.
+3. **Tenant**: toda lectura y escritura usa el `tenant_id` autenticado; nunca un
+   tenant enviado libremente por el cliente.
+4. **Owner para Customer Portal**: aunque posea `view/upload/download`, solamente
+   puede crear, listar, consultar, completar y descargar archivos cuyo
+   `OwnerType=Customer` y `OwnerId` coincidan con su claim `customer_id`.
+5. **Reglas del plan**: cuota total, suspension, tamano maximo, extensiones y MIME
+   permitidos.
+6. **Estado de seguridad**: no existe descarga mientras el archivo no sea
+   `Available`.
+7. **Rate limit**: Gateway limita iniciaciones/completados por tenant.
+
+Por tanto, las acciones si son parametrizables mediante roles: los codigos del
+catalogo son fijos y auditables, pero Auth permite crear roles y cambiar sus
+asignaciones de permisos. Las reglas de almacenamiento por plan se configuran en
+`CloudStorage:PlanPolicies` y la cuota total se proyecta desde Subscription.
+
+## 27.4 Endpoints
+
+- `POST /storage/files/uploads`
+- `POST /storage/files/{fileId}/complete`
+- `GET /storage/files/{fileId}`
+- `GET /storage/files`
+- `POST /storage/files/{fileId}/download-url`
+- `DELETE /storage/files/{fileId}`
+- `GET /storage/usage`
+- `GET /storage/audit`
+- `GET /health/live`
+- `GET /health/ready`
+
+## 27.5 Infraestructura y configuracion
+
+Docker Compose incorpora MinIO, ClamAV y `cloudstorage-api`. Los secretos se
+declaran en `.env` o en el secret manager del entorno; nunca se incluyen valores
+reales en el repositorio.
+
+```powershell
+docker compose --env-file .env -f deploy/docker/docker-compose.yml up -d
+
+dotnet ef database update `
+  --project src/Services/CloudStorage/TaxVision.CloudStorage.Infrastructure `
+  --startup-project src/Services/CloudStorage/TaxVision.CloudStorage.Api
+```
+
+Produccion debe utilizar TLS, credenciales MinIO de alcance minimo, cifrado
+server-side/KMS, red privada entre servicios y backups de SQL Server y object
+storage.
+
+## 27.6 Pruebas
+
+El proyecto se encuentra en `deploy/tests/TaxVision.CloudStorage.Tests` y cubre:
+
+- traversal y canonicalizacion de `ObjectKey`;
+- aislamiento del nombre original y prefijo por tenant;
+- deteccion por magic bytes;
+- rechazo de ZIP bombs;
+- reserva concurrente de cuota;
+- transiciones de seguridad;
+- folders fiscales que requieren ano;
+- expiracion de uploads abandonados;
+- aislamiento por owner para Customer Portal.

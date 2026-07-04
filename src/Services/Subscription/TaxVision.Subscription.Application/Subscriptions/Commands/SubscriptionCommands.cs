@@ -26,7 +26,8 @@ public static class ChangePlanHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantSubscription> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
@@ -43,13 +44,15 @@ public static class ChangePlanHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(
-            SubscriptionEventFactory.PlanChanged(subscription, plan, correlation.CorrelationId));
+        await bus.PublishAsync(SubscriptionEventFactory.PlanChanged(subscription, plan, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "Tenant {TenantId} changed plan to {PlanCode} (requested by {UserId}).",
-            command.TenantId, plan.Code, command.RequestedByUserId);
+            command.TenantId,
+            plan.Code,
+            command.RequestedByUserId
+        );
         return Result.Success();
     }
 }
@@ -70,7 +73,8 @@ public static class PurchaseSeatsHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantSubscription> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
@@ -84,18 +88,23 @@ public static class PurchaseSeatsHandler
         if (plan is null)
             return Result.Failure(new Error("Plan.NotFound", "Plan does not exist."));
 
-        await bus.PublishAsync(new SeatsPurchasedIntegrationEvent
-        {
-            TenantId = subscription.TenantId,
-            PurchasingTenantId = subscription.TenantId,
-            NewMaxUsers = subscription.EffectiveMaxUsers(plan),
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new SeatsPurchasedIntegrationEvent
+            {
+                TenantId = subscription.TenantId,
+                PurchasingTenantId = subscription.TenantId,
+                NewMaxUsers = subscription.EffectiveMaxUsers(plan),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "Tenant {TenantId} purchased {Seats} extra seats (total effective {Total}).",
-            command.TenantId, command.AdditionalSeats, subscription.EffectiveMaxUsers(plan));
+            command.TenantId,
+            command.AdditionalSeats,
+            subscription.EffectiveMaxUsers(plan)
+        );
         return Result.Success();
     }
 }
@@ -115,7 +124,8 @@ public static class CancelSubscriptionHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantSubscription> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
@@ -125,18 +135,22 @@ public static class CancelSubscriptionHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(new SubscriptionSuspendedIntegrationEvent
-        {
-            TenantId = subscription.TenantId,
-            SubscribedTenantId = subscription.TenantId,
-            Reason = "cancelled",
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new SubscriptionSuspendedIntegrationEvent
+            {
+                TenantId = subscription.TenantId,
+                SubscribedTenantId = subscription.TenantId,
+                Reason = "cancelled",
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "Tenant {TenantId} cancelled its subscription (requested by {UserId}).",
-            command.TenantId, command.RequestedByUserId);
+            command.TenantId,
+            command.RequestedByUserId
+        );
         return Result.Success();
     }
 }
@@ -156,7 +170,8 @@ public static class SuspendSubscriptionHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantSubscription> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
@@ -166,18 +181,18 @@ public static class SuspendSubscriptionHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(new SubscriptionSuspendedIntegrationEvent
-        {
-            TenantId = subscription.TenantId,
-            SubscribedTenantId = subscription.TenantId,
-            Reason = command.Reason,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new SubscriptionSuspendedIntegrationEvent
+            {
+                TenantId = subscription.TenantId,
+                SubscribedTenantId = subscription.TenantId,
+                Reason = command.Reason,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogWarning(
-            "Subscription suspended for tenant {TenantId}: {Reason}.",
-            command.TenantId, command.Reason);
+        logger.LogWarning("Subscription suspended for tenant {TenantId}: {Reason}.", command.TenantId, command.Reason);
         return Result.Success();
     }
 }
@@ -194,7 +209,8 @@ public static class ReactivateSubscriptionHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantSubscription> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
@@ -208,8 +224,7 @@ public static class ReactivateSubscriptionHandler
         if (plan is null)
             return Result.Failure(new Error("Plan.NotFound", "Plan does not exist."));
 
-        await bus.PublishAsync(
-            SubscriptionEventFactory.Activated(subscription, plan, correlation.CorrelationId));
+        await bus.PublishAsync(SubscriptionEventFactory.Activated(subscription, plan, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation("Subscription reactivated for tenant {TenantId}.", command.TenantId);

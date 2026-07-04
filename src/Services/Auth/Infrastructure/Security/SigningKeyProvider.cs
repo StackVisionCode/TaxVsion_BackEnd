@@ -25,9 +25,11 @@ public sealed class SigningKeyProvider : IJwksProvider, IDisposable
         var jwt = options.Value;
 
         var privateKeyPem = jwt.PrivateKeyPem;
-        if (string.IsNullOrWhiteSpace(privateKeyPem) &&
-            !string.IsNullOrWhiteSpace(jwt.PrivateKeyPath) &&
-            File.Exists(jwt.PrivateKeyPath))
+        if (
+            string.IsNullOrWhiteSpace(privateKeyPem)
+            && !string.IsNullOrWhiteSpace(jwt.PrivateKeyPath)
+            && File.Exists(jwt.PrivateKeyPath)
+        )
         {
             privateKeyPem = File.ReadAllText(jwt.PrivateKeyPath);
         }
@@ -43,9 +45,11 @@ public sealed class SigningKeyProvider : IJwksProvider, IDisposable
         }
         else
         {
-            var secret = jwt.Secret
+            var secret =
+                jwt.Secret
                 ?? throw new InvalidOperationException(
-                    "Configure Jwt:PrivateKeyPem/Jwt:PrivateKeyPath (RS256) or Jwt:Secret (HS256).");
+                    "Configure Jwt:PrivateKeyPem/Jwt:PrivateKeyPath (RS256) or Jwt:Secret (HS256)."
+                );
             var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(secret));
             _credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         }

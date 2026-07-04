@@ -17,12 +17,23 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                 type: "nvarchar(20)",
                 maxLength: 20,
                 nullable: false,
-                defaultValue: "Customer");
+                defaultValue: "Customer"
+            );
 
             migrationBuilder.InsertData(
                 table: "Tenants",
                 columns: new[] { "Id", "CreatedAtUtc", "DefaultTimeZoneId", "Kind", "Name", "Status", "SubDomain" },
-                values: new object[] { new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"), new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc), "Etc/UTC", "Platform", "TaxVision Platform", "Active", "platform-internal" });
+                values: new object[]
+                {
+                    new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"),
+                    new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc),
+                    "Etc/UTC",
+                    "Platform",
+                    "TaxVision Platform",
+                    "Active",
+                    "platform-internal",
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -31,11 +42,10 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
             migrationBuilder.DeleteData(
                 table: "Tenants",
                 keyColumn: "Id",
-                keyValue: new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"));
+                keyValue: new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001")
+            );
 
-            migrationBuilder.DropColumn(
-                name: "Kind",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "Kind", table: "Tenants");
         }
     }
 }

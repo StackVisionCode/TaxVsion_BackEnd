@@ -1,8 +1,9 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Application.Imports.Dtos;
 using TaxVision.Customer.Application.Imports.Messages;
 using TaxVision.Customer.Domain.Imports;
@@ -18,7 +19,7 @@ public static class StartCustomerImportHandler
         IImportFileStore fileStore,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        IConfiguration config,
+        IOptionsMonitor<CustomerImportOptions> importOptions,
         ILogger<StartCustomerImportCommand> logger,
         CancellationToken ct
     )
@@ -47,7 +48,7 @@ public static class StartCustomerImportHandler
                 )
             );
 
-        var attemptResult = MaxByFileCustomerImport(cmd, config);
+        var attemptResult = MaxByFileCustomerImport(cmd, importOptions.CurrentValue);
 
         if (attemptResult.IsFailure)
             return Result.Failure<CustomerImportAttemptResponse>(attemptResult.Error);
@@ -130,10 +131,10 @@ public static class StartCustomerImportHandler
 
     private static Result<CustomerImportAttempt> MaxByFileCustomerImport(
         StartCustomerImportCommand cmd,
-        IConfiguration config
+        CustomerImportOptions options
     )
     {
-        var maxBytes = config.GetValue<int?>("CustomerImport:MaxFileBytes") ?? 10 * 1024 * 1024;
+        var maxBytes = options.MaxFileBytes;
         if (cmd.FileBytes.Length == 0)
             return Result.Failure<CustomerImportAttempt>(new Error("Import.EmptyFile", "Uploaded file is empty."));
         if (cmd.FileBytes.Length > maxBytes)

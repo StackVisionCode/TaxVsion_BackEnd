@@ -8,9 +8,7 @@ using Wolverine;
 
 namespace TaxVision.Tenant.Application.Tenants.Commands;
 
-public sealed record ChangeTenantStatusCommand(
-    Guid TenantId,
-    EnumTenantStatus.TenantStatus Status);
+public sealed record ChangeTenantStatusCommand(Guid TenantId, EnumTenantStatus.TenantStatus Status);
 
 public static class ChangeTenantStatusHandler
 {
@@ -20,7 +18,8 @@ public static class ChangeTenantStatusHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var tenant = await tenants.GetByIdAsync(command.TenantId, ct);
         if (tenant is null)
@@ -31,14 +30,16 @@ public static class ChangeTenantStatusHandler
             return change;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(new TenantStatusChangedIntegrationEvent
-        {
-            ChangedTenantId = tenant.Id,
-            TenantId = tenant.Id,
-            Status = tenant.Status.ToString(),
-            IsActive = tenant.Status == EnumTenantStatus.TenantStatus.Active,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new TenantStatusChangedIntegrationEvent
+            {
+                ChangedTenantId = tenant.Id,
+                TenantId = tenant.Id,
+                Status = tenant.Status.ToString(),
+                IsActive = tenant.Status == EnumTenantStatus.TenantStatus.Active,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         return Result.Success();
     }

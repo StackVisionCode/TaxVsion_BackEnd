@@ -15,7 +15,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddNotificationInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration
+    )
     {
         var connectionString =
             configuration.GetConnectionString("Default")
@@ -26,8 +27,7 @@ public static class DependencyInjection
         services.Configure<PortalOptions>(configuration.GetSection(PortalOptions.SectionName));
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
 
-        services.AddScoped<IUnitOfWork>(provider =>
-            provider.GetRequiredService<NotificationDbContext>());
+        services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotificationDbContext>());
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<ISmsSender, LoggingSmsSender>();

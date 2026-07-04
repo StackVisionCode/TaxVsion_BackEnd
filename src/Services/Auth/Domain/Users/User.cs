@@ -47,7 +47,8 @@ public sealed class User : TenantEntity
         string email,
         string passwordHash,
         UserActorType actorType,
-        Guid? customerId = null)
+        Guid? customerId = null
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<User>(new Error("User.Tenant", "Tenant is required."));
@@ -68,9 +69,8 @@ public sealed class User : TenantEntity
         if (actorType == UserActorType.PlatformAdmin && !isPlatformTenant)
         {
             return Result.Failure<User>(
-                new Error(
-                    "User.PlatformScope",
-                    "Platform administrators must belong to the reserved platform tenant."));
+                new Error("User.PlatformScope", "Platform administrators must belong to the reserved platform tenant.")
+            );
         }
 
         if (actorType != UserActorType.PlatformAdmin && isPlatformTenant)
@@ -78,20 +78,23 @@ public sealed class User : TenantEntity
             return Result.Failure<User>(
                 new Error(
                     "User.PlatformScope",
-                    "Only platform administrators can belong to the reserved platform tenant."));
+                    "Only platform administrators can belong to the reserved platform tenant."
+                )
+            );
         }
 
-        if (actorType == UserActorType.CustomerPortal &&
-            (!customerId.HasValue || customerId.Value == Guid.Empty))
+        if (actorType == UserActorType.CustomerPortal && (!customerId.HasValue || customerId.Value == Guid.Empty))
         {
             return Result.Failure<User>(
-                new Error("User.Customer", "CustomerId is required for customer portal users."));
+                new Error("User.Customer", "CustomerId is required for customer portal users.")
+            );
         }
 
         if (actorType != UserActorType.CustomerPortal && customerId.HasValue)
         {
             return Result.Failure<User>(
-                new Error("User.Customer", "CustomerId is only valid for customer portal users."));
+                new Error("User.Customer", "CustomerId is only valid for customer portal users.")
+            );
         }
 
         var user = new User
@@ -104,7 +107,7 @@ public sealed class User : TenantEntity
             ActorType = actorType,
             CustomerId = customerId,
             IsActive = true,
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
         };
 
         user.SetTenant(tenantId);
@@ -112,8 +115,7 @@ public sealed class User : TenantEntity
         return Result.Success(user);
     }
 
-    public bool IsLockedOut(DateTime utcNow) =>
-        LockoutEndUtc is { } end && end > utcNow;
+    public bool IsLockedOut(DateTime utcNow) => LockoutEndUtc is { } end && end > utcNow;
 
     public void RegisterFailedLogin(DateTime utcNow, int maxAttempts, TimeSpan lockoutDuration)
     {
@@ -164,8 +166,7 @@ public sealed class User : TenantEntity
 
         if (!IanaTimeZone.TryNormalize(timeZoneId, out var normalized))
         {
-            return Result.Failure(
-                new Error("User.TimeZone", "Time zone must be a valid IANA identifier."));
+            return Result.Failure(new Error("User.TimeZone", "Time zone must be a valid IANA identifier."));
         }
 
         TimeZoneId = normalized;

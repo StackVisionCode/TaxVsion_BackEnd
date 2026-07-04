@@ -7,7 +7,7 @@ public enum MfaMethodType
 {
     Totp,
     Email,
-    Sms
+    Sms,
 }
 
 public sealed class MfaMethod : TenantEntity
@@ -33,7 +33,8 @@ public sealed class MfaMethod : TenantEntity
         Guid userId,
         MfaMethodType type,
         string? secretCiphertext,
-        string? destination)
+        string? destination
+    )
     {
         if (tenantId == Guid.Empty || userId == Guid.Empty)
             return Result.Failure<MfaMethod>(new Error("Mfa.Scope", "Tenant and user are required."));
@@ -41,11 +42,9 @@ public sealed class MfaMethod : TenantEntity
         if (type == MfaMethodType.Totp && string.IsNullOrWhiteSpace(secretCiphertext))
             return Result.Failure<MfaMethod>(new Error("Mfa.Secret", "TOTP secret is required."));
 
-        if (type is MfaMethodType.Email or MfaMethodType.Sms &&
-            string.IsNullOrWhiteSpace(destination))
+        if (type is MfaMethodType.Email or MfaMethodType.Sms && string.IsNullOrWhiteSpace(destination))
         {
-            return Result.Failure<MfaMethod>(
-                new Error("Mfa.Destination", "Destination is required for OTP methods."));
+            return Result.Failure<MfaMethod>(new Error("Mfa.Destination", "Destination is required for OTP methods."));
         }
 
         var method = new MfaMethod
@@ -56,7 +55,7 @@ public sealed class MfaMethod : TenantEntity
             SecretCiphertext = secretCiphertext,
             Destination = destination?.Trim(),
             IsConfirmed = false,
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
         };
         method.SetTenant(tenantId);
         return Result.Success(method);

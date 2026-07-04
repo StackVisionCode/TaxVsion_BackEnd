@@ -21,15 +21,11 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType<AuthTokensResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Verify(
-        VerifyMfaChallengeCommand command,
-        CancellationToken ct)
+    public async Task<IActionResult> Verify(VerifyMfaChallengeCommand command, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<AuthTokensResponse>>(command, ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("totp/setup")]
@@ -40,12 +36,9 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<SetupTotpResponse>>(
-            new SetupTotpCommand(userId), ct);
+        var result = await bus.InvokeAsync<Result<SetupTotpResponse>>(new SetupTotpCommand(userId), ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record ConfirmTotpRequest(string Code);
@@ -53,19 +46,17 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [HttpPost("totp/confirm")]
     [Authorize]
     [ProducesResponseType<ConfirmTotpResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ConfirmTotp(
-        ConfirmTotpRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> ConfirmTotp(ConfirmTotpRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<ConfirmTotpResponse>>(
-            new ConfirmTotpCommand(userId, request.Code), ct);
+            new ConfirmTotpCommand(userId, request.Code),
+            ct
+        );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record DisableMfaRequest(string Password);
@@ -73,19 +64,14 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [HttpPost("disable")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Disable(
-        DisableMfaRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> Disable(DisableMfaRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(
-            new DisableMfaCommand(userId, request.Password), ct);
+        var result = await bus.InvokeAsync<Result>(new DisableMfaCommand(userId, request.Password), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record RegenerateRecoveryCodesRequest(string Password);
@@ -95,35 +81,31 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<RegenerateRecoveryCodesResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> RegenerateRecoveryCodes(
         RegenerateRecoveryCodesRequest request,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<RegenerateRecoveryCodesResponse>>(
-            new RegenerateRecoveryCodesCommand(userId, request.Password), ct);
+            new RegenerateRecoveryCodesCommand(userId, request.Password),
+            ct
+        );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpDelete("trusted-devices/{deviceId:guid}")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> RevokeTrustedDevice(
-        Guid deviceId,
-        CancellationToken ct)
+    public async Task<IActionResult> RevokeTrustedDevice(Guid deviceId, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(
-            new RevokeTrustedDeviceCommand(userId, deviceId), ct);
+        var result = await bus.InvokeAsync<Result>(new RevokeTrustedDeviceCommand(userId, deviceId), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet("status")]
@@ -134,12 +116,9 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         if (!User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<MfaStatusResponse>>(
-            new GetMyMfaStatusQuery(userId), ct);
+        var result = await bus.InvokeAsync<Result<MfaStatusResponse>>(new GetMyMfaStatusQuery(userId), ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet("policy")]
@@ -150,25 +129,21 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<TenantMfaPolicyResponse>>(
-            new GetTenantMfaPolicyQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<TenantMfaPolicyResponse>>(new GetTenantMfaPolicyQuery(tenantId), ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record UpdateMfaPolicyRequest(
         bool RequireForEmployees,
         bool RequireForCustomerPortal,
-        int TrustedDeviceDays);
+        int TrustedDeviceDays
+    );
 
     [HttpPut("policy")]
     [HasPermission(PermissionCatalog.SettingsManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> UpdatePolicy(
-        UpdateMfaPolicyRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> UpdatePolicy(UpdateMfaPolicyRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
@@ -179,11 +154,11 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
                 userId,
                 request.RequireForEmployees,
                 request.RequireForCustomerPortal,
-                request.TrustedDeviceDays),
-            ct);
+                request.TrustedDeviceDays
+            ),
+            ct
+        );
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

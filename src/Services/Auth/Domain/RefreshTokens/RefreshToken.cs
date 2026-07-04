@@ -26,7 +26,8 @@ public sealed class RefreshToken : TenantEntity
         Guid userId,
         Guid sessionId,
         string tokenHash,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc
+    )
     {
         var token = new RefreshToken
         {
@@ -35,7 +36,7 @@ public sealed class RefreshToken : TenantEntity
             SessionId = sessionId,
             TokenHash = tokenHash,
             ExpiresAtUtc = expiresAtUtc,
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
         };
         token.SetTenant(tenantId);
         return token;

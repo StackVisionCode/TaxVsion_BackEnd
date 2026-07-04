@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -29,5 +28,4 @@
     <ProjectReference Include="..\TaxVision.Subscription.Application\TaxVision.Subscription.Application.csproj" />
     <ProjectReference Include="..\TaxVision.Subscription.Infrastructure\TaxVision.Subscription.Infrastructure.csproj" />
   </ItemGroup>
-
 </Project>

@@ -15,7 +15,8 @@ public sealed record AuditLogResponse(
     string? CorrelationId,
     string? DetailsJson,
     bool Success,
-    DateTime OccurredAtUtc);
+    DateTime OccurredAtUtc
+);
 
 public sealed record GetAuditLogsQuery(
     Guid TenantId,
@@ -24,19 +25,22 @@ public sealed record GetAuditLogsQuery(
     DateTime? FromUtc = null,
     DateTime? ToUtc = null,
     int Page = 1,
-    int Size = 50);
+    int Size = 50
+);
 
 public static class GetAuditLogsHandler
 {
     public static async Task<Result<PagedResult<AuditLogResponse>>> Handle(
         GetAuditLogsQuery query,
         IAuthAuditReader reader,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (query.Page < 1 || query.Size is < 1 or > 200)
         {
             return Result.Failure<PagedResult<AuditLogResponse>>(
-                new Error("Query.Pagination", "Page must be >= 1 and size between 1 and 200."));
+                new Error("Query.Pagination", "Page must be >= 1 and size between 1 and 200.")
+            );
         }
 
         var (items, total) = await reader.GetPagedAsync(
@@ -47,7 +51,8 @@ public static class GetAuditLogsHandler
             query.ToUtc,
             query.Page,
             query.Size,
-            ct);
+            ct
+        );
 
         IReadOnlyList<AuditLogResponse> responses = items
             .Select(log => new AuditLogResponse(
@@ -61,10 +66,10 @@ public static class GetAuditLogsHandler
                 log.CorrelationId,
                 log.DetailsJson,
                 log.Success,
-                log.OccurredAtUtc))
+                log.OccurredAtUtc
+            ))
             .ToList();
 
-        return Result.Success(new PagedResult<AuditLogResponse>(
-            responses, query.Page, query.Size, total));
+        return Result.Success(new PagedResult<AuditLogResponse>(responses, query.Page, query.Size, total));
     }
 }

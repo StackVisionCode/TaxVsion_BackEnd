@@ -18,7 +18,8 @@ public static class SubscriptionActivatedConsumer
         ITenantPlanLimitsStore planLimits,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         using (correlation.Push(ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
@@ -32,17 +33,13 @@ public static class SubscriptionActivatedConsumer
                     evt.MaxUsers,
                     evt.MaxPendingInvitations,
                     evt.StorageQuotaBytes,
-                    modulesJson);
+                    modulesJson
+                );
                 await planLimits.AddAsync(limits, ct);
             }
             else
             {
-                limits.Apply(
-                    evt.PlanCode,
-                    evt.MaxUsers,
-                    evt.MaxPendingInvitations,
-                    evt.StorageQuotaBytes,
-                    modulesJson);
+                limits.Apply(evt.PlanCode, evt.MaxUsers, evt.MaxPendingInvitations, evt.StorageQuotaBytes, modulesJson);
             }
 
             limits.SetSuspendedForBilling(false);
@@ -61,10 +58,10 @@ public static class SubscriptionPlanChangedConsumer
         ITenantPlanLimitsStore planLimits,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
-        using (correlation.Push(
-            SubscriptionActivatedConsumer.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(SubscriptionActivatedConsumer.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var modulesJson = JsonSerializer.Serialize(evt.EnabledModules);
             var limits = await planLimits.GetAsync(evt.SubscribedTenantId, ct);
@@ -76,17 +73,13 @@ public static class SubscriptionPlanChangedConsumer
                     evt.MaxUsers,
                     evt.MaxPendingInvitations,
                     evt.StorageQuotaBytes,
-                    modulesJson);
+                    modulesJson
+                );
                 await planLimits.AddAsync(limits, ct);
             }
             else
             {
-                limits.Apply(
-                    evt.PlanCode,
-                    evt.MaxUsers,
-                    evt.MaxPendingInvitations,
-                    evt.StorageQuotaBytes,
-                    modulesJson);
+                limits.Apply(evt.PlanCode, evt.MaxUsers, evt.MaxPendingInvitations, evt.StorageQuotaBytes, modulesJson);
             }
 
             await unitOfWork.SaveChangesAsync(ct);
@@ -101,10 +94,10 @@ public static class SubscriptionSuspendedConsumer
         ITenantPlanLimitsStore planLimits,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
-        using (correlation.Push(
-            SubscriptionActivatedConsumer.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(SubscriptionActivatedConsumer.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var limits = await planLimits.GetAsync(evt.SubscribedTenantId, ct);
             if (limits is not null)
@@ -123,10 +116,10 @@ public static class SeatsPurchasedConsumer
         ITenantPlanLimitsStore planLimits,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
-        using (correlation.Push(
-            SubscriptionActivatedConsumer.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
+        using (correlation.Push(SubscriptionActivatedConsumer.ResolveCorrelation(evt.CorrelationId, evt.EventId)))
         {
             var limits = await planLimits.GetAsync(evt.PurchasingTenantId, ct);
             if (limits is not null)

@@ -14,7 +14,8 @@ public static class SubscriptionEventFactory
     public static SubscriptionActivatedIntegrationEvent Activated(
         TenantSubscription subscription,
         Plan plan,
-        string correlationId) =>
+        string correlationId
+    ) =>
         new()
         {
             TenantId = subscription.TenantId,
@@ -25,13 +26,14 @@ public static class SubscriptionEventFactory
             StorageQuotaBytes = plan.StorageQuotaBytes,
             EnabledModules = ParseModules(plan.EnabledModulesJson),
             TrialEndsAtUtc = subscription.TrialEndsAtUtc,
-            CorrelationId = correlationId
+            CorrelationId = correlationId,
         };
 
     public static SubscriptionPlanChangedIntegrationEvent PlanChanged(
         TenantSubscription subscription,
         Plan plan,
-        string correlationId) =>
+        string correlationId
+    ) =>
         new()
         {
             TenantId = subscription.TenantId,
@@ -41,7 +43,7 @@ public static class SubscriptionEventFactory
             MaxPendingInvitations = plan.MaxPendingInvitations,
             StorageQuotaBytes = plan.StorageQuotaBytes,
             EnabledModules = ParseModules(plan.EnabledModulesJson),
-            CorrelationId = correlationId
+            CorrelationId = correlationId,
         };
 
     private static string[] ParseModules(string enabledModulesJson)

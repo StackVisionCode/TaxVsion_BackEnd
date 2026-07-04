@@ -8,7 +8,8 @@ using TaxVision.Notification.Domain.Notifications;
 namespace TaxVision.Notification.Infrastructure.Persistence;
 
 public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext> options)
-    : DbContext(options), IUnitOfWork
+    : DbContext(options),
+        IUnitOfWork
 {
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 

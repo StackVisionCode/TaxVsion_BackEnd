@@ -17,9 +17,7 @@ public sealed class SubscriptionDbContextFactory : IDesignTimeDbContextFactory<S
             Environment.GetEnvironmentVariable("ConnectionStrings__Default")
             ?? "Server=localhost,1433;Database=TaxVisionSubscription;Trusted_Connection=True;TrustServerCertificate=True";
 
-        var options = new DbContextOptionsBuilder<SubscriptionDbContext>()
-            .UseSqlServer(connectionString)
-            .Options;
+        var options = new DbContextOptionsBuilder<SubscriptionDbContext>().UseSqlServer(connectionString).Options;
 
         return new SubscriptionDbContext(options);
     }

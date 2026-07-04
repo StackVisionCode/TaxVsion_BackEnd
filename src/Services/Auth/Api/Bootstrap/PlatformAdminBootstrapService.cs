@@ -23,7 +23,8 @@ public sealed class PlatformBootstrapOptions
 public sealed class PlatformAdminBootstrapService(
     IServiceScopeFactory scopeFactory,
     IOptions<PlatformBootstrapOptions> options,
-    ILogger<PlatformAdminBootstrapService> logger) : IHostedService
+    ILogger<PlatformAdminBootstrapService> logger
+) : IHostedService
 {
     private readonly PlatformBootstrapOptions _options = options.Value;
 
@@ -33,24 +34,24 @@ public sealed class PlatformAdminBootstrapService(
             return;
 
         var email = _options.Email?.Trim().ToLowerInvariant() ?? string.Empty;
-        if (!MailAddress.TryCreate(email, out var parsedEmail) ||
-            !string.Equals(parsedEmail.Address, email, StringComparison.OrdinalIgnoreCase))
+        if (
+            !MailAddress.TryCreate(email, out var parsedEmail)
+            || !string.Equals(parsedEmail.Address, email, StringComparison.OrdinalIgnoreCase)
+        )
         {
-            throw new InvalidOperationException(
-                "PlatformBootstrap:Email must contain a valid email.");
+            throw new InvalidOperationException("PlatformBootstrap:Email must contain a valid email.");
         }
 
-        if (string.IsNullOrWhiteSpace(_options.InvitationToken) ||
-            _options.InvitationToken.Length < 32)
+        if (string.IsNullOrWhiteSpace(_options.InvitationToken) || _options.InvitationToken.Length < 32)
         {
             throw new InvalidOperationException(
-                "PlatformBootstrap:InvitationToken must contain at least 32 characters.");
+                "PlatformBootstrap:InvitationToken must contain at least 32 characters."
+            );
         }
 
         if (_options.InvitationValidityHours is < 1 or > 168)
         {
-            throw new InvalidOperationException(
-                "PlatformBootstrap:InvitationValidityHours must be between 1 and 168.");
+            throw new InvalidOperationException("PlatformBootstrap:InvitationValidityHours must be between 1 and 168.");
         }
 
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -60,48 +61,42 @@ public sealed class PlatformAdminBootstrapService(
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
         var platformTenantExists = await db.Tenants.AnyAsync(
-            tenant =>
-                tenant.Id == PlatformTenant.Id &&
-                tenant.Kind == TenantKind.Platform &&
-                tenant.IsActive,
-            cancellationToken);
+            tenant => tenant.Id == PlatformTenant.Id && tenant.Kind == TenantKind.Platform && tenant.IsActive,
+            cancellationToken
+        );
         if (!platformTenantExists)
         {
             throw new InvalidOperationException(
-                "The reserved platform tenant is missing. Apply Auth migrations before enabling bootstrap.");
+                "The reserved platform tenant is missing. Apply Auth migrations before enabling bootstrap."
+            );
         }
 
         var platformAdminExists = await db.Users.AnyAsync(
-            user =>
-                user.TenantId == PlatformTenant.Id &&
-                user.ActorType == UserActorType.PlatformAdmin,
-            cancellationToken);
+            user => user.TenantId == PlatformTenant.Id && user.ActorType == UserActorType.PlatformAdmin,
+            cancellationToken
+        );
         if (platformAdminExists)
         {
-            logger.LogInformation(
-                "Platform bootstrap skipped because a PlatformAdmin already exists.");
+            logger.LogInformation("Platform bootstrap skipped because a PlatformAdmin already exists.");
             return;
         }
 
         var tokenHash = tokens.Hash(_options.InvitationToken);
-        var existingInvitation = await invitations.GetByTokenHashAsync(
-            tokenHash,
-            cancellationToken);
+        var existingInvitation = await invitations.GetByTokenHashAsync(tokenHash, cancellationToken);
         if (existingInvitation is not null)
         {
             logger.LogInformation(
                 "Platform bootstrap invitation already exists with status {Status}.",
-                existingInvitation.Status);
+                existingInvitation.Status
+            );
             return;
         }
 
-        if (await invitations.HasPendingAsync(
-                PlatformTenant.Id,
-                email,
-                cancellationToken))
+        if (await invitations.HasPendingAsync(PlatformTenant.Id, email, cancellationToken))
         {
             throw new InvalidOperationException(
-                "A different pending platform invitation already exists for the configured email.");
+                "A different pending platform invitation already exists for the configured email."
+            );
         }
 
         var invitationResult = Invitation.Create(
@@ -111,7 +106,8 @@ public sealed class PlatformAdminBootstrapService(
             customerId: null,
             invitedByUserId: null,
             tokenHash: tokenHash,
-            expiresAtUtc: DateTime.UtcNow.AddHours(_options.InvitationValidityHours));
+            expiresAtUtc: DateTime.UtcNow.AddHours(_options.InvitationValidityHours)
+        );
         if (invitationResult.IsFailure)
             throw new InvalidOperationException(invitationResult.Error.Message);
 
@@ -120,9 +116,9 @@ public sealed class PlatformAdminBootstrapService(
 
         logger.LogWarning(
             "Platform bootstrap invitation created for {Email}. Disable PlatformBootstrap after acceptance.",
-            email);
+            email
+        );
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

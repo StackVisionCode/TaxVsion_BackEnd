@@ -103,18 +103,20 @@ public static class CustomerPortalInvitationRequestedConsumer
 
             // 5) Notification entrega el email con el enlace de activación.
             //    El token viaja solo por el bus interno (outbox durable).
-            await bus.PublishAsync(new InvitationCreatedIntegrationEvent
-            {
-                TenantId = evt.TenantId,
-                InvitationId = invitationResult.Value.Id,
-                Email = normalizedEmail,
-                ActorType = UserActorType.CustomerPortal.ToString(),
-                RawToken = token.RawToken,
-                ExpiresAtUtc = expiresAtUtc,
-                TenantName = tenant.Name,
-                InviterName = evt.DisplayName,
-                CorrelationId = correlationId
-            });
+            await bus.PublishAsync(
+                new InvitationCreatedIntegrationEvent
+                {
+                    TenantId = evt.TenantId,
+                    InvitationId = invitationResult.Value.Id,
+                    Email = normalizedEmail,
+                    ActorType = UserActorType.CustomerPortal.ToString(),
+                    RawToken = token.RawToken,
+                    ExpiresAtUtc = expiresAtUtc,
+                    TenantName = tenant.Name,
+                    InviterName = evt.DisplayName,
+                    CorrelationId = correlationId,
+                }
+            );
 
             await unitOfWork.SaveChangesAsync(ct);
 

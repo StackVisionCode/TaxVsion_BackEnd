@@ -14,9 +14,7 @@ public sealed class HasPermissionAttribute : AuthorizeAttribute
     public const string PolicyPrefix = "perm:";
 
     public HasPermissionAttribute(string permission)
-        : base($"{PolicyPrefix}{permission}")
-    {
-    }
+        : base($"{PolicyPrefix}{permission}") { }
 }
 
 public sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> options)

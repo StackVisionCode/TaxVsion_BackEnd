@@ -9,6 +9,12 @@
     <Project Path="src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj" />
   </Folder>
   <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/CloudStorage/">
+    <Project Path="src/Services/CloudStorage/TaxVision.CloudStorage.Api/TaxVision.CloudStorage.Api.csproj" />
+    <Project Path="src/Services/CloudStorage/TaxVision.CloudStorage.Application/TaxVision.CloudStorage.Application.csproj" />
+    <Project Path="src/Services/CloudStorage/TaxVision.CloudStorage.Domain/TaxVision.CloudStorage.Domain.csproj" />
+    <Project Path="src/Services/CloudStorage/TaxVision.CloudStorage.Infrastructure/TaxVision.CloudStorage.Infrastructure.csproj" />
+  </Folder>
 
   <!-- AuthService -->
   <Folder Name="/src/Services/Auth/">
@@ -43,5 +49,13 @@
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Application/TaxVision.Tenant.Application.csproj" />
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Domain/TaxVision.Tenant.Domain.csproj" />
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Infrastructure/TaxVision.Tenant.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/deploy/tests/">
+    <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Subscription.Tests/TaxVision.Subscription.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />
   </Folder>
 </Solution>

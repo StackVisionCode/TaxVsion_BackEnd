@@ -39,7 +39,12 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         {
             var normalized = term.Trim().ToLowerInvariant();
             query = query.Where(c =>
-                c.DisplayName.ToLower().Contains(normalized) || c.PrimaryEmail.NormalizedValue.Contains(normalized)
+                c.DisplayName.ToLower().Contains(normalized)
+                || c.PrimaryEmail.NormalizedValue.Contains(normalized)
+                || c.PrimaryPhone != null && c.PrimaryPhone.E164Value.Contains(normalized)
+                || c.Kind == CustomerKind.Individual
+                    && c.BusinessIdentity != null
+                    && c.BusinessIdentity.LegalName == protector.ComputeBlindIndex(normalized, tenantId)
             );
         }
 
@@ -63,11 +68,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
     }
 
-    public async Task<CustomerResponse?> GetByIdAsync(
-        Guid tenantId,
-        Guid customerId,
-        CancellationToken ct = default
-    )
+    public async Task<CustomerResponse?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
         var data = await (
             from c in db.Customers.AsNoTracking()

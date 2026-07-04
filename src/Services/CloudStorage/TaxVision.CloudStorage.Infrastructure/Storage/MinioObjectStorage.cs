@@ -1,0 +1,91 @@
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using Minio;
+using Minio.DataModel;
+using Minio.DataModel.Args;
+using TaxVision.CloudStorage.Application.Abstractions;
+using TaxVision.CloudStorage.Application.Configuration;
+
+namespace TaxVision.CloudStorage.Infrastructure.Storage;
+
+public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
+{
+    public async Task<PresignedUpload> CreateUploadPolicyAsync(
+        string bucket,
+        string objectKey,
+        string contentType,
+        long exactSizeBytes,
+        TimeSpan lifetime,
+        CancellationToken ct
+    )
+    {
+        ct.ThrowIfCancellationRequested();
+        var policy = new PostPolicy();
+        policy.SetBucket(bucket);
+        policy.SetKey(objectKey);
+        policy.SetExpires(DateTime.UtcNow.Add(lifetime));
+        policy.SetContentType(contentType);
+        policy.SetContentRange(exactSizeBytes, exactSizeBytes);
+
+        var (url, formData) = await client.PresignedPostPolicyAsync(policy);
+        return new PresignedUpload(url, new Dictionary<string, string>(formData, StringComparer.Ordinal));
+    }
+
+    public async Task<Uri> PresignGetAsync(string bucket, string objectKey, TimeSpan lifetime, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var url = await client.PresignedGetObjectAsync(
+            new PresignedGetObjectArgs().WithBucket(bucket).WithObject(objectKey).WithExpiry((int)lifetime.TotalSeconds)
+        );
+        return new Uri(url);
+    }
+
+    public async Task<long> GetSizeAsync(string bucket, string objectKey, CancellationToken ct)
+    {
+        var stat = await client.StatObjectAsync(new StatObjectArgs().WithBucket(bucket).WithObject(objectKey), ct);
+        return stat.Size;
+    }
+
+    public Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct) =>
+        client.GetObjectAsync(
+            new GetObjectArgs()
+                .WithBucket(bucket)
+                .WithObject(objectKey)
+                .WithCallbackStream(async source => await source.CopyToAsync(destination, ct)),
+            ct
+        );
+
+    public Task CopyAsync(string sourceBucket, string objectKey, string destinationBucket, CancellationToken ct) =>
+        client.CopyObjectAsync(
+            new CopyObjectArgs()
+                .WithBucket(destinationBucket)
+                .WithObject(objectKey)
+                .WithCopyObjectSource(new CopySourceObjectArgs().WithBucket(sourceBucket).WithObject(objectKey)),
+            ct
+        );
+
+    public Task DeleteAsync(string bucket, string objectKey, CancellationToken ct) =>
+        client.RemoveObjectAsync(new RemoveObjectArgs().WithBucket(bucket).WithObject(objectKey), ct);
+}
+
+public sealed class MinioBucketBootstrapper(IMinioClient client, IOptions<CloudStorageOptions> storageOptions)
+    : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        var options = storageOptions.Value;
+        foreach (var bucket in new[] { options.MainBucket, options.TempBucket, options.QuarantineBucket })
+        {
+            var exists = await client.BucketExistsAsync(new BucketExistsArgs().WithBucket(bucket), cancellationToken);
+            if (!exists)
+                await client.MakeBucketAsync(new MakeBucketArgs().WithBucket(bucket), cancellationToken);
+        }
+
+        await client.SetVersioningAsync(
+            new SetVersioningArgs().WithBucket(options.MainBucket).WithVersioningEnabled(),
+            cancellationToken
+        );
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}

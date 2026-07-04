@@ -18,11 +18,8 @@ public sealed class PlansController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<IReadOnlyList<PlanResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPlans(CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<PlanResponse>>>(
-            new GetPlansQuery(), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<PlanResponse>>>(new GetPlansQuery(), ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

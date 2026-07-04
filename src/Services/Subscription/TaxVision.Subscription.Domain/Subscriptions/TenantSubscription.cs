@@ -9,7 +9,7 @@ public enum SubscriptionStatus
     Trial,
     Active,
     Suspended,
-    Cancelled
+    Cancelled,
 }
 
 /// <summary>Suscripción de un tenant. Un registro por tenant (índice único en TenantId).</summary>
@@ -33,40 +33,38 @@ public sealed class TenantSubscription : BaseEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static Result<TenantSubscription> StartTrial(
-        Guid tenantId,
-        Plan plan,
-        int trialDays)
+    public static Result<TenantSubscription> StartTrial(Guid tenantId, Plan plan, int trialDays)
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<TenantSubscription>(
-                new Error("Subscription.Tenant", "Tenant is required."));
+            return Result.Failure<TenantSubscription>(new Error("Subscription.Tenant", "Tenant is required."));
 
         if (trialDays is < 1 or > 90)
             return Result.Failure<TenantSubscription>(
-                new Error("Subscription.Trial", "Trial days must be between 1 and 90."));
+                new Error("Subscription.Trial", "Trial days must be between 1 and 90.")
+            );
 
         var now = DateTime.UtcNow;
-        return Result.Success(new TenantSubscription
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            PlanId = plan.Id,
-            PlanCode = plan.Code,
-            Status = SubscriptionStatus.Trial,
-            TrialEndsAtUtc = now.AddDays(trialDays),
-            CurrentPeriodStartUtc = now,
-            CurrentPeriodEndUtc = now.AddDays(trialDays),
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now
-        });
+        return Result.Success(
+            new TenantSubscription
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                PlanId = plan.Id,
+                PlanCode = plan.Code,
+                Status = SubscriptionStatus.Trial,
+                TrialEndsAtUtc = now.AddDays(trialDays),
+                CurrentPeriodStartUtc = now,
+                CurrentPeriodEndUtc = now.AddDays(trialDays),
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            }
+        );
     }
 
     public Result ChangePlan(Plan newPlan)
     {
         if (Status == SubscriptionStatus.Cancelled)
-            return Result.Failure(
-                new Error("Subscription.Cancelled", "A cancelled subscription cannot change plan."));
+            return Result.Failure(new Error("Subscription.Cancelled", "A cancelled subscription cannot change plan."));
 
         PlanId = newPlan.Id;
         PlanCode = newPlan.Code;
@@ -83,12 +81,10 @@ public sealed class TenantSubscription : BaseEntity
     public Result AddSeats(int additionalSeats)
     {
         if (additionalSeats is < 1 or > 500)
-            return Result.Failure(
-                new Error("Subscription.Seats", "Additional seats must be between 1 and 500."));
+            return Result.Failure(new Error("Subscription.Seats", "Additional seats must be between 1 and 500."));
 
         if (Status is SubscriptionStatus.Cancelled or SubscriptionStatus.Suspended)
-            return Result.Failure(
-                new Error("Subscription.Inactive", "Subscription is not active."));
+            return Result.Failure(new Error("Subscription.Inactive", "Subscription is not active."));
 
         ExtraSeats += additionalSeats;
         Touch();
@@ -98,8 +94,7 @@ public sealed class TenantSubscription : BaseEntity
     public Result Suspend(string reason)
     {
         if (Status == SubscriptionStatus.Cancelled)
-            return Result.Failure(
-                new Error("Subscription.Cancelled", "Subscription is already cancelled."));
+            return Result.Failure(new Error("Subscription.Cancelled", "Subscription is already cancelled."));
 
         Status = SubscriptionStatus.Suspended;
         SuspensionReason = reason is { Length: > 128 } ? reason[..128] : reason;
@@ -111,7 +106,8 @@ public sealed class TenantSubscription : BaseEntity
     {
         if (Status != SubscriptionStatus.Suspended)
             return Result.Failure(
-                new Error("Subscription.NotSuspended", "Only suspended subscriptions can be reactivated."));
+                new Error("Subscription.NotSuspended", "Only suspended subscriptions can be reactivated.")
+            );
 
         Status = SubscriptionStatus.Active;
         SuspensionReason = null;

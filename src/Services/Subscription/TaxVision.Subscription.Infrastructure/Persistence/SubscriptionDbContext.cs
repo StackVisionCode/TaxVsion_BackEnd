@@ -9,7 +9,8 @@ using TaxVision.Subscription.Domain.Subscriptions;
 namespace TaxVision.Subscription.Infrastructure.Persistence;
 
 public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext> options)
-    : DbContext(options), IUnitOfWork
+    : DbContext(options),
+        IUnitOfWork
 {
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<TenantSubscription> Subscriptions => Set<TenantSubscription>();

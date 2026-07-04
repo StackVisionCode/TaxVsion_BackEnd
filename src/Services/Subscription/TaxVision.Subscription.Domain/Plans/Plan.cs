@@ -31,7 +31,8 @@ public sealed class Plan : BaseEntity
         int maxPendingInvitations,
         long storageQuotaBytes,
         string enabledModulesJson,
-        int sortOrder) =>
+        int sortOrder
+    ) =>
         new()
         {
             Id = id,
@@ -44,7 +45,7 @@ public sealed class Plan : BaseEntity
             StorageQuotaBytes = storageQuotaBytes,
             EnabledModulesJson = enabledModulesJson,
             IsActive = true,
-            SortOrder = sortOrder
+            SortOrder = sortOrder,
         };
 }
 

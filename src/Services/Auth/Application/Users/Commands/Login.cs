@@ -16,13 +16,15 @@ public sealed record LoginCommand(
     string Email,
     string Password,
     string? DeviceName = null,
-    string? DeviceToken = null);
+    string? DeviceToken = null
+);
 
 public sealed record AuthTokensResponse(
     string AccessToken,
     string RefreshToken,
     int ExpiresInSeconds,
-    string? DeviceToken = null);
+    string? DeviceToken = null
+);
 
 /// <summary>
 /// Respuesta polimórfica del login: tokens directos, o desafío MFA pendiente
@@ -34,7 +36,8 @@ public sealed record LoginResponse(
     AuthTokensResponse? Tokens,
     string? LoginTicket,
     string[]? MfaMethods,
-    int? TicketExpiresInSeconds)
+    int? TicketExpiresInSeconds
+)
 {
     public static LoginResponse ForTokens(AuthTokensResponse tokens, bool mfaSetupRequired = false) =>
         new(false, mfaSetupRequired, tokens, null, null, null);
@@ -67,7 +70,8 @@ public static class LoginHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var invalidCredentials = new Error("Auth.Invalid", "Invalid credentials.");
         var now = DateTime.UtcNow;
@@ -76,8 +80,7 @@ public static class LoginHandler
         var retryAfter = await throttler.GetIpRetryAfterAsync(request.IpAddress, ct);
         if (retryAfter is not null)
         {
-            return Result.Failure<LoginResponse>(
-                new Error("Auth.LockedOut", "Too many attempts. Try again later."));
+            return Result.Failure<LoginResponse>(new Error("Auth.LockedOut", "Too many attempts. Try again later."));
         }
 
         // 2. Tenant. Respuesta genérica hacia el anónimo (anti-enumeración);
@@ -88,10 +91,17 @@ public static class LoginHandler
             await throttler.RegisterFailureAsync(request.IpAddress, ct);
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    command.TenantId, null, AuthAuditAction.LoginFailed, false,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                    detailsJson: """{"reason":"tenant_inactive_or_missing"}"""),
-                ct);
+                    command.TenantId,
+                    null,
+                    AuthAuditAction.LoginFailed,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: """{"reason":"tenant_inactive_or_missing"}"""
+                ),
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<LoginResponse>(invalidCredentials);
         }
@@ -104,10 +114,17 @@ public static class LoginHandler
             await throttler.RegisterFailureAsync(request.IpAddress, ct);
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    command.TenantId, null, AuthAuditAction.LoginFailed, false,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                    detailsJson: """{"reason":"unknown_email"}"""),
-                ct);
+                    command.TenantId,
+                    null,
+                    AuthAuditAction.LoginFailed,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: """{"reason":"unknown_email"}"""
+                ),
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<LoginResponse>(invalidCredentials);
         }
@@ -117,12 +134,20 @@ public static class LoginHandler
         {
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    user.TenantId, user.Id, AuthAuditAction.LoginLockedOut, false,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId),
-                ct);
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.LoginLockedOut,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId
+                ),
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<LoginResponse>(
-                new Error("Auth.LockedOut", "Account is temporarily locked. Try again later."));
+                new Error("Auth.LockedOut", "Account is temporarily locked. Try again later.")
+            );
         }
 
         // 4. Verificación de contraseña.
@@ -132,22 +157,31 @@ public static class LoginHandler
             await throttler.RegisterFailureAsync(request.IpAddress, ct);
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    user.TenantId, user.Id, AuthAuditAction.LoginFailed, false,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                    detailsJson: """{"reason":"bad_password"}"""),
-                ct);
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.LoginFailed,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: """{"reason":"bad_password"}"""
+                ),
+                ct
+            );
 
             if (user.IsLockedOut(now))
             {
-                await bus.PublishAsync(new SecurityAlertIntegrationEvent
-                {
-                    TenantId = user.TenantId,
-                    UserId = user.Id,
-                    AlertType = SecurityAlertType.AccountLockedOut,
-                    IpAddress = request.IpAddress,
-                    UserAgent = request.UserAgent,
-                    CorrelationId = correlation.CorrelationId
-                });
+                await bus.PublishAsync(
+                    new SecurityAlertIntegrationEvent
+                    {
+                        TenantId = user.TenantId,
+                        UserId = user.Id,
+                        AlertType = SecurityAlertType.AccountLockedOut,
+                        IpAddress = request.IpAddress,
+                        UserAgent = request.UserAgent,
+                        CorrelationId = correlation.CorrelationId,
+                    }
+                );
             }
 
             await unitOfWork.SaveChangesAsync(ct);
@@ -158,10 +192,17 @@ public static class LoginHandler
         {
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    user.TenantId, user.Id, AuthAuditAction.LoginFailed, false,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                    detailsJson: """{"reason":"user_inactive"}"""),
-                ct);
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.LoginFailed,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: """{"reason":"user_inactive"}"""
+                ),
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<LoginResponse>(invalidCredentials);
         }
@@ -173,9 +214,12 @@ public static class LoginHandler
 
         // 5. Evaluación MFA (política del tenant + preferencia del usuario).
         var policy = await mfa.GetPolicyAsync(user.TenantId, ct);
-        var mfaRequired = user.MfaEnabled ||
-            (policy?.RequiresFor(user.ActorType)
-             ?? user.ActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin);
+        var mfaRequired =
+            user.MfaEnabled
+            || (
+                policy?.RequiresFor(user.ActorType)
+                ?? user.ActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin
+            );
 
         if (mfaRequired)
         {
@@ -188,49 +232,86 @@ public static class LoginHandler
                 // Sin método registrado: se permite el acceso con la bandera de
                 // enrolamiento obligatorio para que el frontend fuerce el setup.
                 var setupTokens = await issuer.StartSessionAsync(
-                    user, timeZone, roleNames, permissions, ["pwd"], command.DeviceName, ct);
+                    user,
+                    timeZone,
+                    roleNames,
+                    permissions,
+                    ["pwd"],
+                    command.DeviceName,
+                    ct
+                );
                 await audit.AddAsync(
                     AuthAuditLog.Record(
-                        user.TenantId, user.Id, AuthAuditAction.LoginSucceeded, true,
-                        request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                        detailsJson: """{"mfaSetupRequired":true}"""),
-                    ct);
+                        user.TenantId,
+                        user.Id,
+                        AuthAuditAction.LoginSucceeded,
+                        true,
+                        request.IpAddress,
+                        request.UserAgent,
+                        correlation.CorrelationId,
+                        detailsJson: """{"mfaSetupRequired":true}"""
+                    ),
+                    ct
+                );
                 await unitOfWork.SaveChangesAsync(ct);
-                return Result.Success(LoginResponse.ForTokens(
-                    new AuthTokensResponse(
-                        setupTokens.AccessToken, setupTokens.RefreshToken, setupTokens.ExpiresInSeconds),
-                    mfaSetupRequired: true));
+                return Result.Success(
+                    LoginResponse.ForTokens(
+                        new AuthTokensResponse(
+                            setupTokens.AccessToken,
+                            setupTokens.RefreshToken,
+                            setupTokens.ExpiresInSeconds
+                        ),
+                        mfaSetupRequired: true
+                    )
+                );
             }
 
             // Dispositivo confiable: omite el segundo factor.
             if (!string.IsNullOrWhiteSpace(command.DeviceToken))
             {
-                var device = await mfa.GetTrustedDeviceByHashAsync(
-                    tokens.Hash(command.DeviceToken), ct);
+                var device = await mfa.GetTrustedDeviceByHashAsync(tokens.Hash(command.DeviceToken), ct);
                 if (device is { IsActive: true } && device.UserId == user.Id)
                 {
                     var trustedTokens = await issuer.StartSessionAsync(
-                        user, timeZone, roleNames, permissions, ["pwd"], command.DeviceName, ct);
+                        user,
+                        timeZone,
+                        roleNames,
+                        permissions,
+                        ["pwd"],
+                        command.DeviceName,
+                        ct
+                    );
                     await audit.AddAsync(
                         AuthAuditLog.Record(
-                            user.TenantId, user.Id, AuthAuditAction.LoginSucceeded, true,
-                            request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                            detailsJson: """{"trustedDevice":true}"""),
-                        ct);
+                            user.TenantId,
+                            user.Id,
+                            AuthAuditAction.LoginSucceeded,
+                            true,
+                            request.IpAddress,
+                            request.UserAgent,
+                            correlation.CorrelationId,
+                            detailsJson: """{"trustedDevice":true}"""
+                        ),
+                        ct
+                    );
                     await unitOfWork.SaveChangesAsync(ct);
-                    return Result.Success(LoginResponse.ForTokens(
-                        new AuthTokensResponse(
-                            trustedTokens.AccessToken,
-                            trustedTokens.RefreshToken,
-                            trustedTokens.ExpiresInSeconds)));
+                    return Result.Success(
+                        LoginResponse.ForTokens(
+                            new AuthTokensResponse(
+                                trustedTokens.AccessToken,
+                                trustedTokens.RefreshToken,
+                                trustedTokens.ExpiresInSeconds
+                            )
+                        )
+                    );
                 }
             }
 
             // Crear desafío MFA (paso 2 pendiente).
             var challengeMethod =
-                confirmedMethods.FirstOrDefault(method => method.IsPreferred) ??
-                confirmedMethods.FirstOrDefault(method => method.Type == MfaMethodType.Totp) ??
-                confirmedMethods[0];
+                confirmedMethods.FirstOrDefault(method => method.IsPreferred)
+                ?? confirmedMethods.FirstOrDefault(method => method.Type == MfaMethodType.Totp)
+                ?? confirmedMethods[0];
 
             var loginTicket = tokens.GenerateToken();
             string? otpHash = null;
@@ -239,17 +320,19 @@ public static class LoginHandler
             {
                 var otpCode = tokens.GenerateNumericCode();
                 otpHash = tokens.Hash(otpCode);
-                await bus.PublishAsync(new MfaChallengeRequestedIntegrationEvent
-                {
-                    TenantId = user.TenantId,
-                    UserId = user.Id,
-                    Channel = challengeMethod.Type.ToString(),
-                    Destination = challengeMethod.Destination ?? user.Email,
-                    Code = otpCode,
-                    Purpose = "login",
-                    ExpiresAtUtc = now.Add(LockoutPolicy.MfaTicketValidity),
-                    CorrelationId = correlation.CorrelationId
-                });
+                await bus.PublishAsync(
+                    new MfaChallengeRequestedIntegrationEvent
+                    {
+                        TenantId = user.TenantId,
+                        UserId = user.Id,
+                        Channel = challengeMethod.Type.ToString(),
+                        Destination = challengeMethod.Destination ?? user.Email,
+                        Code = otpCode,
+                        Purpose = "login",
+                        ExpiresAtUtc = now.Add(LockoutPolicy.MfaTicketValidity),
+                        CorrelationId = correlation.CorrelationId,
+                    }
+                );
             }
 
             var challenge = MfaChallenge.Create(
@@ -258,35 +341,63 @@ public static class LoginHandler
                 challengeMethod.Id,
                 tokens.Hash(loginTicket),
                 otpHash,
-                LockoutPolicy.MfaTicketValidity);
+                LockoutPolicy.MfaTicketValidity
+            );
             await mfa.AddChallengeAsync(challenge, ct);
 
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    user.TenantId, user.Id, AuthAuditAction.MfaChallengeSent, true,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                    detailsJson: $$"""{"method":"{{challengeMethod.Type}}"}"""),
-                ct);
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.MfaChallengeSent,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: $$"""{"method":"{{challengeMethod.Type}}"}"""
+                ),
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
 
-            return Result.Success(LoginResponse.ForMfaChallenge(
-                loginTicket,
-                confirmedMethods.Select(method => method.Type.ToString()).Distinct().ToArray(),
-                (int)LockoutPolicy.MfaTicketValidity.TotalSeconds));
+            return Result.Success(
+                LoginResponse.ForMfaChallenge(
+                    loginTicket,
+                    confirmedMethods.Select(method => method.Type.ToString()).Distinct().ToArray(),
+                    (int)LockoutPolicy.MfaTicketValidity.TotalSeconds
+                )
+            );
         }
 
         // 6. Sin MFA: emitir sesión y tokens directamente.
         var issued = await issuer.StartSessionAsync(
-            user, timeZone, roleNames, permissions, ["pwd"], command.DeviceName, ct);
+            user,
+            timeZone,
+            roleNames,
+            permissions,
+            ["pwd"],
+            command.DeviceName,
+            ct
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.LoginSucceeded, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.LoginSucceeded,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(LoginResponse.ForTokens(
-            new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds)));
+        return Result.Success(
+            LoginResponse.ForTokens(
+                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds)
+            )
+        );
     }
 }

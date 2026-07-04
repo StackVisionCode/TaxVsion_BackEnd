@@ -24,7 +24,8 @@ public interface ISessionRepository
         Guid userId,
         string reason,
         Guid? exceptSessionId = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 
     /// <summary>Revoca todas las sesiones activas del tenant (suspensión).</summary>
     Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default);

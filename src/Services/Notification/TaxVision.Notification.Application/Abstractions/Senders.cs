@@ -3,11 +3,7 @@ using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Application.Abstractions;
 
-public sealed record EmailMessage(
-    string To,
-    string Subject,
-    string HtmlBody,
-    string TextBody);
+public sealed record EmailMessage(string To, string Subject, string HtmlBody, string TextBody);
 
 public interface IEmailSender
 {
@@ -28,5 +24,6 @@ public interface INotificationLogRepository
         NotificationStatus? status,
         int page,
         int size,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 }

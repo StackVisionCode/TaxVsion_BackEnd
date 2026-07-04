@@ -14,10 +14,7 @@ namespace TaxVision.Auth.Application.Users.Commands;
 // ---------------------------------------------------------------------------
 
 /// <summary>Solicitud para desactivar un usuario: libera su asiento del plan y corta sus sesiones activas.</summary>
-public sealed record DeactivateUserCommand(
-    Guid TenantId,
-    Guid TargetUserId,
-    Guid RequestedByUserId);
+public sealed record DeactivateUserCommand(Guid TenantId, Guid TargetUserId, Guid RequestedByUserId);
 
 /// <summary>Desactiva al usuario objetivo, revoca sesiones y tokens, y publica el evento de integración correspondiente.</summary>
 public static class DeactivateUserHandler
@@ -32,7 +29,8 @@ public static class DeactivateUserHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (command.TargetUserId == command.RequestedByUserId)
             return Result.Failure(new Error("User.SelfAction", "You cannot deactivate your own account."));
@@ -51,21 +49,31 @@ public static class DeactivateUserHandler
             await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
         await sessions.RevokeAllForUserAsync(target.Id, "admin_revoke", null, ct);
 
-        await bus.PublishAsync(new UserDeactivatedIntegrationEvent
-        {
-            TenantId = target.TenantId,
-            UserId = target.Id,
-            Email = target.Email,
-            ActorType = target.ActorType.ToString(),
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new UserDeactivatedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                Email = target.Email,
+                ActorType = target.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.RequestedByUserId, AuthAuditAction.UserDeactivated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "User", targetId: target.Id),
-            ct);
+                command.TenantId,
+                command.RequestedByUserId,
+                AuthAuditAction.UserDeactivated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "User",
+                targetId: target.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -76,10 +84,7 @@ public static class DeactivateUserHandler
 // ---------------------------------------------------------------------------
 
 /// <summary>Solicitud para reactivar un usuario previamente desactivado (vuelve a consumir un asiento del plan).</summary>
-public sealed record ReactivateUserCommand(
-    Guid TenantId,
-    Guid TargetUserId,
-    Guid RequestedByUserId);
+public sealed record ReactivateUserCommand(Guid TenantId, Guid TargetUserId, Guid RequestedByUserId);
 
 /// <summary>Reactiva al usuario tras validar que el plan del tenant tiene asientos disponibles.</summary>
 public static class ReactivateUserHandler
@@ -93,7 +98,8 @@ public static class ReactivateUserHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var target = await users.GetByIdAsync(command.TargetUserId, ct);
         if (target is null || target.TenantId != command.TenantId)
@@ -102,8 +108,7 @@ public static class ReactivateUserHandler
         if (target.IsActive)
             return Result.Success();
 
-        var seatResult = await PlanGuard.EnsureSeatAvailableAsync(
-            command.TenantId, planLimits, users, invitations, ct);
+        var seatResult = await PlanGuard.EnsureSeatAvailableAsync(command.TenantId, planLimits, users, invitations, ct);
         if (seatResult.IsFailure)
             return seatResult;
 
@@ -111,10 +116,18 @@ public static class ReactivateUserHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.RequestedByUserId, AuthAuditAction.UserReactivated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "User", targetId: target.Id),
-            ct);
+                command.TenantId,
+                command.RequestedByUserId,
+                AuthAuditAction.UserReactivated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "User",
+                targetId: target.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -125,11 +138,7 @@ public static class ReactivateUserHandler
 // ---------------------------------------------------------------------------
 
 /// <summary>Solicitud del propio usuario para actualizar su perfil: nombre, apellido y zona horaria.</summary>
-public sealed record UpdateMyProfileCommand(
-    Guid UserId,
-    string Name,
-    string LastName,
-    string? TimeZoneId);
+public sealed record UpdateMyProfileCommand(Guid UserId, string Name, string LastName, string? TimeZoneId);
 
 /// <summary>Aplica los cambios de perfil y zona horaria del usuario y deja constancia en la auditoría.</summary>
 public static class UpdateMyProfileHandler
@@ -141,7 +150,8 @@ public static class UpdateMyProfileHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
@@ -157,9 +167,16 @@ public static class UpdateMyProfileHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.UserProfileUpdated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.UserProfileUpdated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -174,7 +191,8 @@ public sealed record AssignUserRolesCommand(
     Guid TenantId,
     Guid TargetUserId,
     IReadOnlyList<Guid> RoleIds,
-    Guid AssignedByUserId);
+    Guid AssignedByUserId
+);
 
 /// <summary>Valida y reemplaza los roles del usuario, incrementa su versión de permisos y publica el evento de cambio.</summary>
 public static class AssignUserRolesHandler
@@ -188,7 +206,8 @@ public static class AssignUserRolesHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var target = await users.GetByIdAsync(command.TargetUserId, ct);
         if (target is null || target.TenantId != command.TenantId)
@@ -205,23 +224,34 @@ public static class AssignUserRolesHandler
         await roles.ReplaceUserRolesAsync(target.Id, requestedIds, command.AssignedByUserId, ct);
         target.BumpPermissionsVersion();
 
-        await bus.PublishAsync(new UserRolesChangedIntegrationEvent
-        {
-            TenantId = target.TenantId,
-            UserId = target.Id,
-            PermissionsVersion = target.PermissionsVersion,
-            RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new UserRolesChangedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                PermissionsVersion = target.PermissionsVersion,
+                RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.AssignedByUserId, AuthAuditAction.UserRolesChanged, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "User", targetId: target.Id,
+                command.TenantId,
+                command.AssignedByUserId,
+                AuthAuditAction.UserRolesChanged,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "User",
+                targetId: target.Id,
                 detailsJson: System.Text.Json.JsonSerializer.Serialize(
-                    new { roles = tenantRoles.Select(role => role.Name) })),
-            ct);
+                    new { roles = tenantRoles.Select(role => role.Name) }
+                )
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

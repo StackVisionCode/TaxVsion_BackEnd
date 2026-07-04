@@ -17,13 +17,9 @@ public sealed class InvitationTokenService : IInvitationTokenService
         if (string.IsNullOrWhiteSpace(rawToken))
             return string.Empty;
 
-        return Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
     }
 
     private static string ToBase64Url(byte[] value) =>
-        Convert.ToBase64String(value)
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
+        Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

@@ -28,9 +28,7 @@ public sealed class SmtpOptions
 /// desarrollo: registra el envío (el cuerpo solo a nivel Debug, pues contiene
 /// enlaces con tokens).
 /// </summary>
-public sealed class SmtpEmailSender(
-    IOptions<SmtpOptions> options,
-    ILogger<SmtpEmailSender> logger) : IEmailSender
+public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpEmailSender> logger) : IEmailSender
 {
     private readonly SmtpOptions _options = options.Value;
 
@@ -40,10 +38,10 @@ public sealed class SmtpEmailSender(
         {
             logger.LogWarning(
                 "SMTP no configurado (Smtp:Host vacío). Email '{Subject}' para {To} NO fue enviado.",
-                message.Subject, message.To);
-            logger.LogDebug(
-                "[DEV] Cuerpo del email para {To}:\n{Body}",
-                message.To, message.TextBody);
+                message.Subject,
+                message.To
+            );
+            logger.LogDebug("[DEV] Cuerpo del email para {To}:\n{Body}", message.To, message.TextBody);
             return Result.Success();
         }
 
@@ -52,7 +50,7 @@ public sealed class SmtpEmailSender(
             using var client = new SmtpClient(_options.Host, _options.Port)
             {
                 EnableSsl = _options.EnableSsl,
-                DeliveryMethod = SmtpDeliveryMethod.Network
+                DeliveryMethod = SmtpDeliveryMethod.Network,
             };
             if (!string.IsNullOrWhiteSpace(_options.User))
                 client.Credentials = new NetworkCredential(_options.User, _options.Password);
@@ -62,12 +60,10 @@ public sealed class SmtpEmailSender(
                 From = new MailAddress(_options.FromAddress, _options.FromName),
                 Subject = message.Subject,
                 Body = message.HtmlBody,
-                IsBodyHtml = true
+                IsBodyHtml = true,
             };
             mail.To.Add(message.To);
-            mail.AlternateViews.Add(
-                AlternateView.CreateAlternateViewFromString(
-                    message.TextBody, null, "text/plain"));
+            mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(message.TextBody, null, "text/plain"));
 
             await client.SendMailAsync(mail, ct);
             return Result.Success();

@@ -27,7 +27,8 @@ public static class RefreshAccessTokenHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var invalid = new Error("Auth.InvalidRefreshToken", "Refresh token is invalid or expired.");
 
@@ -48,19 +49,29 @@ public static class RefreshAccessTokenHandler
                 await denylist.DenySessionAsync(stored.SessionId.Value, TimeSpan.FromMinutes(20), ct);
                 await audit.AddAsync(
                     AuthAuditLog.Record(
-                        stored.TenantId, stored.UserId, AuthAuditAction.TokenReuseDetected, false,
-                        request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                        targetType: "Session", targetId: stored.SessionId),
-                    ct);
-                await bus.PublishAsync(new SecurityAlertIntegrationEvent
-                {
-                    TenantId = stored.TenantId,
-                    UserId = stored.UserId,
-                    AlertType = SecurityAlertType.TokenReuseDetected,
-                    IpAddress = request.IpAddress,
-                    UserAgent = request.UserAgent,
-                    CorrelationId = correlation.CorrelationId
-                });
+                        stored.TenantId,
+                        stored.UserId,
+                        AuthAuditAction.TokenReuseDetected,
+                        false,
+                        request.IpAddress,
+                        request.UserAgent,
+                        correlation.CorrelationId,
+                        targetType: "Session",
+                        targetId: stored.SessionId
+                    ),
+                    ct
+                );
+                await bus.PublishAsync(
+                    new SecurityAlertIntegrationEvent
+                    {
+                        TenantId = stored.TenantId,
+                        UserId = stored.UserId,
+                        AlertType = SecurityAlertType.TokenReuseDetected,
+                        IpAddress = request.IpAddress,
+                        UserAgent = request.UserAgent,
+                        CorrelationId = correlation.CorrelationId,
+                    }
+                );
                 await unitOfWork.SaveChangesAsync(ct);
             }
 
@@ -78,27 +89,32 @@ public static class RefreshAccessTokenHandler
         var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
         if (tenant is null || !tenant.IsActive)
         {
-            return Result.Failure<AuthTokensResponse>(
-                new Error("Tenant.Inactive", "Tenant is inactive."));
+            return Result.Failure<AuthTokensResponse>(new Error("Tenant.Inactive", "Tenant is inactive."));
         }
 
         var (roleNames, permissions) = await UserAccessResolver.ResolveAsync(user, roles, ct);
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
 
-        var issued = await issuer.RotateAsync(
-            stored, session, user, timeZone, roleNames, permissions, ["refresh"], ct);
+        var issued = await issuer.RotateAsync(stored, session, user, timeZone, roleNames, permissions, ["refresh"], ct);
         session.Touch(request.IpAddress);
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.TokenRefreshed, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Session", targetId: session.Id),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.TokenRefreshed,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Session",
+                targetId: session.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(new AuthTokensResponse(
-            issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds));
+        return Result.Success(new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds));
     }
 }
 
@@ -115,7 +131,8 @@ public static class RevokeRefreshTokenHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (string.IsNullOrWhiteSpace(command.RefreshToken))
             return Result.Success();
@@ -130,10 +147,18 @@ public static class RevokeRefreshTokenHandler
             await denylist.DenySessionAsync(sessionId, TimeSpan.FromMinutes(20), ct);
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    stored.TenantId, stored.UserId, AuthAuditAction.SessionRevoked, true,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                    targetType: "Session", targetId: sessionId),
-                ct);
+                    stored.TenantId,
+                    stored.UserId,
+                    AuthAuditAction.SessionRevoked,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    targetType: "Session",
+                    targetId: sessionId
+                ),
+                ct
+            );
         }
         else
         {
