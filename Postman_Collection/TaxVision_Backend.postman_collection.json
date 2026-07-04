@@ -92,7 +92,19 @@
 						},
 						"description": "Lista paginada de tenants comerciales. Requiere rol PlatformAdmin."
 					},
-					"response": []
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+								]
+							}
+						}
+					]
 				},
 				{
 					"name": "ChangeTenantStatus",
@@ -127,7 +139,18 @@
 						},
 						"description": "Cambia el estado del tenant (Active | Suspended | Closed). Requiere PlatformAdmin. Suspender/cerrar bloquea login y refresh."
 					},
-					"response": []
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
 				}
 			]
 		},
@@ -3124,12 +3147,13 @@
 									"script": {
 										"type": "text/javascript",
 										"exec": [
+											"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
 											"const r = pm.response.json();",
+											"pm.test(\"devuelve fileId y uploadUrl\", () => { pm.expect(r).to.have.property(\"fileId\"); pm.expect(r).to.have.property(\"uploadUrl\"); });",
 											"if (r.fileId) {",
 											"  pm.environment.set('fileId', r.fileId);",
 											"  if (r.uploadUrl) pm.environment.set('uploadUrl', r.uploadUrl);",
-											"  console.log('fileId guardado: ' + r.fileId);",
-											"  console.log('Sube el binario con PUT/POST a uploadUrl (FormData) y luego llama CompleteUpload.');",
+											"  console.log('fileId guardado: ' + r.fileId + '. Sube el binario a uploadUrl y luego CompleteUpload.');",
 											"}"
 										]
 									}
@@ -3193,7 +3217,18 @@
 								},
 								"description": "Confirma que el binario ya se subio al storage. Encola el escaneo antivirus (estado PendingScan). Requiere storage.file.upload."
 							},
-							"response": []
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+										]
+									}
+								}
+							]
 						},
 						{
 							"name": "GetFileById",
@@ -3219,7 +3254,19 @@
 								},
 								"description": "Metadatos del archivo: estado, tamano, checksum, reporte de escaneo. Requiere storage.file.view."
 							},
-							"response": []
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+											"pm.test(\"id coincide con fileId\", () => pm.expect(pm.response.json().id).to.eql(pm.environment.get(\"fileId\")));"
+										]
+									}
+								}
+							]
 						},
 						{
 							"name": "ListFiles",
@@ -3254,7 +3301,19 @@
 								},
 								"description": "Lista archivos visibles para el actor (scoped por tenant y, si es CustomerPortal, por su customer). Requiere storage.file.view."
 							},
-							"response": []
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+											"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+										]
+									}
+								}
+							]
 						},
 						{
 							"name": "IssueDownloadUrl",
@@ -3264,8 +3323,10 @@
 									"script": {
 										"type": "text/javascript",
 										"exec": [
+											"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
 											"const r = pm.response.json();",
-											"if (r.downloadUrl) { pm.environment.set('downloadUrl', r.downloadUrl); console.log('downloadUrl guardada (expira en expiresAtUtc).'); }"
+											"pm.test(\"devuelve downloadUrl\", () => pm.expect(r).to.have.property(\"downloadUrl\"));",
+											"if (r.downloadUrl) { pm.environment.set('downloadUrl', r.downloadUrl); console.log('downloadUrl guardada (temporal).'); }"
 										]
 									}
 								}
@@ -3319,7 +3380,18 @@
 								},
 								"description": "Borrado logico del archivo (SoftDeleted). Requiere storage.file.delete."
 							},
-							"response": []
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+										]
+									}
+								}
+							]
 						}
 					]
 				},
@@ -3349,7 +3421,19 @@
 								},
 								"description": "Uso de almacenamiento del tenant (bytes, conteo de archivos, cuota). Requiere storage.settings.manage."
 							},
-							"response": []
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+											"pm.test(\"incluye metricas de uso\", () => pm.expect(pm.response.json()).to.be.an(\"object\"));"
+										]
+									}
+								}
+							]
 						},
 						{
 							"name": "GetStorageAudit",
@@ -3384,7 +3468,19 @@
 								},
 								"description": "Bitacora de acciones sobre archivos (upload, download, delete). Requiere storage.audit.view."
 							},
-							"response": []
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+											"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+										]
+									}
+								}
+							]
 						}
 					]
 				}

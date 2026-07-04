@@ -269,6 +269,9 @@ Las versiones se fijan en `.csproj`, `global.json` y Dockerfiles.
 | WolverineFx | 6.14.0 | CQRS, RabbitMQ, outbox/inbox | MIT |
 | RabbitMQ | 4.3.2-management | broker AMQP | MPL-2.0 |
 | Redis | 7.2.12-alpine | cache | BSD-3-Clause |
+| MinIO (servidor) | RELEASE.2025-09-07T16-13-09Z | object storage S3 local | AGPL-3.0 |
+| Minio (.NET SDK) | 7.0.0 | cliente S3 en CloudStorage | Apache-2.0 |
+| ClamAV | 1.4.3 | antivirus de archivos subidos | GPL-2.0 |
 | YARP | 2.3.0 | reverse proxy | MIT |
 | Serilog | 10.0.0 | logging estructurado | Apache-2.0 |
 | Serilog OTLP sink | 4.2.0 | logs remotos | Apache-2.0 |
@@ -289,6 +292,28 @@ Fuentes:
 - [Redis licenses](https://redis.io/legal/licenses/)
 - [Wolverine EF Core outbox](https://wolverinefx.net/guide/durability/efcore/outbox-and-inbox)
 - [Loki con OTLP](https://grafana.com/docs/loki/latest/send-data/otel/)
+
+### Aviso de licencia MinIO (AGPL-3.0)
+
+El servidor **MinIO** que se usa localmente (`minio/minio`) es open source bajo
+**AGPL-3.0**, no el producto comercial MinIO AIStor. TaxVision no requiere una licencia
+comercial para usarlo: el codigo propio se comunica con MinIO exclusivamente por el
+protocolo S3 sobre la red (cliente `Minio` 7.0.0, Apache-2.0) y no enlaza ni modifica el
+codigo del servidor MinIO, por lo que el copyleft de la AGPL no alcanza al codigo
+propietario de TaxVision.
+
+Como el servidor se ejecuta sin modificaciones, la obligacion de la clausula de red de la
+AGPL (seccion 13) se satisface poniendo a disposicion el codigo fuente original de MinIO:
+
+- MinIO server: <https://github.com/minio/minio> (AGPL-3.0)
+- Minio .NET client SDK: <https://github.com/minio/minio-dotnet> (Apache-2.0)
+
+Para produccion existen dos alternativas sin obligaciones AGPL, ambas sin cambios en el
+codigo del servicio CloudStorage (ver seccion 27.5): apuntar a un object storage
+gestionado S3-compatible (AWS S3, Cloudflare R2, Backblaze B2, GCS) o autohospedar un
+servidor S3 con licencia permisiva (SeaweedFS o Zenko CloudServer, Apache-2.0). Comprar
+una licencia MinIO AIStor solo es necesario si se desea soporte oficial o evitar la AGPL
+por completo; no es obligatorio para usar MinIO.
 
 ## 6. Patrones aplicados
 
@@ -2276,6 +2301,44 @@ dotnet ef database update `
 Produccion debe utilizar TLS, credenciales MinIO de alcance minimo, cifrado
 server-side/KMS, red privada entre servicios y backups de SQL Server y object
 storage.
+
+### Apuntar a un object storage gestionado (S3 / R2) en produccion
+
+El servicio CloudStorage habla el protocolo S3, por lo que puede apuntar a cualquier
+backend S3-compatible **sin cambios de codigo**: solo se ajustan las variables
+`Minio__*`. Esto evita autohospedar MinIO (y su licencia AGPL) en produccion.
+
+La configuracion vive en la seccion `Minio` (`MinioOptions`): `Endpoint`, `AccessKey`,
+`SecretKey` y `UseTls`. Como variables de entorno se expresan con doble guion bajo.
+
+Cloudflare R2 (funciona con el cliente tal cual, region `auto`):
+
+```env
+Minio__Endpoint=<accountid>.r2.cloudflarestorage.com
+Minio__AccessKey=<r2-access-key-id>
+Minio__SecretKey=<r2-secret-access-key>
+Minio__UseTls=true
+```
+
+AWS S3:
+
+```env
+Minio__Endpoint=s3.amazonaws.com
+Minio__AccessKey=<aws-access-key-id>
+Minio__SecretKey=<aws-secret-access-key>
+Minio__UseTls=true
+```
+
+Notas:
+
+- Para AWS S3 fuera de `us-east-1`, las URLs presignadas (SigV4) requieren fijar la region;
+  hoy el cliente en `DependencyInjection.AddCloudStorageInfrastructure` no expone region, asi
+  que habria que agregar `.WithRegion(...)` al `MinioClient` (y un campo `Region` en
+  `MinioOptions`). R2 usa `auto` y no lo necesita.
+- Los buckets (`taxvision-storage`, `taxvision-temp`, `taxvision-quarantine`) deben existir o
+  poder crearse; `MinioBucketBootstrapper` los provisiona al arrancar si las credenciales lo
+  permiten.
+- En el proveedor gestionado, conceda a la credencial solo permisos sobre esos buckets.
 
 ## 27.6 Pruebas
 

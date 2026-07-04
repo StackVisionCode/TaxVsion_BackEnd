@@ -1,0 +1,44 @@
+{
+	"info": {
+		"_postman_id": "b815442c-a723-4482-84a4-dcfbf868adcc",
+		"name": "TaxVision - Notification",
+		"description": "Colección de pruebas del microservicio Notification de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "GetNotifications",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/notifications?page=1&size=20",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"notifications"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "1"
+						},
+						{
+							"key": "size",
+							"value": "20"
+						}
+					]
+				},
+				"description": "Historial de notificaciones del tenant (email/SMS/in-app)."
+			},
+			"response": []
+		}
+	]
+}

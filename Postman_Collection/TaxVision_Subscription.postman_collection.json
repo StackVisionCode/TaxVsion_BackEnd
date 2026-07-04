@@ -1,0 +1,205 @@
+{
+	"info": {
+		"_postman_id": "5655905e-59ee-49c4-8c18-ab7b22b5307a",
+		"name": "TaxVision - Subscription",
+		"description": "Colección de pruebas del microservicio Subscription de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "GetPlans",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{UrlBase}}/plans",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"plans"
+					]
+				},
+				"description": "Catalogo publico de planes para la landing."
+			},
+			"response": []
+		},
+		{
+			"name": "GetMySubscription",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/subscriptions/me",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"subscriptions",
+						"me"
+					]
+				},
+				"description": "Suscripcion del tenant: plan, limites, renovacion, estado."
+			},
+			"response": []
+		},
+		{
+			"name": "ChangePlan",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/subscriptions/change-plan",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"subscriptions",
+						"change-plan"
+					]
+				},
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"planCode\": \"pro\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"description": "Upgrade/downgrade de plan (TenantAdmin)."
+			},
+			"response": []
+		},
+		{
+			"name": "PurchaseSeats",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/subscriptions/seats",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"subscriptions",
+						"seats"
+					]
+				},
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"additionalSeats\": 5\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "CancelSubscription",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/subscriptions/cancel",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"subscriptions",
+						"cancel"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "SuspendSubscription",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/suspend",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"subscriptions",
+						"{{tenantId}}",
+						"suspend"
+					]
+				},
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"reason\": \"payment_failed\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"description": "Solo PlatformAdmin."
+			},
+			"response": []
+		},
+		{
+			"name": "ReactivateSubscription",
+			"request": {
+				"method": "PATCH",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/reactivate",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"subscriptions",
+						"{{tenantId}}",
+						"reactivate"
+					]
+				},
+				"description": "Solo PlatformAdmin."
+			},
+			"response": []
+		}
+	]
+}

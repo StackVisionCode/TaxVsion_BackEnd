@@ -20,6 +20,9 @@ services:
     volumes:
       - redis-data:/data
 
+  # MinIO open source (AGPL-3.0), no el producto comercial AIStor: no requiere licencia.
+  # Solo para desarrollo/local. En produccion apunte a un S3 gestionado (S3/R2) via Minio__*
+  # (ver README seccion 27.5). Fuente MinIO: https://github.com/minio/minio
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"

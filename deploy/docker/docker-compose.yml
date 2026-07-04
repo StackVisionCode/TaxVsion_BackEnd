@@ -34,6 +34,10 @@ services:
       timeout: 5s
       retries: 10
 
+  # MinIO open source (AGPL-3.0), no el producto comercial AIStor: no requiere licencia.
+  # Solo para desarrollo/local. En produccion, apunte cloudstorage-api a un S3 gestionado
+  # (S3/R2) via las variables Minio__* (ver README seccion 27.5) para evitar la AGPL.
+  # Fuente MinIO: https://github.com/minio/minio
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: taxvision-minio

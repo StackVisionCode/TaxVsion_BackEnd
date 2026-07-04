@@ -1,0 +1,358 @@
+{
+	"info": {
+		"_postman_id": "96878bb6-64e2-4abe-b8bd-7a960735a10b",
+		"name": "TaxVision - CloudStorage",
+		"description": "Colección de pruebas del microservicio CloudStorage de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Files",
+			"item": [
+				{
+					"name": "InitiateUpload",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"pm.test(\"devuelve fileId y uploadUrl\", () => { pm.expect(r).to.have.property(\"fileId\"); pm.expect(r).to.have.property(\"uploadUrl\"); });",
+									"if (r.fileId) {",
+									"  pm.environment.set('fileId', r.fileId);",
+									"  if (r.uploadUrl) pm.environment.set('uploadUrl', r.uploadUrl);",
+									"  console.log('fileId guardado: ' + r.fileId + '. Sube el binario a uploadUrl y luego CompleteUpload.');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"originalName\": \"declaracion-2025.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 204800,\n  \"ownerType\": \"Customer\",\n  \"ownerId\": \"{{customerId}}\",\n  \"folderType\": \"Documents\",\n  \"taxYear\": 2025\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/uploads",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"uploads"
+							]
+						},
+						"description": "Inicia una subida. Devuelve fileId + uploadUrl presignada y FormData. Requiere permiso storage.file.upload. ownerType: Tenant|Customer|User|Signature|Invoice|Communication. folderType: Documents|Receipts|Invoices|EmailIncoming|EmailOutgoing|Tasks|Signatures."
+					},
+					"response": []
+				},
+				{
+					"name": "CompleteUpload",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/complete",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"complete"
+							]
+						},
+						"description": "Confirma que el binario ya se subio al storage. Encola el escaneo antivirus (estado PendingScan). Requiere storage.file.upload."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetFileById",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}"
+							]
+						},
+						"description": "Metadatos del archivo: estado, tamano, checksum, reporte de escaneo. Requiere storage.file.view."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"id coincide con fileId\", () => pm.expect(pm.response.json().id).to.eql(pm.environment.get(\"fileId\")));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ListFiles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files?skip=0&take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files"
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Lista archivos visibles para el actor (scoped por tenant y, si es CustomerPortal, por su customer). Requiere storage.file.view."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "IssueDownloadUrl",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"pm.test(\"devuelve downloadUrl\", () => pm.expect(r).to.have.property(\"downloadUrl\"));",
+									"if (r.downloadUrl) { pm.environment.set('downloadUrl', r.downloadUrl); console.log('downloadUrl guardada (temporal).'); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/download-url",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"download-url"
+							]
+						},
+						"description": "Emite una URL presignada de descarga (temporal). Solo para archivos en estado Available. Requiere storage.file.download."
+					},
+					"response": []
+				},
+				{
+					"name": "DeleteFile",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}"
+							]
+						},
+						"description": "Borrado logico del archivo (SoftDeleted). Requiere storage.file.delete."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Administration",
+			"item": [
+				{
+					"name": "GetStorageUsage",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/usage",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"usage"
+							]
+						},
+						"description": "Uso de almacenamiento del tenant (bytes, conteo de archivos, cuota). Requiere storage.settings.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"incluye metricas de uso\", () => pm.expect(pm.response.json()).to.be.an(\"object\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetStorageAudit",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/audit?skip=0&take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"audit"
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Bitacora de acciones sobre archivos (upload, download, delete). Requiere storage.audit.view."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}
