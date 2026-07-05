@@ -142,6 +142,48 @@ public sealed class Customer : TenantEntity
         return Result.Success();
     }
 
+    // ============== Identidad (nombre / negocio / DOB) ==============
+
+    public Result ChangePersonalName(PersonalName newName, Guid byUserId)
+    {
+        EnsureActive();
+        if (Kind != CustomerKind.Individual)
+            return Result.Failure(
+                new Error(
+                    "Customer.NotIndividual",
+                    "Personal name can only be changed on Individual customers. Use ChangeBusinessIdentity for Business."
+                )
+            );
+        PersonalName = newName;
+        DisplayName = newName.DisplayName;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result ChangeBusinessIdentity(BusinessIdentity newIdentity, Guid byUserId)
+    {
+        EnsureActive();
+        if (Kind != CustomerKind.Business)
+            return Result.Failure(
+                new Error(
+                    "Customer.NotBusiness",
+                    "Business identity can only be changed on Business customers. Use ChangePersonalName for Individual."
+                )
+            );
+        BusinessIdentity = newIdentity;
+        DisplayName = newIdentity.LegalName;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result ChangeDateOfBirth(DateOnly? dateOfBirth, Guid byUserId)
+    {
+        EnsureActive();
+        DateOfBirth = dateOfBirth;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
     // ============== Addresses ==============
 
     public Result<CustomerAddress> AddAddress(AddressKind kind, AddressValue address, bool isPrimary, Guid byUserId)

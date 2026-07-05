@@ -23,6 +23,10 @@ public sealed class CustomerRelationFiscalProfileConfiguration : IEntityTypeConf
         b.Property(fp => fp.UpdatedByUserId).IsRequired();
 
         b.HasIndex(fp => fp.CustomerRelationId).IsUnique();
-        b.HasIndex(fp => new { fp.TenantId, fp.TaxIdentifierBlindIndex });
+
+        // Un mismo SSN no puede aparecer en dos relaciones (dependientes/spouses) del mismo tenant.
+        b.HasIndex(fp => new { fp.TenantId, fp.TaxIdentifierBlindIndex })
+            .IsUnique()
+            .HasDatabaseName("UX_CustomerRelationFiscalProfiles_Tenant_BlindIndex");
     }
 }

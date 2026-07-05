@@ -182,6 +182,94 @@
 					"response": []
 				},
 				{
+					"name": "UpdateCustomer_IndividualName",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"language\": \"En\",\r\n  \"preferredChannel\": \"Email\",\r\n  \"primaryEmail\": \"maria.new@example.com\",\r\n  \"lastName\": \"Garcia-Lopez\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Ejemplo: individual corrige apellido (ej. casamiento). Solo cambian los campos que trae; el resto de PersonalName se conserva.",
+						"url": {
+							"raw": "{{UrlBase}}/customers/{{customerId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateCustomer_BusinessStructure",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"language\": \"En\",\r\n  \"preferredChannel\": \"Email\",\r\n  \"primaryEmail\": \"contact@acme.com\",\r\n  \"businessStructure\": \"SCorp\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Ejemplo: business cambia de LLC a SCorp. Solo se actualiza businessStructure; el resto de BusinessIdentity se conserva.",
+						"url": {
+							"raw": "{{UrlBase}}/customers/{{customerId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
 					"name": "ArchiveCustomer",
 					"request": {
 						"auth": {
