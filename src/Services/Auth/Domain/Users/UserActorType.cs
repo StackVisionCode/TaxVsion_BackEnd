@@ -5,7 +5,7 @@ public enum UserActorType
     TenantEmployee,
     CustomerPortal,
     TenantAdmin,
-    PlatformAdmin
+    PlatformAdmin,
 }
 
 public static class UserActorRoles
@@ -17,6 +17,6 @@ public static class UserActorRoles
             UserActorType.CustomerPortal => "CustomerPortal",
             UserActorType.TenantAdmin => "TenantAdmin",
             UserActorType.PlatformAdmin => "PlatformAdmin",
-            _ => throw new ArgumentOutOfRangeException(nameof(actorType), actorType, null)
+            _ => throw new ArgumentOutOfRangeException(nameof(actorType), actorType, null),
         };
 }

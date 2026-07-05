@@ -20,9 +20,13 @@ public sealed class AuthAuditLogConfiguration : IEntityTypeConfiguration<AuthAud
         builder.Property(log => log.CorrelationId).HasMaxLength(128);
         builder.Property(log => log.OccurredAtUtc).IsRequired();
 
-        builder.HasIndex(log => new { log.TenantId, log.OccurredAtUtc })
-            .IsDescending(false, true);
-        builder.HasIndex(log => new { log.TenantId, log.UserId, log.OccurredAtUtc });
+        builder.HasIndex(log => new { log.TenantId, log.OccurredAtUtc }).IsDescending(false, true);
+        builder.HasIndex(log => new
+        {
+            log.TenantId,
+            log.UserId,
+            log.OccurredAtUtc,
+        });
         builder.HasIndex(log => new { log.TenantId, log.Action });
     }
 }
@@ -38,9 +42,7 @@ public sealed class TenantPlanLimitsConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(limits => limits.PlanCode).HasMaxLength(32).IsRequired();
         builder.Property(limits => limits.MaxUsers).IsRequired();
         builder.Property(limits => limits.MaxPendingInvitations).IsRequired();
-        builder.Property(limits => limits.EnabledModulesJson)
-            .HasMaxLength(2048)
-            .IsRequired();
+        builder.Property(limits => limits.EnabledModulesJson).HasMaxLength(2048).IsRequired();
         builder.Property(limits => limits.UpdatedAtUtc).IsRequired();
     }
 }

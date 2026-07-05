@@ -22,7 +22,8 @@ public sealed class UserSession : TenantEntity
         Guid userId,
         string? deviceName,
         string? userAgent,
-        string? ipAddress)
+        string? ipAddress
+    )
     {
         var session = new UserSession
         {
@@ -32,7 +33,7 @@ public sealed class UserSession : TenantEntity
             UserAgent = Truncate(userAgent, 512),
             IpAddress = Truncate(ipAddress, 45),
             CreatedAtUtc = DateTime.UtcNow,
-            LastSeenAtUtc = DateTime.UtcNow
+            LastSeenAtUtc = DateTime.UtcNow,
         };
         session.SetTenant(tenantId);
         return session;
@@ -55,7 +56,7 @@ public sealed class UserSession : TenantEntity
     }
 
     private static string? Truncate(string? value, int maxLength) =>
-        value is null
-            ? null
-            : value.Length <= maxLength ? value : value[..maxLength];
+        value is null ? null
+        : value.Length <= maxLength ? value
+        : value[..maxLength];
 }

@@ -13,7 +13,8 @@ public static class TenantStatusChangedConsumer
         ISessionRepository sessions,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
             ? evt.EventId.ToString("N")
@@ -26,8 +27,7 @@ public static class TenantStatusChangedConsumer
             // Tenant suspendido/cerrado: se cortan todas las sesiones activas.
             if (!evt.IsActive)
             {
-                await sessions.RevokeAllForTenantAsync(
-                    evt.ChangedTenantId, "tenant_suspended", ct);
+                await sessions.RevokeAllForTenantAsync(evt.ChangedTenantId, "tenant_suspended", ct);
             }
 
             await unitOfWork.SaveChangesAsync(ct);

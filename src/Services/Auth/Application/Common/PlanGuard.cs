@@ -16,7 +16,8 @@ public static class PlanGuard
         ITenantPlanLimitsStore planLimits,
         IUserRepository users,
         IInvitationRepository invitations,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         var limits = await planLimits.GetAsync(tenantId, ct);
         if (limits is null)
@@ -27,7 +28,9 @@ public static class PlanGuard
             return Result.Failure(
                 new Error(
                     "Subscription.Suspended",
-                    "Subscription is suspended. Update your payment method to continue."));
+                    "Subscription is suspended. Update your payment method to continue."
+                )
+            );
         }
 
         var activeUsers = await users.CountActiveAsync(tenantId, ct);
@@ -38,8 +41,10 @@ public static class PlanGuard
             return Result.Failure(
                 new Error(
                     "Plan.UserLimitReached",
-                    $"Plan '{limits.PlanCode}' allows up to {limits.MaxUsers} users. " +
-                    "Purchase more seats or upgrade your plan."));
+                    $"Plan '{limits.PlanCode}' allows up to {limits.MaxUsers} users. "
+                        + "Purchase more seats or upgrade your plan."
+                )
+            );
         }
 
         if (pendingInvitations >= limits.MaxPendingInvitations)
@@ -47,7 +52,9 @@ public static class PlanGuard
             return Result.Failure(
                 new Error(
                     "Plan.InvitationLimitReached",
-                    $"Plan '{limits.PlanCode}' allows up to {limits.MaxPendingInvitations} pending invitations."));
+                    $"Plan '{limits.PlanCode}' allows up to {limits.MaxPendingInvitations} pending invitations."
+                )
+            );
         }
 
         return Result.Success();

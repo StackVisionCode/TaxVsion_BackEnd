@@ -23,13 +23,11 @@ public sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refresh
         builder.Ignore(token => token.IsActive);
         builder.Ignore(token => token.WasRotated);
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(token => token.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade);
 
         // Sin cascade con la sesión para evitar rutas de borrado múltiples con User.
-        builder.HasOne<UserSession>()
+        builder
+            .HasOne<UserSession>()
             .WithMany()
             .HasForeignKey(token => token.SessionId)
             .OnDelete(DeleteBehavior.NoAction);

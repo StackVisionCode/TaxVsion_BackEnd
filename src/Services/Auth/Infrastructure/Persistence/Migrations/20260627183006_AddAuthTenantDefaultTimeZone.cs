@@ -16,15 +16,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: false,
-                defaultValue: "Etc/UTC");
+                defaultValue: "Etc/UTC"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "DefaultTimeZoneId",
-                table: "Tenants");
+            migrationBuilder.DropColumn(name: "DefaultTimeZoneId", table: "Tenants");
         }
     }
 }

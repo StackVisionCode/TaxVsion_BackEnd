@@ -13,7 +13,8 @@ public sealed record PlanResponse(
     int MaxUsers,
     int MaxPendingInvitations,
     long StorageQuotaBytes,
-    IReadOnlyList<string> EnabledModules);
+    IReadOnlyList<string> EnabledModules
+);
 
 /// <summary>Catálogo público de planes para la landing.</summary>
 public sealed record GetPlansQuery;
@@ -23,7 +24,8 @@ public static class GetPlansHandler
     public static async Task<Result<IReadOnlyList<PlanResponse>>> Handle(
         GetPlansQuery query,
         IPlanRepository plans,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var active = await plans.GetActiveAsync(ct);
         IReadOnlyList<PlanResponse> response = active
@@ -36,7 +38,8 @@ public static class GetPlansHandler
                 plan.MaxUsers,
                 plan.MaxPendingInvitations,
                 plan.StorageQuotaBytes,
-                ParseModules(plan.EnabledModulesJson)))
+                ParseModules(plan.EnabledModulesJson)
+            ))
             .ToList();
         return Result.Success(response);
     }
@@ -68,7 +71,8 @@ public sealed record MySubscriptionResponse(
     DateTime? TrialEndsAtUtc,
     DateTime CurrentPeriodStartUtc,
     DateTime CurrentPeriodEndUtc,
-    DateTime? CancelledAtUtc);
+    DateTime? CancelledAtUtc
+);
 
 public sealed record GetMySubscriptionQuery(Guid TenantId);
 
@@ -78,36 +82,40 @@ public static class GetMySubscriptionHandler
         GetMySubscriptionQuery query,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(query.TenantId, ct);
         if (subscription is null)
         {
             return Result.Failure<MySubscriptionResponse>(
-                new Error("Subscription.NotFound", "Subscription does not exist."));
+                new Error("Subscription.NotFound", "Subscription does not exist.")
+            );
         }
 
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         if (plan is null)
         {
-            return Result.Failure<MySubscriptionResponse>(
-                new Error("Plan.NotFound", "Plan does not exist."));
+            return Result.Failure<MySubscriptionResponse>(new Error("Plan.NotFound", "Plan does not exist."));
         }
 
-        return Result.Success(new MySubscriptionResponse(
-            plan.Code,
-            plan.Name,
-            subscription.Status.ToString(),
-            plan.MonthlyPriceUsd,
-            plan.MaxUsers,
-            subscription.ExtraSeats,
-            subscription.EffectiveMaxUsers(plan),
-            plan.MaxPendingInvitations,
-            plan.StorageQuotaBytes,
-            GetPlansHandler.ParseModules(plan.EnabledModulesJson),
-            subscription.TrialEndsAtUtc,
-            subscription.CurrentPeriodStartUtc,
-            subscription.CurrentPeriodEndUtc,
-            subscription.CancelledAtUtc));
+        return Result.Success(
+            new MySubscriptionResponse(
+                plan.Code,
+                plan.Name,
+                subscription.Status.ToString(),
+                plan.MonthlyPriceUsd,
+                plan.MaxUsers,
+                subscription.ExtraSeats,
+                subscription.EffectiveMaxUsers(plan),
+                plan.MaxPendingInvitations,
+                plan.StorageQuotaBytes,
+                GetPlansHandler.ParseModules(plan.EnabledModulesJson),
+                subscription.TrialEndsAtUtc,
+                subscription.CurrentPeriodStartUtc,
+                subscription.CurrentPeriodEndUtc,
+                subscription.CancelledAtUtc
+            )
+        );
     }
 }

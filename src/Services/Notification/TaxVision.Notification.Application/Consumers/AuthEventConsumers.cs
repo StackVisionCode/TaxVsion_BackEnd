@@ -16,7 +16,8 @@ public static class InvitationCreatedConsumer
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
@@ -26,11 +27,18 @@ public static class InvitationCreatedConsumer
                 evt.InviterName,
                 evt.RawToken,
                 evt.ExpiresAtUtc,
-                evt.IsResend);
+                evt.IsResend
+            );
 
             await dispatcher.SendEmailAsync(
-                evt.TenantId, evt.Email, email, EmailTemplates.InvitationKey,
-                evt.EventId, correlation.CorrelationId, ct);
+                evt.TenantId,
+                evt.Email,
+                email,
+                EmailTemplates.InvitationKey,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
         }
     }
 }
@@ -46,14 +54,21 @@ public static class PasswordResetRequestedConsumer
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var email = EmailTemplates.PasswordReset(portal.Value, evt.RawToken, evt.ExpiresAtUtc);
             await dispatcher.SendEmailAsync(
-                evt.TenantId, evt.Email, email, EmailTemplates.PasswordResetKey,
-                evt.EventId, correlation.CorrelationId, ct);
+                evt.TenantId,
+                evt.Email,
+                email,
+                EmailTemplates.PasswordResetKey,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
         }
     }
 }
@@ -69,25 +84,38 @@ public static class MfaChallengeRequestedConsumer
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             if (string.Equals(evt.Channel, "Sms", StringComparison.OrdinalIgnoreCase))
             {
                 var text =
-                    $"{portal.Value.ProductName}: tu código es {evt.Code}. " +
-                    "Expira en pocos minutos. No lo compartas.";
+                    $"{portal.Value.ProductName}: tu código es {evt.Code}. "
+                    + "Expira en pocos minutos. No lo compartas.";
                 await dispatcher.SendSmsAsync(
-                    evt.TenantId, evt.Destination, text, EmailTemplates.OtpCodeKey,
-                    evt.EventId, correlation.CorrelationId, ct);
+                    evt.TenantId,
+                    evt.Destination,
+                    text,
+                    EmailTemplates.OtpCodeKey,
+                    evt.EventId,
+                    correlation.CorrelationId,
+                    ct
+                );
                 return;
             }
 
             var email = EmailTemplates.OtpCode(portal.Value, evt.Code, evt.Purpose);
             await dispatcher.SendEmailAsync(
-                evt.TenantId, evt.Destination, email, EmailTemplates.OtpCodeKey,
-                evt.EventId, correlation.CorrelationId, ct);
+                evt.TenantId,
+                evt.Destination,
+                email,
+                EmailTemplates.OtpCodeKey,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
         }
     }
 }
@@ -103,19 +131,32 @@ public static class EmailChangeRequestedConsumer
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var confirm = EmailTemplates.EmailChange(portal.Value, evt.RawToken, evt.ExpiresAtUtc);
             await dispatcher.SendEmailAsync(
-                evt.TenantId, evt.NewEmail, confirm, EmailTemplates.EmailChangeKey,
-                evt.EventId, correlation.CorrelationId, ct);
+                evt.TenantId,
+                evt.NewEmail,
+                confirm,
+                EmailTemplates.EmailChangeKey,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
 
             var warning = EmailTemplates.SecurityAlert(portal.Value, "email_change_requested", null);
             await dispatcher.SendEmailAsync(
-                evt.TenantId, evt.CurrentEmail, warning, EmailTemplates.SecurityAlertKey,
-                evt.EventId, correlation.CorrelationId, ct);
+                evt.TenantId,
+                evt.CurrentEmail,
+                warning,
+                EmailTemplates.SecurityAlertKey,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
         }
     }
 }
@@ -131,7 +172,8 @@ public static class SecurityAlertConsumer
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
@@ -146,7 +188,8 @@ public static class SecurityAlertConsumer
                 EmailTemplates.SecurityAlertKey,
                 evt.EventId,
                 correlation.CorrelationId,
-                ct);
+                ct
+            );
         }
     }
 }

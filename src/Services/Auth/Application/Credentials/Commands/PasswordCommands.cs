@@ -31,7 +31,8 @@ public static class ForgotPasswordHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var email = command.Email?.Trim().ToLowerInvariant() ?? string.Empty;
         var user = await users.GetByEmailAsync(command.TenantId, email, ct);
@@ -40,24 +41,38 @@ public static class ForgotPasswordHandler
 
         var rawToken = tokens.GenerateToken();
         var resetToken = PasswordResetToken.Create(
-            user.TenantId, user.Id, tokens.Hash(rawToken), request.IpAddress, ResetValidity);
+            user.TenantId,
+            user.Id,
+            tokens.Hash(rawToken),
+            request.IpAddress,
+            ResetValidity
+        );
         await credentials.AddPasswordResetAsync(resetToken, ct);
 
-        await bus.PublishAsync(new PasswordResetRequestedIntegrationEvent
-        {
-            TenantId = user.TenantId,
-            UserId = user.Id,
-            Email = user.Email,
-            RawToken = rawToken,
-            ExpiresAtUtc = resetToken.ExpiresAtUtc,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new PasswordResetRequestedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                Email = user.Email,
+                RawToken = rawToken,
+                ExpiresAtUtc = resetToken.ExpiresAtUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.PasswordResetRequested, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.PasswordResetRequested,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -84,7 +99,8 @@ public static class ResetPasswordHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var invalid = new Error("Auth.InvalidResetToken", "Reset token is invalid or expired.");
         var now = DateTime.UtcNow;
@@ -92,8 +108,7 @@ public static class ResetPasswordHandler
         if (string.IsNullOrWhiteSpace(command.Token))
             return Result.Failure(invalid);
 
-        var resetToken = await credentials.GetPasswordResetByHashAsync(
-            tokens.Hash(command.Token), ct);
+        var resetToken = await credentials.GetPasswordResetByHashAsync(tokens.Hash(command.Token), ct);
         if (resetToken is null || !resetToken.IsUsable(now))
             return Result.Failure(invalid);
 
@@ -118,21 +133,30 @@ public static class ResetPasswordHandler
             await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
         await sessions.RevokeAllForUserAsync(user.Id, "password_change", null, ct);
 
-        await bus.PublishAsync(new SecurityAlertIntegrationEvent
-        {
-            TenantId = user.TenantId,
-            UserId = user.Id,
-            AlertType = SecurityAlertType.PasswordChanged,
-            IpAddress = request.IpAddress,
-            UserAgent = request.UserAgent,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new SecurityAlertIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                AlertType = SecurityAlertType.PasswordChanged,
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.PasswordResetCompleted, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.PasswordResetCompleted,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -142,11 +166,7 @@ public static class ResetPasswordHandler
 // Change password (autenticado)
 // ---------------------------------------------------------------------------
 
-public sealed record ChangePasswordCommand(
-    Guid UserId,
-    Guid SessionId,
-    string CurrentPassword,
-    string NewPassword);
+public sealed record ChangePasswordCommand(Guid UserId, Guid SessionId, string CurrentPassword, string NewPassword);
 
 public static class ChangePasswordHandler
 {
@@ -161,7 +181,8 @@ public static class ChangePasswordHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
@@ -188,21 +209,30 @@ public static class ChangePasswordHandler
         }
         await sessions.RevokeAllForUserAsync(user.Id, "password_change", command.SessionId, ct);
 
-        await bus.PublishAsync(new SecurityAlertIntegrationEvent
-        {
-            TenantId = user.TenantId,
-            UserId = user.Id,
-            AlertType = SecurityAlertType.PasswordChanged,
-            IpAddress = request.IpAddress,
-            UserAgent = request.UserAgent,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new SecurityAlertIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                AlertType = SecurityAlertType.PasswordChanged,
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.PasswordChanged, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.PasswordChanged,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

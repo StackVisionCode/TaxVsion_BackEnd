@@ -30,7 +30,8 @@ public static class RequestEmailChangeHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
@@ -45,31 +46,44 @@ public static class RequestEmailChangeHandler
 
         if (await users.EmailExistsAsync(user.TenantId, newEmail, ct))
         {
-            return Result.Failure(
-                new Error("User.EmailConflict", "Email is already registered in this tenant."));
+            return Result.Failure(new Error("User.EmailConflict", "Email is already registered in this tenant."));
         }
 
         var rawToken = tokens.GenerateToken();
         var verification = EmailVerificationToken.Create(
-            user.TenantId, user.Id, newEmail, tokens.Hash(rawToken), Validity);
+            user.TenantId,
+            user.Id,
+            newEmail,
+            tokens.Hash(rawToken),
+            Validity
+        );
         await credentials.AddEmailVerificationAsync(verification, ct);
 
-        await bus.PublishAsync(new EmailChangeRequestedIntegrationEvent
-        {
-            TenantId = user.TenantId,
-            UserId = user.Id,
-            CurrentEmail = user.Email,
-            NewEmail = newEmail,
-            RawToken = rawToken,
-            ExpiresAtUtc = verification.ExpiresAtUtc,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new EmailChangeRequestedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                CurrentEmail = user.Email,
+                NewEmail = newEmail,
+                RawToken = rawToken,
+                ExpiresAtUtc = verification.ExpiresAtUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.EmailChangeRequested, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.EmailChangeRequested,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -89,7 +103,8 @@ public static class ConfirmEmailChangeHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var invalid = new Error("Auth.InvalidVerificationToken", "Verification token is invalid or expired.");
         var now = DateTime.UtcNow;
@@ -97,8 +112,7 @@ public static class ConfirmEmailChangeHandler
         if (string.IsNullOrWhiteSpace(command.Token))
             return Result.Failure(invalid);
 
-        var verification = await credentials.GetEmailVerificationByHashAsync(
-            tokens.Hash(command.Token), ct);
+        var verification = await credentials.GetEmailVerificationByHashAsync(tokens.Hash(command.Token), ct);
         if (verification is null || !verification.IsUsable(now))
             return Result.Failure(invalid);
 
@@ -108,30 +122,38 @@ public static class ConfirmEmailChangeHandler
 
         if (await users.EmailExistsAsync(user.TenantId, verification.NewEmail, ct))
         {
-            return Result.Failure(
-                new Error("User.EmailConflict", "Email is already registered in this tenant."));
+            return Result.Failure(new Error("User.EmailConflict", "Email is already registered in this tenant."));
         }
 
         var previousEmail = user.Email;
         user.ChangeEmail(verification.NewEmail);
         verification.MarkUsed();
 
-        await bus.PublishAsync(new SecurityAlertIntegrationEvent
-        {
-            TenantId = user.TenantId,
-            UserId = user.Id,
-            AlertType = SecurityAlertType.EmailChanged,
-            IpAddress = request.IpAddress,
-            UserAgent = request.UserAgent,
-            DetailsJson = $$"""{"previousEmail":"{{previousEmail}}"}""",
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new SecurityAlertIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                AlertType = SecurityAlertType.EmailChanged,
+                IpAddress = request.IpAddress,
+                UserAgent = request.UserAgent,
+                DetailsJson = $$"""{"previousEmail":"{{previousEmail}}"}""",
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.EmailChanged, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.EmailChanged,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -158,7 +180,8 @@ public static class RequestPhoneVerificationHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
@@ -172,28 +195,36 @@ public static class RequestPhoneVerificationHandler
             return Result.Failure(new Error("Auth.OtpThrottled", "Wait before requesting another code."));
 
         var code = tokens.GenerateNumericCode();
-        var verification = PhoneVerificationToken.Create(
-            user.TenantId, user.Id, phone, tokens.Hash(code), Validity);
+        var verification = PhoneVerificationToken.Create(user.TenantId, user.Id, phone, tokens.Hash(code), Validity);
         await credentials.AddPhoneVerificationAsync(verification, ct);
         await throttler.RegisterOtpSentAsync(user.Id, ct);
 
-        await bus.PublishAsync(new MfaChallengeRequestedIntegrationEvent
-        {
-            TenantId = user.TenantId,
-            UserId = user.Id,
-            Channel = "Sms",
-            Destination = phone,
-            Code = code,
-            Purpose = "phone_verification",
-            ExpiresAtUtc = verification.ExpiresAtUtc,
-            CorrelationId = correlation.CorrelationId
-        });
+        await bus.PublishAsync(
+            new MfaChallengeRequestedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                Channel = "Sms",
+                Destination = phone,
+                Code = code,
+                Purpose = "phone_verification",
+                ExpiresAtUtc = verification.ExpiresAtUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.PhoneVerificationRequested, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.PhoneVerificationRequested,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -212,7 +243,8 @@ public static class ConfirmPhoneVerificationHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var invalid = new Error("Auth.InvalidVerificationCode", "Verification code is invalid or expired.");
         var now = DateTime.UtcNow;
@@ -225,8 +257,10 @@ public static class ConfirmPhoneVerificationHandler
         if (verification is null || !verification.IsUsable(now))
             return Result.Failure(invalid);
 
-        if (string.IsNullOrWhiteSpace(command.Code) ||
-            !string.Equals(tokens.Hash(command.Code), verification.CodeHash, StringComparison.Ordinal))
+        if (
+            string.IsNullOrWhiteSpace(command.Code)
+            || !string.Equals(tokens.Hash(command.Code), verification.CodeHash, StringComparison.Ordinal)
+        )
         {
             verification.RegisterAttempt();
             await unitOfWork.SaveChangesAsync(ct);
@@ -238,9 +272,16 @@ public static class ConfirmPhoneVerificationHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.PhoneVerified, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.PhoneVerified,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

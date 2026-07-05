@@ -21,7 +21,8 @@ public sealed class EmailVerificationToken : TenantEntity
         Guid userId,
         string newEmail,
         string tokenHash,
-        TimeSpan validity)
+        TimeSpan validity
+    )
     {
         var token = new EmailVerificationToken
         {
@@ -30,7 +31,7 @@ public sealed class EmailVerificationToken : TenantEntity
             NewEmail = newEmail.Trim().ToLowerInvariant(),
             TokenHash = tokenHash,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.Add(validity)
+            ExpiresAtUtc = DateTime.UtcNow.Add(validity),
         };
         token.SetTenant(tenantId);
         return token;

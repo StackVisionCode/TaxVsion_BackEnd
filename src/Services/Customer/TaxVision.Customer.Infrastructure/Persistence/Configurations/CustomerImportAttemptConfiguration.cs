@@ -55,7 +55,10 @@ public sealed class CustomerImportAttemptConfiguration : IEntityTypeConfiguratio
         // Para purga >90 dias
         b.HasIndex(a => a.CreatedAtUtc).HasDatabaseName("IX_CustomerImportAttempts_Created");
 
-        b.HasMany(a => a.Rows).WithOne().HasForeignKey(r => r.CustomerImportAttemptId).OnDelete(DeleteBehavior.Cascade);
+        b.HasMany(a => a.Rows)
+            .WithOne()
+            .HasForeignKey(r => r.CustomerImportAttemptId)
+            .OnDelete(DeleteBehavior.NoAction);
 
         b.Navigation(a => a.Rows).UsePropertyAccessMode(PropertyAccessMode.Field);
     }

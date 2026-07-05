@@ -35,7 +35,8 @@ public static class EmailTemplates
         string? inviterName,
         string rawToken,
         DateTime expiresAtUtc,
-        bool isResend)
+        bool isResend
+    )
     {
         var office = Encode(string.IsNullOrWhiteSpace(tenantName) ? portal.ProductName : tenantName!);
         var inviter = Encode(inviterName ?? "El administrador");
@@ -44,9 +45,9 @@ public static class EmailTemplates
             ? $"Recordatorio: tu invitación a {office} en {portal.ProductName}"
             : $"Has sido invitado a {office} en {portal.ProductName}";
         var text =
-            $"{inviter} te invitó a unirte a {office} en {portal.ProductName}.\n" +
-            $"Activa tu cuenta: {link}\n" +
-            $"El enlace expira el {expiresAtUtc:yyyy-MM-dd HH:mm} UTC.";
+            $"{inviter} te invitó a unirte a {office} en {portal.ProductName}.\n"
+            + $"Activa tu cuenta: {link}\n"
+            + $"El enlace expira el {expiresAtUtc:yyyy-MM-dd HH:mm} UTC.";
         var html = Layout(
             subject,
             $"""
@@ -58,21 +59,19 @@ public static class EmailTemplates
             <p>O copia este enlace en tu navegador:<br/><span style="color:#4a5568;">{link}</span></p>
             <p style="color:#718096;">El enlace expira el {expiresAtUtc:yyyy-MM-dd HH:mm} UTC.
                Si no esperabas esta invitación, ignora este correo.</p>
-            """);
+            """
+        );
         return new RenderedEmail(subject, html, text);
     }
 
-    public static RenderedEmail PasswordReset(
-        PortalOptions portal,
-        string rawToken,
-        DateTime expiresAtUtc)
+    public static RenderedEmail PasswordReset(PortalOptions portal, string rawToken, DateTime expiresAtUtc)
     {
         var link = $"{portal.BaseUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(rawToken)}";
         var subject = $"Restablece tu contraseña de {portal.ProductName}";
         var text =
-            $"Recibimos una solicitud para restablecer tu contraseña.\n" +
-            $"Enlace: {link}\nExpira el {expiresAtUtc:yyyy-MM-dd HH:mm} UTC. " +
-            "Si no fuiste tú, ignora este correo.";
+            $"Recibimos una solicitud para restablecer tu contraseña.\n"
+            + $"Enlace: {link}\nExpira el {expiresAtUtc:yyyy-MM-dd HH:mm} UTC. "
+            + "Si no fuiste tú, ignora este correo.";
         var html = Layout(
             subject,
             $"""
@@ -83,7 +82,8 @@ public static class EmailTemplates
             </p>
             <p style="color:#718096;">El enlace expira el {expiresAtUtc:yyyy-MM-dd HH:mm} UTC.
                Si no solicitaste el cambio, ignora este correo: tu contraseña actual sigue siendo válida.</p>
-            """);
+            """
+        );
         return new RenderedEmail(subject, html, text);
     }
 
@@ -94,7 +94,7 @@ public static class EmailTemplates
             "login" => "iniciar sesión",
             "email_change" => "confirmar tu nuevo email",
             "phone_verification" => "verificar tu teléfono",
-            _ => "continuar"
+            _ => "continuar",
         };
         var subject = $"{Encode(code)} es tu código de {portal.ProductName}";
         var text = $"Tu código para {reason} es: {code}. Expira en pocos minutos. No lo compartas con nadie.";
@@ -106,14 +106,12 @@ public static class EmailTemplates
                margin:24px 0;">{Encode(code)}</p>
             <p style="color:#718096;">Expira en pocos minutos. Nunca lo compartas:
                el equipo de {Encode(portal.ProductName)} jamás te lo pedirá.</p>
-            """);
+            """
+        );
         return new RenderedEmail(subject, html, text);
     }
 
-    public static RenderedEmail EmailChange(
-        PortalOptions portal,
-        string rawToken,
-        DateTime expiresAtUtc)
+    public static RenderedEmail EmailChange(PortalOptions portal, string rawToken, DateTime expiresAtUtc)
     {
         var link = $"{portal.BaseUrl.TrimEnd('/')}/confirm-email?token={Uri.EscapeDataString(rawToken)}";
         var subject = $"Confirma tu nuevo email en {portal.ProductName}";
@@ -128,7 +126,8 @@ public static class EmailTemplates
             </p>
             <p style="color:#718096;">El enlace expira el {expiresAtUtc:yyyy-MM-dd HH:mm} UTC.
                Si no solicitaste este cambio, contacta al administrador de tu oficina.</p>
-            """);
+            """
+        );
         return new RenderedEmail(subject, html, text);
     }
 
@@ -136,12 +135,14 @@ public static class EmailTemplates
     {
         var description = alertType switch
         {
-            "token_reuse_detected" => "detectamos un intento de reutilización de una sesión. Por seguridad cerramos esa sesión.",
-            "account_locked_out" => "tu cuenta fue bloqueada temporalmente por demasiados intentos fallidos de inicio de sesión.",
+            "token_reuse_detected" =>
+                "detectamos un intento de reutilización de una sesión. Por seguridad cerramos esa sesión.",
+            "account_locked_out" =>
+                "tu cuenta fue bloqueada temporalmente por demasiados intentos fallidos de inicio de sesión.",
             "mfa_disabled" => "la verificación en dos pasos (MFA) fue desactivada en tu cuenta.",
             "password_changed" => "la contraseña de tu cuenta fue cambiada.",
             "email_changed" => "el email de tu cuenta fue cambiado.",
-            _ => "se registró actividad de seguridad en tu cuenta."
+            _ => "se registró actividad de seguridad en tu cuenta.",
         };
         var ip = string.IsNullOrWhiteSpace(ipAddress) ? "" : $" Dirección IP: {Encode(ipAddress)}.";
         var subject = $"Alerta de seguridad en tu cuenta de {portal.ProductName}";
@@ -152,7 +153,8 @@ public static class EmailTemplates
             <p>Alerta de seguridad: {description}{ip}</p>
             <p style="color:#718096;">Si reconoces esta actividad puedes ignorar este correo.
                Si no fuiste tú, cambia tu contraseña de inmediato y contacta al administrador.</p>
-            """);
+            """
+        );
         return new RenderedEmail(subject, html, text);
     }
 
@@ -169,29 +171,30 @@ public static class EmailTemplates
               <a href="{link}" style="background:#2b6cb0;color:#ffffff;padding:12px 24px;
                  border-radius:6px;text-decoration:none;">Ir a {Encode(portal.ProductName)}</a>
             </p>
-            """);
+            """
+        );
         return new RenderedEmail(subject, html, text);
     }
 
     private static string Layout(string title, string body) =>
         $"""
-        <!doctype html>
-        <html><body style="margin:0;padding:0;background:#f7fafc;font-family:Arial,Helvetica,sans-serif;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td align="center" style="padding:32px 16px;">
-            <table role="presentation" width="560" cellpadding="0" cellspacing="0"
-                   style="background:#ffffff;border-radius:8px;padding:32px;color:#1a202c;font-size:15px;line-height:1.6;">
-              <tr><td>
-                <h2 style="color:#1a365d;margin-top:0;">{Encode(title)}</h2>
-                {body}
-                <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;"/>
-                <p style="color:#a0aec0;font-size:12px;">Este es un mensaje automático; no respondas a este correo.</p>
+            <!doctype html>
+            <html><body style="margin:0;padding:0;background:#f7fafc;font-family:Arial,Helvetica,sans-serif;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr><td align="center" style="padding:32px 16px;">
+                <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+                       style="background:#ffffff;border-radius:8px;padding:32px;color:#1a202c;font-size:15px;line-height:1.6;">
+                  <tr><td>
+                    <h2 style="color:#1a365d;margin-top:0;">{Encode(title)}</h2>
+                    {body}
+                    <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;"/>
+                    <p style="color:#a0aec0;font-size:12px;">Este es un mensaje automático; no respondas a este correo.</p>
+                  </td></tr>
+                </table>
               </td></tr>
             </table>
-          </td></tr>
-        </table>
-        </body></html>
-        """;
+            </body></html>
+            """;
 
     private static string Encode(string value) => WebUtility.HtmlEncode(value);
 }

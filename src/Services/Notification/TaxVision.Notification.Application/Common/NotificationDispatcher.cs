@@ -16,7 +16,8 @@ public sealed class NotificationDispatcher(
     ISmsSender smsSender,
     INotificationLogRepository logs,
     IUnitOfWork unitOfWork,
-    ILogger<NotificationDispatcher> logger)
+    ILogger<NotificationDispatcher> logger
+)
 {
     public async Task SendEmailAsync(
         Guid tenantId,
@@ -25,16 +26,25 @@ public sealed class NotificationDispatcher(
         string templateKey,
         Guid? relatedEventId,
         string? correlationId,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         var logResult = NotificationLog.Create(
-            tenantId, NotificationChannel.Email, to, email.Subject,
-            templateKey, relatedEventId, correlationId);
+            tenantId,
+            NotificationChannel.Email,
+            to,
+            email.Subject,
+            templateKey,
+            relatedEventId,
+            correlationId
+        );
         if (logResult.IsFailure)
         {
             logger.LogError(
                 "Invalid notification log for template {TemplateKey}: {Error}",
-                templateKey, logResult.Error.Message);
+                templateKey,
+                logResult.Error.Message
+            );
             return;
         }
 
@@ -42,20 +52,29 @@ public sealed class NotificationDispatcher(
         await logs.AddAsync(log, ct);
 
         var sendResult = await emailSender.SendAsync(
-            new EmailMessage(to, email.Subject, email.HtmlBody, email.TextBody), ct);
+            new EmailMessage(to, email.Subject, email.HtmlBody, email.TextBody),
+            ct
+        );
         if (sendResult.IsSuccess)
         {
             log.MarkSent();
             logger.LogInformation(
                 "Email {TemplateKey} sent to {Recipient} for tenant {TenantId}.",
-                templateKey, to, tenantId);
+                templateKey,
+                to,
+                tenantId
+            );
         }
         else
         {
             log.MarkFailed(sendResult.Error.Message);
             logger.LogError(
                 "Email {TemplateKey} to {Recipient} failed for tenant {TenantId}: {Error}",
-                templateKey, to, tenantId, sendResult.Error.Message);
+                templateKey,
+                to,
+                tenantId,
+                sendResult.Error.Message
+            );
         }
 
         await unitOfWork.SaveChangesAsync(ct);
@@ -68,11 +87,18 @@ public sealed class NotificationDispatcher(
         string templateKey,
         Guid? relatedEventId,
         string? correlationId,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         var logResult = NotificationLog.Create(
-            tenantId, NotificationChannel.Sms, phoneNumber, templateKey,
-            templateKey, relatedEventId, correlationId);
+            tenantId,
+            NotificationChannel.Sms,
+            phoneNumber,
+            templateKey,
+            templateKey,
+            relatedEventId,
+            correlationId
+        );
         if (logResult.IsFailure)
             return;
 
@@ -96,11 +122,18 @@ public sealed class NotificationDispatcher(
         string templateKey,
         Guid? relatedEventId,
         string? correlationId,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         var logResult = NotificationLog.Create(
-            tenantId, NotificationChannel.InApp, recipient, subject,
-            templateKey, relatedEventId, correlationId);
+            tenantId,
+            NotificationChannel.InApp,
+            recipient,
+            subject,
+            templateKey,
+            relatedEventId,
+            correlationId
+        );
         if (logResult.IsFailure)
             return;
 

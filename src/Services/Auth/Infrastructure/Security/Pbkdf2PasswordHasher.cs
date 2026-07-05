@@ -15,12 +15,7 @@ public sealed class Pbkdf2PasswordHasher : IPasswordHasher
         ArgumentException.ThrowIfNullOrWhiteSpace(password);
 
         var salt = RandomNumberGenerator.GetBytes(SaltSize);
-        var hash = KeyDerivation.Pbkdf2(
-            password,
-            salt,
-            KeyDerivationPrf.HMACSHA256,
-            Iterations,
-            KeySize);
+        var hash = KeyDerivation.Pbkdf2(password, salt, KeyDerivationPrf.HMACSHA256, Iterations, KeySize);
 
         return $"{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
     }
@@ -41,12 +36,7 @@ public sealed class Pbkdf2PasswordHasher : IPasswordHasher
             if (salt.Length != SaltSize || expected.Length != KeySize)
                 return false;
 
-            var actual = KeyDerivation.Pbkdf2(
-                password,
-                salt,
-                KeyDerivationPrf.HMACSHA256,
-                Iterations,
-                KeySize);
+            var actual = KeyDerivation.Pbkdf2(password, salt, KeyDerivationPrf.HMACSHA256, Iterations, KeySize);
 
             return CryptographicOperations.FixedTimeEquals(actual, expected);
         }

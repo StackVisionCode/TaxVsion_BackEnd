@@ -13,7 +13,8 @@ public sealed record TenantLimitsResponse(
     int? MaxPendingInvitations,
     long? StorageQuotaBytes,
     bool IsSuspendedForBilling,
-    IReadOnlyList<string> EnabledModules);
+    IReadOnlyList<string> EnabledModules
+);
 
 public sealed record GetTenantLimitsQuery(Guid TenantId);
 
@@ -24,7 +25,8 @@ public static class GetTenantLimitsHandler
         ITenantPlanLimitsStore planLimits,
         IUserRepository users,
         IInvitationRepository invitations,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var activeUsers = await users.CountActiveAsync(query.TenantId, ct);
         var pending = await invitations.CountPendingAsync(query.TenantId, ct);
@@ -32,20 +34,24 @@ public static class GetTenantLimitsHandler
         var limits = await planLimits.GetAsync(query.TenantId, ct);
         if (limits is null)
         {
-            return Result.Success(new TenantLimitsResponse(
-                null, null, activeUsers, pending, null, null, null, false, []));
+            return Result.Success(
+                new TenantLimitsResponse(null, null, activeUsers, pending, null, null, null, false, [])
+            );
         }
 
         var modules = JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
-        return Result.Success(new TenantLimitsResponse(
-            limits.PlanCode,
-            limits.MaxUsers,
-            activeUsers,
-            pending,
-            Math.Max(0, limits.MaxUsers - activeUsers - pending),
-            limits.MaxPendingInvitations,
-            limits.StorageQuotaBytes,
-            limits.IsSuspendedForBilling,
-            modules));
+        return Result.Success(
+            new TenantLimitsResponse(
+                limits.PlanCode,
+                limits.MaxUsers,
+                activeUsers,
+                pending,
+                Math.Max(0, limits.MaxUsers - activeUsers - pending),
+                limits.MaxPendingInvitations,
+                limits.StorageQuotaBytes,
+                limits.IsSuspendedForBilling,
+                modules
+            )
+        );
     }
 }

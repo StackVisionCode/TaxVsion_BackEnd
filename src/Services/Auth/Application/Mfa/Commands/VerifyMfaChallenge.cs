@@ -18,7 +18,8 @@ public sealed record VerifyMfaChallengeCommand(
     string? Code,
     string? RecoveryCode,
     bool RememberDevice = false,
-    string? DeviceName = null);
+    string? DeviceName = null
+);
 
 public static class VerifyMfaChallengeHandler
 {
@@ -36,7 +37,8 @@ public static class VerifyMfaChallengeHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var invalid = new Error("Auth.MfaInvalid", "MFA code is invalid or expired.");
         var now = DateTime.UtcNow;
@@ -44,8 +46,7 @@ public static class VerifyMfaChallengeHandler
         if (string.IsNullOrWhiteSpace(command.LoginTicket))
             return Result.Failure<AuthTokensResponse>(invalid);
 
-        var challenge = await mfa.GetChallengeByTicketHashAsync(
-            tokens.Hash(command.LoginTicket), ct);
+        var challenge = await mfa.GetChallengeByTicketHashAsync(tokens.Hash(command.LoginTicket), ct);
         if (challenge is null || !challenge.IsUsable(now))
             return Result.Failure<AuthTokensResponse>(invalid);
 
@@ -65,9 +66,9 @@ public static class VerifyMfaChallengeHandler
         {
             var codeHash = tokens.Hash(command.RecoveryCode.Trim());
             var recoveryCodes = await mfa.GetRecoveryCodesAsync(user.Id, ct);
-            var match = recoveryCodes.FirstOrDefault(
-                code => code.IsUsable &&
-                        string.Equals(code.CodeHash, codeHash, StringComparison.Ordinal));
+            var match = recoveryCodes.FirstOrDefault(code =>
+                code.IsUsable && string.Equals(code.CodeHash, codeHash, StringComparison.Ordinal)
+            );
             if (match is not null)
             {
                 match.MarkUsed();
@@ -79,8 +80,8 @@ public static class VerifyMfaChallengeHandler
         else if (challenge.OtpHash is not null)
         {
             verified =
-                !string.IsNullOrWhiteSpace(command.Code) &&
-                string.Equals(tokens.Hash(command.Code.Trim()), challenge.OtpHash, StringComparison.Ordinal);
+                !string.IsNullOrWhiteSpace(command.Code)
+                && string.Equals(tokens.Hash(command.Code.Trim()), challenge.OtpHash, StringComparison.Ordinal);
             methodAmr = "otp";
         }
         else if (challenge.MfaMethodId is Guid methodId)
@@ -101,9 +102,16 @@ public static class VerifyMfaChallengeHandler
             challenge.RegisterAttempt();
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    user.TenantId, user.Id, AuthAuditAction.MfaFailed, false,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId),
-                ct);
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.MfaFailed,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId
+                ),
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<AuthTokensResponse>(invalid);
         }
@@ -114,7 +122,14 @@ public static class VerifyMfaChallengeHandler
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
 
         var issued = await issuer.StartSessionAsync(
-            user, timeZone, roleNames, permissions, ["pwd", methodAmr], command.DeviceName, ct);
+            user,
+            timeZone,
+            roleNames,
+            permissions,
+            ["pwd", methodAmr],
+            command.DeviceName,
+            ct
+        );
 
         string? deviceToken = null;
         if (command.RememberDevice && !usedRecoveryCode)
@@ -127,42 +142,70 @@ public static class VerifyMfaChallengeHandler
                 user.Id,
                 tokens.Hash(deviceToken),
                 request.UserAgent,
-                TimeSpan.FromDays(trustedDays));
+                TimeSpan.FromDays(trustedDays)
+            );
             await mfa.AddTrustedDeviceAsync(device, ct);
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    user.TenantId, user.Id, AuthAuditAction.TrustedDeviceAdded, true,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                    targetType: "TrustedDevice", targetId: device.Id),
-                ct);
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.TrustedDeviceAdded,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    targetType: "TrustedDevice",
+                    targetId: device.Id
+                ),
+                ct
+            );
         }
 
         if (usedRecoveryCode)
         {
             await audit.AddAsync(
                 AuthAuditLog.Record(
-                    user.TenantId, user.Id, AuthAuditAction.RecoveryCodeUsed, true,
-                    request.IpAddress, request.UserAgent, correlation.CorrelationId),
-                ct);
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.RecoveryCodeUsed,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId
+                ),
+                ct
+            );
         }
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.MfaSucceeded, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                detailsJson: $$"""{"method":"{{methodAmr}}"}"""),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.MfaSucceeded,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                detailsJson: $$"""{"method":"{{methodAmr}}"}"""
+            ),
+            ct
+        );
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.LoginSucceeded, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.LoginSucceeded,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(new AuthTokensResponse(
-            issued.AccessToken,
-            issued.RefreshToken,
-            issued.ExpiresInSeconds,
-            deviceToken));
+        return Result.Success(
+            new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds, deviceToken)
+        );
     }
 }

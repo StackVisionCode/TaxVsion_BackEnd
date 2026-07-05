@@ -15,9 +15,7 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
     private static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan OtpResendWindow = TimeSpan.FromMinutes(1);
 
-    public async Task<TimeSpan?> GetIpRetryAfterAsync(
-        string? ipAddress,
-        CancellationToken ct = default)
+    public async Task<TimeSpan?> GetIpRetryAfterAsync(string? ipAddress, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ipAddress))
             return null;
@@ -36,11 +34,11 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
         await cache.SetAsync(key, count + 1, FailureWindow, ct);
     }
 
-    public async Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default)
-        => await cache.GetAsync<bool?>(OtpKey(userId), ct) == true;
+    public async Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default) =>
+        await cache.GetAsync<bool?>(OtpKey(userId), ct) == true;
 
-    public Task RegisterOtpSentAsync(Guid userId, CancellationToken ct = default)
-        => cache.SetAsync(OtpKey(userId), true, OtpResendWindow, ct);
+    public Task RegisterOtpSentAsync(Guid userId, CancellationToken ct = default) =>
+        cache.SetAsync(OtpKey(userId), true, OtpResendWindow, ct);
 
     private static string FailureKey(string ipAddress) => $"auth:failip:{ipAddress}";
 

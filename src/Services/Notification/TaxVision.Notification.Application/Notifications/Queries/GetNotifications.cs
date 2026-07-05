@@ -14,29 +14,32 @@ public sealed record NotificationResponse(
     string Status,
     string? Error,
     DateTime CreatedAtUtc,
-    DateTime? SentAtUtc);
+    DateTime? SentAtUtc
+);
 
 public sealed record GetNotificationsQuery(
     Guid TenantId,
     NotificationStatus? Status = null,
     int Page = 1,
-    int Size = 20);
+    int Size = 20
+);
 
 public static class GetNotificationsHandler
 {
     public static async Task<Result<PagedResult<NotificationResponse>>> Handle(
         GetNotificationsQuery query,
         INotificationLogRepository logs,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (query.Page < 1 || query.Size is < 1 or > 100)
         {
             return Result.Failure<PagedResult<NotificationResponse>>(
-                new Error("Query.Pagination", "Page must be >= 1 and size between 1 and 100."));
+                new Error("Query.Pagination", "Page must be >= 1 and size between 1 and 100.")
+            );
         }
 
-        var (items, total) = await logs.GetPagedAsync(
-            query.TenantId, query.Status, query.Page, query.Size, ct);
+        var (items, total) = await logs.GetPagedAsync(query.TenantId, query.Status, query.Page, query.Size, ct);
 
         IReadOnlyList<NotificationResponse> responses = items
             .Select(log => new NotificationResponse(
@@ -48,10 +51,10 @@ public static class GetNotificationsHandler
                 log.Status.ToString(),
                 log.Error,
                 log.CreatedAtUtc,
-                log.SentAtUtc))
+                log.SentAtUtc
+            ))
             .ToList();
 
-        return Result.Success(new PagedResult<NotificationResponse>(
-            responses, query.Page, query.Size, total));
+        return Result.Success(new PagedResult<NotificationResponse>(responses, query.Page, query.Size, total));
     }
 }

@@ -16,7 +16,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: false,
-                defaultValue: "");
+                defaultValue: ""
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "Name",
@@ -24,19 +25,16 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: false,
-                defaultValue: "");
+                defaultValue: ""
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "LastName",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "LastName", table: "Users");
 
-            migrationBuilder.DropColumn(
-                name: "Name",
-                table: "Users");
+            migrationBuilder.DropColumn(name: "Name", table: "Users");
         }
     }
 }

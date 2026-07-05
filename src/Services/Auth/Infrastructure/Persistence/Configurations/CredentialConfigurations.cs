@@ -22,10 +22,7 @@ public sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<P
         builder.HasIndex(token => token.TokenHash).IsUnique();
         builder.HasIndex(token => new { token.UserId, token.UsedAtUtc });
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(token => token.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -45,10 +42,7 @@ public sealed class EmailVerificationTokenConfiguration : IEntityTypeConfigurati
 
         builder.HasIndex(token => token.TokenHash).IsUnique();
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(token => token.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -68,9 +62,6 @@ public sealed class PhoneVerificationTokenConfiguration : IEntityTypeConfigurati
 
         builder.HasIndex(token => new { token.UserId, token.UsedAtUtc });
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(token => token.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }

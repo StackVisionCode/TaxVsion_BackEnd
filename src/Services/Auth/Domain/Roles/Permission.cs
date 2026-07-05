@@ -22,13 +22,14 @@ public sealed class Permission : BaseEntity
         string code,
         string module,
         string description,
-        bool isCustomerPortal = false) =>
+        bool isCustomerPortal = false
+    ) =>
         new()
         {
             Id = id,
             Code = code,
             Module = module,
             Description = description,
-            IsCustomerPortal = isCustomerPortal
+            IsCustomerPortal = isCustomerPortal,
         };
 }

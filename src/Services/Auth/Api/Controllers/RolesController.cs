@@ -27,12 +27,9 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<RoleResponse>>>(
-            new GetRolesQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<RoleResponse>>>(new GetRolesQuery(tenantId), ct);
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Devuelve el catálogo global de permisos disponibles para asignar a roles.</summary>
@@ -41,33 +38,28 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> GetPermissionsCatalog(CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<IReadOnlyList<PermissionResponse>>>(
-            new GetPermissionsCatalogQuery(), ct);
+            new GetPermissionsCatalogQuery(),
+            ct
+        );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Datos de entrada para crear un rol: nombre, descripción y permisos iniciales.</summary>
-    public sealed record CreateRoleRequest(
-        string Name,
-        string? Description,
-        IReadOnlyList<Guid> PermissionIds);
+    public sealed record CreateRoleRequest(string Name, string? Description, IReadOnlyList<Guid> PermissionIds);
 
     /// <summary>Crea un nuevo rol en el tenant con los permisos indicados.</summary>
     [HttpPost]
     [ProducesResponseType<RoleResponse>(StatusCodes.Status201Created)]
-    public async Task<IActionResult> Create(
-        CreateRoleRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> Create(CreateRoleRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<RoleResponse>>(
-            new CreateRoleCommand(
-                tenantId, userId, request.Name, request.Description, request.PermissionIds),
-            ct);
+            new CreateRoleCommand(tenantId, userId, request.Name, request.Description, request.PermissionIds),
+            ct
+        );
 
         return result.IsSuccess
             ? Created($"/auth/roles/{result.Value.Id}", result.Value)
@@ -80,21 +72,17 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
     /// <summary>Actualiza el nombre y la descripción de un rol existente.</summary>
     [HttpPut("{roleId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Update(
-        Guid roleId,
-        UpdateRoleRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> Update(Guid roleId, UpdateRoleRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
             new UpdateRoleCommand(tenantId, roleId, userId, request.Name, request.Description),
-            ct);
+            ct
+        );
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Datos de entrada para reemplazar el conjunto de permisos de un rol.</summary>
@@ -103,38 +91,29 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
     /// <summary>Reemplaza por completo el conjunto de permisos asignados a un rol.</summary>
     [HttpPut("{roleId:guid}/permissions")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> SetPermissions(
-        Guid roleId,
-        SetPermissionsRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> SetPermissions(Guid roleId, SetPermissionsRequest request, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
             new SetRolePermissionsCommand(tenantId, roleId, userId, request.PermissionIds),
-            ct);
+            ct
+        );
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Desactiva un rol para que deje de aplicarse sin eliminarlo del historial.</summary>
     [HttpDelete("{roleId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Deactivate(
-        Guid roleId,
-        CancellationToken ct)
+    public async Task<IActionResult> Deactivate(Guid roleId, CancellationToken ct)
     {
         if (!User.TryGetUserId(out var userId) || !User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(
-            new DeactivateRoleCommand(tenantId, roleId, userId), ct);
+        var result = await bus.InvokeAsync<Result>(new DeactivateRoleCommand(tenantId, roleId, userId), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

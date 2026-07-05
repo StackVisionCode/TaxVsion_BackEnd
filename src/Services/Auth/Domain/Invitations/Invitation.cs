@@ -11,7 +11,7 @@ public enum InvitationStatus
     Pending,
     Accepted,
     Cancelled,
-    Expired
+    Expired,
 }
 
 public sealed class Invitation : TenantEntity
@@ -45,31 +45,30 @@ public sealed class Invitation : TenantEntity
         Guid? invitedByUserId,
         string tokenHash,
         DateTime expiresAtUtc,
-        string? roleIdsJson = null)
+        string? roleIdsJson = null
+    )
     {
         if (tenantId == Guid.Empty)
         {
-            return Result.Failure<Invitation>(
-                new Error("Invitation.Tenant", "Tenant is required."));
+            return Result.Failure<Invitation>(new Error("Invitation.Tenant", "Tenant is required."));
         }
 
         var normalizedEmail = email?.Trim().ToLowerInvariant() ?? string.Empty;
         if (normalizedEmail.Length == 0 || !normalizedEmail.Contains('@'))
         {
-            return Result.Failure<Invitation>(
-                new Error("Invitation.Email", "Invitation email is invalid."));
+            return Result.Failure<Invitation>(new Error("Invitation.Email", "Invitation email is invalid."));
         }
 
         if (string.IsNullOrWhiteSpace(tokenHash) || tokenHash.Length != 64)
         {
-            return Result.Failure<Invitation>(
-                new Error("Invitation.Token", "Invitation token hash is invalid."));
+            return Result.Failure<Invitation>(new Error("Invitation.Token", "Invitation token hash is invalid."));
         }
 
         if (expiresAtUtc <= DateTime.UtcNow)
         {
             return Result.Failure<Invitation>(
-                new Error("Invitation.Expiration", "Invitation expiration must be in the future."));
+                new Error("Invitation.Expiration", "Invitation expiration must be in the future.")
+            );
         }
 
         var isPlatformTenant = tenantId == PlatformTenant.Id;
@@ -78,7 +77,9 @@ public sealed class Invitation : TenantEntity
             return Result.Failure<Invitation>(
                 new Error(
                     "Invitation.PlatformScope",
-                    "Platform administrators can only belong to the reserved platform tenant."));
+                    "Platform administrators can only belong to the reserved platform tenant."
+                )
+            );
         }
 
         if (actorType != UserActorType.PlatformAdmin && isPlatformTenant)
@@ -86,24 +87,23 @@ public sealed class Invitation : TenantEntity
             return Result.Failure<Invitation>(
                 new Error(
                     "Invitation.PlatformScope",
-                    "The reserved platform tenant only accepts platform administrators."));
+                    "The reserved platform tenant only accepts platform administrators."
+                )
+            );
         }
 
-        if (actorType == UserActorType.CustomerPortal &&
-            (!customerId.HasValue || customerId.Value == Guid.Empty))
+        if (actorType == UserActorType.CustomerPortal && (!customerId.HasValue || customerId.Value == Guid.Empty))
         {
             return Result.Failure<Invitation>(
-                new Error(
-                    "Invitation.Customer",
-                    "CustomerId is required for customer portal invitations."));
+                new Error("Invitation.Customer", "CustomerId is required for customer portal invitations.")
+            );
         }
 
         if (actorType != UserActorType.CustomerPortal && customerId.HasValue)
         {
             return Result.Failure<Invitation>(
-                new Error(
-                    "Invitation.Customer",
-                    "CustomerId is only valid for customer portal invitations."));
+                new Error("Invitation.Customer", "CustomerId is only valid for customer portal invitations.")
+            );
         }
 
         var invitation = new Invitation
@@ -116,7 +116,7 @@ public sealed class Invitation : TenantEntity
             Status = InvitationStatus.Pending,
             CreatedAtUtc = DateTime.UtcNow,
             ExpiresAtUtc = expiresAtUtc,
-            RoleIdsJson = roleIdsJson
+            RoleIdsJson = roleIdsJson,
         };
         invitation.SetTenant(tenantId);
 
@@ -132,20 +132,17 @@ public sealed class Invitation : TenantEntity
     {
         if (Status != InvitationStatus.Pending)
         {
-            return Result.Failure(
-                new Error("Invitation.NotPending", "Invitation is no longer pending."));
+            return Result.Failure(new Error("Invitation.NotPending", "Invitation is no longer pending."));
         }
 
         if (ResendCount >= MaxResends)
         {
-            return Result.Failure(
-                new Error("Invitation.ResendLimit", "Invitation resend limit reached."));
+            return Result.Failure(new Error("Invitation.ResendLimit", "Invitation resend limit reached."));
         }
 
         if (string.IsNullOrWhiteSpace(newTokenHash) || newTokenHash.Length != 64)
         {
-            return Result.Failure(
-                new Error("Invitation.Token", "Invitation token hash is invalid."));
+            return Result.Failure(new Error("Invitation.Token", "Invitation token hash is invalid."));
         }
 
         TokenHash = newTokenHash;
@@ -159,8 +156,7 @@ public sealed class Invitation : TenantEntity
 
     public bool MatchesTokenHash(string tokenHash)
     {
-        if (string.IsNullOrWhiteSpace(tokenHash) ||
-            tokenHash.Length != TokenHash.Length)
+        if (string.IsNullOrWhiteSpace(tokenHash) || tokenHash.Length != TokenHash.Length)
         {
             return false;
         }
@@ -169,7 +165,8 @@ public sealed class Invitation : TenantEntity
         {
             return CryptographicOperations.FixedTimeEquals(
                 Convert.FromHexString(TokenHash),
-                Convert.FromHexString(tokenHash));
+                Convert.FromHexString(tokenHash)
+            );
         }
         catch (FormatException)
         {
@@ -181,15 +178,13 @@ public sealed class Invitation : TenantEntity
     {
         if (Status != InvitationStatus.Pending)
         {
-            return Result.Failure(
-                new Error("Invitation.NotPending", "Invitation is no longer pending."));
+            return Result.Failure(new Error("Invitation.NotPending", "Invitation is no longer pending."));
         }
 
         if (acceptedAtUtc >= ExpiresAtUtc)
         {
             Status = InvitationStatus.Expired;
-            return Result.Failure(
-                new Error("Invitation.Expired", "Invitation has expired."));
+            return Result.Failure(new Error("Invitation.Expired", "Invitation has expired."));
         }
 
         Status = InvitationStatus.Accepted;
@@ -202,8 +197,7 @@ public sealed class Invitation : TenantEntity
     {
         if (Status != InvitationStatus.Pending)
         {
-            return Result.Failure(
-                new Error("Invitation.NotPending", "Invitation is no longer pending."));
+            return Result.Failure(new Error("Invitation.NotPending", "Invitation is no longer pending."));
         }
 
         Status = InvitationStatus.Cancelled;

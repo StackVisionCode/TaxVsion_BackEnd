@@ -7,14 +7,14 @@ public enum NotificationChannel
 {
     Email,
     Sms,
-    InApp
+    InApp,
 }
 
 public enum NotificationStatus
 {
     Pending,
     Sent,
-    Failed
+    Failed,
 }
 
 /// <summary>
@@ -43,15 +43,14 @@ public sealed class NotificationLog : TenantEntity
         string subject,
         string templateKey,
         Guid? relatedEventId,
-        string? correlationId)
+        string? correlationId
+    )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<NotificationLog>(
-                new Error("Notification.Tenant", "Tenant is required."));
+            return Result.Failure<NotificationLog>(new Error("Notification.Tenant", "Tenant is required."));
 
         if (string.IsNullOrWhiteSpace(recipient))
-            return Result.Failure<NotificationLog>(
-                new Error("Notification.Recipient", "Recipient is required."));
+            return Result.Failure<NotificationLog>(new Error("Notification.Recipient", "Recipient is required."));
 
         var log = new NotificationLog
         {
@@ -63,7 +62,7 @@ public sealed class NotificationLog : TenantEntity
             Status = NotificationStatus.Pending,
             RelatedEventId = relatedEventId,
             CorrelationId = correlationId is { Length: > 128 } ? correlationId[..128] : correlationId,
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
         };
         log.SetTenant(tenantId);
         return Result.Success(log);

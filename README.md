@@ -58,6 +58,7 @@ OpenTelemetry.
 24. Guia de implementacion Customer y Subscription
 25. Customer Service: implementacion
 26. Iteracion 02-07-2026: Auth avanzado, Subscription, Notification y correcciones Customer
+27. CloudStorage / Media Security Gateway
 
 ## 1. Introduccion y objetivo
 
@@ -141,13 +142,20 @@ TaxVision/
 |-- TaxVision.slnx
 |-- global.json
 |-- LICENSE
-|-- .env.example
+|-- .env
 |-- README.md
 |-- Postman_Collection/
 |-- deploy/
 |   |-- docker-compose.yml
 |   |-- docker/
 |   |   `-- docker-compose.yml
+|   |-- tests/
+|   |   |-- TaxVision.Auth.Tests/
+|   |   |-- TaxVision.Tenant.Tests/
+|   |   |-- TaxVision.Customer.Tests/
+|   |   |-- TaxVision.Subscription.Tests/
+|   |   |-- TaxVision.Notification.Tests/
+|   |   `-- TaxVision.CloudStorage.Tests/
 |   `-- observability/
 |       |-- loki.yml
 |       |-- tempo.yml
@@ -166,11 +174,16 @@ TaxVision/
         |   |-- Application/
         |   |-- Domain/
         |   `-- Infrastructure/
-        `-- Tenant/
+        |-- Tenant/
             |-- TaxVision.Tenant.Api/
             |-- TaxVision.Tenant.Application/
             |-- TaxVision.Tenant.Domain/
             `-- TaxVision.Tenant.Infrastructure/
+        `-- CloudStorage/
+            |-- TaxVision.CloudStorage.Api/
+            |-- TaxVision.CloudStorage.Application/
+            |-- TaxVision.CloudStorage.Domain/
+            `-- TaxVision.CloudStorage.Infrastructure/
 ```
 
 ### BuildingBlocks separados
@@ -256,6 +269,9 @@ Las versiones se fijan en `.csproj`, `global.json` y Dockerfiles.
 | WolverineFx | 6.14.0 | CQRS, RabbitMQ, outbox/inbox | MIT |
 | RabbitMQ | 4.3.2-management | broker AMQP | MPL-2.0 |
 | Redis | 7.2.12-alpine | cache | BSD-3-Clause |
+| MinIO (servidor) | RELEASE.2025-09-07T16-13-09Z | object storage S3 local | AGPL-3.0 |
+| Minio (.NET SDK) | 7.0.0 | cliente S3 en CloudStorage | Apache-2.0 |
+| ClamAV | 1.4.3 | antivirus de archivos subidos | GPL-2.0 |
 | YARP | 2.3.0 | reverse proxy | MIT |
 | Serilog | 10.0.0 | logging estructurado | Apache-2.0 |
 | Serilog OTLP sink | 4.2.0 | logs remotos | Apache-2.0 |
@@ -276,6 +292,28 @@ Fuentes:
 - [Redis licenses](https://redis.io/legal/licenses/)
 - [Wolverine EF Core outbox](https://wolverinefx.net/guide/durability/efcore/outbox-and-inbox)
 - [Loki con OTLP](https://grafana.com/docs/loki/latest/send-data/otel/)
+
+### Aviso de licencia MinIO (AGPL-3.0)
+
+El servidor **MinIO** que se usa localmente (`minio/minio`) es open source bajo
+**AGPL-3.0**, no el producto comercial MinIO AIStor. TaxVision no requiere una licencia
+comercial para usarlo: el codigo propio se comunica con MinIO exclusivamente por el
+protocolo S3 sobre la red (cliente `Minio` 7.0.0, Apache-2.0) y no enlaza ni modifica el
+codigo del servidor MinIO, por lo que el copyleft de la AGPL no alcanza al codigo
+propietario de TaxVision.
+
+Como el servidor se ejecuta sin modificaciones, la obligacion de la clausula de red de la
+AGPL (seccion 13) se satisface poniendo a disposicion el codigo fuente original de MinIO:
+
+- MinIO server: <https://github.com/minio/minio> (AGPL-3.0)
+- Minio .NET client SDK: <https://github.com/minio/minio-dotnet> (Apache-2.0)
+
+Para produccion existen dos alternativas sin obligaciones AGPL, ambas sin cambios en el
+codigo del servicio CloudStorage (ver seccion 27.5): apuntar a un object storage
+gestionado S3-compatible (AWS S3, Cloudflare R2, Backblaze B2, GCS) o autohospedar un
+servidor S3 con licencia permisiva (SeaweedFS o Zenko CloudServer, Apache-2.0). Comprar
+una licencia MinIO AIStor solo es necesario si se desea soporte oficial o evitar la AGPL
+por completo; no es obligatorio para usar MinIO.
 
 ## 6. Patrones aplicados
 
@@ -419,11 +457,9 @@ PATCH /tenants/{id}/status
 
 ## 8. Configuracion y secretos
 
-Copie `.env.example` a `.env` y cambie todos los placeholders:
-
-```powershell
-Copy-Item .env.example .env
-```
+La configuracion local de Docker vive exclusivamente en `.env`. El archivo esta
+ignorado por Git y debe protegerse como secreto del entorno; no se mantiene una
+copia de ejemplo en el repositorio.
 
 Estructura:
 
@@ -431,9 +467,15 @@ Estructura:
 JWT_SECRET=replace-with-a-random-secret-of-at-least-32-bytes
 AUTH_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Auth;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
 TENANT_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Tenants;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+CUSTOMER_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Customer;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+SUBSCRIPTION_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Subscription;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+NOTIFICATION_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Notification;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
+CLOUDSTORAGE_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_CloudStorage;User Id=sa;Password=replace-with-password;TrustServerCertificate=true
 RABBITMQ_USER=taxvision
 RABBITMQ_PASSWORD=replace-with-a-strong-rabbitmq-password
 RABBITMQ_CONNECTION=amqp://taxvision:replace-with-url-encoded-password@rabbitmq:5672
+MINIO_ROOT_USER=taxvision-storage
+MINIO_ROOT_PASSWORD=replace-with-a-strong-minio-password
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=replace-with-a-strong-grafana-password
 ```
@@ -1195,36 +1237,29 @@ docker network inspect taxvision-network
 
 ## 22. Pruebas automatizadas
 
-Por solicitud, no se crearon proyectos ni pruebas automatizadas.
+Los proyectos xUnit se encuentran bajo `deploy/tests`, uno por cada
+microservicio implementado:
 
-Se genero una guia completa en:
+- `TaxVision.Auth.Tests`;
+- `TaxVision.Tenant.Tests`;
+- `TaxVision.Customer.Tests`;
+- `TaxVision.Subscription.Tests`;
+- `TaxVision.Notification.Tests`;
+- `TaxVision.CloudStorage.Tests`.
 
-```text
-D:\TaxVision Docs\Guia_Implementacion_Pruebas_Automatizadas_TaxVision.pdf
+`Billing` no tiene tests porque aun no contiene un proyecto o dominio.
+
+```powershell
+# Host
+dotnet test TaxVision.slnx
+
+# Docker
+docker compose -f deploy/tests/docker-compose.tests.yml build
+docker compose -f deploy/tests/docker-compose.tests.yml run --rm tests
 ```
 
-Tambien se conserva la fuente Markdown:
-
-```text
-D:\TaxVision Docs\Guia_Implementacion_Pruebas_Automatizadas_TaxVision.md
-```
-
-La guia explica:
-
-- estructura de proyectos;
-- comandos de creacion;
-- referencias y paquetes;
-- fixtures Testcontainers;
-- pruebas unitarias, integracion, arquitectura y E2E;
-- multitenancy;
-- outbox/inbox;
-- admin idempotente;
-- refresh/revoke;
-- authorization y rate limiting;
-- cache;
-- correlation;
-- observabilidad;
-- criterios para los 25 microservicios.
+Los comandos completos de build, migraciones y despliegue estan documentados en
+`deploy/tests/README.md`.
 
 ## 23. Guia para nuevos microservicios y mejoras futuras
 
@@ -2266,9 +2301,8 @@ criptograficas.
 
 ## 26.11 Trabajo pendiente (siguiente iteracion)
 
-- Pruebas automatizadas (xUnit): dominio (lockout, rotacion/reuse, TOTP, limites
-  de plan) e integracion de endpoints con Testcontainers. Es la deuda de mayor
-  prioridad.
+- Ampliar las pruebas existentes con integracion de endpoints mediante
+  Testcontainers y escenarios E2E.
 - Microservicio Billing (facturas, pagos, metodos de pago), que ya puede
   engancharse a los contratos de Subscription.
 - Actualizar la coleccion Postman al nuevo formato de login.
@@ -2278,3 +2312,525 @@ criptograficas.
 - Restaurar filtro por `TenantId` en `CustomerReadService.SearchAsync` y `GetByIdAsync`
   (**hecho en ms-customer** — commit `2a84ff3` con el tenant filter re-aplicado por seguridad
   multi-tenant).
+
+# 27. CloudStorage / Media Security Gateway
+
+`CloudStorage` es el unico microservicio autorizado para poseer bytes de archivos.
+Los demas bounded contexts conservan solamente referencias `FileId`; no guardan
+archivos en filesystem local ni acceden directamente a MinIO.
+
+La implementacion sigue la arquitectura del resto de TaxVision:
+
+- Domain, Application, Infrastructure y Api separados;
+- CQRS y handlers descubiertos por Wolverine;
+- SQL Server para metadata, cuota, estado y auditoria;
+- outbox/inbox durable y eventos sobre `taxvision-events`;
+- JWT, roles y permisos emitidos por Auth;
+- aislamiento por `TenantId` en consultas y claves de objetos;
+- MinIO para almacenamiento y ClamAV para antivirus.
+
+## 27.1 Flujo seguro de subida
+
+1. `POST /storage/files/uploads` valida permiso, tenant, owner, folder fiscal,
+   extension, MIME declarado, limite por archivo y cuota disponible.
+2. La cuota se reserva usando `UsedBytes + ReservedBytes` y concurrencia
+   optimista mediante `RowVersion`.
+3. CloudStorage devuelve una politica POST de MinIO con cinco minutos de vida,
+   `ObjectKey`, MIME y tamano exacto. No entrega credenciales de MinIO.
+4. El cliente envia el archivo directamente al bucket `taxvision-temp` usando la
+   URL y los campos de formulario recibidos.
+5. `POST /storage/files/{fileId}/complete` comprueba que el objeto exista y que
+   su tamano real coincida con el declarado.
+6. Un mensaje durable `ScanFileCommand` calcula SHA-256, detecta MIME por magic
+   bytes, compara extension y contenido, limita expansion/ratio de ZIP y envia el
+   stream a ClamAV.
+7. Si esta limpio, se copia al bucket versionado `taxvision-storage`, cambia a
+   `Available`, la reserva pasa a uso real y se publica
+   `FileAvailableIntegrationEvent`.
+8. Si esta infectado, se mueve a `taxvision-quarantine`, se libera la reserva,
+   se registra el incidente y se publica
+   `FileInfectedDetectedIntegrationEvent`.
+9. Una reserva que no se completa expira a las 24 horas: se elimina el objeto
+   temporal, se libera cuota y se registra auditoria.
+10. Solo un archivo `Available` puede recibir una URL temporal de descarga.
+
+## 27.2 Comunicacion con los demas microservicios
+
+| Origen | Destino | Canal | Accion implementada |
+| --- | --- | --- | --- |
+| Cliente web/movil | Gateway -> CloudStorage | HTTPS/REST `/storage/*` | Iniciar/completar upload, consultar, listar, descargar, eliminar, uso y auditoria |
+| Cliente web/movil | MinIO | HTTPS con POST policy temporal | Subir exactamente el objeto autorizado, sin conocer credenciales |
+| Auth | Gateway y CloudStorage | JWT firmado | Propaga `tenant_id`, `sub`, `actor_type`, `customer_id`, roles y claims `perm` |
+| Subscription | CloudStorage | RabbitMQ/Wolverine | `SubscriptionActivated`, `SubscriptionPlanChanged` y `SubscriptionSuspended` actualizan `TenantStorageLimits` |
+| CloudStorage | Modulos consumidores | RabbitMQ/Wolverine | Publica archivo disponible, archivo infectado, eliminacion, cuota excedida y accesos auditados |
+| CloudStorage | Notification | RabbitMQ/Wolverine | Notification registra alertas in-app para malware y cuota excedida |
+| CloudStorage | Audit futuro | RabbitMQ/Wolverine | Publica `FileAccessAuditedIntegrationEvent`; la auditoria local ya se persiste aunque el Audit Service global aun no existe |
+| Gateway | CloudStorage | Health HTTP | Incluye `cloudstorage-api` en readiness |
+
+Los modulos Media Manager, Signature, Communication, Email, Billing e IRS deben
+guardar unicamente el `FileId` y proyectar la metadata que necesiten al consumir
+los eventos. Para archivos seleccionados por un usuario utilizan el flujo REST +
+POST policy anterior. La integracion de archivos generados exclusivamente en
+backend mediante un comando de integracion todavia no esta implementada; no se
+debe introducir acceso directo de esos servicios a MinIO como atajo.
+
+## 27.3 Acciones, roles y permisos
+
+Auth es la unica fuente de verdad de RBAC. CloudStorage no posee tablas propias de
+usuarios, sesiones, roles o permisos. Auth incluye el catalogo `cloudstorage.*`,
+lo incorpora al JWT como claims `perm` y permite asignarlo a roles administrados
+por el tenant.
+
+| Accion | Endpoint | Permiso requerido | Roles de sistema por defecto |
+| --- | --- | --- | --- |
+| Ver metadata/listar | `GET /storage/files*` | `cloudstorage.file.view` | Tenant Admin, Employee, Customer Portal |
+| Iniciar/completar subida | `POST /storage/files/uploads`, `POST .../complete` | `cloudstorage.file.upload` | Tenant Admin, Employee, Customer Portal |
+| Emitir URL de descarga | `POST /storage/files/{id}/download-url` | `cloudstorage.file.download` | Tenant Admin, Employee, Customer Portal |
+| Soft-delete | `DELETE /storage/files/{id}` | `cloudstorage.file.delete` | Tenant Admin |
+| Ver uso/cuota | `GET /storage/usage` | `cloudstorage.settings.manage` | Tenant Admin |
+| Consultar auditoria | `GET /storage/audit` | `cloudstorage.audit.view` | Tenant Admin |
+| Gestion futura de politicas | Sin endpoint todavia | `cloudstorage.settings.manage` | Tenant Admin |
+
+La autorizacion tiene varias barreras acumulativas:
+
+1. **JWT valido**: identidad emitida por Auth.
+2. **Permiso efectivo**: policy ASP.NET exige el claim `perm` exacto.
+3. **Tenant**: toda lectura y escritura usa el `tenant_id` autenticado; nunca un
+   tenant enviado libremente por el cliente.
+4. **Owner para Customer Portal**: aunque posea `view/upload/download`, solamente
+   puede crear, listar, consultar, completar y descargar archivos cuyo
+   `OwnerType=Customer` y `OwnerId` coincidan con su claim `customer_id`.
+5. **Reglas del plan**: cuota total, suspension, tamano maximo, extensiones y MIME
+   permitidos.
+6. **Estado de seguridad**: no existe descarga mientras el archivo no sea
+   `Available`.
+7. **Rate limit**: Gateway limita iniciaciones/completados por tenant.
+
+Por tanto, las acciones si son parametrizables mediante roles: los codigos del
+catalogo son fijos y auditables, pero Auth permite crear roles y cambiar sus
+asignaciones de permisos. Las reglas de almacenamiento por plan se configuran en
+`CloudStorage:PlanPolicies` y la cuota total se proyecta desde Subscription.
+
+## 27.4 Endpoints
+
+- `POST /storage/files/uploads`
+- `POST /storage/files/{fileId}/complete`
+- `GET /storage/files/{fileId}`
+- `GET /storage/files`
+- `POST /storage/files/{fileId}/download-url`
+- `DELETE /storage/files/{fileId}`
+- `GET /storage/usage`
+- `GET /storage/audit`
+- `GET /health/live`
+- `GET /health/ready`
+
+## 27.5 Infraestructura y configuracion
+
+Docker Compose incorpora MinIO, ClamAV y `cloudstorage-api`. Los secretos se
+declaran en `.env` o en el secret manager del entorno; nunca se incluyen valores
+reales en el repositorio.
+
+```powershell
+docker compose --env-file .env -f deploy/docker/docker-compose.yml up -d
+
+dotnet ef database update `
+  --project src/Services/CloudStorage/TaxVision.CloudStorage.Infrastructure `
+  --startup-project src/Services/CloudStorage/TaxVision.CloudStorage.Api
+```
+
+Produccion debe utilizar TLS, credenciales MinIO de alcance minimo, cifrado
+server-side/KMS, red privada entre servicios y backups de SQL Server y object
+storage.
+
+### Apuntar a un object storage gestionado (S3 / R2) en produccion
+
+El servicio CloudStorage habla el protocolo S3, por lo que puede apuntar a cualquier
+backend S3-compatible **sin cambios de codigo**: solo se ajustan las variables
+`Minio__*`. Esto evita autohospedar MinIO (y su licencia AGPL) en produccion.
+
+La configuracion vive en la seccion `Minio` (`MinioOptions`): `Endpoint`, `AccessKey`,
+`SecretKey` y `UseTls`. Como variables de entorno se expresan con doble guion bajo.
+
+Cloudflare R2 (funciona con el cliente tal cual, region `auto`):
+
+```env
+Minio__Endpoint=<accountid>.r2.cloudflarestorage.com
+Minio__AccessKey=<r2-access-key-id>
+Minio__SecretKey=<r2-secret-access-key>
+Minio__UseTls=true
+```
+
+AWS S3:
+
+```env
+Minio__Endpoint=s3.amazonaws.com
+Minio__AccessKey=<aws-access-key-id>
+Minio__SecretKey=<aws-secret-access-key>
+Minio__UseTls=true
+```
+
+Notas:
+
+- Para AWS S3 fuera de `us-east-1`, las URLs presignadas (SigV4) requieren fijar la region;
+  hoy el cliente en `DependencyInjection.AddCloudStorageInfrastructure` no expone region, asi
+  que habria que agregar `.WithRegion(...)` al `MinioClient` (y un campo `Region` en
+  `MinioOptions`). R2 usa `auto` y no lo necesita.
+- Los buckets (`taxvision-storage`, `taxvision-temp`, `taxvision-quarantine`) deben existir o
+  poder crearse; `MinioBucketBootstrapper` los provisiona al arrancar si las credenciales lo
+  permiten.
+- En el proveedor gestionado, conceda a la credencial solo permisos sobre esos buckets.
+
+## 27.6 Pruebas
+
+El proyecto se encuentra en `deploy/tests/TaxVision.CloudStorage.Tests` y cubre:
+
+- traversal y canonicalizacion de `ObjectKey`;
+- aislamiento del nombre original y prefijo por tenant;
+- deteccion por magic bytes;
+- rechazo de ZIP bombs;
+- reserva concurrente de cuota;
+- transiciones de seguridad;
+- folders fiscales que requieren ano;
+- expiracion de uploads abandonados;
+- aislamiento por owner para Customer Portal.
+
+# 28. Modulo de Email avanzado (Notification)
+
+El servicio Notification se amplio con un subsistema de email completo dentro del mismo
+microservicio (sin crear un `Email Service` separado): configuracion de proveedores,
+plantillas, layouts, envio, campanas y sincronizacion de cuentas externas. Se respetan
+las convenciones del repo: Clean Architecture, CQRS con Wolverine (sin MediatR),
+Result pattern, `IUnitOfWork`, EDA con outbox/inbox, aislamiento multitenant por
+`tenant_id` del JWT y secretos cifrados.
+
+## 28.1 Modulos
+
+| Modulo | Responsabilidad | Entidades / tablas |
+| --- | --- | --- |
+| Configuracion SMTP/API | Proveedor de envio global (System) o por tenant; resolucion tenant→global | `EmailProviderConfigurations` |
+| Plantillas | Metadata + versionado; HTML/design/preview en CloudStorage | `EmailTemplates`, `EmailTemplateVersions` |
+| Layouts | Envoltura del cuerpo (marcador `{{ body }}`), default por scope | `EmailLayouts` |
+| Rendering | `ITemplateRenderer` con **Fluid** (Liquid sandboxed); auto-escape en HTML | — |
+| Envio | Correos salientes + tracking + entrega asincrona por evento | `OutboundEmailMessages`, `EmailRecipients`, `EmailDeliveryLogs` |
+| Campanas | Draft → programar → fan-out por cola; contadores por eventos de entrega | `EmailCampaigns`, `EmailCampaignRecipients` |
+| Cuentas + Sync | Conexion Gmail/Graph/IMAP; carpetas, mensajes, hilos, adjuntos | `EmailAccountConnections`, `EmailFolders`, `EmailSyncedMessages`, `EmailMessageAttachments`, `EmailSyncLogs` |
+
+### Decisiones de diseno relevantes
+
+- **Motor de plantillas: Fluid** (no Scriban). Scriban 5.12.1 arrastra CVEs *high*
+  conocidos; Fluid es Liquid sandboxed, seguro para plantillas escritas por usuarios.
+- **Almacenamiento de contenido en CloudStorage**: la BD guarda solo metadata y storage
+  keys; el HTML/design/preview de plantillas y layouts viven en CloudStorage (se agrego
+  `text/html` al allowlist). Notification reenvia el bearer token del usuario al llamar a
+  CloudStorage (operaciones iniciadas por request); nunca accede a MinIO ni a su BD.
+- **Render en el request, envio asincrono**: las plantillas/layout se renderizan cuando
+  hay token de usuario (request) y se guarda el cuerpo final; el consumer async solo
+  envia por SMTP. Esto evita depender de CloudStorage en background.
+- **Cifrado de secretos**: `ISecretProtector` compartido en BuildingBlocks (AES-256-GCM,
+  clave `Encryption:MasterKey`). Passwords SMTP, API keys, client secrets y tokens OAuth
+  se guardan cifrados y nunca se exponen en responses.
+- **Sync IMAP real con MailKit**; Gmail API y Microsoft Graph quedan como adaptadores
+  *stub* con el contrato listo (`IEmailProviderAdapter`) hasta configurar sus apps OAuth.
+
+## 28.2 Endpoints
+
+Todos bajo el Gateway (`http://localhost:5047`), prefijo `/notifications/email`.
+
+```text
+# Configuracion SMTP/API (permiso notification.settings.manage)
+POST   /notifications/email/configurations
+GET    /notifications/email/configurations
+GET    /notifications/email/configurations/{id}
+PUT    /notifications/email/configurations/{id}
+POST   /notifications/email/configurations/{id}/set-default
+POST   /notifications/email/configurations/{id}/test
+
+# Plantillas (notification.template.view | notification.template.manage)
+POST   /notifications/email/templates
+GET    /notifications/email/templates
+GET    /notifications/email/templates/{id}
+POST   /notifications/email/templates/{id}/versions
+POST   /notifications/email/templates/{id}/publish
+POST   /notifications/email/templates/{id}/archive
+
+# Layouts (notification.layout.manage | notification.template.view)
+POST   /notifications/email/layouts
+GET    /notifications/email/layouts
+POST   /notifications/email/layouts/{id}/set-default
+
+# Envio (notification.email.send | notification.email.view)
+POST   /notifications/email/send
+POST   /notifications/email/send-template
+GET    /notifications/email/messages
+GET    /notifications/email/messages/{id}
+
+# Campanas (notification.campaign.view | notification.campaign.manage)
+POST   /notifications/email/campaigns
+GET    /notifications/email/campaigns
+GET    /notifications/email/campaigns/{id}
+POST   /notifications/email/campaigns/{id}/schedule
+POST   /notifications/email/campaigns/{id}/send-test
+POST   /notifications/email/campaigns/{id}/cancel
+
+# Cuentas + sincronizacion (notification.account.view | notification.account.manage)
+POST   /notifications/email/accounts/connect
+GET    /notifications/email/accounts
+GET    /notifications/email/accounts/{id}
+POST   /notifications/email/accounts/{id}/disconnect
+POST   /notifications/email/accounts/{id}/sync
+POST   /notifications/email/accounts/{id}/full-sync
+GET    /notifications/email/accounts/{id}/folders
+GET    /notifications/email/accounts/{id}/messages
+GET    /notifications/email/accounts/{id}/messages/{messageId}
+GET    /notifications/email/accounts/{id}/threads/{threadId}
+GET    /notifications/email/accounts/{id}/sync-logs
+```
+
+Los permisos `notification.*` estan en `BuildingBlocks.Authorization.NotificationPermissions`
+y se aplican con `[HasPermission(...)]`; TenantAdmin/PlatformAdmin pasan siempre.
+
+## 28.3 Eventos (Wolverine/RabbitMQ)
+
+Nuevos eventos en `BuildingBlocks/Messaging/EmailIntegrationEvents`, publicados al
+exchange fanout `taxvision-events` (registrados con `PublishMessage<T>()` en
+`Program.cs`) y consumidos por el propio Notification (cola durable `notification-events`):
+
+- Envio: `EmailSendRequested`, `EmailDeliverySucceeded`, `EmailDeliveryFailed`.
+- Campanas: `EmailCampaignScheduled`, `EmailCampaignStarted`, `EmailCampaignCompleted`.
+- Cuentas: `EmailAccountConnected`, `EmailAccountDisconnected`, `EmailFullSyncRequested`,
+  `EmailIncrementalSyncRequested`, `EmailSyncCompleted`, `EmailSyncFailed`.
+
+Dos `IHostedService` en `Api/Jobs`: `CampaignSchedulerService` (inicia campanas
+programadas) y `EmailSyncSchedulerService` (sincronizacion incremental periodica).
+
+## 28.4 Configuracion nueva
+
+Notification requiere dos claves adicionales (ver `appsettings.json` y el
+`docker-compose`):
+
+```env
+# Cifrado de secretos del modulo email (base64 de 32 bytes). En Docker: ENCRYPTION_MASTER_KEY.
+Encryption__MasterKey=<BASE64_32_BYTES>
+# Microservicio CloudStorage para plantillas/layouts. En Docker: http://cloudstorage-api:8080.
+CloudStorageClient__BaseUrl=http://localhost:5330
+```
+
+Generar la clave (PowerShell):
+
+```powershell
+[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }))
+```
+
+En local via User Secrets:
+
+```powershell
+dotnet user-secrets set "Encryption:MasterKey" "<BASE64_32_BYTES>" `
+  --project src\Services\Notification\TaxVision.Notification.Api\TaxVision.Notification.Api.csproj
+```
+
+## 28.5 Migraciones
+
+Se agregaron cuatro migraciones aditivas a `NotificationDbContext` (no tocan
+`NotificationLogs`):
+
+- `AddEmailProviderConfigurations`
+- `AddEmailTemplatesAndLayouts`
+- `AddOutboundEmailMessages`
+- `AddEmailCampaigns`
+- `AddEmailAccountsAndSync`
+
+Aplicar (host):
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Notification\TaxVision.Notification.Infrastructure\TaxVision.Notification.Infrastructure.csproj `
+  --startup-project src\Services\Notification\TaxVision.Notification.Api\TaxVision.Notification.Api.csproj
+```
+
+O via el contenedor `migrations` del stack (aplica todos los servicios):
+
+```powershell
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile tools run --build --rm migrations
+```
+
+## 28.6 Guia de pruebas paso a paso
+
+Requisitos previos: stack levantado (`docker compose ... up -d`), migraciones aplicadas,
+`Encryption:MasterKey` configurada, y un `accessToken` de un `TenantAdmin` (ver seccion
+14/26 para el flujo de login). Todas las peticiones van al Gateway con
+`Authorization: Bearer <accessToken>`.
+
+### 1) Configuracion SMTP y prueba de envio
+
+```http
+POST /notifications/email/configurations
+{
+  "scope": "Tenant",
+  "providerType": "Smtp",
+  "displayName": "SMTP del tenant",
+  "fromEmail": "no-reply@empresa-demo.com",
+  "fromName": "Empresa Demo",
+  "host": "smtp.mailtrap.io",
+  "port": 587,
+  "username": "<user>",
+  "password": "<pass>",
+  "useSsl": true,
+  "isDefault": true
+}
+```
+
+```http
+POST /notifications/email/configurations/{id}/test
+{ "toEmail": "prueba@empresa-demo.com" }
+```
+
+El secreto se guarda cifrado; el GET nunca lo devuelve (solo `hasPassword: true`).
+
+### 2) Plantilla y layout
+
+```http
+POST /notifications/email/layouts
+{ "scope": "Tenant", "layoutName": "Base", "html": "<html><body>{{ body }}</body></html>", "isDefault": true }
+```
+
+```http
+POST /notifications/email/templates
+{ "scope": "Tenant", "templateKey": "welcome", "subject": "Hola {{ customer_name }}", "variables": ["customer_name"] }
+```
+
+```http
+POST /notifications/email/templates/{id}/versions
+{ "subjectTemplate": "Hola {{ customer_name }}", "html": "<h1>Bienvenido {{ customer_name }}</h1>" }
+```
+
+```http
+POST /notifications/email/templates/{id}/publish
+{ "versionId": "<versionId>" }
+```
+
+El HTML se sube a CloudStorage (usa tu bearer token). La version queda `PendingScan`
+hasta que ClamAV la marque `Available`; publicar/enviar funciona una vez disponible.
+
+### 3) Envio individual y por plantilla
+
+```http
+POST /notifications/email/send
+{ "subject": "Aviso", "htmlBody": "<p>Hola</p>", "recipients": [{ "address": "cliente@example.com" }] }
+```
+
+```http
+POST /notifications/email/send-template
+{ "templateId": "<id>", "recipients": [{ "address": "cliente@example.com" }], "variables": { "customer_name": "Maria" } }
+```
+
+Ambos devuelven `202 Accepted` con el `id` del mensaje. Consulta el estado:
+
+```http
+GET /notifications/email/messages/{id}
+```
+
+### 4) Campana
+
+```http
+POST /notifications/email/campaigns
+{ "name": "Newsletter Julio", "type": "Newsletter", "templateId": "<id>",
+  "recipients": [ { "address": "a@example.com", "variables": { "customer_name": "Ana" } },
+                  { "address": "b@example.com", "variables": { "customer_name": "Beto" } } ] }
+```
+
+```http
+POST /notifications/email/campaigns/{id}/schedule
+{ "scheduledAtUtc": null }   // null = ahora; el scheduler la inicia en <=30s
+```
+
+El fan-out crea un correo por destinatario; los contadores (`sentCount`, `failedCount`)
+se actualizan via eventos de entrega. `GET /campaigns/{id}` muestra el progreso.
+`POST /campaigns/{id}/send-test` envia una prueba sin afectar contadores.
+
+### 5) Conexion y sincronizacion de cuenta (IMAP)
+
+```http
+POST /notifications/email/accounts/connect
+{ "provider": "Imap", "emailAddress": "buzon@empresa-demo.com",
+  "imapHost": "imap.empresa-demo.com", "imapPort": 993, "imapUsername": "buzon@empresa-demo.com",
+  "imapPassword": "<pass>", "imapUseSsl": true }
+```
+
+Se dispara una sincronizacion completa automatica. Tambien manual:
+
+```http
+POST /notifications/email/accounts/{id}/full-sync
+POST /notifications/email/accounts/{id}/sync            // incremental (usa cursor)
+GET  /notifications/email/accounts/{id}/folders
+GET  /notifications/email/accounts/{id}/messages?folderId=<id>&page=1&size=20
+GET  /notifications/email/accounts/{id}/messages/{messageId}
+GET  /notifications/email/accounts/{id}/threads/{threadId}
+GET  /notifications/email/accounts/{id}/sync-logs
+```
+
+Los tokens/credenciales se cifran y `disconnect` los borra. Gmail/Graph devuelven
+`EmailAccount.ProviderNotConfigured` hasta habilitar sus adaptadores OAuth.
+
+### 6) Pruebas multitenant
+
+Repite cualquier flujo con el `accessToken` de otro tenant y verifica que **no** ve las
+configuraciones, plantillas, campanas ni cuentas del primero (aislamiento por `tenant_id`).
+Las plantillas/config con `scope=System` solo las gestiona un `PlatformAdmin`.
+
+### 7) Eventos y tracking
+
+En Grafana/Loki, filtra por `service_name="notification-service"` y sigue el
+`CorrelationId` para ver la cadena `EmailSendRequested → EmailDeliverySucceeded/Failed`.
+En RabbitMQ (`http://localhost:15672`) revisa la cola `notification-events`.
+
+## 28.7 Grant M2M (service-to-service) y adjuntos sincronizados
+
+Para que el worker de sincronizacion (sin contexto de usuario) suba los binarios de los
+adjuntos a CloudStorage, Auth expone un grant **client-credentials (M2M)**:
+
+```http
+POST /auth/service-token
+{ "clientId": "notification-worker", "clientSecret": "<secret>", "tenantId": "<tenantGuid>" }
+```
+
+Devuelve un token de servicio corto (`actor_type=Service`) con los permisos configurados
+para ese cliente. Los clientes se declaran en Auth via `ServiceAuth:Clients` (secret
+store / `.env`), por ejemplo:
+
+```env
+NOTIFICATION_SERVICE_CLIENT_ID=notification-worker
+NOTIFICATION_SERVICE_CLIENT_SECRET=<secret-fuerte>
+```
+
+Auth los mapea a los permisos `cloudstorage.file.upload|download|view`. Notification
+(`ServiceAuthClient`) obtiene y cachea estos tokens por tenant. El token provider de
+CloudStorage usa el token del usuario en contexto request y el token de servicio en
+background; asi, el worker sube el binario del adjunto y enlaza su `FileId` en
+`EmailMessageAttachments` (si el tipo no esta permitido o falla, conserva solo la metadata).
+
+## 28.8 Proveedores reales, webhooks y fan-out por lotes
+
+- **Adaptadores Gmail API y Microsoft Graph reales** (via HTTP con el access token OAuth de
+  la cuenta): listan carpetas y sincronizan mensajes (headers, cuerpo HTML/texto, adjuntos)
+  y refrescan el access token con el refresh token (`OAuthTokenService`). El token inicial se
+  obtiene con el flujo OAuth del frontend y se pasa en `connect`; las credenciales de la app
+  para refrescar se configuran en `EmailOAuth:{Gmail,Microsoft}` (client id/secret). Sin esas
+  credenciales el refresh no ocurre y el adapter devuelve `EmailAccount.ProviderNotConfigured`.
+- **Webhooks de tracking**: `POST /notifications/email/webhooks/tracking` (anonimo,
+  autenticado por header `X-Webhook-Secret` = `EmailWebhook:Secret`) recibe eventos
+  normalizados `{ events: [{ messageId, type }] }` (Delivered/Opened/Clicked/Bounced) y
+  actualiza el tracking del correo y los contadores de apertura/clic de su campana. Un
+  adaptador por proveedor (SendGrid/Mailgun) traduciria su formato a este payload.
+- **Fan-out por lotes**: el consumer de inicio de campana divide los destinatarios en lotes
+  de 100 y publica un evento por lote (`EmailCampaignBatchIntegrationEvent`); cada lote se
+  procesa en su propia transaccion, evitando una transaccion gigante.
+
+## 28.9 Pendientes documentados
+
+- **Verificacion end-to-end con stack real**: el flujo HTTP a CloudStorage (upload presignado
+  + M2M), el envio SMTP y las llamadas Gmail/Graph estan validados en compilacion; requieren
+  los servicios levantados y credenciales OAuth reales para probarse.
+- **Sincronizacion incremental por delta nativo** (historyId de Gmail / deltaToken de Graph):
+  hoy el incremental usa cursores por fecha/UID; el delta nativo es mas eficiente.
+- **Subida de adjuntos por cola** en vez de inline dentro de la sincronizacion, para buzones
+  con muchos adjuntos grandes.

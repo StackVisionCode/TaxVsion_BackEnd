@@ -25,8 +25,9 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
                 definition.Code,
                 definition.Module,
                 definition.Description,
-                definition.IsCustomerPortal
-            }));
+                definition.IsCustomerPortal,
+            })
+        );
     }
 }
 
@@ -46,13 +47,13 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.HasIndex(role => new { role.TenantId, role.Name }).IsUnique();
 
-        builder.HasMany(role => role.Permissions)
+        builder
+            .HasMany(role => role.Permissions)
             .WithOne()
             .HasForeignKey(link => link.RoleId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.Navigation(role => role.Permissions)
-            .UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Navigation(role => role.Permissions).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }
 
@@ -64,7 +65,8 @@ public sealed class RolePermissionConfiguration : IEntityTypeConfiguration<RoleP
         builder.ToTable("RolePermissions");
         builder.HasKey(link => new { link.RoleId, link.PermissionId });
 
-        builder.HasOne<Permission>()
+        builder
+            .HasOne<Permission>()
             .WithMany()
             .HasForeignKey(link => link.PermissionId)
             .OnDelete(DeleteBehavior.Cascade);
@@ -82,14 +84,8 @@ public sealed class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
 
         builder.HasIndex(link => link.RoleId);
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(link => link.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(link => link.UserId).OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne<Role>()
-            .WithMany()
-            .HasForeignKey(link => link.RoleId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Role>().WithMany().HasForeignKey(link => link.RoleId).OnDelete(DeleteBehavior.Cascade);
     }
 }

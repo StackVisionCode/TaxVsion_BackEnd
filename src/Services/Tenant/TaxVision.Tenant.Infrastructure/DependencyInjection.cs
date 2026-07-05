@@ -10,15 +10,11 @@ namespace TaxVision.Tenant.Infrastructure;
 
 public static class InfrastructureRegistration
 {
-    public static IServiceCollection AddTenantInfrastructure(
-        this IServiceCollection services,
-        IConfiguration config)
+    public static IServiceCollection AddTenantInfrastructure(this IServiceCollection services, IConfiguration config)
     {
-        services.AddDbContext<TenantDbContext>(opt =>
-            opt.UseSqlServer(config.GetConnectionString("Default")));
+        services.AddDbContext<TenantDbContext>(opt => opt.UseSqlServer(config.GetConnectionString("Default")));
 
-        services.AddScoped<IUnitOfWork>(sp =>
-            sp.GetRequiredService<TenantDbContext>());
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<TenantDbContext>());
 
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<ITenantReadService, TenantReadService>();

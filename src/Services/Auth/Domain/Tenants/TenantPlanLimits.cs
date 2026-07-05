@@ -24,7 +24,8 @@ public sealed class TenantPlanLimits : BaseEntity
         int maxUsers,
         int maxPendingInvitations,
         long storageQuotaBytes,
-        string enabledModulesJson) =>
+        string enabledModulesJson
+    ) =>
         new()
         {
             Id = tenantId,
@@ -33,7 +34,7 @@ public sealed class TenantPlanLimits : BaseEntity
             MaxPendingInvitations = maxPendingInvitations,
             StorageQuotaBytes = storageQuotaBytes,
             EnabledModulesJson = enabledModulesJson,
-            UpdatedAtUtc = DateTime.UtcNow
+            UpdatedAtUtc = DateTime.UtcNow,
         };
 
     public void Apply(
@@ -41,7 +42,8 @@ public sealed class TenantPlanLimits : BaseEntity
         int maxUsers,
         int maxPendingInvitations,
         long storageQuotaBytes,
-        string enabledModulesJson)
+        string enabledModulesJson
+    )
     {
         PlanCode = planCode;
         MaxUsers = maxUsers;

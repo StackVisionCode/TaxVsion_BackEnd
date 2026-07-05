@@ -1,0 +1,1370 @@
+{
+	"info": {
+		"_postman_id": "b2867394-34d5-485f-bd62-4b6161ae1ded",
+		"name": "TaxVision - Auth",
+		"description": "Colección de pruebas del microservicio Auth de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "AcceptTenantAdminInvitation",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{UrlBase}}/auth/invitations/accept",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						"invitations",
+						"accept"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const r = pm.response.json();",
+							"if (r.mfaRequired) {",
+							"  pm.environment.set('loginTicket', r.loginTicket);",
+							"  console.log('MFA requerido. loginTicket guardado. Usa Auth/MFA/VerifyMfaChallenge.');",
+							"} else if (r.tokens) {",
+							"  pm.environment.set('accessToken', r.tokens.accessToken);",
+							"  pm.environment.set('refreshToken', r.tokens.refreshToken);",
+							"  if (r.tokens.deviceToken) pm.environment.set('deviceToken', r.tokens.deviceToken);",
+							"  console.log('accessToken y refreshToken guardados' + (r.mfaSetupRequired ? ' (mfaSetupRequired=true)' : ''));",
+							"}"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{UrlBase}}/auth/login",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "GetMe",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/auth/me",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						"me"
+					]
+				},
+				"description": "Perfil, roles, permisos, plan y zona horaria del usuario autenticado."
+			},
+			"response": []
+		},
+		{
+			"name": "Refresh",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{UrlBase}}/auth/refresh",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						"refresh"
+					]
+				},
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"description": "Rota el refresh token y emite un nuevo access token. Reutilizar un token ya rotado revoca la sesion."
+			},
+			"response": [],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const r = pm.response.json();",
+							"if (r.accessToken) { pm.environment.set('accessToken', r.accessToken); pm.environment.set('refreshToken', r.refreshToken); console.log('tokens actualizados'); }"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "Logout",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/auth/logout",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						"logout"
+					]
+				},
+				"description": "Cierra la sesion actual (revoca su familia de refresh tokens)."
+			},
+			"response": []
+		},
+		{
+			"name": "Jwks",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{UrlBase}}/auth/.well-known/jwks.json",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						".well-known",
+						"jwks.json"
+					]
+				},
+				"description": "JWKS publico (RS256). Con HS256 devuelve un set vacio."
+			},
+			"response": []
+		},
+		{
+			"name": "MFA",
+			"item": [
+				{
+					"name": "SetupTotp",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/totp/setup",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"totp",
+								"setup"
+							]
+						},
+						"description": "Devuelve el secreto y el otpauthUri para escanear con Authenticator."
+					},
+					"response": []
+				},
+				{
+					"name": "ConfirmTotp",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/totp/confirm",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"totp",
+								"confirm"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Confirma el TOTP con un codigo y devuelve los recovery codes (una sola vez)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r=pm.response.json(); if(r.recoveryCodes){console.log('Recovery codes:', r.recoveryCodes.join(', '));}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "VerifyMfaChallenge",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/verify",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"verify"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"loginTicket\": \"{{loginTicket}}\",\n  \"code\": \"123456\",\n  \"rememberDevice\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Paso 2 del login: verifica el codigo del desafio MFA y emite tokens."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r=pm.response.json();",
+									"if(r.accessToken){pm.environment.set('accessToken',r.accessToken);pm.environment.set('refreshToken',r.refreshToken);if(r.deviceToken)pm.environment.set('deviceToken',r.deviceToken);console.log('MFA verificado, tokens guardados');}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "MfaStatus",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/status",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"status"
+							]
+						},
+						"description": "Metodos MFA registrados, recovery codes restantes y dispositivos confiables."
+					},
+					"response": []
+				},
+				{
+					"name": "DisableMfa",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/disable",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"disable"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"password\": \"Brittany040238.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Desactiva MFA (bloqueado si la politica del tenant lo exige)."
+					},
+					"response": []
+				},
+				{
+					"name": "RegenerateRecoveryCodes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/recovery-codes/regenerate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"recovery-codes",
+								"regenerate"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"password\": \"Brittany040238.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetMfaPolicy",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/policy",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"policy"
+							]
+						},
+						"description": "Politica MFA del tenant (requiere settings.manage)."
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateMfaPolicy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/policy",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"policy"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"requireForEmployees\": false,\n  \"requireForCustomerPortal\": false,\n  \"trustedDeviceDays\": 30\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Credentials",
+			"item": [
+				{
+					"name": "ForgotPassword",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/password/forgot",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"password",
+								"forgot"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"jturbi@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Siempre responde 202 (anti-enumeracion)."
+					},
+					"response": []
+				},
+				{
+					"name": "ResetPassword",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/password/reset",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"password",
+								"reset"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ChangePassword",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/password/change",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"password",
+								"change"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"currentPassword\": \"Brittany040238.\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "RequestEmailChange",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/me/email/change-request",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"me",
+								"email",
+								"change-request"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newEmail\": \"nuevo@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ConfirmEmailChange",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/me/email/confirm",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"me",
+								"email",
+								"confirm"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{emailChangeToken}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "RequestPhoneVerification",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/me/phone/change-request",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"me",
+								"phone",
+								"change-request"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phoneNumber\": \"+18095551234\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ConfirmPhoneVerification",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/me/phone/confirm",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"me",
+								"phone",
+								"confirm"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Sessions",
+			"item": [
+				{
+					"name": "MySessions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/sessions/me",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"sessions",
+								"me"
+							]
+						},
+						"description": "Sesiones activas del usuario autenticado."
+					},
+					"response": []
+				},
+				{
+					"name": "RevokeSession",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/sessions/{{sessionId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"sessions",
+								"{{sessionId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "RevokeAllMySessions",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/sessions?includeCurrent=false",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"sessions"
+							],
+							"query": [
+								{
+									"key": "includeCurrent",
+									"value": "false"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Invitations",
+			"item": [
+				{
+					"name": "CreateInvitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/invitations",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"invitations"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"empleado@example.com\",\n  \"actorType\": \"TenantEmployee\",\n  \"customerId\": null,\n  \"roleIds\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Crea una invitacion (requiere TenantAdmin/PlatformAdmin). Valida limites del plan."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r=pm.response.json(); if(r.invitationToken){pm.environment.set('invitationToken', r.invitationToken);}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ListInvitations",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/invitations?status=Pending&page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"invitations"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "Pending"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ResendInvitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/resend",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"invitations",
+								"{{invitationId}}",
+								"resend"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "CancelInvitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/cancel",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"invitations",
+								"{{invitationId}}",
+								"cancel"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "GetUsers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/users?page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"users"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetUserById",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/users/{{userId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"users",
+								"{{userId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "DeactivateUser",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/users/{{userId}}/deactivate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"users",
+								"{{userId}}",
+								"deactivate"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ReactivateUser",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/users/{{userId}}/reactivate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"users",
+								"{{userId}}",
+								"reactivate"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AssignUserRoles",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/users/{{userId}}/roles",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"users",
+								"{{userId}}",
+								"roles"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"roleIds\": [\n    \"{{roleId}}\"\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateMyProfile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/users/me/profile",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"users",
+								"me",
+								"profile"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Jorge\",\n  \"lastName\": \"Turbi\",\n  \"timeZoneId\": \"America/Santo_Domingo\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetTenantLimits",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenants/limits",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenants",
+								"limits"
+							]
+						},
+						"description": "Plan, asientos usados/disponibles e invitaciones restantes."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Roles",
+			"item": [
+				{
+					"name": "GetRoles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/roles",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"roles"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetPermissionsCatalog",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/permissions",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"permissions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "CreateRole",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/roles",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"roles"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Equipo comercial\",\n  \"permissionIds\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r=pm.response.json(); if(r.id){pm.environment.set('roleId', r.id);}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "UpdateRole",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/roles/{{roleId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"roles",
+								"{{roleId}}"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Actualizado\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SetRolePermissions",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/roles/{{roleId}}/permissions",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"roles",
+								"{{roleId}}",
+								"permissions"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"permissionIds\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "DeactivateRole",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/roles/{{roleId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"roles",
+								"{{roleId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Audit",
+			"item": [
+				{
+					"name": "GetAuditLogs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/audit?page=1&size=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"audit"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Eventos de seguridad del tenant (requiere audit.view)."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

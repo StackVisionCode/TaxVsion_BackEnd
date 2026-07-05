@@ -21,7 +21,8 @@ public sealed class TrustedDevice : TenantEntity
         Guid userId,
         string deviceTokenHash,
         string? userAgent,
-        TimeSpan validity)
+        TimeSpan validity
+    )
     {
         var device = new TrustedDevice
         {
@@ -30,7 +31,7 @@ public sealed class TrustedDevice : TenantEntity
             DeviceTokenHash = deviceTokenHash,
             UserAgent = userAgent is { Length: > 512 } ? userAgent[..512] : userAgent,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.Add(validity)
+            ExpiresAtUtc = DateTime.UtcNow.Add(validity),
         };
         device.SetTenant(tenantId);
         return device;

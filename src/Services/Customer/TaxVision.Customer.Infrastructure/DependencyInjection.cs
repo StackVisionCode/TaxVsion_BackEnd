@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Infrastructure.Imports;
 using TaxVision.Customer.Infrastructure.Persistence;
 using TaxVision.Customer.Infrastructure.Persistence.Repositories;
@@ -15,6 +16,14 @@ public static class InfrastructureRegistration
     public static IServiceCollection AddCustomerInfrastructure(this IServiceCollection services, IConfiguration config)
     {
         services.AddDbContext<CustomerDbContext>(opt => opt.UseSqlServer(config.GetConnectionString("Default")));
+
+        // ---- Parametros configurables de importacion (seccion "CustomerImport") ----
+        // Enlazado con IOptionsMonitor para permitir cambios en caliente desde una futura
+        // interfaz de administracion (config global del SaaS o por tenant).
+        services
+            .AddOptions<CustomerImportOptions>()
+            .Bind(config.GetSection(CustomerImportOptions.SectionName))
+            .Validate(o => o.MaxFileBytes > 0, "CustomerImport:MaxFileBytes must be greater than zero.");
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CustomerDbContext>());
 

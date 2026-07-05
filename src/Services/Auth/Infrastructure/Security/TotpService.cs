@@ -15,15 +15,14 @@ public sealed class TotpService : ITotpService
     private const int WindowSteps = 1;
     private const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-    public string GenerateSecret()
-        => Base32Encode(RandomNumberGenerator.GetBytes(20));
+    public string GenerateSecret() => Base32Encode(RandomNumberGenerator.GetBytes(20));
 
     public string BuildOtpAuthUri(string accountName, string base32Secret, string issuer)
     {
         var label = Uri.EscapeDataString($"{issuer}:{accountName}");
         var escapedIssuer = Uri.EscapeDataString(issuer);
-        return $"otpauth://totp/{label}?secret={base32Secret}&issuer={escapedIssuer}" +
-               $"&algorithm=SHA1&digits={Digits}&period={StepSeconds}";
+        return $"otpauth://totp/{label}?secret={base32Secret}&issuer={escapedIssuer}"
+            + $"&algorithm=SHA1&digits={Digits}&period={StepSeconds}";
     }
 
     public bool ValidateCode(string base32Secret, string code, DateTime utcNow)
@@ -47,9 +46,12 @@ public sealed class TotpService : ITotpService
         for (var offset = -WindowSteps; offset <= WindowSteps; offset++)
         {
             var expected = ComputeCode(key, timestep + offset);
-            if (CryptographicOperations.FixedTimeEquals(
+            if (
+                CryptographicOperations.FixedTimeEquals(
                     System.Text.Encoding.ASCII.GetBytes(expected),
-                    System.Text.Encoding.ASCII.GetBytes(normalized)))
+                    System.Text.Encoding.ASCII.GetBytes(normalized)
+                )
+            )
             {
                 return true;
             }
@@ -72,10 +74,10 @@ public sealed class TotpService : ITotpService
 
         var dynamicOffset = hash[^1] & 0x0F;
         var binaryCode =
-            ((hash[dynamicOffset] & 0x7F) << 24) |
-            ((hash[dynamicOffset + 1] & 0xFF) << 16) |
-            ((hash[dynamicOffset + 2] & 0xFF) << 8) |
-            (hash[dynamicOffset + 3] & 0xFF);
+            ((hash[dynamicOffset] & 0x7F) << 24)
+            | ((hash[dynamicOffset + 1] & 0xFF) << 16)
+            | ((hash[dynamicOffset + 2] & 0xFF) << 8)
+            | (hash[dynamicOffset + 3] & 0xFF);
 
         return (binaryCode % 1_000_000).ToString("D6");
     }

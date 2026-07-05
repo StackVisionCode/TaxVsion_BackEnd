@@ -14,20 +14,14 @@ public sealed class MfaMethodConfiguration : IEntityTypeConfiguration<MfaMethod>
         builder.HasKey(method => method.Id);
         builder.Property(method => method.TenantId).IsRequired();
         builder.Property(method => method.UserId).IsRequired();
-        builder.Property(method => method.Type)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(method => method.Type).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(method => method.SecretCiphertext).HasMaxLength(512);
         builder.Property(method => method.Destination).HasMaxLength(320);
         builder.Property(method => method.CreatedAtUtc).IsRequired();
 
         builder.HasIndex(method => new { method.UserId, method.Type }).IsUnique();
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(method => method.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(method => method.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -40,9 +34,7 @@ public sealed class MfaChallengeConfiguration : IEntityTypeConfiguration<MfaChal
         builder.HasKey(challenge => challenge.Id);
         builder.Property(challenge => challenge.TenantId).IsRequired();
         builder.Property(challenge => challenge.UserId).IsRequired();
-        builder.Property(challenge => challenge.LoginTicketHash)
-            .HasMaxLength(64)
-            .IsRequired();
+        builder.Property(challenge => challenge.LoginTicketHash).HasMaxLength(64).IsRequired();
         builder.Property(challenge => challenge.OtpHash).HasMaxLength(64);
         builder.Property(challenge => challenge.CreatedAtUtc).IsRequired();
         builder.Property(challenge => challenge.ExpiresAtUtc).IsRequired();
@@ -67,10 +59,7 @@ public sealed class RecoveryCodeConfiguration : IEntityTypeConfiguration<Recover
 
         builder.HasIndex(code => new { code.UserId, code.UsedAtUtc });
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(code => code.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(code => code.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -92,10 +81,7 @@ public sealed class TrustedDeviceConfiguration : IEntityTypeConfiguration<Truste
         builder.HasIndex(device => device.DeviceTokenHash).IsUnique();
         builder.HasIndex(device => new { device.UserId, device.RevokedAtUtc });
 
-        builder.HasOne<User>()
-            .WithMany()
-            .HasForeignKey(device => device.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(device => device.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

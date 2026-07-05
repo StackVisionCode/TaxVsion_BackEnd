@@ -11,38 +11,35 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
 /// </summary>
 public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
 {
-    public async Task AddSessionAsync(UserSession session, CancellationToken ct = default)
-        => await db.UserSessions.AddAsync(session, ct);
+    public async Task AddSessionAsync(UserSession session, CancellationToken ct = default) =>
+        await db.UserSessions.AddAsync(session, ct);
 
-    public Task<UserSession?> GetSessionByIdAsync(Guid sessionId, CancellationToken ct = default)
-        => db.UserSessions.FirstOrDefaultAsync(session => session.Id == sessionId, ct);
+    public Task<UserSession?> GetSessionByIdAsync(Guid sessionId, CancellationToken ct = default) =>
+        db.UserSessions.FirstOrDefaultAsync(session => session.Id == sessionId, ct);
 
     public async Task<IReadOnlyList<UserSession>> GetActiveSessionsByUserAsync(
         Guid userId,
-        CancellationToken ct = default)
-        => await db.UserSessions
-            .Where(session => session.UserId == userId && session.RevokedAtUtc == null)
+        CancellationToken ct = default
+    ) =>
+        await db
+            .UserSessions.Where(session => session.UserId == userId && session.RevokedAtUtc == null)
             .OrderByDescending(session => session.LastSeenAtUtc)
             .ToListAsync(ct);
 
-    public async Task AddTokenAsync(RefreshToken token, CancellationToken ct = default)
-        => await db.RefreshTokens.AddAsync(token, ct);
+    public async Task AddTokenAsync(RefreshToken token, CancellationToken ct = default) =>
+        await db.RefreshTokens.AddAsync(token, ct);
 
-    public Task<RefreshToken?> GetTokenByHashAsync(string tokenHash, CancellationToken ct = default)
-        => db.RefreshTokens.FirstOrDefaultAsync(token => token.TokenHash == tokenHash, ct);
+    public Task<RefreshToken?> GetTokenByHashAsync(string tokenHash, CancellationToken ct = default) =>
+        db.RefreshTokens.FirstOrDefaultAsync(token => token.TokenHash == tokenHash, ct);
 
     /// <summary>Revoca una sesión concreta y todos sus refresh tokens activos; devuelve cuántos tokens se revocaron.</summary>
-    public async Task<int> RevokeSessionAsync(
-        Guid sessionId,
-        string reason,
-        CancellationToken ct = default)
+    public async Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default)
     {
-        var session = await db.UserSessions
-            .FirstOrDefaultAsync(value => value.Id == sessionId, ct);
+        var session = await db.UserSessions.FirstOrDefaultAsync(value => value.Id == sessionId, ct);
         session?.Revoke(reason);
 
-        var tokens = await db.RefreshTokens
-            .Where(token => token.SessionId == sessionId && token.RevokedAtUtc == null)
+        var tokens = await db
+            .RefreshTokens.Where(token => token.SessionId == sessionId && token.RevokedAtUtc == null)
             .ToListAsync(ct);
         foreach (var token in tokens)
             token.Revoke(reason);
@@ -55,10 +52,11 @@ public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
         Guid userId,
         string reason,
         Guid? exceptSessionId = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
-        var sessions = await db.UserSessions
-            .Where(session => session.UserId == userId && session.RevokedAtUtc == null)
+        var sessions = await db
+            .UserSessions.Where(session => session.UserId == userId && session.RevokedAtUtc == null)
             .ToListAsync(ct);
 
         var revoked = 0;
@@ -70,11 +68,12 @@ public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
             revoked++;
         }
 
-        var tokens = await db.RefreshTokens
-            .Where(token =>
-                token.UserId == userId &&
-                token.RevokedAtUtc == null &&
-                (exceptSessionId == null || token.SessionId != exceptSessionId))
+        var tokens = await db
+            .RefreshTokens.Where(token =>
+                token.UserId == userId
+                && token.RevokedAtUtc == null
+                && (exceptSessionId == null || token.SessionId != exceptSessionId)
+            )
             .ToListAsync(ct);
         foreach (var token in tokens)
             token.Revoke(reason);
@@ -83,19 +82,16 @@ public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
     }
 
     /// <summary>Revoca todas las sesiones y tokens de un tenant completo; devuelve cuántas sesiones se revocaron.</summary>
-    public async Task<int> RevokeAllForTenantAsync(
-        Guid tenantId,
-        string reason,
-        CancellationToken ct = default)
+    public async Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default)
     {
-        var sessions = await db.UserSessions
-            .Where(session => session.TenantId == tenantId && session.RevokedAtUtc == null)
+        var sessions = await db
+            .UserSessions.Where(session => session.TenantId == tenantId && session.RevokedAtUtc == null)
             .ToListAsync(ct);
         foreach (var session in sessions)
             session.Revoke(reason);
 
-        var tokens = await db.RefreshTokens
-            .Where(token => token.TenantId == tenantId && token.RevokedAtUtc == null)
+        var tokens = await db
+            .RefreshTokens.Where(token => token.TenantId == tenantId && token.RevokedAtUtc == null)
             .ToListAsync(ct);
         foreach (var token in tokens)
             token.Revoke(reason);

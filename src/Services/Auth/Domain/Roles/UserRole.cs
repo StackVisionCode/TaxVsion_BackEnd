@@ -16,6 +16,6 @@ public sealed class UserRole
             UserId = userId,
             RoleId = roleId,
             AssignedAtUtc = DateTime.UtcNow,
-            AssignedByUserId = assignedByUserId
+            AssignedByUserId = assignedByUserId,
         };
 }

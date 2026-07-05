@@ -12,7 +12,8 @@ public sealed record CreateRoleCommand(
     Guid CreatedByUserId,
     string Name,
     string? Description,
-    IReadOnlyList<Guid> PermissionIds);
+    IReadOnlyList<Guid> PermissionIds
+);
 
 public sealed record RoleResponse(
     Guid Id,
@@ -20,7 +21,8 @@ public sealed record RoleResponse(
     string? Description,
     bool IsSystem,
     bool IsActive,
-    IReadOnlyList<string> PermissionCodes);
+    IReadOnlyList<string> PermissionCodes
+);
 
 public static class CreateRoleHandler
 {
@@ -31,12 +33,14 @@ public static class CreateRoleHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (await roles.NameExistsAsync(command.TenantId, command.Name?.Trim() ?? string.Empty, ct))
         {
             return Result.Failure<RoleResponse>(
-                new Error("Role.NameConflict", "A role with this name already exists."));
+                new Error("Role.NameConflict", "A role with this name already exists.")
+            );
         }
 
         var roleResult = Role.Create(command.TenantId, command.Name!, command.Description);
@@ -55,10 +59,18 @@ public static class CreateRoleHandler
         await roles.AddAsync(role, ct);
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.CreatedByUserId, AuthAuditAction.RoleCreated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Role", targetId: role.Id),
-            ct);
+                command.TenantId,
+                command.CreatedByUserId,
+                AuthAuditAction.RoleCreated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Role",
+                targetId: role.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(await ToResponseAsync(role, roles, ct));
@@ -67,7 +79,8 @@ public static class CreateRoleHandler
     internal static async Task<Result> ValidatePermissionIdsAsync(
         IRoleRepository roles,
         IReadOnlyList<Guid>? permissionIds,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (permissionIds is null || permissionIds.Count == 0)
             return Result.Success();
@@ -79,10 +92,7 @@ public static class CreateRoleHandler
             : Result.Failure(new Error("Permission.NotFound", "One or more permissions do not exist."));
     }
 
-    internal static async Task<RoleResponse> ToResponseAsync(
-        Role role,
-        IRoleRepository roles,
-        CancellationToken ct)
+    internal static async Task<RoleResponse> ToResponseAsync(Role role, IRoleRepository roles, CancellationToken ct)
     {
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
         var codesById = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
@@ -92,11 +102,11 @@ public static class CreateRoleHandler
             role.Description,
             role.IsSystem,
             role.IsActive,
-            role.Permissions
-                .Where(link => codesById.ContainsKey(link.PermissionId))
+            role.Permissions.Where(link => codesById.ContainsKey(link.PermissionId))
                 .Select(link => codesById[link.PermissionId])
                 .OrderBy(code => code)
-                .ToList());
+                .ToList()
+        );
     }
 }
 
@@ -105,7 +115,8 @@ public sealed record UpdateRoleCommand(
     Guid RoleId,
     Guid UpdatedByUserId,
     string Name,
-    string? Description);
+    string? Description
+);
 
 public static class UpdateRoleHandler
 {
@@ -116,7 +127,8 @@ public static class UpdateRoleHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var role = await roles.GetByIdAsync(command.RoleId, ct);
         if (role is null || role.TenantId != command.TenantId)
@@ -128,10 +140,18 @@ public static class UpdateRoleHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.UpdatedByUserId, AuthAuditAction.RoleUpdated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Role", targetId: role.Id),
-            ct);
+                command.TenantId,
+                command.UpdatedByUserId,
+                AuthAuditAction.RoleUpdated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Role",
+                targetId: role.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -141,7 +161,8 @@ public sealed record SetRolePermissionsCommand(
     Guid TenantId,
     Guid RoleId,
     Guid UpdatedByUserId,
-    IReadOnlyList<Guid> PermissionIds);
+    IReadOnlyList<Guid> PermissionIds
+);
 
 public static class SetRolePermissionsHandler
 {
@@ -152,14 +173,14 @@ public static class SetRolePermissionsHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var role = await roles.GetByIdAsync(command.RoleId, ct);
         if (role is null || role.TenantId != command.TenantId)
             return Result.Failure(new Error("Role.NotFound", "Role does not exist."));
 
-        var validation = await CreateRoleHandler.ValidatePermissionIdsAsync(
-            roles, command.PermissionIds, ct);
+        var validation = await CreateRoleHandler.ValidatePermissionIdsAsync(roles, command.PermissionIds, ct);
         if (validation.IsFailure)
             return validation;
 
@@ -169,20 +190,25 @@ public static class SetRolePermissionsHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.UpdatedByUserId, AuthAuditAction.RoleUpdated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Role", targetId: role.Id,
-                detailsJson: """{"change":"permissions"}"""),
-            ct);
+                command.TenantId,
+                command.UpdatedByUserId,
+                AuthAuditAction.RoleUpdated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Role",
+                targetId: role.Id,
+                detailsJson: """{"change":"permissions"}"""
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }
 
-public sealed record DeactivateRoleCommand(
-    Guid TenantId,
-    Guid RoleId,
-    Guid RequestedByUserId);
+public sealed record DeactivateRoleCommand(Guid TenantId, Guid RoleId, Guid RequestedByUserId);
 
 public static class DeactivateRoleHandler
 {
@@ -193,7 +219,8 @@ public static class DeactivateRoleHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var role = await roles.GetByIdAsync(command.RoleId, ct);
         if (role is null || role.TenantId != command.TenantId)
@@ -205,10 +232,18 @@ public static class DeactivateRoleHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.RequestedByUserId, AuthAuditAction.RoleDeactivated, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Role", targetId: role.Id),
-            ct);
+                command.TenantId,
+                command.RequestedByUserId,
+                AuthAuditAction.RoleDeactivated,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Role",
+                targetId: role.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

@@ -5,9 +5,7 @@ using BuildingBlocks.Tenancy;
 using BuildingBlocks.TimeZones;
 using TaxVision.Tenant.Domain.Enums;
 
-
 namespace TaxVision.Tenant.Domain;
-
 
 public partial class Tenant : BaseEntity
 {
@@ -21,10 +19,7 @@ public partial class Tenant : BaseEntity
 
     public Tenant() { }
 
-    public static Result<Tenant> Create(
-        string name,
-        string subdomain,
-        string defaultTimeZoneId)
+    public static Result<Tenant> Create(string name, string subdomain, string defaultTimeZoneId)
     {
         if (string.IsNullOrWhiteSpace(name))
             return Result.Failure<Tenant>(new Error("Tenant.Name", "Name is required."));
@@ -32,26 +27,31 @@ public partial class Tenant : BaseEntity
         var sub = (subdomain ?? "").Trim().ToLower();
 
         if (!MyRegex().IsMatch(sub))
-            return Result.Failure<Tenant>(new Error("Tenant.Subdomain", "Subdomain must be 3-40 characters long and contain only lowercase letters and numbers (a-z, 0-9) and hyphens (-)."));
+            return Result.Failure<Tenant>(
+                new Error(
+                    "Tenant.Subdomain",
+                    "Subdomain must be 3-40 characters long and contain only lowercase letters and numbers (a-z, 0-9) and hyphens (-)."
+                )
+            );
 
         if (!IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalizedTimeZoneId))
         {
             return Result.Failure<Tenant>(
                 new Error(
                     "Tenant.DefaultTimeZoneId",
-                    "DefaultTimeZoneId must be a valid IANA time zone identifier, for example America/Santo_Domingo."));
+                    "DefaultTimeZoneId must be a valid IANA time zone identifier, for example America/Santo_Domingo."
+                )
+            );
         }
 
         var tenant = new Tenant
-
         {
             Name = name.Trim(),
             SubDomain = sub,
             Kind = TenantKind.Customer,
             DefaultTimeZoneId = normalizedTimeZoneId,
             Status = EnumTenantStatus.TenantStatus.Active,
-            CreatedAtUtc = DateTime.UtcNow
-
+            CreatedAtUtc = DateTime.UtcNow,
         };
 
         return Result.Success(tenant);
@@ -71,16 +71,13 @@ public partial class Tenant : BaseEntity
         if (Kind == TenantKind.Platform)
         {
             return Result.Failure(
-                new Error(
-                    "Tenant.PlatformProtected",
-                    "The reserved platform tenant cannot change status."));
+                new Error("Tenant.PlatformProtected", "The reserved platform tenant cannot change status.")
+            );
         }
 
-        if (Status == EnumTenantStatus.TenantStatus.Closed &&
-            status != EnumTenantStatus.TenantStatus.Closed)
+        if (Status == EnumTenantStatus.TenantStatus.Closed && status != EnumTenantStatus.TenantStatus.Closed)
         {
-            return Result.Failure(
-                new Error("Tenant.Status", "A closed tenant cannot be reactivated."));
+            return Result.Failure(new Error("Tenant.Status", "A closed tenant cannot be reactivated."));
         }
 
         Status = status;

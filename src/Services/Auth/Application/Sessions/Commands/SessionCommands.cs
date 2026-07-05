@@ -19,7 +19,8 @@ public static class LogoutHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var session = await sessions.GetSessionByIdAsync(command.SessionId, ct);
         if (session is null || session.UserId != command.UserId)
@@ -29,10 +30,18 @@ public static class LogoutHandler
         await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
         await audit.AddAsync(
             AuthAuditLog.Record(
-                session.TenantId, command.UserId, AuthAuditAction.SessionRevoked, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Session", targetId: session.Id),
-            ct);
+                session.TenantId,
+                command.UserId,
+                AuthAuditAction.SessionRevoked,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Session",
+                targetId: session.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -47,7 +56,8 @@ public sealed record RevokeSessionCommand(
     Guid RequestingUserId,
     Guid RequestingTenantId,
     Guid SessionId,
-    bool CanManageOthers);
+    bool CanManageOthers
+);
 
 public static class RevokeSessionHandler
 {
@@ -59,7 +69,8 @@ public static class RevokeSessionHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var session = await sessions.GetSessionByIdAsync(command.SessionId, ct);
         if (session is null || session.TenantId != command.RequestingTenantId)
@@ -73,20 +84,25 @@ public static class RevokeSessionHandler
         await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
         await audit.AddAsync(
             AuthAuditLog.Record(
-                session.TenantId, command.RequestingUserId, AuthAuditAction.SessionRevoked, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                targetType: "Session", targetId: session.Id),
-            ct);
+                session.TenantId,
+                command.RequestingUserId,
+                AuthAuditAction.SessionRevoked,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "Session",
+                targetId: session.Id
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }
 
 /// <summary>"Cerrar sesión en todos los dispositivos" (opcionalmente excepto el actual).</summary>
-public sealed record RevokeAllMySessionsCommand(
-    Guid UserId,
-    Guid TenantId,
-    Guid? ExceptSessionId);
+public sealed record RevokeAllMySessionsCommand(Guid UserId, Guid TenantId, Guid? ExceptSessionId);
 
 public static class RevokeAllMySessionsHandler
 {
@@ -98,7 +114,8 @@ public static class RevokeAllMySessionsHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var active = await sessions.GetActiveSessionsByUserAsync(command.UserId, ct);
         foreach (var session in active)
@@ -108,13 +125,19 @@ public static class RevokeAllMySessionsHandler
             await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
         }
 
-        await sessions.RevokeAllForUserAsync(
-            command.UserId, "user_logout_all", command.ExceptSessionId, ct);
+        await sessions.RevokeAllForUserAsync(command.UserId, "user_logout_all", command.ExceptSessionId, ct);
         await audit.AddAsync(
             AuthAuditLog.Record(
-                command.TenantId, command.UserId, AuthAuditAction.AllSessionsRevoked, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId),
-            ct);
+                command.TenantId,
+                command.UserId,
+                AuthAuditAction.AllSessionsRevoked,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

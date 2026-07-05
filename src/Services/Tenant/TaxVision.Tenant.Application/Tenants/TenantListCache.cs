@@ -12,25 +12,24 @@ public static class TenantListCache
         int page,
         int size,
         Func<CancellationToken, Task<IReadOnlyList<TenantResponse>>> factory,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var version = await cache.GetOrCreateAsync(
             VersionKey,
             _ => Task.FromResult(Guid.NewGuid().ToString("N")),
             TimeSpan.FromHours(24),
-            ct);
+            ct
+        );
 
         return await cache.GetOrCreateAsync(
             $"tenants:list:{version}:page:{page}:size:{size}",
             factory,
             TimeSpan.FromMinutes(5),
-            ct);
+            ct
+        );
     }
 
     public static Task InvalidateAsync(ICacheService cache, CancellationToken ct) =>
-        cache.SetAsync(
-            VersionKey,
-            Guid.NewGuid().ToString("N"),
-            TimeSpan.FromHours(24),
-            ct);
+        cache.SetAsync(VersionKey, Guid.NewGuid().ToString("N"), TimeSpan.FromHours(24), ct);
 }

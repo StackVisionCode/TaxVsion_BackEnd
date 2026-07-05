@@ -22,7 +22,8 @@ public sealed class AuthSessionIssuer(
     ISecureTokenService tokens,
     IJwtTokenGenerator jwt,
     IRequestContext request,
-    IOptions<RefreshTokenOptions> options) : IAuthSessionIssuer
+    IOptions<RefreshTokenOptions> options
+) : IAuthSessionIssuer
 {
     private readonly RefreshTokenOptions _options = options.Value;
 
@@ -33,14 +34,10 @@ public sealed class AuthSessionIssuer(
         IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
-        var session = UserSession.Start(
-            user.TenantId,
-            user.Id,
-            deviceName,
-            request.UserAgent,
-            request.IpAddress);
+        var session = UserSession.Start(user.TenantId, user.Id, deviceName, request.UserAgent, request.IpAddress);
         await sessions.AddSessionAsync(session, ct);
 
         var rawRefreshToken = tokens.GenerateToken(64);
@@ -49,17 +46,13 @@ public sealed class AuthSessionIssuer(
             user.Id,
             session.Id,
             tokens.Hash(rawRefreshToken),
-            DateTime.UtcNow.AddDays(_options.ExpirationDays));
+            DateTime.UtcNow.AddDays(_options.ExpirationDays)
+        );
         await sessions.AddTokenAsync(refreshToken, ct);
 
-        var accessToken = jwt.Generate(
-            user, effectiveTimeZoneId, session.Id, roles, permissions, authMethods);
+        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, permissions, authMethods);
 
-        return new IssuedTokens(
-            accessToken.Token,
-            rawRefreshToken,
-            accessToken.ExpiresInSeconds,
-            session.Id);
+        return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
     }
 
     public async Task<IssuedTokens> RotateAsync(
@@ -70,7 +63,8 @@ public sealed class AuthSessionIssuer(
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         var rawRefreshToken = tokens.GenerateToken(64);
         var replacement = RefreshToken.Create(
@@ -78,18 +72,14 @@ public sealed class AuthSessionIssuer(
             user.Id,
             session.Id,
             tokens.Hash(rawRefreshToken),
-            DateTime.UtcNow.AddDays(_options.ExpirationDays));
+            DateTime.UtcNow.AddDays(_options.ExpirationDays)
+        );
 
         currentToken.Rotate(replacement.Id);
         await sessions.AddTokenAsync(replacement, ct);
 
-        var accessToken = jwt.Generate(
-            user, effectiveTimeZoneId, session.Id, roles, permissions, authMethods);
+        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, permissions, authMethods);
 
-        return new IssuedTokens(
-            accessToken.Token,
-            rawRefreshToken,
-            accessToken.ExpiresInSeconds,
-            session.Id);
+        return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
     }
 }

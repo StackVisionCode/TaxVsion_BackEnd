@@ -26,34 +26,37 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     CorrelationId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     SentAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_NotificationLogs", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_NotificationLogs_RelatedEventId",
                 table: "NotificationLogs",
-                column: "RelatedEventId");
+                column: "RelatedEventId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_NotificationLogs_TenantId_CreatedAtUtc",
                 table: "NotificationLogs",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_NotificationLogs_TenantId_Status",
                 table: "NotificationLogs",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "NotificationLogs");
+            migrationBuilder.DropTable(name: "NotificationLogs");
         }
     }
 }

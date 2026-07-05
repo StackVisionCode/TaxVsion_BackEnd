@@ -24,8 +24,7 @@ public sealed class MfaChallenge : TenantEntity
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? ConsumedAtUtc { get; private set; }
 
-    public bool IsUsable(DateTime utcNow) =>
-        ConsumedAtUtc is null && utcNow < ExpiresAtUtc && Attempts < MaxAttempts;
+    public bool IsUsable(DateTime utcNow) => ConsumedAtUtc is null && utcNow < ExpiresAtUtc && Attempts < MaxAttempts;
 
     public static MfaChallenge Create(
         Guid tenantId,
@@ -33,7 +32,8 @@ public sealed class MfaChallenge : TenantEntity
         Guid? mfaMethodId,
         string loginTicketHash,
         string? otpHash,
-        TimeSpan validity)
+        TimeSpan validity
+    )
     {
         var challenge = new MfaChallenge
         {
@@ -43,7 +43,7 @@ public sealed class MfaChallenge : TenantEntity
             LoginTicketHash = loginTicketHash,
             OtpHash = otpHash,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.Add(validity)
+            ExpiresAtUtc = DateTime.UtcNow.Add(validity),
         };
         challenge.SetTenant(tenantId);
         return challenge;

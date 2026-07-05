@@ -4,11 +4,7 @@ using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Abstractions;
 
-public sealed record IssuedTokens(
-    string AccessToken,
-    string RefreshToken,
-    int ExpiresInSeconds,
-    Guid SessionId);
+public sealed record IssuedTokens(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid SessionId);
 
 /// <summary>
 /// Orquesta la emisión de sesiones: crea UserSession + RefreshToken y genera el JWT.
@@ -23,7 +19,8 @@ public interface IAuthSessionIssuer
         IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 
     /// <summary>Rota el refresh token dentro de la misma sesión y emite un nuevo access token.</summary>
     Task<IssuedTokens> RotateAsync(
@@ -34,5 +31,6 @@ public interface IAuthSessionIssuer
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 }

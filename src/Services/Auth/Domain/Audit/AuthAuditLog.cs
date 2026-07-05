@@ -28,7 +28,8 @@ public sealed class AuthAuditLog : TenantEntity
         string? correlationId,
         string? targetType = null,
         Guid? targetId = null,
-        string? detailsJson = null)
+        string? detailsJson = null
+    )
     {
         var log = new AuthAuditLog
         {
@@ -42,16 +43,16 @@ public sealed class AuthAuditLog : TenantEntity
             TargetType = Truncate(targetType, 32),
             TargetId = targetId,
             DetailsJson = detailsJson,
-            OccurredAtUtc = DateTime.UtcNow
+            OccurredAtUtc = DateTime.UtcNow,
         };
         log.SetTenant(tenantId);
         return log;
     }
 
     private static string? Truncate(string? value, int maxLength) =>
-        value is null
-            ? null
-            : value.Length <= maxLength ? value : value[..maxLength];
+        value is null ? null
+        : value.Length <= maxLength ? value
+        : value[..maxLength];
 }
 
 public static class AuthAuditAction

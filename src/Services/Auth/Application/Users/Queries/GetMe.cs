@@ -13,7 +13,8 @@ public sealed record MePlanResponse(
     int ActiveUsers,
     int PendingInvitations,
     bool IsSuspendedForBilling,
-    IReadOnlyList<string> EnabledModules);
+    IReadOnlyList<string> EnabledModules
+);
 
 public sealed record MeResponse(
     Guid Id,
@@ -30,7 +31,8 @@ public sealed record MeResponse(
     bool EmailVerified,
     bool PhoneVerified,
     string? PhoneNumber,
-    MePlanResponse? Plan);
+    MePlanResponse? Plan
+);
 
 public sealed record GetMeQuery(Guid UserId);
 
@@ -43,7 +45,8 @@ public static class GetMeHandler
         IRoleRepository roles,
         ITenantPlanLimitsStore planLimits,
         IInvitationRepository invitations,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(query.UserId, ct);
         if (user is null || !user.IsActive)
@@ -68,24 +71,28 @@ public static class GetMeHandler
                 activeUsers,
                 pending,
                 limits.IsSuspendedForBilling,
-                modules);
+                modules
+            );
         }
 
-        return Result.Success(new MeResponse(
-            user.Id,
-            user.Name,
-            user.LastName,
-            user.Email,
-            user.ActorType.ToString(),
-            user.CustomerId,
-            new MeTenantResponse(tenant.Id, tenant.Name, tenant.SubDomain),
-            roleNames,
-            permissions,
-            UserAccessResolver.EffectiveTimeZone(user, tenant),
-            user.MfaEnabled,
-            user.EmailVerified,
-            user.PhoneVerified,
-            user.PhoneNumber,
-            plan));
+        return Result.Success(
+            new MeResponse(
+                user.Id,
+                user.Name,
+                user.LastName,
+                user.Email,
+                user.ActorType.ToString(),
+                user.CustomerId,
+                new MeTenantResponse(tenant.Id, tenant.Name, tenant.SubDomain),
+                roleNames,
+                permissions,
+                UserAccessResolver.EffectiveTimeZone(user, tenant),
+                user.MfaEnabled,
+                user.EmailVerified,
+                user.PhoneVerified,
+                user.PhoneNumber,
+                plan
+            )
+        );
     }
 }

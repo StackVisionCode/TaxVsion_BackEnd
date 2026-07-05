@@ -20,7 +20,7 @@ public sealed class RecoveryCode : TenantEntity
             Id = Guid.NewGuid(),
             UserId = userId,
             CodeHash = codeHash,
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
         };
         code.SetTenant(tenantId);
         return code;

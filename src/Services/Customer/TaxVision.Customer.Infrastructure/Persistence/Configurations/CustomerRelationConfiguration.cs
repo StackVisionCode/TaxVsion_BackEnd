@@ -64,7 +64,7 @@ public sealed class CustomerRelationConfiguration : IEntityTypeConfiguration<Cus
         b.HasOne(r => r.FiscalProfile)
             .WithOne()
             .HasForeignKey<CustomerRelationFiscalProfile>(fp => fp.CustomerRelationId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.NoAction);
 
         b.HasIndex(r => new
         {

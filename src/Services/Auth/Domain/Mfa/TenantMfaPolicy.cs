@@ -28,7 +28,7 @@ public sealed class TenantMfaPolicy : BaseEntity
             RequireForEmployees = false,
             RequireForCustomerPortal = false,
             TrustedDeviceDays = 30,
-            UpdatedAtUtc = DateTime.UtcNow
+            UpdatedAtUtc = DateTime.UtcNow,
         };
 
     public Result Update(bool requireForEmployees, bool requireForCustomerPortal, int trustedDeviceDays)
@@ -38,7 +38,9 @@ public sealed class TenantMfaPolicy : BaseEntity
             return Result.Failure(
                 new Error(
                     "MfaPolicy.TrustedDeviceDays",
-                    $"Trusted device days must be between 1 and {MaxTrustedDeviceDays}."));
+                    $"Trusted device days must be between 1 and {MaxTrustedDeviceDays}."
+                )
+            );
         }
 
         RequireForEmployees = requireForEmployees;
@@ -54,6 +56,6 @@ public sealed class TenantMfaPolicy : BaseEntity
             UserActorType.TenantAdmin or UserActorType.PlatformAdmin => RequireForAdmins,
             UserActorType.TenantEmployee => RequireForEmployees,
             UserActorType.CustomerPortal => RequireForCustomerPortal,
-            _ => false
+            _ => false,
         };
 }

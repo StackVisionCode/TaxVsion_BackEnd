@@ -31,7 +31,7 @@ public sealed class PlanConfiguration : IEntityTypeConfiguration<Plan>
                 StorageQuotaBytes = 10L * 1024 * 1024 * 1024,
                 EnabledModulesJson = """["customers","signatures","documents","planner"]""",
                 IsActive = true,
-                SortOrder = 1
+                SortOrder = 1,
             },
             new
             {
@@ -43,10 +43,9 @@ public sealed class PlanConfiguration : IEntityTypeConfiguration<Plan>
                 MaxUsers = 10,
                 MaxPendingInvitations = 15,
                 StorageQuotaBytes = 50L * 1024 * 1024 * 1024,
-                EnabledModulesJson =
-                    """["customers","signatures","documents","planner","email","comms","campaigns","reports"]""",
+                EnabledModulesJson = """["customers","signatures","documents","planner","email","comms","campaigns","reports"]""",
                 IsActive = true,
-                SortOrder = 2
+                SortOrder = 2,
             },
             new
             {
@@ -58,11 +57,11 @@ public sealed class PlanConfiguration : IEntityTypeConfiguration<Plan>
                 MaxUsers = 25,
                 MaxPendingInvitations = 40,
                 StorageQuotaBytes = 200L * 1024 * 1024 * 1024,
-                EnabledModulesJson =
-                    """["customers","signatures","documents","planner","email","comms","campaigns","reports","marketing","builder","irs","miles"]""",
+                EnabledModulesJson = """["customers","signatures","documents","planner","email","comms","campaigns","reports","marketing","builder","irs","miles"]""",
                 IsActive = true,
-                SortOrder = 3
-            });
+                SortOrder = 3,
+            }
+        );
     }
 }
 
@@ -74,16 +73,14 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
         builder.HasKey(subscription => subscription.Id);
         builder.Property(subscription => subscription.TenantId).IsRequired();
         builder.Property(subscription => subscription.PlanCode).HasMaxLength(32).IsRequired();
-        builder.Property(subscription => subscription.Status)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(subscription => subscription.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(subscription => subscription.SuspensionReason).HasMaxLength(128);
 
         builder.HasIndex(subscription => subscription.TenantId).IsUnique();
         builder.HasIndex(subscription => subscription.Status);
 
-        builder.HasOne<Plan>()
+        builder
+            .HasOne<Plan>()
             .WithMany()
             .HasForeignKey(subscription => subscription.PlanId)
             .OnDelete(DeleteBehavior.Restrict);

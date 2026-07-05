@@ -13,9 +13,18 @@ public static class PasswordPolicy
 
     private static readonly HashSet<string> CommonPasswords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "password1234", "123456789012", "qwerty123456", "letmein12345",
-        "administrator", "welcome12345", "iloveyou1234", "changeme1234",
-        "password12345", "1234567890ab", "abc123456789", "temporal12345"
+        "password1234",
+        "123456789012",
+        "qwerty123456",
+        "letmein12345",
+        "administrator",
+        "welcome12345",
+        "iloveyou1234",
+        "changeme1234",
+        "password12345",
+        "1234567890ab",
+        "abc123456789",
+        "temporal12345",
     };
 
     public static Result Validate(string? password, string? email = null)
@@ -23,30 +32,26 @@ public static class PasswordPolicy
         if (string.IsNullOrWhiteSpace(password) || password.Length < MinLength)
         {
             return Result.Failure(
-                new Error(
-                    "User.Password",
-                    $"Password must contain at least {MinLength} characters."));
+                new Error("User.Password", $"Password must contain at least {MinLength} characters.")
+            );
         }
 
         if (password.Length > MaxLength)
         {
-            return Result.Failure(
-                new Error(
-                    "User.Password",
-                    $"Password must not exceed {MaxLength} characters."));
+            return Result.Failure(new Error("User.Password", $"Password must not exceed {MaxLength} characters."));
         }
 
         if (CommonPasswords.Contains(password))
         {
-            return Result.Failure(
-                new Error("User.Password", "Password is too common."));
+            return Result.Failure(new Error("User.Password", "Password is too common."));
         }
 
-        if (!string.IsNullOrWhiteSpace(email) &&
-            password.Contains(email.Split('@')[0], StringComparison.OrdinalIgnoreCase))
+        if (
+            !string.IsNullOrWhiteSpace(email)
+            && password.Contains(email.Split('@')[0], StringComparison.OrdinalIgnoreCase)
+        )
         {
-            return Result.Failure(
-                new Error("User.Password", "Password must not contain your email."));
+            return Result.Failure(new Error("User.Password", "Password must not contain your email."));
         }
 
         return Result.Success();

@@ -24,7 +24,8 @@ public static class SetupTotpHandler
         ITotpService totp,
         ISecretProtector protector,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
@@ -39,7 +40,8 @@ public static class SetupTotpHandler
             if (existing.IsConfirmed)
             {
                 return Result.Failure<SetupTotpResponse>(
-                    new Error("Mfa.AlreadyEnabled", "TOTP is already configured. Disable it first."));
+                    new Error("Mfa.AlreadyEnabled", "TOTP is already configured. Disable it first.")
+                );
             }
 
             existing.ReplaceSecret(ciphertext);
@@ -47,16 +49,19 @@ public static class SetupTotpHandler
         else
         {
             var methodResult = MfaMethod.Create(
-                user.TenantId, user.Id, MfaMethodType.Totp, ciphertext, destination: null);
+                user.TenantId,
+                user.Id,
+                MfaMethodType.Totp,
+                ciphertext,
+                destination: null
+            );
             if (methodResult.IsFailure)
                 return Result.Failure<SetupTotpResponse>(methodResult.Error);
             await mfa.AddMethodAsync(methodResult.Value, ct);
         }
 
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(new SetupTotpResponse(
-            secret,
-            totp.BuildOtpAuthUri(user.Email, secret, "TaxVision")));
+        return Result.Success(new SetupTotpResponse(secret, totp.BuildOtpAuthUri(user.Email, secret, "TaxVision")));
     }
 }
 
@@ -79,7 +84,8 @@ public static class ConfirmTotpHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
@@ -92,8 +98,7 @@ public static class ConfirmTotpHandler
         var secret = protector.Unprotect(method.SecretCiphertext);
         if (secret is null || !totp.ValidateCode(secret, command.Code, DateTime.UtcNow))
         {
-            return Result.Failure<ConfirmTotpResponse>(
-                new Error("Auth.MfaInvalid", "Verification code is invalid."));
+            return Result.Failure<ConfirmTotpResponse>(new Error("Auth.MfaInvalid", "Verification code is invalid."));
         }
 
         method.Confirm();
@@ -116,10 +121,17 @@ public static class ConfirmTotpHandler
 
         await audit.AddAsync(
             AuthAuditLog.Record(
-                user.TenantId, user.Id, AuthAuditAction.MfaEnabled, true,
-                request.IpAddress, request.UserAgent, correlation.CorrelationId,
-                detailsJson: """{"method":"Totp"}"""),
-            ct);
+                user.TenantId,
+                user.Id,
+                AuthAuditAction.MfaEnabled,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                detailsJson: """{"method":"Totp"}"""
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(new ConfirmTotpResponse(rawCodes));

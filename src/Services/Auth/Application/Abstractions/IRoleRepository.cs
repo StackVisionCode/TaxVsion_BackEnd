@@ -9,7 +9,8 @@ public interface IRoleRepository
     Task<IReadOnlyList<Role>> GetByIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> roleIds,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
     Task AddAsync(Role role, CancellationToken ct = default);
     Task<bool> NameExistsAsync(Guid tenantId, string name, CancellationToken ct = default);
     Task<int> CountUsersInRoleAsync(Guid roleId, CancellationToken ct = default);
@@ -22,7 +23,8 @@ public interface IRoleRepository
         Guid userId,
         IReadOnlyCollection<Guid> roleIds,
         Guid? assignedByUserId,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 
     /// <summary>Crea los roles de sistema del tenant si no existen (idempotente).</summary>
     Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default);

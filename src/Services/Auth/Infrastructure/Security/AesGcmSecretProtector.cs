@@ -28,9 +28,9 @@ public sealed class AesGcmSecretProtector : ISecretProtector
         }
         else
         {
-            var jwtSecret = configuration["Jwt:Secret"]
-                ?? throw new InvalidOperationException(
-                    "Mfa:EncryptionKey or Jwt:Secret must be configured.");
+            var jwtSecret =
+                configuration["Jwt:Secret"]
+                ?? throw new InvalidOperationException("Mfa:EncryptionKey or Jwt:Secret must be configured.");
             _key = SHA256.HashData(Encoding.UTF8.GetBytes($"{jwtSecret}:taxvision-mfa"));
         }
     }

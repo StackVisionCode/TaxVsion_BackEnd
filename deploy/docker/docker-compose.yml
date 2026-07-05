@@ -34,6 +34,46 @@ services:
       timeout: 5s
       retries: 10
 
+  # MinIO open source (AGPL-3.0), no el producto comercial AIStor: no requiere licencia.
+  # Solo para desarrollo/local. En produccion, apunte cloudstorage-api a un S3 gestionado
+  # (S3/R2) via las variables Minio__* (ver README seccion 27.5) para evitar la AGPL.
+  # Fuente MinIO: https://github.com/minio/minio
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: taxvision-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  clamav:
+    image: clamav/clamav:1.4.3
+    container_name: taxvision-clamav
+    expose:
+      - "3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
   loki:
     image: grafana/loki:3.7.2
     container_name: taxvision-loki
@@ -160,6 +200,12 @@ services:
       Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de CloudStorage.
+      ServiceAuth__Clients__0__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
+      ServiceAuth__Clients__0__Secret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__0__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__0__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__0__Permissions__2: cloudstorage.file.view
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -251,6 +297,23 @@ services:
       Smtp__User: ${SMTP_USER:-}
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__FromAddress: ${SMTP_FROM:-no-reply@taxvision.local}
+      # Clave de cifrado de secretos del módulo email (config SMTP/API, tokens OAuth).
+      # Base64 de 32 bytes; requerida para los endpoints de configuración/cuentas de correo.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts.
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # Credenciales de servicio (M2M) para que el worker de sync obtenga tokens del Auth (adjuntos→CloudStorage).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
+      ServiceAuthClient__ClientSecret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
+      # Secreto de los webhooks de tracking (delivered/opened/clicked/bounced).
+      EmailWebhook__Secret: ${EMAIL_WEBHOOK_SECRET:-}
+      # Credenciales de las apps OAuth para refrescar tokens de Gmail/Graph (solo refresh; el token inicial va en connect).
+      EmailOAuth__Gmail__ClientId: ${GMAIL_CLIENT_ID:-}
+      EmailOAuth__Gmail__ClientSecret: ${GMAIL_CLIENT_SECRET:-}
+      EmailOAuth__Microsoft__ClientId: ${MSGRAPH_CLIENT_ID:-}
+      EmailOAuth__Microsoft__ClientSecret: ${MSGRAPH_CLIENT_SECRET:-}
+      EmailOAuth__Microsoft__TenantId: ${MSGRAPH_TENANT_ID:-common}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -259,6 +322,60 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+    networks:
+      - taxvision-network
+
+  cloudstorage-api:
+    image: taxvision/cloudstorage-api:dev
+    container_name: taxvision-cloudstorage-api
+    build:
+      context: ../..
+      dockerfile: src/Services/CloudStorage/TaxVision.CloudStorage.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Minio__Endpoint: minio:9000
+      Minio__AccessKey: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      Minio__SecretKey: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      Minio__UseTls: "false"
+      ClamAv__Host: clamav
+      ClamAv__Port: "3310"
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  migrations:
+    profiles:
+      - tools
+    image: taxvision/migrations:dev
+    build:
+      context: ../..
+      dockerfile: deploy/docker/migrations/Dockerfile
+    environment:
+      AUTH_DB_CONNECTION: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
+      TENANT_DB_CONNECTION: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
+      CUSTOMER_DB_CONNECTION: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
+      SUBSCRIPTION_DB_CONNECTION: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
+      NOTIFICATION_DB_CONNECTION: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
+      CLOUDSTORAGE_DB_CONNECTION: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
     networks:
       - taxvision-network
 
@@ -282,6 +399,7 @@ services:
       ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/
       ReverseProxy__Clusters__subscription__Destinations__subscription1__Address: http://subscription-api:8080/
       ReverseProxy__Clusters__notification__Destinations__notification1__Address: http://notification-api:8080/
+      ReverseProxy__Clusters__cloudstorage__Destinations__cloudstorage1__Address: http://cloudstorage-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
     depends_on:
@@ -290,6 +408,7 @@ services:
       - customer-api
       - subscription-api
       - notification-api
+      - cloudstorage-api
       - otel-collector
     networks:
       - taxvision-network
@@ -297,6 +416,8 @@ services:
 volumes:
   rabbitmq-data:
   redis-data:
+  minio-data:
+  clamav-data:
   loki-data:
   tempo-data:
   prometheus-data:

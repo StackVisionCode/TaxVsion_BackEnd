@@ -35,7 +35,8 @@ public static class TenantCreatedConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantSubscription> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
             ? evt.EventId.ToString("N")
@@ -44,8 +45,7 @@ public static class TenantCreatedConsumer
         using (correlation.Push(correlationId))
         {
             // El tenant interno de plataforma no se suscribe.
-            if (Enum.TryParse<TenantKind>(evt.Kind, true, out var kind) &&
-                kind == TenantKind.Platform)
+            if (Enum.TryParse<TenantKind>(evt.Kind, true, out var kind) && kind == TenantKind.Platform)
             {
                 return;
             }
@@ -55,7 +55,8 @@ public static class TenantCreatedConsumer
             {
                 logger.LogInformation(
                     "Subscription already exists for tenant {TenantId}; ignoring event.",
-                    evt.NewTenantId);
+                    evt.NewTenantId
+                );
                 return;
             }
 
@@ -65,26 +66,25 @@ public static class TenantCreatedConsumer
                 logger.LogError(
                     "Default plan '{PlanCode}' not found; cannot create subscription for tenant {TenantId}.",
                     options.Value.DefaultPlanCode,
-                    evt.NewTenantId);
-                throw new InvalidOperationException(
-                    $"Default plan '{options.Value.DefaultPlanCode}' is missing.");
+                    evt.NewTenantId
+                );
+                throw new InvalidOperationException($"Default plan '{options.Value.DefaultPlanCode}' is missing.");
             }
 
-            var result = TenantSubscription.StartTrial(
-                evt.NewTenantId, plan, options.Value.TrialDays);
+            var result = TenantSubscription.StartTrial(evt.NewTenantId, plan, options.Value.TrialDays);
             if (result.IsFailure)
                 throw new InvalidOperationException(result.Error.Message);
 
             await subscriptions.AddAsync(result.Value, ct);
-            await bus.PublishAsync(
-                SubscriptionEventFactory.Activated(result.Value, plan, correlationId));
+            await bus.PublishAsync(SubscriptionEventFactory.Activated(result.Value, plan, correlationId));
             await unitOfWork.SaveChangesAsync(ct);
 
             logger.LogInformation(
                 "Trial subscription created for tenant {TenantId} on plan {PlanCode} until {TrialEnd}.",
                 evt.NewTenantId,
                 plan.Code,
-                result.Value.TrialEndsAtUtc);
+                result.Value.TrialEndsAtUtc
+            );
         }
     }
 }

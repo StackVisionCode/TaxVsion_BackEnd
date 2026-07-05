@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -29,5 +28,4 @@
     <ProjectReference Include="..\TaxVision.Notification.Application\TaxVision.Notification.Application.csproj" />
     <ProjectReference Include="..\TaxVision.Notification.Infrastructure\TaxVision.Notification.Infrastructure.csproj" />
   </ItemGroup>
-
 </Project>

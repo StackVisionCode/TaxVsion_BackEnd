@@ -17,15 +17,15 @@ public sealed class PhoneVerificationToken : TenantEntity
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? UsedAtUtc { get; private set; }
 
-    public bool IsUsable(DateTime utcNow) =>
-        UsedAtUtc is null && utcNow < ExpiresAtUtc && Attempts < MaxAttempts;
+    public bool IsUsable(DateTime utcNow) => UsedAtUtc is null && utcNow < ExpiresAtUtc && Attempts < MaxAttempts;
 
     public static PhoneVerificationToken Create(
         Guid tenantId,
         Guid userId,
         string phoneNumber,
         string codeHash,
-        TimeSpan validity)
+        TimeSpan validity
+    )
     {
         var token = new PhoneVerificationToken
         {
@@ -34,7 +34,7 @@ public sealed class PhoneVerificationToken : TenantEntity
             PhoneNumber = phoneNumber.Trim(),
             CodeHash = codeHash,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpiresAtUtc = DateTime.UtcNow.Add(validity)
+            ExpiresAtUtc = DateTime.UtcNow.Add(validity),
         };
         token.SetTenant(tenantId);
         return token;

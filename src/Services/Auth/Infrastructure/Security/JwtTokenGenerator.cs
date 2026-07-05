@@ -1,5 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Users;
@@ -22,9 +24,7 @@ public sealed class JwtOptions
     public string? PrivateKeyPath { get; set; }
 }
 
-public sealed class JwtTokenGenerator(
-    IOptions<JwtOptions> options,
-    SigningKeyProvider signingKeys) : IJwtTokenGenerator
+public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyProvider signingKeys) : IJwtTokenGenerator
 {
     private readonly JwtOptions _options = options.Value;
 
@@ -34,7 +34,8 @@ public sealed class JwtTokenGenerator(
         Guid sessionId,
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> permissions,
-        IReadOnlyCollection<string> authMethods)
+        IReadOnlyCollection<string> authMethods
+    )
     {
         var now = DateTime.UtcNow;
         var claims = new List<Claim>
@@ -46,7 +47,7 @@ public sealed class JwtTokenGenerator(
             new("tenant_id", user.TenantId.ToString()),
             new("actor_type", user.ActorType.ToString()),
             new("zoneinfo", effectiveTimeZoneId),
-            new("perm_v", user.PermissionsVersion.ToString())
+            new("perm_v", user.PermissionsVersion.ToString()),
         };
 
         if (user.CustomerId is Guid customerId)
@@ -62,10 +63,45 @@ public sealed class JwtTokenGenerator(
             claims: claims,
             notBefore: now,
             expires: now.AddMinutes(_options.AccessMinutes),
-            signingCredentials: signingKeys.GetSigningCredentials());
+            signingCredentials: signingKeys.GetSigningCredentials()
+        );
 
-        return new AccessToken(
-            new JwtSecurityTokenHandler().WriteToken(token),
-            _options.AccessMinutes * 60);
+        return new AccessToken(new JwtSecurityTokenHandler().WriteToken(token), _options.AccessMinutes * 60);
     }
+
+    public AccessToken GenerateServiceToken(
+        Guid tenantId,
+        string clientId,
+        IReadOnlyCollection<string> permissions,
+        int lifetimeMinutes
+    )
+    {
+        var now = DateTime.UtcNow;
+        var subject = DeriveServicePrincipalId(clientId);
+
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, subject.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+            new("tenant_id", tenantId.ToString()),
+            new("actor_type", "Service"),
+            new("client_id", clientId),
+        };
+        claims.AddRange(permissions.Select(permission => new Claim("perm", permission)));
+
+        var token = new JwtSecurityToken(
+            issuer: _options.Issuer,
+            audience: _options.Audience,
+            claims: claims,
+            notBefore: now,
+            expires: now.AddMinutes(lifetimeMinutes),
+            signingCredentials: signingKeys.GetSigningCredentials()
+        );
+
+        return new AccessToken(new JwtSecurityTokenHandler().WriteToken(token), lifetimeMinutes * 60);
+    }
+
+    /// <summary>Guid estable derivado del clientId para usarlo como 'sub' del principal de servicio.</summary>
+    private static Guid DeriveServicePrincipalId(string clientId) =>
+        new(MD5.HashData(Encoding.UTF8.GetBytes($"service-principal:{clientId}")));
 }

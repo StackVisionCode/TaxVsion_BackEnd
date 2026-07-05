@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Domain.Roles;
@@ -30,6 +31,14 @@ public static class PermissionCatalog
     public const string CampaignsManage = "campaigns.manage";
     public const string ReportsView = "reports.view";
 
+    // CloudStorage / Media Security Gateway
+    public const string CloudStorageFileView = CloudStoragePermissions.FileView;
+    public const string CloudStorageFileUpload = CloudStoragePermissions.FileUpload;
+    public const string CloudStorageFileDownload = CloudStoragePermissions.FileDownload;
+    public const string CloudStorageFileDelete = CloudStoragePermissions.FileDelete;
+    public const string CloudStorageSettingsManage = CloudStoragePermissions.SettingsManage;
+    public const string CloudStorageAuditView = CloudStoragePermissions.AuditView;
+
     // Portal del cliente final
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
@@ -41,36 +50,177 @@ public static class PermissionCatalog
         string Code,
         string Module,
         string Description,
-        bool IsCustomerPortal);
+        bool IsCustomerPortal
+    );
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
     [
         new(new Guid("a1000000-0000-0000-0000-000000000001"), UsersView, "users", "Ver usuarios del tenant", false),
         new(new Guid("a1000000-0000-0000-0000-000000000002"), UsersInvite, "users", "Invitar usuarios", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000003"), UsersManage, "users", "Activar, desactivar y editar usuarios", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000004"), RolesManage, "users", "Gestionar roles y permisos", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000003"),
+            UsersManage,
+            "users",
+            "Activar, desactivar y editar usuarios",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000004"),
+            RolesManage,
+            "users",
+            "Gestionar roles y permisos",
+            false
+        ),
         new(new Guid("a1000000-0000-0000-0000-000000000005"), AuditView, "audit", "Consultar auditoría", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000006"), SettingsManage, "settings", "Gestionar configuración del tenant", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000007"), BillingView, "billing", "Ver facturación y suscripción", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000008"), BillingManage, "billing", "Gestionar métodos de pago y facturación", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000009"), SubscriptionManage, "billing", "Cambiar plan y gestionar suscripción", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000006"),
+            SettingsManage,
+            "settings",
+            "Gestionar configuración del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000007"),
+            BillingView,
+            "billing",
+            "Ver facturación y suscripción",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000008"),
+            BillingManage,
+            "billing",
+            "Gestionar métodos de pago y facturación",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000009"),
+            SubscriptionManage,
+            "billing",
+            "Cambiar plan y gestionar suscripción",
+            false
+        ),
         new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000011"), CustomersManage, "customers", "Crear y editar clientes", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000012"), SignaturesRequest, "signatures", "Solicitar firmas", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000011"),
+            CustomersManage,
+            "customers",
+            "Crear y editar clientes",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000012"),
+            SignaturesRequest,
+            "signatures",
+            "Solicitar firmas",
+            false
+        ),
         new(new Guid("a1000000-0000-0000-0000-000000000013"), DocumentsView, "documents", "Ver documentos", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000014"), DocumentsManage, "documents", "Gestionar documentos", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000014"),
+            DocumentsManage,
+            "documents",
+            "Gestionar documentos",
+            false
+        ),
         new(new Guid("a1000000-0000-0000-0000-000000000015"), EmailUse, "email", "Usar el módulo de correo", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000016"), CommsCalls, "comms", "Realizar llamadas y meetings", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000017"), CampaignsManage, "campaigns", "Gestionar campañas", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000018"), ReportsView, "reports", "Ver dashboard y reportes", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000019"), PortalCallsUse, "portal", "El cliente puede realizar llamadas", true),
-        new(new Guid("a1000000-0000-0000-0000-000000000020"), PortalMilesUse, "portal", "El cliente puede usar el módulo de millas", true),
-        new(new Guid("a1000000-0000-0000-0000-000000000021"), PortalFoldersView, "portal", "El cliente puede ver folders de su perfil", true),
-        new(new Guid("a1000000-0000-0000-0000-000000000022"), PortalSignaturesSign, "portal", "El cliente puede firmar documentos", true)
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000016"),
+            CommsCalls,
+            "comms",
+            "Realizar llamadas y meetings",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000017"),
+            CampaignsManage,
+            "campaigns",
+            "Gestionar campañas",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000018"),
+            ReportsView,
+            "reports",
+            "Ver dashboard y reportes",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000019"),
+            PortalCallsUse,
+            "portal",
+            "El cliente puede realizar llamadas",
+            true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000020"),
+            PortalMilesUse,
+            "portal",
+            "El cliente puede usar el módulo de millas",
+            true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000021"),
+            PortalFoldersView,
+            "portal",
+            "El cliente puede ver folders de su perfil",
+            true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000022"),
+            PortalSignaturesSign,
+            "portal",
+            "El cliente puede firmar documentos",
+            true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000023"),
+            CloudStorageFileView,
+            "cloudstorage",
+            "Ver metadatos de archivos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000024"),
+            CloudStorageFileUpload,
+            "cloudstorage",
+            "Subir archivos mediante el gateway seguro",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000025"),
+            CloudStorageFileDownload,
+            "cloudstorage",
+            "Descargar archivos disponibles",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000026"),
+            CloudStorageFileDelete,
+            "cloudstorage",
+            "Eliminar archivos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000027"),
+            CloudStorageSettingsManage,
+            "cloudstorage",
+            "Gestionar políticas de almacenamiento",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000028"),
+            CloudStorageAuditView,
+            "cloudstorage",
+            "Consultar auditoría de archivos",
+            false
+        ),
     ];
 
-    private static readonly Dictionary<string, Guid> IdsByCode =
-        All.ToDictionary(definition => definition.Code, definition => definition.Id);
+    private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
+        definition => definition.Code,
+        definition => definition.Id
+    );
 
     public static Guid IdOf(string code) => IdsByCode[code];
 
@@ -78,20 +228,32 @@ public static class PermissionCatalog
     public static IReadOnlyCollection<string> SystemRoleDefaults(string systemRoleName) =>
         systemRoleName switch
         {
-            Role.SystemTenantAdmin =>
-                All.Where(definition => !definition.IsCustomerPortal)
-                    .Select(definition => definition.Code)
-                    .ToArray(),
+            Role.SystemTenantAdmin => All.Where(definition => !definition.IsCustomerPortal)
+                .Select(definition => definition.Code)
+                .ToArray(),
             Role.SystemEmployee =>
             [
-                CustomersView, CustomersManage, SignaturesRequest,
-                DocumentsView, DocumentsManage, EmailUse, CommsCalls, ReportsView
+                CustomersView,
+                CustomersManage,
+                SignaturesRequest,
+                DocumentsView,
+                DocumentsManage,
+                EmailUse,
+                CommsCalls,
+                ReportsView,
+                CloudStorageFileView,
+                CloudStorageFileUpload,
+                CloudStorageFileDownload,
             ],
             Role.SystemCustomerPortal =>
             [
-                PortalFoldersView, PortalSignaturesSign
+                PortalFoldersView,
+                PortalSignaturesSign,
+                CloudStorageFileView,
+                CloudStorageFileUpload,
+                CloudStorageFileDownload,
             ],
-            _ => []
+            _ => [],
         };
 
     /// <summary>
@@ -101,10 +263,9 @@ public static class PermissionCatalog
     public static IReadOnlyCollection<string> DefaultsFor(UserActorType actorType) =>
         actorType switch
         {
-            UserActorType.TenantAdmin or UserActorType.PlatformAdmin =>
-                SystemRoleDefaults(Role.SystemTenantAdmin),
+            UserActorType.TenantAdmin or UserActorType.PlatformAdmin => SystemRoleDefaults(Role.SystemTenantAdmin),
             UserActorType.TenantEmployee => SystemRoleDefaults(Role.SystemEmployee),
             UserActorType.CustomerPortal => SystemRoleDefaults(Role.SystemCustomerPortal),
-            _ => []
+            _ => [],
         };
 }

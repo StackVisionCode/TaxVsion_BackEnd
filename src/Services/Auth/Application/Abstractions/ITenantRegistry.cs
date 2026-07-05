@@ -11,6 +11,7 @@ public interface ITenantRegistry
         string subDomain,
         TenantKind kind,
         string defaultTimeZoneId,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
     Task SetActiveAsync(Guid tenantId, bool isActive, CancellationToken ct = default);
 }
