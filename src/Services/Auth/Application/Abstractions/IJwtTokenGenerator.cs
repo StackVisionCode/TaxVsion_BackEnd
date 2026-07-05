@@ -18,6 +18,18 @@ public interface IJwtTokenGenerator
         IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods
     );
+
+    /// <summary>
+    /// Emite un token de SERVICIO (client-credentials / M2M) para un tenant concreto, con
+    /// <c>actor_type=Service</c> y los permisos indicados. No lleva usuario/sesión. Uso: workers de
+    /// otros servicios que llaman a APIs internas (p. ej. Notification → CloudStorage) sin request de usuario.
+    /// </summary>
+    AccessToken GenerateServiceToken(
+        Guid tenantId,
+        string clientId,
+        IReadOnlyCollection<string> permissions,
+        int lifetimeMinutes
+    );
 }
 
 /// <summary>Expone el JSON Web Key Set público cuando se firma con RS256.</summary>

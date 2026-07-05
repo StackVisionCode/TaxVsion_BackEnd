@@ -41,7 +41,7 @@ docker compose --env-file .env -f deploy/docker/docker-compose.yml build
 
 # Aplicar todas las migraciones usando el runner Docker
 docker compose --env-file .env -f deploy/docker/docker-compose.yml `
-  --profile tools run --rm migrations
+  --profile tools run --build --rm migrations
 
 # Levantar el stack
 docker compose --env-file .env -f deploy/docker/docker-compose.yml up -d

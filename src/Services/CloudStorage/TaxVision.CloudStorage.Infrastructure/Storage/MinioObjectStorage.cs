@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
+using Minio.Exceptions;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 
@@ -25,7 +26,12 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
         policy.SetKey(objectKey);
         policy.SetExpires(DateTime.UtcNow.Add(lifetime));
         policy.SetContentType(contentType);
-        policy.SetContentRange(exactSizeBytes, exactSizeBytes);
+
+        // S3 aplica content-length-range al cuerpo multipart completo, no solo al archivo.
+        // Se admite margen para los campos y boundaries; CompleteUploadHandler comprueba
+        // después que el objeto tenga exactamente el tamaño declarado.
+        const long multipartOverheadBytes = 64 * 1024;
+        policy.SetContentRange(exactSizeBytes, checked(exactSizeBytes + multipartOverheadBytes));
 
         var (url, formData) = await client.PresignedPostPolicyAsync(policy);
         return new PresignedUpload(url, new Dictionary<string, string>(formData, StringComparer.Ordinal));
@@ -44,6 +50,19 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
     {
         var stat = await client.StatObjectAsync(new StatObjectArgs().WithBucket(bucket).WithObject(objectKey), ct);
         return stat.Size;
+    }
+
+    public async Task<bool> ExistsAsync(string bucket, string objectKey, CancellationToken ct)
+    {
+        try
+        {
+            await client.StatObjectAsync(new StatObjectArgs().WithBucket(bucket).WithObject(objectKey), ct);
+            return true;
+        }
+        catch (ObjectNotFoundException)
+        {
+            return false;
+        }
     }
 
     public Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct) =>

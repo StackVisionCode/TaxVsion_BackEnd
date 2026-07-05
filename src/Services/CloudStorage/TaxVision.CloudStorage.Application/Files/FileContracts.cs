@@ -85,6 +85,8 @@ internal static class FileTypeCompatibility
             ".zip" => detectedContentType == "application/zip",
             ".xml" => detectedContentType is "application/xml" or "text/xml",
             ".json" => detectedContentType == "application/json",
+            // El HTML es texto plano sin magic bytes fuertes: los detectores suelen devolver text/plain.
+            ".html" => detectedContentType is "text/html" or "text/plain",
             _ => false,
         };
     }

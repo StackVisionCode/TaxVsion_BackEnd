@@ -200,6 +200,12 @@ services:
       Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de CloudStorage.
+      ServiceAuth__Clients__0__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
+      ServiceAuth__Clients__0__Secret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__0__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__0__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__0__Permissions__2: cloudstorage.file.view
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -291,6 +297,23 @@ services:
       Smtp__User: ${SMTP_USER:-}
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__FromAddress: ${SMTP_FROM:-no-reply@taxvision.local}
+      # Clave de cifrado de secretos del módulo email (config SMTP/API, tokens OAuth).
+      # Base64 de 32 bytes; requerida para los endpoints de configuración/cuentas de correo.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts.
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # Credenciales de servicio (M2M) para que el worker de sync obtenga tokens del Auth (adjuntos→CloudStorage).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
+      ServiceAuthClient__ClientSecret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
+      # Secreto de los webhooks de tracking (delivered/opened/clicked/bounced).
+      EmailWebhook__Secret: ${EMAIL_WEBHOOK_SECRET:-}
+      # Credenciales de las apps OAuth para refrescar tokens de Gmail/Graph (solo refresh; el token inicial va en connect).
+      EmailOAuth__Gmail__ClientId: ${GMAIL_CLIENT_ID:-}
+      EmailOAuth__Gmail__ClientSecret: ${GMAIL_CLIENT_SECRET:-}
+      EmailOAuth__Microsoft__ClientId: ${MSGRAPH_CLIENT_ID:-}
+      EmailOAuth__Microsoft__ClientSecret: ${MSGRAPH_CLIENT_SECRET:-}
+      EmailOAuth__Microsoft__TenantId: ${MSGRAPH_TENANT_ID:-common}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs

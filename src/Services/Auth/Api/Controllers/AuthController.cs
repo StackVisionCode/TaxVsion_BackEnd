@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.ServiceTokens.Commands;
 using TaxVision.Auth.Application.Sessions.Commands;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
@@ -32,6 +33,21 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> Refresh(RefreshAccessTokenCommand command, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<AuthTokensResponse>>(command, ct);
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Grant client-credentials (M2M): emite un token de servicio para un tenant. Lo usan los workers
+    /// de otros servicios (p. ej. Notification → CloudStorage) sin contexto de usuario.
+    /// </summary>
+    [HttpPost("service-token")]
+    [AllowAnonymous]
+    [ProducesResponseType<ServiceTokenResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ServiceToken(IssueServiceTokenCommand command, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<ServiceTokenResponse>>(command, ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

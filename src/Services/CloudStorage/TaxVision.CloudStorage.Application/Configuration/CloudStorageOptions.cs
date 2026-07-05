@@ -31,6 +31,7 @@ public sealed class CloudStorageOptions
         ".zip",
         ".xml",
         ".json",
+        ".html",
     ];
     public string[] AllowedContentTypes { get; set; } =
     [
@@ -52,6 +53,7 @@ public sealed class CloudStorageOptions
         "application/xml",
         "text/xml",
         "application/json",
+        "text/html",
     ];
 
     public Dictionary<string, StoragePlanPolicy> PlanPolicies { get; set; } = new(StringComparer.OrdinalIgnoreCase);

@@ -2353,3 +2353,344 @@ El proyecto se encuentra en `deploy/tests/TaxVision.CloudStorage.Tests` y cubre:
 - folders fiscales que requieren ano;
 - expiracion de uploads abandonados;
 - aislamiento por owner para Customer Portal.
+
+# 28. Modulo de Email avanzado (Notification)
+
+El servicio Notification se amplio con un subsistema de email completo dentro del mismo
+microservicio (sin crear un `Email Service` separado): configuracion de proveedores,
+plantillas, layouts, envio, campanas y sincronizacion de cuentas externas. Se respetan
+las convenciones del repo: Clean Architecture, CQRS con Wolverine (sin MediatR),
+Result pattern, `IUnitOfWork`, EDA con outbox/inbox, aislamiento multitenant por
+`tenant_id` del JWT y secretos cifrados.
+
+## 28.1 Modulos
+
+| Modulo | Responsabilidad | Entidades / tablas |
+| --- | --- | --- |
+| Configuracion SMTP/API | Proveedor de envio global (System) o por tenant; resolucion tenant→global | `EmailProviderConfigurations` |
+| Plantillas | Metadata + versionado; HTML/design/preview en CloudStorage | `EmailTemplates`, `EmailTemplateVersions` |
+| Layouts | Envoltura del cuerpo (marcador `{{ body }}`), default por scope | `EmailLayouts` |
+| Rendering | `ITemplateRenderer` con **Fluid** (Liquid sandboxed); auto-escape en HTML | — |
+| Envio | Correos salientes + tracking + entrega asincrona por evento | `OutboundEmailMessages`, `EmailRecipients`, `EmailDeliveryLogs` |
+| Campanas | Draft → programar → fan-out por cola; contadores por eventos de entrega | `EmailCampaigns`, `EmailCampaignRecipients` |
+| Cuentas + Sync | Conexion Gmail/Graph/IMAP; carpetas, mensajes, hilos, adjuntos | `EmailAccountConnections`, `EmailFolders`, `EmailSyncedMessages`, `EmailMessageAttachments`, `EmailSyncLogs` |
+
+### Decisiones de diseno relevantes
+
+- **Motor de plantillas: Fluid** (no Scriban). Scriban 5.12.1 arrastra CVEs *high*
+  conocidos; Fluid es Liquid sandboxed, seguro para plantillas escritas por usuarios.
+- **Almacenamiento de contenido en CloudStorage**: la BD guarda solo metadata y storage
+  keys; el HTML/design/preview de plantillas y layouts viven en CloudStorage (se agrego
+  `text/html` al allowlist). Notification reenvia el bearer token del usuario al llamar a
+  CloudStorage (operaciones iniciadas por request); nunca accede a MinIO ni a su BD.
+- **Render en el request, envio asincrono**: las plantillas/layout se renderizan cuando
+  hay token de usuario (request) y se guarda el cuerpo final; el consumer async solo
+  envia por SMTP. Esto evita depender de CloudStorage en background.
+- **Cifrado de secretos**: `ISecretProtector` compartido en BuildingBlocks (AES-256-GCM,
+  clave `Encryption:MasterKey`). Passwords SMTP, API keys, client secrets y tokens OAuth
+  se guardan cifrados y nunca se exponen en responses.
+- **Sync IMAP real con MailKit**; Gmail API y Microsoft Graph quedan como adaptadores
+  *stub* con el contrato listo (`IEmailProviderAdapter`) hasta configurar sus apps OAuth.
+
+## 28.2 Endpoints
+
+Todos bajo el Gateway (`http://localhost:5047`), prefijo `/notifications/email`.
+
+```text
+# Configuracion SMTP/API (permiso notification.settings.manage)
+POST   /notifications/email/configurations
+GET    /notifications/email/configurations
+GET    /notifications/email/configurations/{id}
+PUT    /notifications/email/configurations/{id}
+POST   /notifications/email/configurations/{id}/set-default
+POST   /notifications/email/configurations/{id}/test
+
+# Plantillas (notification.template.view | notification.template.manage)
+POST   /notifications/email/templates
+GET    /notifications/email/templates
+GET    /notifications/email/templates/{id}
+POST   /notifications/email/templates/{id}/versions
+POST   /notifications/email/templates/{id}/publish
+POST   /notifications/email/templates/{id}/archive
+
+# Layouts (notification.layout.manage | notification.template.view)
+POST   /notifications/email/layouts
+GET    /notifications/email/layouts
+POST   /notifications/email/layouts/{id}/set-default
+
+# Envio (notification.email.send | notification.email.view)
+POST   /notifications/email/send
+POST   /notifications/email/send-template
+GET    /notifications/email/messages
+GET    /notifications/email/messages/{id}
+
+# Campanas (notification.campaign.view | notification.campaign.manage)
+POST   /notifications/email/campaigns
+GET    /notifications/email/campaigns
+GET    /notifications/email/campaigns/{id}
+POST   /notifications/email/campaigns/{id}/schedule
+POST   /notifications/email/campaigns/{id}/send-test
+POST   /notifications/email/campaigns/{id}/cancel
+
+# Cuentas + sincronizacion (notification.account.view | notification.account.manage)
+POST   /notifications/email/accounts/connect
+GET    /notifications/email/accounts
+GET    /notifications/email/accounts/{id}
+POST   /notifications/email/accounts/{id}/disconnect
+POST   /notifications/email/accounts/{id}/sync
+POST   /notifications/email/accounts/{id}/full-sync
+GET    /notifications/email/accounts/{id}/folders
+GET    /notifications/email/accounts/{id}/messages
+GET    /notifications/email/accounts/{id}/messages/{messageId}
+GET    /notifications/email/accounts/{id}/threads/{threadId}
+GET    /notifications/email/accounts/{id}/sync-logs
+```
+
+Los permisos `notification.*` estan en `BuildingBlocks.Authorization.NotificationPermissions`
+y se aplican con `[HasPermission(...)]`; TenantAdmin/PlatformAdmin pasan siempre.
+
+## 28.3 Eventos (Wolverine/RabbitMQ)
+
+Nuevos eventos en `BuildingBlocks/Messaging/EmailIntegrationEvents`, publicados al
+exchange fanout `taxvision-events` (registrados con `PublishMessage<T>()` en
+`Program.cs`) y consumidos por el propio Notification (cola durable `notification-events`):
+
+- Envio: `EmailSendRequested`, `EmailDeliverySucceeded`, `EmailDeliveryFailed`.
+- Campanas: `EmailCampaignScheduled`, `EmailCampaignStarted`, `EmailCampaignCompleted`.
+- Cuentas: `EmailAccountConnected`, `EmailAccountDisconnected`, `EmailFullSyncRequested`,
+  `EmailIncrementalSyncRequested`, `EmailSyncCompleted`, `EmailSyncFailed`.
+
+Dos `IHostedService` en `Api/Jobs`: `CampaignSchedulerService` (inicia campanas
+programadas) y `EmailSyncSchedulerService` (sincronizacion incremental periodica).
+
+## 28.4 Configuracion nueva
+
+Notification requiere dos claves adicionales (ver `appsettings.json` y el
+`docker-compose`):
+
+```env
+# Cifrado de secretos del modulo email (base64 de 32 bytes). En Docker: ENCRYPTION_MASTER_KEY.
+Encryption__MasterKey=<BASE64_32_BYTES>
+# Microservicio CloudStorage para plantillas/layouts. En Docker: http://cloudstorage-api:8080.
+CloudStorageClient__BaseUrl=http://localhost:5330
+```
+
+Generar la clave (PowerShell):
+
+```powershell
+[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }))
+```
+
+En local via User Secrets:
+
+```powershell
+dotnet user-secrets set "Encryption:MasterKey" "<BASE64_32_BYTES>" `
+  --project src\Services\Notification\TaxVision.Notification.Api\TaxVision.Notification.Api.csproj
+```
+
+## 28.5 Migraciones
+
+Se agregaron cuatro migraciones aditivas a `NotificationDbContext` (no tocan
+`NotificationLogs`):
+
+- `AddEmailProviderConfigurations`
+- `AddEmailTemplatesAndLayouts`
+- `AddOutboundEmailMessages`
+- `AddEmailCampaigns`
+- `AddEmailAccountsAndSync`
+
+Aplicar (host):
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Notification\TaxVision.Notification.Infrastructure\TaxVision.Notification.Infrastructure.csproj `
+  --startup-project src\Services\Notification\TaxVision.Notification.Api\TaxVision.Notification.Api.csproj
+```
+
+O via el contenedor `migrations` del stack (aplica todos los servicios):
+
+```powershell
+docker compose --env-file .env -f deploy/docker/docker-compose.yml --profile tools run --build --rm migrations
+```
+
+## 28.6 Guia de pruebas paso a paso
+
+Requisitos previos: stack levantado (`docker compose ... up -d`), migraciones aplicadas,
+`Encryption:MasterKey` configurada, y un `accessToken` de un `TenantAdmin` (ver seccion
+14/26 para el flujo de login). Todas las peticiones van al Gateway con
+`Authorization: Bearer <accessToken>`.
+
+### 1) Configuracion SMTP y prueba de envio
+
+```http
+POST /notifications/email/configurations
+{
+  "scope": "Tenant",
+  "providerType": "Smtp",
+  "displayName": "SMTP del tenant",
+  "fromEmail": "no-reply@empresa-demo.com",
+  "fromName": "Empresa Demo",
+  "host": "smtp.mailtrap.io",
+  "port": 587,
+  "username": "<user>",
+  "password": "<pass>",
+  "useSsl": true,
+  "isDefault": true
+}
+```
+
+```http
+POST /notifications/email/configurations/{id}/test
+{ "toEmail": "prueba@empresa-demo.com" }
+```
+
+El secreto se guarda cifrado; el GET nunca lo devuelve (solo `hasPassword: true`).
+
+### 2) Plantilla y layout
+
+```http
+POST /notifications/email/layouts
+{ "scope": "Tenant", "layoutName": "Base", "html": "<html><body>{{ body }}</body></html>", "isDefault": true }
+```
+
+```http
+POST /notifications/email/templates
+{ "scope": "Tenant", "templateKey": "welcome", "subject": "Hola {{ customer_name }}", "variables": ["customer_name"] }
+```
+
+```http
+POST /notifications/email/templates/{id}/versions
+{ "subjectTemplate": "Hola {{ customer_name }}", "html": "<h1>Bienvenido {{ customer_name }}</h1>" }
+```
+
+```http
+POST /notifications/email/templates/{id}/publish
+{ "versionId": "<versionId>" }
+```
+
+El HTML se sube a CloudStorage (usa tu bearer token). La version queda `PendingScan`
+hasta que ClamAV la marque `Available`; publicar/enviar funciona una vez disponible.
+
+### 3) Envio individual y por plantilla
+
+```http
+POST /notifications/email/send
+{ "subject": "Aviso", "htmlBody": "<p>Hola</p>", "recipients": [{ "address": "cliente@example.com" }] }
+```
+
+```http
+POST /notifications/email/send-template
+{ "templateId": "<id>", "recipients": [{ "address": "cliente@example.com" }], "variables": { "customer_name": "Maria" } }
+```
+
+Ambos devuelven `202 Accepted` con el `id` del mensaje. Consulta el estado:
+
+```http
+GET /notifications/email/messages/{id}
+```
+
+### 4) Campana
+
+```http
+POST /notifications/email/campaigns
+{ "name": "Newsletter Julio", "type": "Newsletter", "templateId": "<id>",
+  "recipients": [ { "address": "a@example.com", "variables": { "customer_name": "Ana" } },
+                  { "address": "b@example.com", "variables": { "customer_name": "Beto" } } ] }
+```
+
+```http
+POST /notifications/email/campaigns/{id}/schedule
+{ "scheduledAtUtc": null }   // null = ahora; el scheduler la inicia en <=30s
+```
+
+El fan-out crea un correo por destinatario; los contadores (`sentCount`, `failedCount`)
+se actualizan via eventos de entrega. `GET /campaigns/{id}` muestra el progreso.
+`POST /campaigns/{id}/send-test` envia una prueba sin afectar contadores.
+
+### 5) Conexion y sincronizacion de cuenta (IMAP)
+
+```http
+POST /notifications/email/accounts/connect
+{ "provider": "Imap", "emailAddress": "buzon@empresa-demo.com",
+  "imapHost": "imap.empresa-demo.com", "imapPort": 993, "imapUsername": "buzon@empresa-demo.com",
+  "imapPassword": "<pass>", "imapUseSsl": true }
+```
+
+Se dispara una sincronizacion completa automatica. Tambien manual:
+
+```http
+POST /notifications/email/accounts/{id}/full-sync
+POST /notifications/email/accounts/{id}/sync            // incremental (usa cursor)
+GET  /notifications/email/accounts/{id}/folders
+GET  /notifications/email/accounts/{id}/messages?folderId=<id>&page=1&size=20
+GET  /notifications/email/accounts/{id}/messages/{messageId}
+GET  /notifications/email/accounts/{id}/threads/{threadId}
+GET  /notifications/email/accounts/{id}/sync-logs
+```
+
+Los tokens/credenciales se cifran y `disconnect` los borra. Gmail/Graph devuelven
+`EmailAccount.ProviderNotConfigured` hasta habilitar sus adaptadores OAuth.
+
+### 6) Pruebas multitenant
+
+Repite cualquier flujo con el `accessToken` de otro tenant y verifica que **no** ve las
+configuraciones, plantillas, campanas ni cuentas del primero (aislamiento por `tenant_id`).
+Las plantillas/config con `scope=System` solo las gestiona un `PlatformAdmin`.
+
+### 7) Eventos y tracking
+
+En Grafana/Loki, filtra por `service_name="notification-service"` y sigue el
+`CorrelationId` para ver la cadena `EmailSendRequested → EmailDeliverySucceeded/Failed`.
+En RabbitMQ (`http://localhost:15672`) revisa la cola `notification-events`.
+
+## 28.7 Grant M2M (service-to-service) y adjuntos sincronizados
+
+Para que el worker de sincronizacion (sin contexto de usuario) suba los binarios de los
+adjuntos a CloudStorage, Auth expone un grant **client-credentials (M2M)**:
+
+```http
+POST /auth/service-token
+{ "clientId": "notification-worker", "clientSecret": "<secret>", "tenantId": "<tenantGuid>" }
+```
+
+Devuelve un token de servicio corto (`actor_type=Service`) con los permisos configurados
+para ese cliente. Los clientes se declaran en Auth via `ServiceAuth:Clients` (secret
+store / `.env`), por ejemplo:
+
+```env
+NOTIFICATION_SERVICE_CLIENT_ID=notification-worker
+NOTIFICATION_SERVICE_CLIENT_SECRET=<secret-fuerte>
+```
+
+Auth los mapea a los permisos `cloudstorage.file.upload|download|view`. Notification
+(`ServiceAuthClient`) obtiene y cachea estos tokens por tenant. El token provider de
+CloudStorage usa el token del usuario en contexto request y el token de servicio en
+background; asi, el worker sube el binario del adjunto y enlaza su `FileId` en
+`EmailMessageAttachments` (si el tipo no esta permitido o falla, conserva solo la metadata).
+
+## 28.8 Proveedores reales, webhooks y fan-out por lotes
+
+- **Adaptadores Gmail API y Microsoft Graph reales** (via HTTP con el access token OAuth de
+  la cuenta): listan carpetas y sincronizan mensajes (headers, cuerpo HTML/texto, adjuntos)
+  y refrescan el access token con el refresh token (`OAuthTokenService`). El token inicial se
+  obtiene con el flujo OAuth del frontend y se pasa en `connect`; las credenciales de la app
+  para refrescar se configuran en `EmailOAuth:{Gmail,Microsoft}` (client id/secret). Sin esas
+  credenciales el refresh no ocurre y el adapter devuelve `EmailAccount.ProviderNotConfigured`.
+- **Webhooks de tracking**: `POST /notifications/email/webhooks/tracking` (anonimo,
+  autenticado por header `X-Webhook-Secret` = `EmailWebhook:Secret`) recibe eventos
+  normalizados `{ events: [{ messageId, type }] }` (Delivered/Opened/Clicked/Bounced) y
+  actualiza el tracking del correo y los contadores de apertura/clic de su campana. Un
+  adaptador por proveedor (SendGrid/Mailgun) traduciria su formato a este payload.
+- **Fan-out por lotes**: el consumer de inicio de campana divide los destinatarios en lotes
+  de 100 y publica un evento por lote (`EmailCampaignBatchIntegrationEvent`); cada lote se
+  procesa en su propia transaccion, evitando una transaccion gigante.
+
+## 28.9 Pendientes documentados
+
+- **Verificacion end-to-end con stack real**: el flujo HTTP a CloudStorage (upload presignado
+  + M2M), el envio SMTP y las llamadas Gmail/Graph estan validados en compilacion; requieren
+  los servicios levantados y credenciales OAuth reales para probarse.
+- **Sincronizacion incremental por delta nativo** (historyId de Gmail / deltaToken de Graph):
+  hoy el incremental usa cursores por fecha/UID; el delta nativo es mas eficiente.
+- **Subida de adjuntos por cola** en vez de inline dentro de la sincronizacion, para buzones
+  con muchos adjuntos grandes.

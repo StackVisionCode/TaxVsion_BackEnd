@@ -42,6 +42,7 @@ public interface IObjectStorage
     );
     Task<Uri> PresignGetAsync(string bucket, string objectKey, TimeSpan lifetime, CancellationToken ct);
     Task<long> GetSizeAsync(string bucket, string objectKey, CancellationToken ct);
+    Task<bool> ExistsAsync(string bucket, string objectKey, CancellationToken ct);
     Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct);
     Task CopyAsync(string sourceBucket, string objectKey, string destinationBucket, CancellationToken ct);
     Task DeleteAsync(string bucket, string objectKey, CancellationToken ct);

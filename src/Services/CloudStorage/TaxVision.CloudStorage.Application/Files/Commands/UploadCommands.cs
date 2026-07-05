@@ -290,6 +290,17 @@ public static class ScanFileHandler
             throw new InvalidOperationException(transition.Error.Message);
         await unitOfWork.SaveChangesAsync(ct);
 
+        var sourceBucket = options.Value.TempBucket;
+        if (!await storage.ExistsAsync(sourceBucket, file.ObjectKey, ct))
+        {
+            // Un intento anterior pudo mover el objeto y perder después una concurrencia
+            // optimista al confirmar la cuota. Continuar desde el bucket principal hace
+            // que el reintento sea idempotente.
+            sourceBucket = options.Value.MainBucket;
+            if (!await storage.ExistsAsync(sourceBucket, file.ObjectKey, ct))
+                throw new InvalidOperationException($"Stored object for file {file.Id} does not exist.");
+        }
+
         var tempPath = Path.Combine(Path.GetTempPath(), $"taxvision-scan-{Guid.NewGuid():N}.tmp");
         try
         {
@@ -304,7 +315,7 @@ public static class ScanFileHandler
                 )
             )
             {
-                await storage.DownloadAsync(options.Value.TempBucket, file.ObjectKey, destination, ct);
+                await storage.DownloadAsync(sourceBucket, file.ObjectKey, destination, ct);
             }
 
             await using var content = new FileStream(
@@ -329,7 +340,7 @@ public static class ScanFileHandler
             {
                 file.MarkScanFailed(inspected.RejectionReason ?? "Detected content type is not allowed.", clock.UtcNow);
                 (await limits.GetAsync(command.TenantId, ct))?.Release(file.SizeBytes);
-                await storage.DeleteAsync(options.Value.TempBucket, file.ObjectKey, ct);
+                await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
                 audit.Add(
                     StorageAccessLog.Create(
                         command.TenantId,
@@ -356,8 +367,11 @@ public static class ScanFileHandler
                 if (checksum.IsFailure)
                     throw new InvalidOperationException(checksum.Error.Message);
 
-                await storage.CopyAsync(options.Value.TempBucket, file.ObjectKey, options.Value.MainBucket, ct);
-                await storage.DeleteAsync(options.Value.TempBucket, file.ObjectKey, ct);
+                if (sourceBucket != options.Value.MainBucket)
+                {
+                    await storage.CopyAsync(sourceBucket, file.ObjectKey, options.Value.MainBucket, ct);
+                    await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
+                }
                 file.MarkAvailable(checksum.Value, inspected.ContentType, clock.UtcNow);
                 limit.Commit(file.SizeBytes);
                 audit.Add(
@@ -389,8 +403,8 @@ public static class ScanFileHandler
             }
             else if (scan.Verdict == VirusScanVerdict.Infected)
             {
-                await storage.CopyAsync(options.Value.TempBucket, file.ObjectKey, options.Value.QuarantineBucket, ct);
-                await storage.DeleteAsync(options.Value.TempBucket, file.ObjectKey, ct);
+                await storage.CopyAsync(sourceBucket, file.ObjectKey, options.Value.QuarantineBucket, ct);
+                await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
                 file.MarkInfected(scan.Report, inspected.ContentType, clock.UtcNow);
                 limit.Release(file.SizeBytes);
                 audit.Add(

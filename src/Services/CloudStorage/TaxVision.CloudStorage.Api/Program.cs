@@ -79,6 +79,10 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CloudStorageDbContext>();
     options.Policies.AutoApplyTransactions();
 
+    // Cada escaneo actualiza la proyección de cuota del tenant. Se procesan en serie para
+    // evitar que dos archivos compitan por el mismo RowVersion después de mover el objeto.
+    options.LocalQueueFor<ScanFileCommand>().Sequential();
+
     options.PublishMessage<FileAvailableIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileInfectedDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileDeletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
