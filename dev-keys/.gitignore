@@ -1,0 +1,3 @@
+# Claves RSA de desarrollo — NUNCA subir al repositorio.
+# La clave privada firma los JWT; exponer esto comprometería toda la autenticación.
+jwt-private.pem

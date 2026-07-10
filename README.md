@@ -62,6 +62,7 @@ OpenTelemetry.
 28. Modulo de Email avanzado (Notification)
 29. Signature Service (firma electronica multi-tenant)
 30. Communication Service (chat, calls, meetings, notifs realtime)
+31. Claves JWT RS256 — Setup de desarrollo
 
 ## 1. Introduccion y objetivo
 
@@ -3577,3 +3578,154 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 - **Transcripts** de meetings.
 - **Advisory lock Redis** en outbox drainer para dedup entre pods.
 - **Push nativo** FCM/APNs para el canal App-based challenge de Signature.
+
+---
+
+# 31. Claves JWT RS256 — Setup de desarrollo
+
+## 31.1 Por que RS256 y no HS256
+
+Con HS256 todos los servicios comparten el mismo secreto para firmar y verificar tokens.
+Basta que uno se comprometa para que cualquiera pueda emitir tokens validos.
+
+Con RS256:
+
+- Solo **Auth** posee la clave privada y firma los tokens.
+- El resto de servicios (.NET y Node.js) solo necesitan la **clave publica** para verificar.
+- La clave publica se puede publicar en GitHub sin riesgo.
+- Auth expone `/auth/.well-known/jwks.json` con la clave publica en formato JWKS para que
+  servicios externos (p.ej. Communication con `jose`) la descarguen automaticamente.
+
+## 31.2 Archivos generados
+
+```
+dev-keys/
+  jwt-private.pem   ← clave privada RSA 2048-bit (NUNCA subir al repo)
+  jwt-public.pem    ← clave publica  RSA 2048-bit (segura para GitHub)
+  .gitignore        ← protege jwt-private.pem automaticamente
+```
+
+> **jwt-public.pem se puede subir a GitHub** — es la clave de verificacion; no contiene
+> secreto alguno. Solo `jwt-private.pem` debe mantenerse fuera del repositorio.
+
+## 31.3 Generar las claves (una sola vez por desarrollador)
+
+### Windows (PowerShell)
+
+```powershell
+.\scripts\generate-dev-keys.ps1
+```
+
+Requiere `openssl`. Git for Windows lo incluye en `C:\Program Files\Git\usr\bin\openssl.exe`.
+Tambien se puede instalar con: `winget install ShiningLight.OpenSSL`
+
+### macOS / Linux (bash)
+
+```bash
+bash scripts/generate-dev-keys.sh
+```
+
+### Manualmente con openssl
+
+```bash
+# Desde la raiz del repositorio
+mkdir -p dev-keys
+
+# 1. Generar clave privada PKCS#8 RSA 2048-bit
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out dev-keys/jwt-private.pem
+
+# 2. Extraer clave publica SubjectPublicKeyInfo
+openssl pkey -in dev-keys/jwt-private.pem -pubout -out dev-keys/jwt-public.pem
+```
+
+## 31.4 Configuracion por servicio
+
+Cada servicio lee las rutas desde `appsettings.Development.json`. Las rutas son **relativas**
+al directorio del proyecto (.csproj), por lo que funcionan en cualquier maquina sin hardcodear
+rutas absolutas.
+
+| Servicio      | Archivo configurado              | Clave usada     |
+|---------------|----------------------------------|-----------------|
+| Auth          | `appsettings.Development.json`   | privada + publica |
+| Gateway       | `appsettings.Development.json`   | publica         |
+| Tenant        | `appsettings.Development.json`   | publica         |
+| Customer      | `appsettings.Development.json`   | publica         |
+| CloudStorage  | `appsettings.Development.json`   | publica         |
+| Notification  | `appsettings.Development.json`   | publica         |
+| Signature     | `appsettings.Development.json`   | publica         |
+| Subscription  | `appsettings.Development.json`   | publica         |
+| Communication | `.env` → JWKS descargado de Auth | publica via JWKS |
+
+Auth (ejemplo, ruta relativa desde `src/Services/Auth/Api/`):
+
+```json
+{
+  "Jwt": {
+    "PrivateKeyPath": "../../../../dev-keys/jwt-private.pem",
+    "PublicKeyPath":  "../../../../dev-keys/jwt-public.pem"
+  }
+}
+```
+
+Servicios consumidores (ruta relativa desde `src/Services/<Nombre>/TaxVision.<Nombre>.Api/`):
+
+```json
+{
+  "Jwt": {
+    "PublicKeyPath": "../../../../dev-keys/jwt-public.pem"
+  }
+}
+```
+
+Gateway (ruta relativa desde `src/Gateway/TaxVision.Gateway/`):
+
+```json
+{
+  "Jwt": {
+    "PublicKeyPath": "../../../dev-keys/jwt-public.pem"
+  }
+}
+```
+
+Communication Node.js NO necesita configuracion adicional: lee la clave publica directamente
+desde el JWKS endpoint de Auth (`COMMUNICATION_JWKS_URI=http://localhost:5124/auth/.well-known/jwks.json`).
+
+## 31.5 Como funciona en runtime
+
+1. Auth arranca, lee `jwt-private.pem` → activa modo RS256 en `SigningKeyProvider`.
+2. `GET /auth/.well-known/jwks.json` devuelve el modulo RSA publico en formato JWK.
+3. Cualquier servicio que llame `AddTaxVisionJwtAuthentication(config, contentRootPath)`
+   lee `jwt-public.pem` → valida tokens con RS256 sin necesitar la clave privada.
+4. Communication Node.js usa `createRemoteJWKSet` de `jose` para descargar y cachear el JWKS;
+   refresca automaticamente cada 5 minutos.
+
+## 31.6 Modo fallback HS256
+
+Si un servicio NO tiene configurado `Jwt:PublicKeyPath` ni `Jwt:PublicKeyPem`, el codigo
+cae automaticamente a HS256 con `Jwt:Secret`. Auth hace lo mismo para la firma: si no hay
+`Jwt:PrivateKeyPath`, firma en HS256. Este fallback existe para compatibilidad; en desarrollo
+activo siempre usar RS256.
+
+## 31.7 Puertos de los servicios
+
+| Servicio      | Puerto |
+|---------------|--------|
+| Auth          | 5124   |
+| Tenant        | 5217   |
+| Customer      | 5263   |
+| Notification  | 5320   |
+| CloudStorage  | 5330   |
+| Signature     | 5340   |
+| Communication | 5350   |
+| Subscription  | 5360   |
+| Gateway       | (ver appsettings) |
+
+## 31.8 Notas de seguridad
+
+- `dev-keys/jwt-private.pem` esta en `dev-keys/.gitignore` — nunca se commitea.
+- En produccion/staging la clave privada se inyecta via variable de entorno `Jwt__PrivateKeyPem`
+  (valor PEM completo) o secreto del gestor de secretos del proveedor cloud.
+- La clave publica puede ser un archivo estatico en el repo o tambien variable de entorno
+  `Jwt__PublicKeyPem`.
+- Si se compromete la clave privada: regenerar el par, reiniciar Auth, invalidar todos los
+  tokens activos (limpiar denylist o cambiar `Jwt:Issuer` para forzar re-login).

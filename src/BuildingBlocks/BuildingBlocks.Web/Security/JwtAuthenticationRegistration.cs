@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
 namespace BuildingBlocks.Security;
@@ -14,6 +16,9 @@ public static class JwtAuthenticationRegistration
     /// - Si Jwt:PublicKeyPem o Jwt:PublicKeyPath están configurados ⇒ RS256
     ///   (solo Auth posee la clave privada; el resto valida con la pública).
     /// - Si no ⇒ HS256 con Jwt:Secret (configuración actual).
+    /// Rutas relativas en Jwt:PublicKeyPath se resuelven desde ContentRootPath
+    /// vía IWebHostEnvironment, inyectado internamente — los llamadores no
+    /// necesitan pasar nada extra.
     /// </summary>
     public static IServiceCollection AddTaxVisionJwtAuthentication(
         this IServiceCollection services,
@@ -23,8 +28,6 @@ public static class JwtAuthenticationRegistration
             ?? throw new InvalidOperationException("Jwt:Issuer is missing.");
         var audience = configuration["Jwt:Audience"]
             ?? throw new InvalidOperationException("Jwt:Audience is missing.");
-
-        var signingKey = ResolveSigningKey(configuration);
 
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -38,23 +41,45 @@ public static class JwtAuthenticationRegistration
                     ValidateIssuerSigningKey = true,
                     ValidIssuer = issuer,
                     ValidAudience = audience,
-                    IssuerSigningKey = signingKey,
                     ClockSkew = TimeSpan.FromSeconds(30)
                 };
             });
+
+        // IPostConfigureOptions se resuelve desde DI cuando las opciones se
+        // solicitan por primera vez, momento en que IWebHostEnvironment ya está
+        // disponible. Así evitamos pasar contentRootPath en cada Program.cs.
+        services.AddSingleton<IPostConfigureOptions<JwtBearerOptions>>(sp =>
+        {
+            var env = sp.GetRequiredService<IWebHostEnvironment>();
+            return new PostConfigureOptions<JwtBearerOptions>(
+                JwtBearerDefaults.AuthenticationScheme,
+                options =>
+                {
+                    options.TokenValidationParameters.IssuerSigningKey =
+                        ResolveSigningKey(configuration, env.ContentRootPath);
+                });
+        });
 
         services.AddAuthorization();
         return services;
     }
 
-    private static SecurityKey ResolveSigningKey(IConfiguration configuration)
+    private static SecurityKey ResolveSigningKey(IConfiguration configuration, string? contentRootPath)
     {
         var publicKeyPem = configuration["Jwt:PublicKeyPem"];
         if (string.IsNullOrWhiteSpace(publicKeyPem))
         {
             var publicKeyPath = configuration["Jwt:PublicKeyPath"];
-            if (!string.IsNullOrWhiteSpace(publicKeyPath) && File.Exists(publicKeyPath))
-                publicKeyPem = File.ReadAllText(publicKeyPath);
+            if (!string.IsNullOrWhiteSpace(publicKeyPath))
+            {
+                // Rutas relativas se resuelven desde ContentRootPath (directorio del proyecto).
+                // Esto permite usar "../../../../dev-keys/jwt-public.pem" en lugar de rutas absolutas.
+                if (!Path.IsPathRooted(publicKeyPath) && contentRootPath is not null)
+                    publicKeyPath = Path.GetFullPath(Path.Combine(contentRootPath, publicKeyPath));
+
+                if (File.Exists(publicKeyPath))
+                    publicKeyPem = File.ReadAllText(publicKeyPath);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(publicKeyPem))

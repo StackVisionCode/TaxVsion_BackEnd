@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TaxVision.Auth.Application.Abstractions;
@@ -10,6 +11,9 @@ namespace TaxVision.Auth.Infrastructure.Security;
 /// - Si Jwt:PrivateKeyPem o Jwt:PrivateKeyPath están configurados ⇒ RS256 (clave
 ///   privada solo en Auth; los demás servicios validan con la pública vía JWKS).
 /// - Si no ⇒ HS256 con Jwt:Secret (compatibilidad con la configuración actual).
+/// Rutas relativas en Jwt:PrivateKeyPath se resuelven desde ContentRootPath,
+/// lo que permite usar "../../../../dev-keys/jwt-private.pem" en appsettings.Development.json
+/// sin hardcodear rutas absolutas de la máquina del desarrollador.
 /// Registrado como singleton.
 /// </summary>
 public sealed class SigningKeyProvider : IJwksProvider, IDisposable
@@ -20,18 +24,19 @@ public sealed class SigningKeyProvider : IJwksProvider, IDisposable
     public bool UsesRsa => _rsa is not null;
     public string? KeyId { get; }
 
-    public SigningKeyProvider(IOptions<JwtOptions> options)
+    public SigningKeyProvider(IOptions<JwtOptions> options, IWebHostEnvironment env)
     {
         var jwt = options.Value;
 
         var privateKeyPem = jwt.PrivateKeyPem;
-        if (
-            string.IsNullOrWhiteSpace(privateKeyPem)
-            && !string.IsNullOrWhiteSpace(jwt.PrivateKeyPath)
-            && File.Exists(jwt.PrivateKeyPath)
-        )
+        if (string.IsNullOrWhiteSpace(privateKeyPem) && !string.IsNullOrWhiteSpace(jwt.PrivateKeyPath))
         {
-            privateKeyPem = File.ReadAllText(jwt.PrivateKeyPath);
+            var path = jwt.PrivateKeyPath;
+            if (!Path.IsPathRooted(path))
+                path = Path.GetFullPath(Path.Combine(env.ContentRootPath, path));
+
+            if (File.Exists(path))
+                privateKeyPem = File.ReadAllText(path);
         }
 
         if (!string.IsNullOrWhiteSpace(privateKeyPem))
