@@ -15,7 +15,7 @@ public sealed class NotificationDbContextFactory : IDesignTimeDbContextFactory<N
     {
         var connectionString =
             Environment.GetEnvironmentVariable("ConnectionStrings__Default")
-            ?? "Server=localhost,1433;Database=TaxVisionNotification;Trusted_Connection=True;TrustServerCertificate=True";
+            ?? "Server=localhost,1433;Database=TaxVision_Notification;Trusted_Connection=True;TrustServerCertificate=True";
 
         var options = new DbContextOptionsBuilder<NotificationDbContext>().UseSqlServer(connectionString).Options;
 
