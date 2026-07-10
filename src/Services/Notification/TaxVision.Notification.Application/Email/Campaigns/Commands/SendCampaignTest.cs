@@ -25,7 +25,9 @@ public static class SendCampaignTestHandler
     )
     {
         if (string.IsNullOrWhiteSpace(command.ToEmail))
-            return Result.Failure<OutboundEmailResponse>(new Error("Campaign.Recipients", "A test recipient is required."));
+            return Result.Failure<OutboundEmailResponse>(
+                new Error("Campaign.Recipients", "A test recipient is required.")
+            );
 
         var campaign = await repository.GetByIdAsync(command.CampaignId, command.TenantId, ct);
         if (campaign is null)

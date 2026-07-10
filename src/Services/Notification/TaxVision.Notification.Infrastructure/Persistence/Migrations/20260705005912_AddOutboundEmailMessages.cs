@@ -37,12 +37,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     OpenedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     ClickedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     BouncedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_OutboundEmailMessages", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailDeliveryLogs",
@@ -52,7 +53,7 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     MessageId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                     Detail = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
-                    AttemptedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    AttemptedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -62,8 +63,10 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         column: x => x.MessageId,
                         principalTable: "OutboundEmailMessages",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailRecipients",
@@ -76,7 +79,7 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
                     OpenedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     ClickedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    BouncedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    BouncedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -86,46 +89,50 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         column: x => x.MessageId,
                         principalTable: "OutboundEmailMessages",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailDeliveryLogs_MessageId",
                 table: "EmailDeliveryLogs",
-                column: "MessageId");
+                column: "MessageId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailRecipients_MessageId",
                 table: "EmailRecipients",
-                column: "MessageId");
+                column: "MessageId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_OutboundEmailMessages_CampaignId",
                 table: "OutboundEmailMessages",
-                column: "CampaignId");
+                column: "CampaignId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_OutboundEmailMessages_TenantId_CreatedAtUtc",
                 table: "OutboundEmailMessages",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_OutboundEmailMessages_TenantId_Status",
                 table: "OutboundEmailMessages",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "EmailDeliveryLogs");
+            migrationBuilder.DropTable(name: "EmailDeliveryLogs");
 
-            migrationBuilder.DropTable(
-                name: "EmailRecipients");
+            migrationBuilder.DropTable(name: "EmailRecipients");
 
-            migrationBuilder.DropTable(
-                name: "OutboundEmailMessages");
+            migrationBuilder.DropTable(name: "OutboundEmailMessages");
         }
     }
 }

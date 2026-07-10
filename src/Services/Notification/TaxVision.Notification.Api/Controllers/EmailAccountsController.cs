@@ -75,7 +75,10 @@ public sealed class EmailAccountsController(IMessageBus bus) : ControllerBase
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<EmailAccountResponse>>>(new GetEmailAccountsQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<EmailAccountResponse>>>(
+            new GetEmailAccountsQuery(tenantId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -85,7 +88,10 @@ public sealed class EmailAccountsController(IMessageBus bus) : ControllerBase
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
-        var result = await bus.InvokeAsync<Result<EmailAccountResponse>>(new GetEmailAccountByIdQuery(id, tenantId), ct);
+        var result = await bus.InvokeAsync<Result<EmailAccountResponse>>(
+            new GetEmailAccountByIdQuery(id, tenantId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -125,7 +131,10 @@ public sealed class EmailAccountsController(IMessageBus bus) : ControllerBase
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<EmailFolderResponse>>>(new GetAccountFoldersQuery(id, tenantId), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<EmailFolderResponse>>>(
+            new GetAccountFoldersQuery(id, tenantId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -154,7 +163,10 @@ public sealed class EmailAccountsController(IMessageBus bus) : ControllerBase
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
-        var result = await bus.InvokeAsync<Result<EmailMessageDetailResponse>>(new GetAccountMessageQuery(id, tenantId, messageId), ct);
+        var result = await bus.InvokeAsync<Result<EmailMessageDetailResponse>>(
+            new GetAccountMessageQuery(id, tenantId, messageId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -177,7 +189,10 @@ public sealed class EmailAccountsController(IMessageBus bus) : ControllerBase
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<EmailSyncLogResponse>>>(new GetAccountSyncLogsQuery(id, tenantId), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<EmailSyncLogResponse>>>(
+            new GetAccountSyncLogsQuery(id, tenantId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

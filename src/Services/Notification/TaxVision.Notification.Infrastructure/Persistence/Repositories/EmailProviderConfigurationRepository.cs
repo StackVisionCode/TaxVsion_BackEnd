@@ -4,7 +4,8 @@ using TaxVision.Notification.Domain.Emailing.Configurations;
 
 namespace TaxVision.Notification.Infrastructure.Persistence.Repositories;
 
-public sealed class EmailProviderConfigurationRepository(NotificationDbContext db) : IEmailProviderConfigurationRepository
+public sealed class EmailProviderConfigurationRepository(NotificationDbContext db)
+    : IEmailProviderConfigurationRepository
 {
     public async Task AddAsync(EmailProviderConfiguration configuration, CancellationToken ct = default) =>
         await db.EmailProviderConfigurations.AddAsync(configuration, ct);
@@ -40,7 +41,10 @@ public sealed class EmailProviderConfigurationRepository(NotificationDbContext d
         return await query.OrderByDescending(c => c.IsDefault).ThenBy(c => c.DisplayName).ToListAsync(ct);
     }
 
-    public async Task<EmailProviderConfiguration?> GetTenantDefaultAsync(Guid tenantId, CancellationToken ct = default) =>
+    public async Task<EmailProviderConfiguration?> GetTenantDefaultAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
         await db
             .EmailProviderConfigurations.AsNoTracking()
             .Where(c => c.Scope == ProviderScope.Tenant && c.TenantId == tenantId && c.IsDefault && c.IsActive)
@@ -57,9 +61,7 @@ public sealed class EmailProviderConfigurationRepository(NotificationDbContext d
     public async Task ClearDefaultsAsync(ProviderScope scope, Guid? tenantId, CancellationToken ct = default)
     {
         var defaults = await db
-            .EmailProviderConfigurations.Where(c =>
-                c.Scope == scope && c.TenantId == tenantId && c.IsDefault
-            )
+            .EmailProviderConfigurations.Where(c => c.Scope == scope && c.TenantId == tenantId && c.IsDefault)
             .ToListAsync(ct);
 
         foreach (var config in defaults)

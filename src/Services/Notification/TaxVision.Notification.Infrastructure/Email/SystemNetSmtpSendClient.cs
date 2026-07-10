@@ -33,9 +33,7 @@ public sealed class SystemNetSmtpSendClient(ILogger<SystemNetSmtpSendClient> log
                 IsBodyHtml = true,
             };
             mail.To.Add(message.To);
-            mail.AlternateViews.Add(
-                AlternateView.CreateAlternateViewFromString(message.TextBody, null, "text/plain")
-            );
+            mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(message.TextBody, null, "text/plain"));
 
             await client.SendMailAsync(mail, ct);
             logger.LogInformation("SMTP send OK to {To} via {Host}.", message.To, connection.Host);

@@ -22,18 +22,10 @@ public sealed class OutboundEmailMessageConfiguration : IEntityTypeConfiguration
         builder.Property(m => m.CorrelationId).HasMaxLength(128);
         builder.Property(m => m.CreatedAtUtc).IsRequired();
 
-        builder
-            .HasMany(m => m.Recipients)
-            .WithOne()
-            .HasForeignKey(r => r.MessageId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(m => m.Recipients).WithOne().HasForeignKey(r => r.MessageId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(m => m.Recipients).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder
-            .HasMany(m => m.DeliveryLogs)
-            .WithOne()
-            .HasForeignKey(l => l.MessageId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(m => m.DeliveryLogs).WithOne().HasForeignKey(l => l.MessageId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(m => m.DeliveryLogs).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(m => new { m.TenantId, m.CreatedAtUtc });

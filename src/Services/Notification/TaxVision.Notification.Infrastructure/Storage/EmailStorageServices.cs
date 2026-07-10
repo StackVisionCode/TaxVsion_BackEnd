@@ -30,7 +30,15 @@ public sealed partial class TemplateStorageService(ICloudStorageClient client) :
                 : $"tenants/{tenantId:N}/templates/{Slug(templateKey)}/v{version}";
 
         var htmlUpload = await client.UploadAsync(
-            new CloudStorageUpload(Encoding.UTF8.GetBytes(html), "template.html", "text/html", "Tenant", null, "Other", null),
+            new CloudStorageUpload(
+                Encoding.UTF8.GetBytes(html),
+                "template.html",
+                "text/html",
+                "Tenant",
+                null,
+                "Other",
+                null
+            ),
             tenantId,
             ct
         );
@@ -42,7 +50,15 @@ public sealed partial class TemplateStorageService(ICloudStorageClient client) :
         if (!string.IsNullOrWhiteSpace(designJson))
         {
             var up = await client.UploadAsync(
-                new CloudStorageUpload(Encoding.UTF8.GetBytes(designJson), "design.json", "application/json", "Tenant", null, "Other", null),
+                new CloudStorageUpload(
+                    Encoding.UTF8.GetBytes(designJson),
+                    "design.json",
+                    "application/json",
+                    "Tenant",
+                    null,
+                    "Other",
+                    null
+                ),
                 tenantId,
                 ct
             );
@@ -68,7 +84,14 @@ public sealed partial class TemplateStorageService(ICloudStorageClient client) :
         }
 
         return Result.Success(
-            new StoredAssetRefs($"{prefix}/template.html", htmlUpload.Value, designKey, designFileId, previewKey, previewFileId)
+            new StoredAssetRefs(
+                $"{prefix}/template.html",
+                htmlUpload.Value,
+                designKey,
+                designFileId,
+                previewKey,
+                previewFileId
+            )
         );
     }
 
@@ -100,7 +123,15 @@ public sealed class LayoutStorageService(ICloudStorageClient client) : ILayoutSt
                 : $"tenants/{tenantId:N}/layouts/{TemplateStorageService.Slug(layoutName)}";
 
         var htmlUpload = await client.UploadAsync(
-            new CloudStorageUpload(Encoding.UTF8.GetBytes(html), "layout.html", "text/html", "Tenant", null, "Other", null),
+            new CloudStorageUpload(
+                Encoding.UTF8.GetBytes(html),
+                "layout.html",
+                "text/html",
+                "Tenant",
+                null,
+                "Other",
+                null
+            ),
             tenantId,
             ct
         );
@@ -112,7 +143,15 @@ public sealed class LayoutStorageService(ICloudStorageClient client) : ILayoutSt
         if (!string.IsNullOrWhiteSpace(designJson))
         {
             var up = await client.UploadAsync(
-                new CloudStorageUpload(Encoding.UTF8.GetBytes(designJson), "design.json", "application/json", "Tenant", null, "Other", null),
+                new CloudStorageUpload(
+                    Encoding.UTF8.GetBytes(designJson),
+                    "design.json",
+                    "application/json",
+                    "Tenant",
+                    null,
+                    "Other",
+                    null
+                ),
                 tenantId,
                 ct
             );
@@ -138,7 +177,14 @@ public sealed class LayoutStorageService(ICloudStorageClient client) : ILayoutSt
         }
 
         return Result.Success(
-            new StoredAssetRefs($"{prefix}/layout.html", htmlUpload.Value, designKey, designFileId, previewKey, previewFileId)
+            new StoredAssetRefs(
+                $"{prefix}/layout.html",
+                htmlUpload.Value,
+                designKey,
+                designFileId,
+                previewKey,
+                previewFileId
+            )
         );
     }
 

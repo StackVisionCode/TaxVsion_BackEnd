@@ -46,7 +46,9 @@ public sealed class EmailLayout : BaseEntity
             return Result.Failure<EmailLayout>(new Error("EmailLayout.Tenant", "Tenant layouts require a tenant id."));
 
         if (scope == EmailScope.System && tenantId is not null)
-            return Result.Failure<EmailLayout>(new Error("EmailLayout.Scope", "System layouts must not carry a tenant id."));
+            return Result.Failure<EmailLayout>(
+                new Error("EmailLayout.Scope", "System layouts must not carry a tenant id.")
+            );
 
         if (string.IsNullOrWhiteSpace(layoutName))
             return Result.Failure<EmailLayout>(new Error("EmailLayout.Name", "Layout name is required."));

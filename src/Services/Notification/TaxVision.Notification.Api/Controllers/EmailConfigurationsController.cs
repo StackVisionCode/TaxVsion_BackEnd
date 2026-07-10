@@ -122,7 +122,11 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
     [HttpPut("{id:guid}")]
     [HasPermission(NotificationPermissions.SettingsManage)]
     [ProducesResponseType<EmailConfigurationResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateEmailConfigurationRequest request, CancellationToken ct)
+    public async Task<IActionResult> Update(
+        Guid id,
+        [FromBody] UpdateEmailConfigurationRequest request,
+        CancellationToken ct
+    )
     {
         Guid? tenantId = User.TryGetTenantId(out var t) ? t : null;
         var command = new UpdateEmailConfigurationCommand(
@@ -163,7 +167,11 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
     [HttpPost("{id:guid}/test")]
     [HasPermission(NotificationPermissions.SettingsManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Test(Guid id, [FromBody] TestEmailConfigurationRequest request, CancellationToken ct)
+    public async Task<IActionResult> Test(
+        Guid id,
+        [FromBody] TestEmailConfigurationRequest request,
+        CancellationToken ct
+    )
     {
         Guid? tenantId = User.TryGetTenantId(out var t) ? t : null;
         var result = await bus.InvokeAsync<Result>(

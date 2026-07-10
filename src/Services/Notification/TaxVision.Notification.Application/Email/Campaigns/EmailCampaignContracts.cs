@@ -2,7 +2,11 @@ using TaxVision.Notification.Domain.Emailing.Campaigns;
 
 namespace TaxVision.Notification.Application.Email.Campaigns;
 
-public sealed record CampaignRecipientInput(string Address, string? Name = null, Dictionary<string, string?>? Variables = null);
+public sealed record CampaignRecipientInput(
+    string Address,
+    string? Name = null,
+    Dictionary<string, string?>? Variables = null
+);
 
 public sealed record EmailCampaignResponse(
     Guid Id,

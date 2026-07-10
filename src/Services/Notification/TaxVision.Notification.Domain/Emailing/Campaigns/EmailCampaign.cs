@@ -81,11 +81,15 @@ public sealed class EmailCampaign : TenantEntity
             return Result.Failure<EmailCampaign>(new Error("Campaign.Template", "A template is required."));
 
         if (recipients.Count == 0)
-            return Result.Failure<EmailCampaign>(new Error("Campaign.Recipients", "At least one recipient is required."));
+            return Result.Failure<EmailCampaign>(
+                new Error("Campaign.Recipients", "At least one recipient is required.")
+            );
 
         foreach (var r in recipients)
             if (string.IsNullOrWhiteSpace(r.Address) || !r.Address.Contains('@'))
-                return Result.Failure<EmailCampaign>(new Error("Campaign.Recipients", $"Invalid recipient address: {r.Address}."));
+                return Result.Failure<EmailCampaign>(
+                    new Error("Campaign.Recipients", $"Invalid recipient address: {r.Address}.")
+                );
 
         var campaign = new EmailCampaign
         {
@@ -164,7 +168,9 @@ public sealed class EmailCampaign : TenantEntity
     public Result Cancel()
     {
         if (Status is CampaignStatus.Completed or CampaignStatus.Cancelled)
-            return Result.Failure(new Error("Campaign.State", "The campaign cannot be cancelled in its current state."));
+            return Result.Failure(
+                new Error("Campaign.State", "The campaign cannot be cancelled in its current state.")
+            );
 
         Status = CampaignStatus.Cancelled;
         FinishedAtUtc = DateTime.UtcNow;

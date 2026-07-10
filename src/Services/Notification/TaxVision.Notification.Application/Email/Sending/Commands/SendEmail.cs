@@ -38,11 +38,11 @@ public static class SendEmailHandler
             return Result.Failure<OutboundEmailResponse>(new Error("Email.Tenant", "Tenant is required."));
 
         if (command.Recipients is null || command.Recipients.Count == 0)
-            return Result.Failure<OutboundEmailResponse>(new Error("Email.Recipients", "At least one recipient is required."));
+            return Result.Failure<OutboundEmailResponse>(
+                new Error("Email.Recipients", "At least one recipient is required.")
+            );
 
-        var recipients = command
-            .Recipients.Select(r => (r.Address, r.Kind, r.Name))
-            .ToList();
+        var recipients = command.Recipients.Select(r => (r.Address, r.Kind, r.Name)).ToList();
         var attachmentsJson = JsonSerializer.Serialize(command.AttachmentFileIds ?? []);
 
         var result = OutboundEmailMessage.Create(

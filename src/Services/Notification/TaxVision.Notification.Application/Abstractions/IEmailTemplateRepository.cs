@@ -12,7 +12,12 @@ public interface IEmailTemplateRepository
     /// <summary>Obtiene una plantilla restringida al scope visible: la del tenant o una System.</summary>
     Task<EmailTemplate?> GetByIdAsync(Guid id, Guid? tenantId, CancellationToken ct = default);
 
-    Task<EmailTemplate?> GetByKeyAsync(EmailScope scope, Guid? tenantId, string templateKey, CancellationToken ct = default);
+    Task<EmailTemplate?> GetByKeyAsync(
+        EmailScope scope,
+        Guid? tenantId,
+        string templateKey,
+        CancellationToken ct = default
+    );
 
     Task<EmailTemplateVersion?> GetVersionAsync(Guid templateId, Guid versionId, CancellationToken ct = default);
 

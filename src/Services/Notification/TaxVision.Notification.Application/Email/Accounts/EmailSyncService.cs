@@ -57,7 +57,12 @@ public sealed class EmailSyncService(
             var folder = await accounts.GetFolderByExternalIdAsync(account.Id, providerFolder.ExternalId, ct);
             if (folder is null)
             {
-                folder = EmailFolder.Create(account.Id, providerFolder.ExternalId, providerFolder.Name, providerFolder.Kind);
+                folder = EmailFolder.Create(
+                    account.Id,
+                    providerFolder.ExternalId,
+                    providerFolder.Name,
+                    providerFolder.Kind
+                );
                 await accounts.AddFolderAsync(folder, ct);
             }
             else
@@ -75,7 +80,11 @@ public sealed class EmailSyncService(
             );
             if (syncResult.IsFailure)
             {
-                logger.LogWarning("Folder {Folder} sync failed: {Error}", providerFolder.Name, syncResult.Error.Message);
+                logger.LogWarning(
+                    "Folder {Folder} sync failed: {Error}",
+                    providerFolder.Name,
+                    syncResult.Error.Message
+                );
                 continue;
             }
 
@@ -113,7 +122,11 @@ public sealed class EmailSyncService(
                 foreach (var att in pm.Attachments)
                 {
                     var attachment = EmailMessageAttachment.Create(
-                        message.Id, att.FileName, att.ContentType, att.SizeBytes, att.ExternalId
+                        message.Id,
+                        att.FileName,
+                        att.ContentType,
+                        att.SizeBytes,
+                        att.ExternalId
                     );
 
                     // Sube el binario a CloudStorage con token de servicio (M2M) del tenant. Si el tipo no
@@ -122,7 +135,9 @@ public sealed class EmailSyncService(
                     {
                         var upload = await cloudStorage.UploadAsync(
                             new CloudStorageUpload(
-                                att.Content, att.FileName, att.ContentType ?? "application/octet-stream",
+                                att.Content,
+                                att.FileName,
+                                att.ContentType ?? "application/octet-stream",
                                 "Communication",
                                 message.Id,
                                 "EmailIncoming",

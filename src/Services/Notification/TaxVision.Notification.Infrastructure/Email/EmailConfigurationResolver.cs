@@ -16,8 +16,7 @@ public sealed class EmailConfigurationResolver(
 {
     public async Task<ResolvedEmailConfiguration?> ResolveAsync(Guid tenantId, CancellationToken ct = default)
     {
-        var config =
-            await repository.GetTenantDefaultAsync(tenantId, ct) ?? await repository.GetSystemDefaultAsync(ct);
+        var config = await repository.GetTenantDefaultAsync(tenantId, ct) ?? await repository.GetSystemDefaultAsync(ct);
         return config is null ? null : Decrypt(config);
     }
 
@@ -49,6 +48,5 @@ public sealed class EmailConfigurationResolver(
             c.TenantProviderId
         );
 
-    private string? Reveal(string? cipher) =>
-        string.IsNullOrEmpty(cipher) ? null : protector.Unprotect(cipher);
+    private string? Reveal(string? cipher) => string.IsNullOrEmpty(cipher) ? null : protector.Unprotect(cipher);
 }

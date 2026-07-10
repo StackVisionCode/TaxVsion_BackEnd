@@ -18,11 +18,7 @@ public sealed class EmailCampaignConfiguration : IEntityTypeConfiguration<EmailC
         builder.Property(c => c.AllowedVariablesJson).IsRequired();
         builder.Property(c => c.CreatedAtUtc).IsRequired();
 
-        builder
-            .HasMany(c => c.Recipients)
-            .WithOne()
-            .HasForeignKey(r => r.CampaignId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(c => c.Recipients).WithOne().HasForeignKey(r => r.CampaignId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(c => c.Recipients).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(c => new { c.TenantId, c.Status });

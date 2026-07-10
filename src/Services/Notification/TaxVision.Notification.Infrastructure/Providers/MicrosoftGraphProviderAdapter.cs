@@ -22,7 +22,10 @@ public sealed class MicrosoftGraphProviderAdapter(
 
     public EmailExternalProvider Provider => EmailExternalProvider.MicrosoftGraph;
 
-    public async Task<Result<IReadOnlyList<ProviderFolder>>> ListFoldersAsync(EmailAccountConnection account, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<ProviderFolder>>> ListFoldersAsync(
+        EmailAccountConnection account,
+        CancellationToken ct = default
+    )
     {
         var client = await CreateClientAsync(account, ct);
         if (client is null)
@@ -88,12 +91,23 @@ public sealed class MicrosoftGraphProviderAdapter(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Graph sync folder {Folder} failed for account {AccountId}.", folder.Name, account.Id);
+            logger.LogWarning(
+                ex,
+                "Graph sync folder {Folder} failed for account {AccountId}.",
+                folder.Name,
+                account.Id
+            );
             return Result.Failure<ProviderFolderSync>(new Error("EmailAccount.SyncFailed", ex.Message));
         }
     }
 
-    private async Task<ProviderMessage> MapMessageAsync(HttpClient client, EmailAccountConnection account, JsonElement m, DateTime? received, CancellationToken ct)
+    private async Task<ProviderMessage> MapMessageAsync(
+        HttpClient client,
+        EmailAccountConnection account,
+        JsonElement m,
+        DateTime? received,
+        CancellationToken ct
+    )
     {
         var id = Str(m, "id") ?? string.Empty;
         var contentType = m.TryGetProperty("body", out var body) ? Str(body, "contentType") : null;
@@ -107,7 +121,9 @@ public sealed class MicrosoftGraphProviderAdapter(
             id,
             Str(m, "conversationId"),
             Str(m, "subject"),
-            m.TryGetProperty("from", out var from) && from.TryGetProperty("emailAddress", out var fa) ? Str(fa, "address") : null,
+            m.TryGetProperty("from", out var from) && from.TryGetProperty("emailAddress", out var fa)
+                ? Str(fa, "address")
+                : null,
             ReadRecipients(m, "toRecipients"),
             ReadRecipients(m, "ccRecipients"),
             ReadRecipients(m, "bccRecipients"),
@@ -116,14 +132,20 @@ public sealed class MicrosoftGraphProviderAdapter(
             isHtml ? null : content,
             null,
             m.TryGetProperty("isRead", out var ir) && ir.ValueKind == JsonValueKind.True,
-            m.TryGetProperty("flag", out var fl) && fl.TryGetProperty("flagStatus", out var fs) && string.Equals(fs.GetString(), "flagged", StringComparison.OrdinalIgnoreCase),
+            m.TryGetProperty("flag", out var fl)
+                && fl.TryGetProperty("flagStatus", out var fs)
+                && string.Equals(fs.GetString(), "flagged", StringComparison.OrdinalIgnoreCase),
             received,
             DateTimeOrNull(m, "sentDateTime"),
             attachments
         );
     }
 
-    private async Task<IReadOnlyList<ProviderAttachment>> FetchAttachmentsAsync(HttpClient client, string messageId, CancellationToken ct)
+    private async Task<IReadOnlyList<ProviderAttachment>> FetchAttachmentsAsync(
+        HttpClient client,
+        string messageId,
+        CancellationToken ct
+    )
     {
         try
         {
@@ -136,10 +158,20 @@ public sealed class MicrosoftGraphProviderAdapter(
                     var contentType = Str(a, "contentType");
                     var size = a.TryGetProperty("size", out var sz) && sz.TryGetInt64(out var s) ? s : 0;
                     byte[]? bytes = null;
-                    if (size <= MaxAttachmentBytes && a.TryGetProperty("contentBytes", out var cb) && cb.ValueKind == JsonValueKind.String)
+                    if (
+                        size <= MaxAttachmentBytes
+                        && a.TryGetProperty("contentBytes", out var cb)
+                        && cb.ValueKind == JsonValueKind.String
+                    )
                     {
-                        try { bytes = Convert.FromBase64String(cb.GetString()!); }
-                        catch (FormatException) { bytes = null; }
+                        try
+                        {
+                            bytes = Convert.FromBase64String(cb.GetString()!);
+                        }
+                        catch (FormatException)
+                        {
+                            bytes = null;
+                        }
                     }
                     result.Add(new ProviderAttachment(name, contentType, size, Str(a, "id"), bytes));
                 }
@@ -184,7 +216,9 @@ public sealed class MicrosoftGraphProviderAdapter(
         el.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static DateTime? DateTimeOrNull(JsonElement el, string property) =>
-        el.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String && DateTime.TryParse(v.GetString(), out var dt)
+        el.TryGetProperty(property, out var v)
+        && v.ValueKind == JsonValueKind.String
+        && DateTime.TryParse(v.GetString(), out var dt)
             ? dt.ToUniversalTime()
             : null;
 
@@ -202,5 +236,8 @@ public sealed class MicrosoftGraphProviderAdapter(
             _ => EmailFolderKind.Custom,
         };
 
-    private static readonly Error NoToken = new("EmailAccount.ProviderNotConfigured", "No valid Microsoft Graph access token (configure EmailOAuth:Microsoft and reconnect).");
+    private static readonly Error NoToken = new(
+        "EmailAccount.ProviderNotConfigured",
+        "No valid Microsoft Graph access token (configure EmailOAuth:Microsoft and reconnect)."
+    );
 }

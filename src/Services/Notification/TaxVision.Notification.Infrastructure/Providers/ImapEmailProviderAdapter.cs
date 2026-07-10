@@ -121,7 +121,8 @@ public sealed class ImapEmailProviderAdapter(ISecretProtector protector, ILogger
         if (string.IsNullOrWhiteSpace(account.ImapHost) || string.IsNullOrWhiteSpace(account.ImapPasswordCipher))
             throw new InvalidOperationException("IMAP account is missing host or credentials.");
 
-        var password = protector.Unprotect(account.ImapPasswordCipher)
+        var password =
+            protector.Unprotect(account.ImapPasswordCipher)
             ?? throw new InvalidOperationException("Could not decrypt IMAP credentials.");
 
         var client = new ImapClient();
@@ -172,7 +173,13 @@ public sealed class ImapEmailProviderAdapter(ISecretProtector protector, ILogger
             if (size is > 0 and <= MaxAttachmentBytes)
                 content = ms.ToArray();
         }
-        return new ProviderAttachment(part.FileName ?? "attachment", part.ContentType?.MimeType, size, part.ContentId, content);
+        return new ProviderAttachment(
+            part.FileName ?? "attachment",
+            part.ContentType?.MimeType,
+            size,
+            part.ContentId,
+            content
+        );
     }
 
     private static List<string> Mailboxes(InternetAddressList? list) =>

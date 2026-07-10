@@ -29,10 +29,14 @@ public static class CreateEmailCampaignHandler
             return Result.Failure<EmailCampaignResponse>(new Error("Campaign.Tenant", "Tenant is required."));
 
         if (command.Recipients is null || command.Recipients.Count == 0)
-            return Result.Failure<EmailCampaignResponse>(new Error("Campaign.Recipients", "At least one recipient is required."));
+            return Result.Failure<EmailCampaignResponse>(
+                new Error("Campaign.Recipients", "At least one recipient is required.")
+            );
 
         var recipients = command
-            .Recipients.Select(r => (r.Address, r.Name, (string?)JsonSerializer.Serialize(r.Variables ?? new Dictionary<string, string?>())))
+            .Recipients.Select(r =>
+                (r.Address, r.Name, (string?)JsonSerializer.Serialize(r.Variables ?? new Dictionary<string, string?>()))
+            )
             .ToList();
 
         var result = EmailCampaign.Create(

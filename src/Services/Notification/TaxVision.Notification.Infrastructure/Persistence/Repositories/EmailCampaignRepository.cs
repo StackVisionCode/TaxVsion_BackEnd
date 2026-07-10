@@ -34,7 +34,11 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
             .Take(take)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<EmailCampaign>> GetDueAsync(DateTime nowUtc, int max, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<EmailCampaign>> GetDueAsync(
+        DateTime nowUtc,
+        int max,
+        CancellationToken ct = default
+    ) =>
         await db
             .EmailCampaigns.Where(c => c.Status == CampaignStatus.Scheduled && c.ScheduledAtUtc <= nowUtc)
             .OrderBy(c => c.ScheduledAtUtc)

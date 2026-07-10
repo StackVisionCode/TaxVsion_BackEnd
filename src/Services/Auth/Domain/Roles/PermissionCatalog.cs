@@ -39,6 +39,24 @@ public static class PermissionCatalog
     public const string CloudStorageSettingsManage = CloudStoragePermissions.SettingsManage;
     public const string CloudStorageAuditView = CloudStoragePermissions.AuditView;
 
+    // Signature — firma electrónica (bounded context propio, ver microservicio Signature)
+    public const string SignatureRequestCreate = SignaturePermissions.RequestCreate;
+    public const string SignatureRequestRead = SignaturePermissions.RequestRead;
+    public const string SignatureRequestCancel = SignaturePermissions.RequestCancel;
+    public const string SignatureRequestResend = SignaturePermissions.RequestResend;
+    public const string SignatureRequestExpire = SignaturePermissions.RequestExpire;
+    public const string SignatureDocumentPrepare = SignaturePermissions.DocumentPrepare;
+    public const string SignatureDocumentSign = SignaturePermissions.DocumentSign;
+    public const string SignatureDocumentView = SignaturePermissions.DocumentView;
+    public const string SignatureDocumentDownload = SignaturePermissions.DocumentDownload;
+    public const string SignatureDocumentAuditRead = SignaturePermissions.DocumentAuditRead;
+    public const string SignatureTemplateCreate = SignaturePermissions.TemplateCreate;
+    public const string SignatureTemplateUpdate = SignaturePermissions.TemplateUpdate;
+    public const string SignatureTemplateDelete = SignaturePermissions.TemplateDelete;
+    public const string SignatureSettingsManage = SignaturePermissions.SettingsManage;
+    public const string SignaturePreparerManage = SignaturePermissions.PreparerManage;
+    public const string SignatureCertificateVerify = SignaturePermissions.CertificateVerify;
+
     // Portal del cliente final
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
@@ -215,6 +233,118 @@ public static class PermissionCatalog
             "Consultar auditoría de archivos",
             false
         ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000029"),
+            SignatureRequestCreate,
+            "signature",
+            "Crear solicitudes de firma electrónica",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000030"),
+            SignatureRequestRead,
+            "signature",
+            "Consultar solicitudes de firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000031"),
+            SignatureRequestCancel,
+            "signature",
+            "Cancelar solicitudes de firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000032"),
+            SignatureRequestResend,
+            "signature",
+            "Reenviar invitaciones a firmantes",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000033"),
+            SignatureRequestExpire,
+            "signature",
+            "Extender el vencimiento de solicitudes",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000034"),
+            SignatureDocumentPrepare,
+            "signature",
+            "Validar y preparar documentos para firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000035"),
+            SignatureDocumentSign,
+            "signature",
+            "Aplicar firma del preparador al documento",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000036"),
+            SignatureDocumentView,
+            "signature",
+            "Ver documentos firmados y sus metadatos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000037"),
+            SignatureDocumentDownload,
+            "signature",
+            "Descargar sellado, original o certificado",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000038"),
+            SignatureDocumentAuditRead,
+            "signature",
+            "Consultar el audit trail de una firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000039"),
+            SignatureTemplateCreate,
+            "signature",
+            "Crear plantillas de firma reutilizables",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000040"),
+            SignatureTemplateUpdate,
+            "signature",
+            "Modificar plantillas de firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000041"),
+            SignatureTemplateDelete,
+            "signature",
+            "Eliminar plantillas de firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000042"),
+            SignatureSettingsManage,
+            "signature",
+            "Gestionar la configuración de firma del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000043"),
+            SignaturePreparerManage,
+            "signature",
+            "Gestionar firmas persistentes del preparador",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000044"),
+            SignatureCertificateVerify,
+            "signature",
+            "Verificar certificados de firma (endpoint público)",
+            false
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -244,6 +374,15 @@ public static class PermissionCatalog
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,
+                // Signature: el empleado prepara solicitudes y consulta resultados.
+                // No incluye cancel/expire/settings (reservados a TenantAdmin).
+                SignatureRequestCreate,
+                SignatureRequestRead,
+                SignatureRequestResend,
+                SignatureDocumentPrepare,
+                SignatureDocumentSign,
+                SignatureDocumentView,
+                SignatureDocumentDownload,
             ],
             Role.SystemCustomerPortal =>
             [

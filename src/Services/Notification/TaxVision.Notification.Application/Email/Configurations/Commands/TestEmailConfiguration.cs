@@ -5,7 +5,12 @@ using TaxVision.Notification.Domain.Emailing.Configurations;
 namespace TaxVision.Notification.Application.Email.Configurations.Commands;
 
 /// <summary>Envía un correo de prueba usando una configuración concreta para validar conectividad.</summary>
-public sealed record TestEmailConfigurationCommand(Guid ConfigurationId, Guid? TenantId, bool IsPlatformAdmin, string ToEmail);
+public sealed record TestEmailConfigurationCommand(
+    Guid ConfigurationId,
+    Guid? TenantId,
+    bool IsPlatformAdmin,
+    string ToEmail
+);
 
 public static class TestEmailConfigurationHandler
 {
@@ -27,14 +32,20 @@ public static class TestEmailConfigurationHandler
         // credenciales del SaaS, así que solo lo permite un PlatformAdmin.
         if (config.Scope == ProviderScope.System && !command.IsPlatformAdmin)
             return Result.Failure(
-                new Error("EmailConfiguration.Forbidden", "Only platform administrators can test global configurations.")
+                new Error(
+                    "EmailConfiguration.Forbidden",
+                    "Only platform administrators can test global configurations."
+                )
             );
 
         // Los proveedores por API (Gmail/Graph/SendGrid…) se probarán vía sus adaptadores en fases
         // posteriores; por ahora el test cubre SMTP, que es de conectividad directa.
         if (config.ProviderType != EmailProviderType.Smtp)
             return Result.Failure(
-                new Error("EmailConfiguration.TestUnsupported", "Test send is currently supported only for SMTP configurations.")
+                new Error(
+                    "EmailConfiguration.TestUnsupported",
+                    "Test send is currently supported only for SMTP configurations."
+                )
             );
 
         if (string.IsNullOrWhiteSpace(config.Host))

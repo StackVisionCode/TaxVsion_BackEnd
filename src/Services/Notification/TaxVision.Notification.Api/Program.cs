@@ -58,7 +58,9 @@ builder.Services.AddHttpClient<ICloudStorageClient, CloudStorageClient>(
 );
 
 // Grant M2M: obtiene tokens de servicio del Auth para autenticar al worker contra CloudStorage.
-builder.Services.Configure<ServiceAuthClientOptions>(builder.Configuration.GetSection(ServiceAuthClientOptions.SectionName));
+builder.Services.Configure<ServiceAuthClientOptions>(
+    builder.Configuration.GetSection(ServiceAuthClientOptions.SectionName)
+);
 builder.Services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
     (sp, client) =>
     {

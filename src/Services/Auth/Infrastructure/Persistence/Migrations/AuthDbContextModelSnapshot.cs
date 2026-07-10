@@ -765,6 +765,134 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar auditoría de archivos",
                             IsCustomerPortal = false,
                             Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000029"),
+                            Code = "signature.request.create",
+                            Description = "Crear solicitudes de firma electrónica",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000030"),
+                            Code = "signature.request.read",
+                            Description = "Consultar solicitudes de firma",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000031"),
+                            Code = "signature.request.cancel",
+                            Description = "Cancelar solicitudes de firma",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000032"),
+                            Code = "signature.request.resend",
+                            Description = "Reenviar invitaciones a firmantes",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000033"),
+                            Code = "signature.request.expire",
+                            Description = "Extender el vencimiento de solicitudes",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000034"),
+                            Code = "signature.document.prepare",
+                            Description = "Validar y preparar documentos para firma",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000035"),
+                            Code = "signature.document.sign",
+                            Description = "Aplicar firma del preparador al documento",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000036"),
+                            Code = "signature.document.view",
+                            Description = "Ver documentos firmados y sus metadatos",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000037"),
+                            Code = "signature.document.download",
+                            Description = "Descargar sellado, original o certificado",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000038"),
+                            Code = "signature.document.audit.read",
+                            Description = "Consultar el audit trail de una firma",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000039"),
+                            Code = "signature.template.create",
+                            Description = "Crear plantillas de firma reutilizables",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000040"),
+                            Code = "signature.template.update",
+                            Description = "Modificar plantillas de firma",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000041"),
+                            Code = "signature.template.delete",
+                            Description = "Eliminar plantillas de firma",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000042"),
+                            Code = "signature.settings.manage",
+                            Description = "Gestionar la configuración de firma del tenant",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000043"),
+                            Code = "signature.preparer.manage",
+                            Description = "Gestionar firmas persistentes del preparador",
+                            IsCustomerPortal = false,
+                            Module = "signature"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000044"),
+                            Code = "signature.certificate.verify",
+                            Description = "Verificar certificados de firma (endpoint público)",
+                            IsCustomerPortal = false,
+                            Module = "signature"
                         });
                 });
 

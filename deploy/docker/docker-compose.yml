@@ -362,6 +362,50 @@ services:
     networks:
       - taxvision-network
 
+  communication-api:
+    image: taxvision/communication-api:dev
+    container_name: taxvision-communication-api
+    build:
+      context: ../../src/Services/Communication
+      dockerfile: Dockerfile
+    expose:
+      - "5350"
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      SERVICE_NAME: communication-service
+      COMMUNICATION_HTTP_HOST: 0.0.0.0
+      COMMUNICATION_HTTP_PORT: "5350"
+      COMMUNICATION_DB_CONNECTION: ${COMMUNICATION_DB_CONNECTION:?Set COMMUNICATION_DB_CONNECTION in .env}
+      COMMUNICATION_REDIS_URI: redis://redis:6379/0
+      COMMUNICATION_SESSION_DENYLIST_PREFIX: auth:session-denylist
+      COMMUNICATION_RABBITMQ_URI: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      COMMUNICATION_RABBITMQ_EXCHANGE: taxvision-events
+      COMMUNICATION_RABBITMQ_QUEUE: communication-events
+      COMMUNICATION_RABBITMQ_DLQ: communication-events.dlq
+      COMMUNICATION_JWT_ISSUER: TaxVision.Auth
+      COMMUNICATION_JWT_AUDIENCE: TaxVision.Services
+      COMMUNICATION_JWKS_URI: http://auth-api:8080/auth/.well-known/jwks.json
+      COMMUNICATION_SERVICE_AUTH_CLIENT_ID: communication-worker
+      COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:-}
+      COMMUNICATION_AUTH_BASE_URL: http://auth-api:8080
+      COMMUNICATION_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      COMMUNICATION_TURN_URL: ${COMMUNICATION_TURN_URL:-}
+      COMMUNICATION_TURN_STATIC_AUTH_SECRET: ${COMMUNICATION_TURN_STATIC_AUTH_SECRET:-}
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: communication-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   migrations:
     profiles:
       - tools

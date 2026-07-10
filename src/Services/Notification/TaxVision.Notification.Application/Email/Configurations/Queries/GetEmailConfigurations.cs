@@ -15,7 +15,9 @@ public static class GetEmailConfigurationsHandler
     )
     {
         var items = await repository.ListAsync(query.TenantId, query.IncludeSystem, ct);
-        IReadOnlyList<EmailConfigurationResponse> responses = items.Select(EmailConfigurationMapper.ToResponse).ToList();
+        IReadOnlyList<EmailConfigurationResponse> responses = items
+            .Select(EmailConfigurationMapper.ToResponse)
+            .ToList();
         return Result.Success(responses);
     }
 }

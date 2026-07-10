@@ -106,7 +106,9 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
             DecodeBase64(request.PreviewPngBase64)
         );
         var result = await bus.InvokeAsync<Result<EmailTemplateVersionResponse>>(command, ct);
-        return result.IsSuccess ? Created($"/notifications/email/templates/{id}", result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess
+            ? Created($"/notifications/email/templates/{id}", result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("{id:guid}/publish")]

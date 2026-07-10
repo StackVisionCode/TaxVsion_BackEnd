@@ -48,10 +48,14 @@ public sealed class EmailTemplate : BaseEntity
     )
     {
         if (scope == EmailScope.Tenant && (tenantId is null || tenantId == Guid.Empty))
-            return Result.Failure<EmailTemplate>(new Error("EmailTemplate.Tenant", "Tenant templates require a tenant id."));
+            return Result.Failure<EmailTemplate>(
+                new Error("EmailTemplate.Tenant", "Tenant templates require a tenant id.")
+            );
 
         if (scope == EmailScope.System && tenantId is not null)
-            return Result.Failure<EmailTemplate>(new Error("EmailTemplate.Scope", "System templates must not carry a tenant id."));
+            return Result.Failure<EmailTemplate>(
+                new Error("EmailTemplate.Scope", "System templates must not carry a tenant id.")
+            );
 
         if (string.IsNullOrWhiteSpace(templateKey))
             return Result.Failure<EmailTemplate>(new Error("EmailTemplate.Key", "Template key is required."));

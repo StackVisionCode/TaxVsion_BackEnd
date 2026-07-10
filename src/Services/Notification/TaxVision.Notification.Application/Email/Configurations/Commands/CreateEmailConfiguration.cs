@@ -42,7 +42,10 @@ public static class CreateEmailConfigurationHandler
     {
         if (command.Scope == ProviderScope.System && !command.IsPlatformAdmin)
             return Result.Failure<EmailConfigurationResponse>(
-                new Error("EmailConfiguration.Forbidden", "Only platform administrators can manage global configurations.")
+                new Error(
+                    "EmailConfiguration.Forbidden",
+                    "Only platform administrators can manage global configurations."
+                )
             );
 
         if (command.Scope == ProviderScope.Tenant && (command.TenantId is null || command.TenantId == Guid.Empty))

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+.vscode/
+*.log
+.DS_Store
+prisma/dev.db*

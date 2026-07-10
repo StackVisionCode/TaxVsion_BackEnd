@@ -87,5 +87,7 @@ public sealed class EmailSyncedMessage : BaseEntity
     }
 
     private static string? Trim(string? value, int max) =>
-        string.IsNullOrEmpty(value) ? value : value.Length <= max ? value : value[..max];
+        string.IsNullOrEmpty(value) ? value
+        : value.Length <= max ? value
+        : value[..max];
 }

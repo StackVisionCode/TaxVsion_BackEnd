@@ -19,7 +19,9 @@ public sealed class OAuthTokenService(
 {
     public async Task<string?> GetValidAccessTokenAsync(EmailAccountConnection account, CancellationToken ct)
     {
-        var access = string.IsNullOrEmpty(account.AccessTokenCipher) ? null : protector.Unprotect(account.AccessTokenCipher);
+        var access = string.IsNullOrEmpty(account.AccessTokenCipher)
+            ? null
+            : protector.Unprotect(account.AccessTokenCipher);
 
         var nearExpiry = account.TokenExpiresAtUtc is { } exp && exp <= DateTime.UtcNow.AddSeconds(60);
         if ((access is null || nearExpiry) && !string.IsNullOrEmpty(account.RefreshTokenCipher))
@@ -43,12 +45,20 @@ public sealed class OAuthTokenService(
         return access;
     }
 
-    private async Task<RefreshedToken?> RefreshAsync(EmailExternalProvider provider, string refreshToken, CancellationToken ct)
+    private async Task<RefreshedToken?> RefreshAsync(
+        EmailExternalProvider provider,
+        string refreshToken,
+        CancellationToken ct
+    )
     {
         var opt = options.Value;
         var (endpoint, app, extra) = provider switch
         {
-            EmailExternalProvider.GmailApi => ("https://oauth2.googleapis.com/token", (OAuthAppConfig)opt.Gmail, (IReadOnlyDictionary<string, string>)new Dictionary<string, string>()),
+            EmailExternalProvider.GmailApi => (
+                "https://oauth2.googleapis.com/token",
+                (OAuthAppConfig)opt.Gmail,
+                (IReadOnlyDictionary<string, string>)new Dictionary<string, string>()
+            ),
             EmailExternalProvider.MicrosoftGraph => (
                 $"https://login.microsoftonline.com/{opt.Microsoft.TenantId}/oauth2/v2.0/token",
                 opt.Microsoft,
@@ -57,7 +67,11 @@ public sealed class OAuthTokenService(
             _ => (string.Empty, new OAuthAppConfig(), new Dictionary<string, string>()),
         };
 
-        if (string.IsNullOrEmpty(endpoint) || string.IsNullOrWhiteSpace(app.ClientId) || string.IsNullOrWhiteSpace(app.ClientSecret))
+        if (
+            string.IsNullOrEmpty(endpoint)
+            || string.IsNullOrWhiteSpace(app.ClientId)
+            || string.IsNullOrWhiteSpace(app.ClientSecret)
+        )
         {
             logger.LogWarning("OAuth app for {Provider} is not configured; cannot refresh the token.", provider);
             return null;
@@ -79,7 +93,11 @@ public sealed class OAuthTokenService(
             using var response = await client.PostAsync(endpoint, new FormUrlEncodedContent(form), ct);
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("Token refresh for {Provider} failed ({Status}).", provider, (int)response.StatusCode);
+                logger.LogWarning(
+                    "Token refresh for {Provider} failed ({Status}).",
+                    provider,
+                    (int)response.StatusCode
+                );
                 return null;
             }
 

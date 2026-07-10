@@ -3,7 +3,11 @@ using TaxVision.Notification.Domain.Emailing.Sending;
 namespace TaxVision.Notification.Application.Email.Sending;
 
 /// <summary>Destinatario en la petición de envío.</summary>
-public sealed record EmailRecipientInput(string Address, EmailRecipientKind Kind = EmailRecipientKind.To, string? Name = null);
+public sealed record EmailRecipientInput(
+    string Address,
+    EmailRecipientKind Kind = EmailRecipientKind.To,
+    string? Name = null
+);
 
 public sealed record EmailRecipientSummary(string Address, string Kind, string? Name);
 

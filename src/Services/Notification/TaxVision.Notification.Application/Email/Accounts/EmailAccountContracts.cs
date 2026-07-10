@@ -91,7 +91,18 @@ public static class EmailAccountMapper
         new(f.Id, f.ExternalId, f.Name, f.Kind.ToString(), f.TotalMessages, f.LastSyncAtUtc);
 
     public static EmailMessageSummaryResponse ToSummary(EmailSyncedMessage m) =>
-        new(m.Id, m.ExternalMessageId, m.ExternalThreadId, m.Subject, m.FromAddress, m.Snippet, m.IsRead, m.IsStarred, m.HasAttachments, m.ReceivedAtUtc);
+        new(
+            m.Id,
+            m.ExternalMessageId,
+            m.ExternalThreadId,
+            m.Subject,
+            m.FromAddress,
+            m.Snippet,
+            m.IsRead,
+            m.IsStarred,
+            m.HasAttachments,
+            m.ReceivedAtUtc
+        );
 
     public static EmailMessageDetailResponse ToDetail(EmailSyncedMessage m) =>
         new(
@@ -112,7 +123,16 @@ public static class EmailAccountMapper
         );
 
     public static EmailSyncLogResponse ToResponse(EmailSyncLog l) =>
-        new(l.Id, l.Type.ToString(), l.Status.ToString(), l.StartedAtUtc, l.FinishedAtUtc, l.FoldersSynced, l.MessagesSynced, l.Error);
+        new(
+            l.Id,
+            l.Type.ToString(),
+            l.Status.ToString(),
+            l.StartedAtUtc,
+            l.FinishedAtUtc,
+            l.FoldersSynced,
+            l.MessagesSynced,
+            l.Error
+        );
 
     private static IReadOnlyList<string> ParseList(string json)
     {

@@ -24,7 +24,9 @@ public static class IssueServiceTokenHandler
     )
     {
         if (command.TenantId == Guid.Empty)
-            return Task.FromResult(Result.Failure<ServiceTokenResponse>(new Error("Auth.InvalidClient", "A tenant is required.")));
+            return Task.FromResult(
+                Result.Failure<ServiceTokenResponse>(new Error("Auth.InvalidClient", "A tenant is required."))
+            );
 
         var settings = options.Value;
         var client = settings.Clients.FirstOrDefault(c =>
@@ -34,7 +36,9 @@ public static class IssueServiceTokenHandler
         // Comparación en tiempo constante; misma respuesta si el cliente no existe o el secreto no coincide.
         if (client is null || !SecretMatches(client.Secret, command.ClientSecret))
             return Task.FromResult(
-                Result.Failure<ServiceTokenResponse>(new Error("Auth.InvalidClient", "Invalid service client credentials."))
+                Result.Failure<ServiceTokenResponse>(
+                    new Error("Auth.InvalidClient", "Invalid service client credentials.")
+                )
             );
 
         var token = tokens.GenerateServiceToken(

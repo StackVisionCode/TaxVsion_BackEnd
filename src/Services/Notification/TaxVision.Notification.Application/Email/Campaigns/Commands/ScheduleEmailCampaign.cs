@@ -39,11 +39,15 @@ public static class ScheduleEmailCampaignHandler
             return Result.Failure<EmailCampaignResponse>(new Error("EmailTemplate.NotFound", "Template not found."));
 
         if (template.Status != EmailTemplateStatus.Active || template.CurrentVersionId is null)
-            return Result.Failure<EmailCampaignResponse>(new Error("EmailTemplate.NotPublished", "Template has no published version."));
+            return Result.Failure<EmailCampaignResponse>(
+                new Error("EmailTemplate.NotPublished", "Template has no published version.")
+            );
 
         var version = await templates.GetVersionAsync(template.Id, template.CurrentVersionId.Value, ct);
         if (version is null)
-            return Result.Failure<EmailCampaignResponse>(new Error("EmailTemplate.NotFound", "Published version not found."));
+            return Result.Failure<EmailCampaignResponse>(
+                new Error("EmailTemplate.NotFound", "Published version not found.")
+            );
 
         var html = await templateStorage.GetHtmlAsync(version.HtmlFileId, ct);
         if (html.IsFailure)

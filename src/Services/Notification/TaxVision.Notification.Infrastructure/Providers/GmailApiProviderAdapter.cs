@@ -24,7 +24,10 @@ public sealed class GmailApiProviderAdapter(
 
     public EmailExternalProvider Provider => EmailExternalProvider.GmailApi;
 
-    public async Task<Result<IReadOnlyList<ProviderFolder>>> ListFoldersAsync(EmailAccountConnection account, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<ProviderFolder>>> ListFoldersAsync(
+        EmailAccountConnection account,
+        CancellationToken ct = default
+    )
     {
         var client = await CreateClientAsync(account, ct);
         if (client is null)
@@ -66,7 +69,8 @@ public sealed class GmailApiProviderAdapter(
 
         try
         {
-            var listUrl = $"{GmailBase}/messages?labelIds={Uri.EscapeDataString(folder.ExternalId)}&maxResults={maxMessages}";
+            var listUrl =
+                $"{GmailBase}/messages?labelIds={Uri.EscapeDataString(folder.ExternalId)}&maxResults={maxMessages}";
             if (!full && long.TryParse(cursor, out var lastMs))
                 listUrl += $"&q={Uri.EscapeDataString($"after:{lastMs / 1000}")}";
 
@@ -92,12 +96,22 @@ public sealed class GmailApiProviderAdapter(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Gmail sync folder {Folder} failed for account {AccountId}.", folder.Name, account.Id);
+            logger.LogWarning(
+                ex,
+                "Gmail sync folder {Folder} failed for account {AccountId}.",
+                folder.Name,
+                account.Id
+            );
             return Result.Failure<ProviderFolderSync>(new Error("EmailAccount.SyncFailed", ex.Message));
         }
     }
 
-    private async Task<(ProviderMessage Message, long InternalMs)> MapMessageAsync(HttpClient client, string id, JsonElement msg, CancellationToken ct)
+    private async Task<(ProviderMessage Message, long InternalMs)> MapMessageAsync(
+        HttpClient client,
+        string id,
+        JsonElement msg,
+        CancellationToken ct
+    )
     {
         var threadId = Str(msg, "threadId");
         var snippet = Str(msg, "snippet");
@@ -109,7 +123,9 @@ public sealed class GmailApiProviderAdapter(
                 if (l.GetString() is { } s)
                     labels.Add(s);
 
-        string? subject = null, from = null, date = null;
+        string? subject = null,
+            from = null,
+            date = null;
         var to = new List<string>();
         var cc = new List<string>();
         var bcc = new List<string>();
@@ -120,16 +136,29 @@ public sealed class GmailApiProviderAdapter(
                 var value = Str(h, "value");
                 switch (name)
                 {
-                    case "subject": subject = value; break;
-                    case "from": from = value; break;
-                    case "to": to.AddRange(SplitAddresses(value)); break;
-                    case "cc": cc.AddRange(SplitAddresses(value)); break;
-                    case "bcc": bcc.AddRange(SplitAddresses(value)); break;
-                    case "date": date = value; break;
+                    case "subject":
+                        subject = value;
+                        break;
+                    case "from":
+                        from = value;
+                        break;
+                    case "to":
+                        to.AddRange(SplitAddresses(value));
+                        break;
+                    case "cc":
+                        cc.AddRange(SplitAddresses(value));
+                        break;
+                    case "bcc":
+                        bcc.AddRange(SplitAddresses(value));
+                        break;
+                    case "date":
+                        date = value;
+                        break;
                 }
             }
 
-        string? html = null, text = null;
+        string? html = null,
+            text = null;
         var attachments = new List<ProviderAttachment>();
         if (payload.ValueKind == JsonValueKind.Object)
             WalkPart(payload, ref html, ref text, attachments);
@@ -143,19 +172,37 @@ public sealed class GmailApiProviderAdapter(
             materialized.Add(att with { Content = bytes });
         }
 
-        var received = internalMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(internalMs).UtcDateTime : (DateTime?)null;
+        var received =
+            internalMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(internalMs).UtcDateTime : (DateTime?)null;
         var sent = DateTime.TryParse(date, out var sentDt) ? sentDt.ToUniversalTime() : (DateTime?)null;
 
         var message = new ProviderMessage(
-            id, threadId, subject, ExtractEmail(from),
-            to, cc, bcc, snippet, html, text, null,
-            !labels.Contains("UNREAD"), labels.Contains("STARRED"),
-            received, sent, materialized
+            id,
+            threadId,
+            subject,
+            ExtractEmail(from),
+            to,
+            cc,
+            bcc,
+            snippet,
+            html,
+            text,
+            null,
+            !labels.Contains("UNREAD"),
+            labels.Contains("STARRED"),
+            received,
+            sent,
+            materialized
         );
         return (message, internalMs);
     }
 
-    private static void WalkPart(JsonElement part, ref string? html, ref string? text, List<ProviderAttachment> attachments)
+    private static void WalkPart(
+        JsonElement part,
+        ref string? html,
+        ref string? text,
+        List<ProviderAttachment> attachments
+    )
     {
         var mime = Str(part, "mimeType");
         var filename = Str(part, "filename");
@@ -182,11 +229,20 @@ public sealed class GmailApiProviderAdapter(
                 WalkPart(p, ref html, ref text, attachments);
     }
 
-    private async Task<byte[]?> FetchAttachmentAsync(HttpClient client, string messageId, string attachmentId, CancellationToken ct)
+    private async Task<byte[]?> FetchAttachmentAsync(
+        HttpClient client,
+        string messageId,
+        string attachmentId,
+        CancellationToken ct
+    )
     {
         try
         {
-            using var doc = await GetJsonAsync(client, $"{GmailBase}/messages/{messageId}/attachments/{attachmentId}", ct);
+            using var doc = await GetJsonAsync(
+                client,
+                $"{GmailBase}/messages/{messageId}/attachments/{attachmentId}",
+                ct
+            );
             return Str(doc.RootElement, "data") is { } data ? DecodeBase64UrlBytes(data) : null;
         }
         catch (Exception ex)
@@ -219,15 +275,29 @@ public sealed class GmailApiProviderAdapter(
     private static byte[] DecodeBase64UrlBytes(string data)
     {
         var s = data.Replace('-', '+').Replace('_', '/');
-        s = (s.Length % 4) switch { 2 => s + "==", 3 => s + "=", _ => s };
-        try { return Convert.FromBase64String(s); }
-        catch (FormatException) { return []; }
+        s = (s.Length % 4) switch
+        {
+            2 => s + "==",
+            3 => s + "=",
+            _ => s,
+        };
+        try
+        {
+            return Convert.FromBase64String(s);
+        }
+        catch (FormatException)
+        {
+            return [];
+        }
     }
 
     private static IEnumerable<string> SplitAddresses(string? header) =>
         string.IsNullOrWhiteSpace(header)
             ? []
-            : header.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(ExtractEmail).OfType<string>();
+            : header
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(ExtractEmail)
+                .OfType<string>();
 
     private static string? ExtractEmail(string? value)
     {
@@ -252,5 +322,8 @@ public sealed class GmailApiProviderAdapter(
             _ => EmailFolderKind.Custom,
         };
 
-    private static readonly Error NoToken = new("EmailAccount.ProviderNotConfigured", "No valid Gmail access token (configure EmailOAuth:Gmail and reconnect).");
+    private static readonly Error NoToken = new(
+        "EmailAccount.ProviderNotConfigured",
+        "No valid Gmail access token (configure EmailOAuth:Gmail and reconnect)."
+    );
 }

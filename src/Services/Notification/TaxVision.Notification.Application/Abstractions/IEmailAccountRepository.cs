@@ -14,7 +14,11 @@ public interface IEmailAccountRepository
     Task<IReadOnlyList<EmailAccountConnection>> ListAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>Cuentas activas cuya última sincronización es anterior al umbral (para el scheduler).</summary>
-    Task<IReadOnlyList<EmailAccountConnection>> GetDueForSyncAsync(DateTime olderThanUtc, int max, CancellationToken ct = default);
+    Task<IReadOnlyList<EmailAccountConnection>> GetDueForSyncAsync(
+        DateTime olderThanUtc,
+        int max,
+        CancellationToken ct = default
+    );
 
     // Carpetas
     Task AddFolderAsync(EmailFolder folder, CancellationToken ct = default);
@@ -24,7 +28,11 @@ public interface IEmailAccountRepository
     // Mensajes
     Task AddMessageAsync(EmailSyncedMessage message, CancellationToken ct = default);
     Task AddAttachmentAsync(EmailMessageAttachment attachment, CancellationToken ct = default);
-    Task<EmailSyncedMessage?> GetMessageByExternalIdAsync(Guid accountId, string externalMessageId, CancellationToken ct = default);
+    Task<EmailSyncedMessage?> GetMessageByExternalIdAsync(
+        Guid accountId,
+        string externalMessageId,
+        CancellationToken ct = default
+    );
     Task<EmailSyncedMessage?> GetMessageAsync(Guid accountId, Guid messageId, CancellationToken ct = default);
     Task<(IReadOnlyList<EmailSyncedMessage> Items, int TotalCount)> GetMessagesAsync(
         Guid accountId,
@@ -33,7 +41,11 @@ public interface IEmailAccountRepository
         int size,
         CancellationToken ct = default
     );
-    Task<IReadOnlyList<EmailSyncedMessage>> GetThreadAsync(Guid accountId, string externalThreadId, CancellationToken ct = default);
+    Task<IReadOnlyList<EmailSyncedMessage>> GetThreadAsync(
+        Guid accountId,
+        string externalThreadId,
+        CancellationToken ct = default
+    );
 
     // Logs
     Task AddSyncLogAsync(EmailSyncLog log, CancellationToken ct = default);

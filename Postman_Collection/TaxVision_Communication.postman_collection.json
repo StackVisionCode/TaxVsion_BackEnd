@@ -1,0 +1,498 @@
+{
+	"info": {
+		"_postman_id": "b8e2a41c-72cf-4d3e-8f5a-1e3c9d7e8f01",
+		"name": "TaxVision - Communication",
+		"description": "Coleccion del microservicio Communication (chat, calls, meetings, notifs realtime, support, analytics). Realtime va por Socket.IO (WSS ws://gateway/communication/socket.io) — Postman solo valida los endpoints HTTP.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Live",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/health/live",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "health", "live"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Ready",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/communication/health/ready",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "health", "ready"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "WebRTC",
+			"item": [
+				{
+					"name": "IssueIceCredentials",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"pm.test(\"tiene iceServers\", () => pm.expect(r).to.have.property('iceServers'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/webrtc/ice?ttl=300",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "webrtc", "ice"],
+							"query": [{ "key": "ttl", "value": "300" }]
+						},
+						"description": "Devuelve ICE servers + TURN efimero HMAC-SHA1. Sin secret configurado, retorna solo STUN publico."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Conversations",
+			"item": [
+				{
+					"name": "ListConversations",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/conversations?page=1&size=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "conversations"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" },
+								{ "key": "includeArchived", "value": "false", "disabled": true }
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetMessages",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/conversations/{{conversationId}}/messages?take=50",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "conversations", "{{conversationId}}", "messages"],
+							"query": [
+								{ "key": "take", "value": "50" },
+								{ "key": "before", "value": "2026-07-10T00:00:00Z", "disabled": true }
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "MarkRead",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"lastReadMessageId\": \"{{messageId}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/conversations/{{conversationId}}/read",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "conversations", "{{conversationId}}", "read"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Calls",
+			"item": [
+				{
+					"name": "ListRecentCalls",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/calls?page=1&size=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "calls"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Meetings",
+			"item": [
+				{
+					"name": "CreateMeeting",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r.meetingId) pm.environment.set('meetingId', r.meetingId);",
+									"if (r.shortCode) pm.environment.set('meetingShortCode', r.shortCode);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Kickoff Q3\",\n  \"description\": \"Sesion de arranque\",\n  \"maxParticipants\": 8,\n  \"passcode\": \"secret-1234\",\n  \"requireWaitingRoom\": true,\n  \"recordingRequested\": false\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "meetings"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ListMeetings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings?page=1&size=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "meetings"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "StartMeeting",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/start",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "meetings", "{{meetingId}}", "start"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "EndMeeting",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/meetings/{{meetingId}}/end",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "meetings", "{{meetingId}}", "end"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Notifications",
+			"item": [
+				{
+					"name": "ListNotifications",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/notifications?page=1&size=20&unreadOnly=false",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "notifications"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "UnreadCount",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/notifications/unread-count",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "notifications", "unread-count"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "MarkNotificationRead",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/notifications/{{notificationId}}/read",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "notifications", "{{notificationId}}", "read"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Support",
+			"item": [
+				{
+					"name": "OpenSupportTicket",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r.ticketId) pm.environment.set('supportTicketId', r.ticketId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"subject\": \"No puedo acceder a los reportes\",\n  \"category\": \"Technical\",\n  \"priority\": \"Normal\",\n  \"initialMessage\": \"Al entrar al modulo se cae la pagina.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/support",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "support"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ListSupportTickets (customer)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/support?view=customer&page=1&size=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "support"],
+							"query": [
+								{ "key": "view", "value": "customer" },
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" }
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ListSupportTickets (agent)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/support?view=agent&mine=true&page=1&size=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "support"],
+							"query": [
+								{ "key": "view", "value": "agent" },
+								{ "key": "mine", "value": "true" },
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" }
+							]
+						},
+						"description": "Requiere JWT del PlatformTenant con communication.support.agent (o PlatformAdmin)."
+					},
+					"response": []
+				},
+				{
+					"name": "ClaimSupportTicket",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/support/{{supportTicketId}}/claim",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "support", "{{supportTicketId}}", "claim"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ResolveSupportTicket",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/support/{{supportTicketId}}/resolve",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "support", "{{supportTicketId}}", "resolve"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "CloseSupportTicket",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/support/{{supportTicketId}}/close",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "support", "{{supportTicketId}}", "close"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Settings",
+			"item": [
+				{
+					"name": "GetSettings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "settings"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateSettings",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"employeeToEmployeeChatEnabled\": true,\n  \"defaultCameraOff\": true,\n  \"messageRetentionDays\": 730\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/communication/settings",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "settings"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Analytics",
+			"item": [
+				{
+					"name": "Summary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/analytics/summary",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "analytics", "summary"],
+							"query": [
+								{ "key": "from", "value": "2026-06-11", "disabled": true },
+								{ "key": "to", "value": "2026-07-10", "disabled": true }
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Timeline",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/communication/analytics/timeline",
+							"host": ["{{UrlBase}}"],
+							"path": ["communication", "analytics", "timeline"]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

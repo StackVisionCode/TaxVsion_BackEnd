@@ -8,8 +8,10 @@ namespace TaxVision.Notification.Api.Jobs;
 /// Servicio en segundo plano que sincroniza periódicamente (incremental) las cuentas activas cuya
 /// última sincronización superó el umbral. Encola el trabajo por evento; no sincroniza en el propio tick.
 /// </summary>
-public sealed class EmailSyncSchedulerService(IServiceScopeFactory scopeFactory, ILogger<EmailSyncSchedulerService> logger)
-    : BackgroundService
+public sealed class EmailSyncSchedulerService(
+    IServiceScopeFactory scopeFactory,
+    ILogger<EmailSyncSchedulerService> logger
+) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan SyncEvery = TimeSpan.FromMinutes(15);
@@ -45,7 +47,11 @@ public sealed class EmailSyncSchedulerService(IServiceScopeFactory scopeFactory,
         foreach (var account in due)
         {
             await bus.PublishAsync(
-                new EmailIncrementalSyncRequestedIntegrationEvent { AccountId = account.Id, TenantId = account.TenantId }
+                new EmailIncrementalSyncRequestedIntegrationEvent
+                {
+                    AccountId = account.Id,
+                    TenantId = account.TenantId,
+                }
             );
         }
     }

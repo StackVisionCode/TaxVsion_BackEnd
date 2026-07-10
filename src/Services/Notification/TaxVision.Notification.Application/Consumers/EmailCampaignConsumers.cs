@@ -29,10 +29,18 @@ public static class EmailCampaignStartedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             var campaign = await campaigns.GetByIdNoRecipientsAsync(evt.CampaignId, ct);
-            if (campaign is null || campaign.Status != CampaignStatus.Running || string.IsNullOrEmpty(campaign.HtmlTemplate))
+            if (
+                campaign is null
+                || campaign.Status != CampaignStatus.Running
+                || string.IsNullOrEmpty(campaign.HtmlTemplate)
+            )
             {
                 logger.LogWarning("Campaign {CampaignId} not ready for fan-out.", evt.CampaignId);
                 return;
@@ -74,7 +82,11 @@ public static class EmailCampaignBatchConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             var campaign = await campaigns.GetByIdNoRecipientsAsync(evt.CampaignId, ct);
             if (campaign is null || string.IsNullOrEmpty(campaign.HtmlTemplate))
@@ -87,12 +99,29 @@ public static class EmailCampaignBatchConsumer
             {
                 var variables = Deserialize(recipient.VariablesJson);
                 var rendered = renderer.Render(
-                    new RenderRequest(campaign.SubjectTemplate ?? string.Empty, campaign.HtmlTemplate!, null, variables, allowed)
+                    new RenderRequest(
+                        campaign.SubjectTemplate ?? string.Empty,
+                        campaign.HtmlTemplate!,
+                        null,
+                        variables,
+                        allowed
+                    )
                 );
                 if (rendered.IsFailure)
                 {
-                    logger.LogWarning("Render failed for {Address} in campaign {CampaignId}: {Error}", recipient.Address, campaign.Id, rendered.Error.Message);
-                    await PublishRenderFailureAsync(bus, campaign.TenantId, campaign.Id, correlation.CorrelationId, rendered.Error.Message);
+                    logger.LogWarning(
+                        "Render failed for {Address} in campaign {CampaignId}: {Error}",
+                        recipient.Address,
+                        campaign.Id,
+                        rendered.Error.Message
+                    );
+                    await PublishRenderFailureAsync(
+                        bus,
+                        campaign.TenantId,
+                        campaign.Id,
+                        correlation.CorrelationId,
+                        rendered.Error.Message
+                    );
                     continue;
                 }
 
@@ -119,7 +148,13 @@ public static class EmailCampaignBatchConsumer
                 );
                 if (messageResult.IsFailure)
                 {
-                    await PublishRenderFailureAsync(bus, campaign.TenantId, campaign.Id, correlation.CorrelationId, messageResult.Error.Message);
+                    await PublishRenderFailureAsync(
+                        bus,
+                        campaign.TenantId,
+                        campaign.Id,
+                        correlation.CorrelationId,
+                        messageResult.Error.Message
+                    );
                     continue;
                 }
 
@@ -138,7 +173,13 @@ public static class EmailCampaignBatchConsumer
         }
     }
 
-    private static ValueTask PublishRenderFailureAsync(IMessageBus bus, Guid tenantId, Guid campaignId, string correlationId, string error) =>
+    private static ValueTask PublishRenderFailureAsync(
+        IMessageBus bus,
+        Guid tenantId,
+        Guid campaignId,
+        string correlationId,
+        string error
+    ) =>
         // Sin correo que entregar: se cuenta como fallo vía el consumer de entrega para no dejar la campaña incompleta.
         bus.PublishAsync(
             new EmailDeliveryFailedIntegrationEvent

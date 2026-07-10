@@ -36,12 +36,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailAccountConnections", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailFolders",
@@ -56,12 +57,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     LastSyncAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     TotalMessages = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailFolders", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailMessageAttachments",
@@ -74,12 +76,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     SizeBytes = table.Column<long>(type: "bigint", nullable: false),
                     ExternalAttachmentId = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
                     CloudStorageFileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailMessageAttachments", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailSyncedMessages",
@@ -105,12 +108,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     ReceivedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     SentAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailSyncedMessages", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailSyncLogs",
@@ -124,73 +128,77 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     FinishedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     FoldersSynced = table.Column<int>(type: "int", nullable: false),
                     MessagesSynced = table.Column<int>(type: "int", nullable: false),
-                    Error = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true)
+                    Error = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailSyncLogs", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailAccountConnections_IsActive_LastSyncAtUtc",
                 table: "EmailAccountConnections",
-                columns: new[] { "IsActive", "LastSyncAtUtc" });
+                columns: new[] { "IsActive", "LastSyncAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailAccountConnections_TenantId",
                 table: "EmailAccountConnections",
-                column: "TenantId");
+                column: "TenantId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailFolders_AccountId_ExternalId",
                 table: "EmailFolders",
                 columns: new[] { "AccountId", "ExternalId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailMessageAttachments_MessageId",
                 table: "EmailMessageAttachments",
-                column: "MessageId");
+                column: "MessageId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailSyncedMessages_AccountId_ExternalMessageId",
                 table: "EmailSyncedMessages",
                 columns: new[] { "AccountId", "ExternalMessageId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailSyncedMessages_AccountId_ExternalThreadId",
                 table: "EmailSyncedMessages",
-                columns: new[] { "AccountId", "ExternalThreadId" });
+                columns: new[] { "AccountId", "ExternalThreadId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailSyncedMessages_AccountId_FolderId_ReceivedAtUtc",
                 table: "EmailSyncedMessages",
-                columns: new[] { "AccountId", "FolderId", "ReceivedAtUtc" });
+                columns: new[] { "AccountId", "FolderId", "ReceivedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailSyncLogs_AccountId_StartedAtUtc",
                 table: "EmailSyncLogs",
-                columns: new[] { "AccountId", "StartedAtUtc" });
+                columns: new[] { "AccountId", "StartedAtUtc" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "EmailAccountConnections");
+            migrationBuilder.DropTable(name: "EmailAccountConnections");
 
-            migrationBuilder.DropTable(
-                name: "EmailFolders");
+            migrationBuilder.DropTable(name: "EmailFolders");
 
-            migrationBuilder.DropTable(
-                name: "EmailMessageAttachments");
+            migrationBuilder.DropTable(name: "EmailMessageAttachments");
 
-            migrationBuilder.DropTable(
-                name: "EmailSyncedMessages");
+            migrationBuilder.DropTable(name: "EmailSyncedMessages");
 
-            migrationBuilder.DropTable(
-                name: "EmailSyncLogs");
+            migrationBuilder.DropTable(name: "EmailSyncLogs");
         }
     }
 }

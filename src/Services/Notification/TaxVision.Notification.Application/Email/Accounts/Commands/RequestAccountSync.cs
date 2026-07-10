@@ -29,9 +29,23 @@ public static class RequestAccountSyncHandler
             return Result.Failure(new Error("EmailAccount.Inactive", "The account is not active."));
 
         if (command.Full)
-            await bus.PublishAsync(new EmailFullSyncRequestedIntegrationEvent { AccountId = account.Id, TenantId = account.TenantId, CorrelationId = correlation.CorrelationId });
+            await bus.PublishAsync(
+                new EmailFullSyncRequestedIntegrationEvent
+                {
+                    AccountId = account.Id,
+                    TenantId = account.TenantId,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
         else
-            await bus.PublishAsync(new EmailIncrementalSyncRequestedIntegrationEvent { AccountId = account.Id, TenantId = account.TenantId, CorrelationId = correlation.CorrelationId });
+            await bus.PublishAsync(
+                new EmailIncrementalSyncRequestedIntegrationEvent
+                {
+                    AccountId = account.Id,
+                    TenantId = account.TenantId,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
 
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

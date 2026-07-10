@@ -29,12 +29,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailLayouts", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailTemplates",
@@ -53,12 +54,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    PublishedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    PublishedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailTemplates", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailTemplateVersions",
@@ -76,54 +78,57 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     PreviewFileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     Status = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                     CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailTemplateVersions", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailLayouts_Scope_TenantId",
                 table: "EmailLayouts",
                 columns: new[] { "Scope", "TenantId" },
                 unique: true,
-                filter: "[IsDefault] = 1");
+                filter: "[IsDefault] = 1"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailLayouts_TenantId_Scope",
                 table: "EmailLayouts",
-                columns: new[] { "TenantId", "Scope" });
+                columns: new[] { "TenantId", "Scope" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailTemplates_Scope_TenantId_TemplateKey",
                 table: "EmailTemplates",
                 columns: new[] { "Scope", "TenantId", "TemplateKey" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailTemplates_TenantId_Scope",
                 table: "EmailTemplates",
-                columns: new[] { "TenantId", "Scope" });
+                columns: new[] { "TenantId", "Scope" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailTemplateVersions_TemplateId_VersionNumber",
                 table: "EmailTemplateVersions",
                 columns: new[] { "TemplateId", "VersionNumber" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "EmailLayouts");
+            migrationBuilder.DropTable(name: "EmailLayouts");
 
-            migrationBuilder.DropTable(
-                name: "EmailTemplates");
+            migrationBuilder.DropTable(name: "EmailTemplates");
 
-            migrationBuilder.DropTable(
-                name: "EmailTemplateVersions");
+            migrationBuilder.DropTable(name: "EmailTemplateVersions");
         }
     }
 }

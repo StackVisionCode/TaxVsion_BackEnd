@@ -46,10 +46,14 @@ public sealed class EmailTemplateVersion : BaseEntity
     )
     {
         if (string.IsNullOrWhiteSpace(subjectTemplate))
-            return Result.Failure<EmailTemplateVersion>(new Error("EmailTemplate.Subject", "Subject template is required."));
+            return Result.Failure<EmailTemplateVersion>(
+                new Error("EmailTemplate.Subject", "Subject template is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(htmlStorageKey) || htmlFileId == Guid.Empty)
-            return Result.Failure<EmailTemplateVersion>(new Error("EmailTemplate.Html", "HTML storage reference is required."));
+            return Result.Failure<EmailTemplateVersion>(
+                new Error("EmailTemplate.Html", "HTML storage reference is required.")
+            );
 
         var version = new EmailTemplateVersion
         {

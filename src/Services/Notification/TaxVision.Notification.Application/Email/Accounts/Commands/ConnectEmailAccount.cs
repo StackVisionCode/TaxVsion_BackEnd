@@ -46,7 +46,9 @@ public static class ConnectEmailAccountHandler
         if (command.Provider == EmailExternalProvider.Imap)
         {
             if (string.IsNullOrWhiteSpace(command.ImapHost) || string.IsNullOrWhiteSpace(command.ImapPassword))
-                return Result.Failure<EmailAccountResponse>(new Error("EmailAccount.Imap", "IMAP host and password are required."));
+                return Result.Failure<EmailAccountResponse>(
+                    new Error("EmailAccount.Imap", "IMAP host and password are required.")
+                );
 
             result = EmailAccountConnection.CreateImap(
                 command.TenantId,

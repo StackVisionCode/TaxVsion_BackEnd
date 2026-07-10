@@ -26,7 +26,11 @@ public sealed class CloudStorageClient(
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public async Task<Result<Guid>> UploadAsync(CloudStorageUpload upload, Guid? tenantId = null, CancellationToken ct = default)
+    public async Task<Result<Guid>> UploadAsync(
+        CloudStorageUpload upload,
+        Guid? tenantId = null,
+        CancellationToken ct = default
+    )
     {
         var token = await tokenProvider.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrEmpty(token))
@@ -88,7 +92,11 @@ public sealed class CloudStorageClient(
         return Result.Success(initiated.FileId);
     }
 
-    public async Task<Result<Uri>> GetDownloadUrlAsync(Guid fileId, Guid? tenantId = null, CancellationToken ct = default)
+    public async Task<Result<Uri>> GetDownloadUrlAsync(
+        Guid fileId,
+        Guid? tenantId = null,
+        CancellationToken ct = default
+    )
     {
         var token = await tokenProvider.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrEmpty(token))
@@ -104,7 +112,11 @@ public sealed class CloudStorageClient(
         return result.IsFailure ? Result.Failure<Uri>(result.Error) : Result.Success(result.Value.DownloadUrl);
     }
 
-    public async Task<Result<string>> DownloadTextAsync(Guid fileId, Guid? tenantId = null, CancellationToken ct = default)
+    public async Task<Result<string>> DownloadTextAsync(
+        Guid fileId,
+        Guid? tenantId = null,
+        CancellationToken ct = default
+    )
     {
         var urlResult = await GetDownloadUrlAsync(fileId, tenantId, ct);
         if (urlResult.IsFailure)
@@ -135,7 +147,9 @@ public sealed class CloudStorageClient(
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("CloudStorage call {Path} failed ({Status}).", path, (int)response.StatusCode);
-            return Result.Failure<T>(new Error("Email.Storage", $"CloudStorage request failed ({(int)response.StatusCode})."));
+            return Result.Failure<T>(
+                new Error("Email.Storage", $"CloudStorage request failed ({(int)response.StatusCode}).")
+            );
         }
 
         var payload = await response.Content.ReadFromJsonAsync<T>(Json, ct);
@@ -153,7 +167,9 @@ public sealed class CloudStorageClient(
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("CloudStorage call {Path} failed ({Status}).", path, (int)response.StatusCode);
-            return Result.Failure(new Error("Email.Storage", $"CloudStorage request failed ({(int)response.StatusCode})."));
+            return Result.Failure(
+                new Error("Email.Storage", $"CloudStorage request failed ({(int)response.StatusCode}).")
+            );
         }
 
         return Result.Success();

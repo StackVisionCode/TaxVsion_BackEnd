@@ -74,11 +74,15 @@ public sealed class OutboundEmailMessage : TenantEntity
 
         var tos = recipients.Where(r => r.Kind == EmailRecipientKind.To).ToList();
         if (tos.Count == 0)
-            return Result.Failure<OutboundEmailMessage>(new Error("Email.Recipients", "At least one 'To' recipient is required."));
+            return Result.Failure<OutboundEmailMessage>(
+                new Error("Email.Recipients", "At least one 'To' recipient is required.")
+            );
 
         foreach (var r in recipients)
             if (string.IsNullOrWhiteSpace(r.Address) || !r.Address.Contains('@'))
-                return Result.Failure<OutboundEmailMessage>(new Error("Email.Recipients", $"Invalid recipient address: {r.Address}."));
+                return Result.Failure<OutboundEmailMessage>(
+                    new Error("Email.Recipients", $"Invalid recipient address: {r.Address}.")
+                );
 
         var message = new OutboundEmailMessage
         {

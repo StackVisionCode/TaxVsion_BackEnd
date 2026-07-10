@@ -1,0 +1,1005 @@
+{
+	"info": {
+		"_postman_id": "d7f01e42-9b8c-4a1d-a95c-91a7bdb2f6e1",
+		"name": "TaxVision - Signature",
+		"description": "Coleccion del microservicio Signature de TaxVision (firma electronica multi-tenant, PAdES, audit HMAC). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, p. ej. http://localhost:5047).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Documents",
+			"item": [
+				{
+					"name": "ValidateDocument",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "file", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/documents/validate",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "documents", "validate" ]
+						},
+						"description": "Preflight multipart/form-data. Valida MIME, tamano, integridad, numero de paginas y firmas previas. Requiere signature.request.create. Max 25 MB."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Requests",
+			"item": [
+				{
+					"name": "CreateSignatureRequest",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r && r.id) { pm.environment.set('signatureRequestId', r.id); console.log('signatureRequestId guardado: ' + r.id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Form 1040 - Ana Perez 2025\",\n  \"description\": \"Declaracion federal 2025\",\n  \"category\": \"Form1040\",\n  \"originalFileId\": \"{{fileId}}\",\n  \"tokenExpirationHours\": 168,\n  \"requiresSequentialSigning\": false,\n  \"requiresConsent\": true,\n  \"generateCertificate\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests" ]
+						},
+						"description": "Crea una SignatureRequest en Draft. originalFileId debe existir en CloudStorage con OwnerType=Signature. Requiere signature.request.create."
+					},
+					"response": []
+				},
+				{
+					"name": "ListSignatureRequests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests?page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests" ],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" },
+								{ "key": "status", "value": "Sent", "disabled": true },
+								{ "key": "category", "value": "Form1040", "disabled": true }
+							]
+						},
+						"description": "Lista con cache Redis 30s. Filtros opcionales status/category. Requiere signature.request.read."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetSignatureRequestById",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}" ]
+						},
+						"description": "Devuelve el detalle completo (signers, fields, status)."
+					},
+					"response": []
+				},
+				{
+					"name": "AddSigner",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r && r.id) { pm.environment.set('signerId', r.id); console.log('signerId guardado: ' + r.id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"ana.perez@example.com\",\n  \"fullName\": \"Ana Perez\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/signers",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "signers" ]
+						},
+						"description": "Agrega un signer. Requiere signature.request.create."
+					},
+					"response": []
+				},
+				{
+					"name": "RemoveSigner",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/signers/{{signerId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "signers", "{{signerId}}" ]
+						},
+						"description": "Elimina un signer (solo en Draft)."
+					},
+					"response": []
+				},
+				{
+					"name": "ReorderSigners",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderedSignerIds\": [ \"{{signerId}}\" ]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/signers/order",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "signers", "order" ]
+						},
+						"description": "Reordena la firma secuencial (solo si requiresSequentialSigning)."
+					},
+					"response": []
+				},
+				{
+					"name": "PlaceField",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r && r.id) { pm.environment.set('signatureFieldId', r.id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"signerId\": \"{{signerId}}\",\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 120,\n  \"y\": 700,\n  \"width\": 180,\n  \"height\": 40,\n  \"label\": \"Firma del contribuyente\",\n  \"isRequired\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/fields",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "fields" ]
+						},
+						"description": "Coloca un campo (Signature/Initial/Date/TypedName). Requiere signature.document.prepare."
+					},
+					"response": []
+				},
+				{
+					"name": "RemoveField",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/signers/{{signerId}}/fields/{{signatureFieldId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "signers", "{{signerId}}", "fields", "{{signatureFieldId}}" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SendSignatureRequest",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/send",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "send" ]
+						},
+						"description": "Publica SignatureRequestReadyForSending. Notification consume y emite invitaciones (sig.invitation.v1). Requiere signature.request.create."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "CancelSignatureRequest",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"El cliente solicito reemplazar el documento.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/cancel",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "cancel" ]
+						},
+						"description": "Cancela una solicitud enviada (no completada). Publica SignatureRequestCanceled."
+					},
+					"response": []
+				},
+				{
+					"name": "ExtendExpiration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"additionalHours\": 72\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/extend-expiration",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "extend-expiration" ]
+						},
+						"description": "Extiende la expiracion. Publica SignatureRequestExpirationExtended."
+					},
+					"response": []
+				},
+				{
+					"name": "ResendSignerInvitation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/signers/{{signerId}}/resend",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "signers", "{{signerId}}", "resend" ]
+						},
+						"description": "Rota epoch del signer (invalida token anterior), emite nuevo token y publica SignerInvited."
+					},
+					"response": []
+				},
+				{
+					"name": "SetPractitionerPin",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pin\": \"492817\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/practitioner-pin",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "practitioner-pin" ]
+						},
+						"description": "Setea PIN de 4-8 digitos (se hashea con PBKDF2). El firmante lo introducira en /verify-pin."
+					},
+					"response": []
+				},
+				{
+					"name": "ClearPractitionerPin",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/practitioner-pin",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "practitioner-pin" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PlaceLegalHold",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"IRS audit 2026-07\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/legal-hold",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "legal-hold" ]
+						},
+						"description": "Congela el purge scheduler para esta request. Requiere signature.document.audit.read."
+					},
+					"response": []
+				},
+				{
+					"name": "LiftLegalHold",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/legal-hold",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "legal-hold" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SetPreparer",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ptinOrEfin\": \"P00123456\",\n  \"displayName\": \"Jorge Turbi\",\n  \"titleLabel\": \"Enrolled Agent\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "preparer" ]
+						},
+						"description": "Registra el preparer (PTIN/EFIN) que firmara la ultima etapa. Requiere signature.request.create."
+					},
+					"response": []
+				},
+				{
+					"name": "ClearPreparer",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "preparer" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SignAsPreparer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/requests/{{signatureRequestId}}/preparer/sign",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "requests", "{{signatureRequestId}}", "preparer", "sign" ]
+						},
+						"description": "Publica PreparerSigned y dispara sealing (si todos los signers ya firmaron). Requiere signature.document.sign."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Templates",
+			"item": [
+				{
+					"name": "CreateTemplate",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r && r.id) { pm.environment.set('signatureTemplateId', r.id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Form 1040 - Individual\",\n  \"description\": \"Plantilla estandar Form 1040\",\n  \"category\": \"Form1040\",\n  \"defaultTokenExpirationHours\": 168,\n  \"requiresSequentialSigning\": false,\n  \"requiresConsent\": true,\n  \"generateCertificate\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ListTemplates",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates?page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates" ],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" },
+								{ "key": "status", "value": "Published", "disabled": true },
+								{ "key": "category", "value": "Form1040", "disabled": true }
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetTemplateById",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateTemplateMetadata",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Form 1040 - Individual (2026)\",\n  \"description\": \"Actualizada para 2026\",\n  \"category\": \"Form1040\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/metadata",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "metadata" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateTemplateDefaults",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"defaultTokenExpirationHours\": 240,\n  \"requiresSequentialSigning\": true,\n  \"requiresConsent\": true,\n  \"generateCertificate\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/defaults",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "defaults" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AddTemplateSlot",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r && r.id) { pm.environment.set('templateSlotId', r.id); if (r.slotOrder != null) pm.environment.set('templateSlotOrder', r.slotOrder); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role\": \"Taxpayer\",\n  \"defaultLanguage\": \"En\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/slots",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "slots" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "RemoveTemplateSlot",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/slots/{{templateSlotOrder}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "slots", "{{templateSlotOrder}}" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PlaceTemplateField",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r && r.id) { pm.environment.set('templateFieldId', r.id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"slotOrder\": 0,\n  \"kind\": \"Signature\",\n  \"page\": 1,\n  \"x\": 120,\n  \"y\": 700,\n  \"width\": 180,\n  \"height\": 40,\n  \"label\": \"Firma del contribuyente\",\n  \"isRequired\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/fields",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "fields" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "RemoveTemplateField",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/fields/{{templateFieldId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "fields", "{{templateFieldId}}" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PublishTemplate",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/publish",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "publish" ]
+						},
+						"description": "Publica la plantilla (Draft -> Published)."
+					},
+					"response": []
+				},
+				{
+					"name": "ArchiveTemplate",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/archive",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "archive" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "InstantiateTemplate",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r && r.id) { pm.environment.set('signatureRequestId', r.id); console.log('signatureRequestId (from template) guardado: ' + r.id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"originalFileId\": \"{{fileId}}\",\n  \"descriptionOverride\": \"Instancia 2026\",\n  \"slotBindings\": [\n    { \"slotOrder\": 0, \"email\": \"ana.perez@example.com\", \"fullName\": \"Ana Perez\" }\n  ]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/templates/{{signatureTemplateId}}/instantiate",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "templates", "{{signatureTemplateId}}", "instantiate" ]
+						},
+						"description": "Crea una SignatureRequest a partir de la plantilla. Requiere signature.request.create."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Analytics",
+			"item": [
+				{
+					"name": "GetAnalyticsSummary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/analytics/summary",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "analytics", "summary" ],
+							"query": [
+								{ "key": "from", "value": "2026-06-01", "disabled": true },
+								{ "key": "to", "value": "2026-07-01", "disabled": true }
+							]
+						},
+						"description": "Totales del rango (default ultimos 30 dias). Requiere signature.request.read."
+					},
+					"response": []
+				},
+				{
+					"name": "GetAnalyticsTimeline",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/analytics/timeline",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "analytics", "timeline" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetAnalyticsByCategory",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/analytics/by-category",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "analytics", "by-category" ]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Settings",
+			"item": [
+				{
+					"name": "GetTenantSettings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/signature/settings",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "settings" ]
+						},
+						"description": "Configuracion del tenant (canales habilitados, retencion). Requiere signature.settings.manage."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "JWKS",
+			"item": [
+				{
+					"name": "GetJwks",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/signature/.well-known/jwks.json",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", ".well-known", "jwks.json" ]
+						},
+						"description": "Clave publica RSA de tokens de firmante (anonimo)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Public (Signer)",
+			"description": "Endpoints publicos autorizados por token firmado (RS256) del firmante externo. No requieren accessToken del portal. Guarda el token entregado por email/SMS en {{signerToken}}.",
+			"item": [
+				{
+					"name": "ViewPublicSigner",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}" ]
+						},
+						"description": "Vista inicial: metadata, campos, URL temporal del PDF."
+					},
+					"response": []
+				},
+				{
+					"name": "AcceptConsent",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/consent",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "consent" ]
+						},
+						"description": "Acepta consentimiento IRS / ESIGN Act."
+					},
+					"response": []
+				},
+				{
+					"name": "VerifyPractitionerPin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pin\": \"492817\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/verify-pin",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "verify-pin" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "IssueVerificationChallenge",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"SmsOtp\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/challenge",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "challenge" ]
+						},
+						"description": "Emite reto (SmsOtp/EmailOtp/Kba). Cubre resend (cooldown 30s) y switch-channel. Publica SignerVerificationChallengeIssued."
+					},
+					"response": []
+				},
+				{
+					"name": "VerifyChallenge",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"SmsOtp\",\n  \"answer\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/verify-challenge",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "verify-challenge" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SubmitSignature (Typed)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"Typed\",\n  \"typedName\": \"Ana Perez\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/sign",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "sign" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SubmitSignature (Drawn)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"method\": \"Drawn\",\n  \"signatureImageFileId\": \"{{signatureImageFileId}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/sign",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "sign" ]
+						},
+						"description": "Requiere subir previamente el trazo/imagen a CloudStorage con OwnerType=Signature."
+					},
+					"response": []
+				},
+				{
+					"name": "RejectSignature",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"El documento contiene datos incorrectos.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/reject",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "reject" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "VerifyAuditChain",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/signature/public/{{signerToken}}/verify-audit",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "signature", "public", "{{signerToken}}", "verify-audit" ]
+						},
+						"description": "Verifica publicamente la cadena de audit HMAC de la request. Devuelve veredicto + eventos con material verificable."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

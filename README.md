@@ -14,7 +14,7 @@ Backend multitenant de TaxVision construido con microservicios en .NET 10.
 
 **Autor de las implementaciones documentadas:** Jorge Turbi
 
-**Actualizado:** 02-07-2026
+**Actualizado:** 10-07-2026
 
 **Licencia del codigo propio:** propietaria; consulte [LICENSE](LICENSE).
 
@@ -59,6 +59,9 @@ OpenTelemetry.
 25. Customer Service: implementacion
 26. Iteracion 02-07-2026: Auth avanzado, Subscription, Notification y correcciones Customer
 27. CloudStorage / Media Security Gateway
+28. Modulo de Email avanzado (Notification)
+29. Signature Service (firma electronica multi-tenant)
+30. Communication Service (chat, calls, meetings, notifs realtime)
 
 ## 1. Introduccion y objetivo
 
@@ -2834,3 +2837,666 @@ background; asi, el worker sube el binario del adjunto y enlaza su `FileId` en
   hoy el incremental usa cursores por fecha/UID; el delta nativo es mas eficiente.
 - **Subida de adjuntos por cola** en vez de inline dentro de la sincronizacion, para buzones
   con muchos adjuntos grandes.
+
+# 29. Signature Service (firma electronica multi-tenant)
+
+`Signature` es el microservicio autoritativo del ciclo de vida de firmas electronicas
+para las oficinas de impuestos: preparacion del documento, invitacion a firmantes
+externos, captura de firma, verificacion multi-canal (PIN, SMS/Email OTP, KBA
+extensible), sellado criptografico PAdES y cadena de audit HMAC.
+
+Cumple exactamente el patron del resto del repo (Clean Architecture, CQRS con
+Wolverine, outbox/inbox durable, aislamiento multi-tenant por JWT, Result pattern,
+correlation end-to-end, OTLP) y **nunca** posee bytes de archivos: los delega a
+`CloudStorage` mediante el mismo flujo POST-policy que Notification.
+
+## 29.1 Limite del bounded context
+
+- El microservicio ES autoritativo sobre: solicitud de firma, firmantes, campos de
+  firma sobre el PDF, tokens firmados del firmante externo, evidencia de captura,
+  retos de verificacion, PIN del practitioner, preparer PTIN/EFIN, snapshot analytics
+  diario, cadena de audit HMAC y sellado PAdES.
+- El microservicio NO es autoritativo sobre: bytes de PDF originales o sellados
+  (delegados a `CloudStorage` con `OwnerType=Signature`), envio de email/SMS
+  (delegado a `Notification` via eventos), identidad de staff (delegada a `Auth`).
+- No hay endpoint publico que suba PDF: la solicitud se crea con `originalFileId`
+  ya existente en CloudStorage, previamente subido con permiso
+  `cloudstorage.file.upload` y `OwnerType=Signature`.
+
+## 29.2 Estructura de proyectos
+
+Cuatro proyectos en `src/Services/Signature/`:
+
+- `TaxVision.Signature.Domain`
+- `TaxVision.Signature.Application`
+- `TaxVision.Signature.Infrastructure`
+- `TaxVision.Signature.Api`
+
+## 29.3 Aggregates y value objects
+
+- `SignatureRequest` aggregate root: gobierna signers, fields, transiciones
+  Draft → ReadyToSend → Sent → Completed → Sealed | Canceled | Expired, y las
+  ventanas legal-hold + expiration.
+- `Signer` entity: guarda estado (Pending/Notified/Consent/Verified/Signed/Rejected),
+  metodo de captura (`Typed`/`Drawn`/`Uploaded`), evidencia (`typedName`,
+  `signatureImageFileId`), verificacion (`PractitionerPin`, `OtpChallenge`).
+- `SignatureField` entity: `Kind` (Signature/Initial/Date/TypedName), pagina y
+  bounding-box con validacion contra medidas del PDF.
+- `SignatureTemplate` aggregate root: reutilizable por tenant con `Slots` (roles) y
+  `Fields` fijas; instanciar produce una `SignatureRequest` lista para asignar
+  signers concretos al slot.
+- `SignatureAnalyticsSnapshot` aggregate root: proyeccion diaria event-sourced
+  (una fila por dia+tenant); alimentada por consumers propios.
+- `SignatureAuditEvent`: append-only HMAC-chain (ver 29.9).
+- `ConsentEvent`: append-only del consentimiento aceptado por firmante.
+- Value objects: `PractitionerPin`, `Preparer` (`PtinOrEfin`, `DisplayName`,
+  `TitleLabel`), `SignerFullName`, `SignerVerificationMethod`,
+  `SignatureCaptureMethod`.
+
+## 29.4 Persistencia
+
+Base `TaxVision_Signature`. Migraciones aplicadas en orden:
+
+- `InitialSignature`: `TenantSignatureSettings` + `wolverine_*`.
+- `AddSignatureRequests`: `SignatureRequests`, `Signers`, `SignatureFields`.
+- `AddSignatureProjections`: proyecciones locales `CustomerEmailProjection` y
+  `FileMetadataRef` (evita HTTP entre servicios).
+- `AddSignerConsentAndFirstView`: consent + first-view tracking en `Signers`.
+- `AddSignatureTemplates`: `SignatureTemplates`, `TemplateSlots`, `TemplateFields`.
+- `AddPractitionerPinVerification`: hash del PIN y estado Verified en `Signers`.
+- `AddPreparerAndVerificationFramework`: `Preparer_*` en request; `OtpChallenge_*`
+  en signer (framework extensible por `SignerVerificationMethod`).
+- `AddSignatureAnalytics`: `SignatureAnalyticsSnapshots` (`(TenantId, Day)` unique).
+- `AddValidationConsentAudit`: `DocumentValidations`, `ConsentEvents` y
+  `SignatureAuditEvents` (append-only HMAC).
+- `AddSchedulingLegalHoldAndUserPermissions`: `LegalHold*` en request,
+  `ExpirationReminderSentUtc`, `UserPermissionsProjection` (proyeccion desde Auth).
+- `AddCaptureMethodEvidence`: `CaptureMethod`, `TypedName`,
+  `SignatureImageFileId` en `Signers`.
+
+Filtro global de tenant: `SignatureDbContext` aplica `HasQueryFilter` con
+reflexion sobre entidades `ITenantOwned` usando el predicado
+`!hasTenant || e.TenantId == currentTenant` (seguro para background jobs sin
+contexto de request como el `PurgeScheduler`).
+
+## 29.5 Comunicacion con otros microservicios
+
+| Origen | Destino | Canal | Uso |
+| --- | --- | --- | --- |
+| Cliente staff | Gateway → Signature | HTTPS `/signature/*` | CRUD solicitudes, plantillas, analytics |
+| Firmante externo | Gateway → Signature | HTTPS `/signature/public/{token}/*` | Ver, consentir, verificar, firmar, rechazar |
+| Auth | Signature | RabbitMQ | `TenantCreated` → siembra settings; `UserPermissionsChanged` → proyeccion RBAC |
+| Customer | Signature | RabbitMQ | `Customer*` → proyeccion `CustomerEmailProjection` (evita HTTP) |
+| CloudStorage | Signature | RabbitMQ | `FileAvailable` / `FileDeleted` → proyeccion `FileMetadataRef` |
+| Subscription | Signature | RabbitMQ | Reservado para limites por plan (asientos/solicitudes) |
+| Signature | Notification | RabbitMQ | `SignerInvited`, `SignerVerificationChallengeIssued`, `SignatureRequestReminderDue`, `SignatureRequestExpired`, `SignatureRequestCompleted`, `SignerRejected` → templates `sig.*.v1` |
+| Signature | CloudStorage | HTTPS + JWT del usuario y token M2M | Descargar PDF original, subir PDF sellado + certificado |
+| Signature | Analytics propios | Wolverine local | Consumers propios de sus eventos → snapshot diario |
+
+## 29.6 Endpoints staff
+
+Base `/signature` bajo el Gateway. Autorizacion por `[HasPermission(...)]` con
+codigos del catalogo `signature.*` (28 permisos totales, sembrados por la migracion
+`AddSignaturePermissions` en Auth). TenantId siempre del JWT, nunca del body.
+
+### 29.6.1 Documents preflight
+
+| Verbo y ruta | Permiso |
+| --- | --- |
+| POST `/signature/documents/validate` | `signature.request.create` |
+
+Multipart preflight (max 25 MB). Valida MIME, tamano, integridad, numero de paginas
+y firmas previas antes de crear una `SignatureRequest`. Regla P-04 del diseño: nunca
+crear una request sobre un PDF que no paso por aqui.
+
+### 29.6.2 Signature requests
+
+| Verbo y ruta | Permiso |
+| --- | --- |
+| POST `/signature/requests` | `signature.request.create` |
+| GET `/signature/requests` | `signature.request.read` |
+| GET `/signature/requests/{id}` | `signature.request.read` |
+| POST `/signature/requests/{id}/signers` | `signature.request.create` |
+| DELETE `/signature/requests/{id}/signers/{signerId}` | `signature.request.create` |
+| PUT `/signature/requests/{id}/signers/order` | `signature.request.create` |
+| POST `/signature/requests/{id}/fields` | `signature.document.prepare` |
+| DELETE `/signature/requests/{id}/signers/{signerId}/fields/{fieldId}` | `signature.document.prepare` |
+| POST `/signature/requests/{id}/send` | `signature.request.create` |
+| POST `/signature/requests/{id}/cancel` | `signature.request.cancel` |
+| POST `/signature/requests/{id}/extend-expiration` | `signature.request.resend` |
+| POST `/signature/requests/{id}/signers/{signerId}/resend` | `signature.request.resend` |
+| PUT `/signature/requests/{id}/practitioner-pin` | `signature.request.create` |
+| DELETE `/signature/requests/{id}/practitioner-pin` | `signature.request.create` |
+| POST `/signature/requests/{id}/legal-hold` | `signature.document.audit.read` |
+| DELETE `/signature/requests/{id}/legal-hold` | `signature.document.audit.read` |
+| PUT `/signature/requests/{id}/preparer` | `signature.request.create` |
+| DELETE `/signature/requests/{id}/preparer` | `signature.request.create` |
+| POST `/signature/requests/{id}/preparer/sign` | `signature.document.sign` |
+
+`GET /signature/requests` acepta query params `status`, `category`, `page`, `size`;
+la lectura pasa por `CachedSignatureRequestReadService` con TTL 30s en Redis
+(clave versionada `v1`).
+
+### 29.6.3 Signature templates
+
+| Verbo y ruta | Permiso |
+| --- | --- |
+| POST `/signature/templates` | `signature.template.create` |
+| GET `/signature/templates` | `signature.template.create` |
+| GET `/signature/templates/{id}` | `signature.template.create` |
+| PUT `/signature/templates/{id}/metadata` | `signature.template.update` |
+| PUT `/signature/templates/{id}/defaults` | `signature.template.update` |
+| POST `/signature/templates/{id}/slots` | `signature.template.update` |
+| DELETE `/signature/templates/{id}/slots/{slotOrder}` | `signature.template.update` |
+| POST `/signature/templates/{id}/fields` | `signature.template.update` |
+| DELETE `/signature/templates/{id}/fields/{fieldId}` | `signature.template.update` |
+| POST `/signature/templates/{id}/publish` | `signature.template.update` |
+| POST `/signature/templates/{id}/archive` | `signature.template.delete` |
+| POST `/signature/templates/{id}/instantiate` | `signature.request.create` |
+
+Instanciar liga cada slot de la plantilla a un signer concreto (email + nombre) via
+`slotBindings`, copia los `TemplateFields` como `SignatureFields` de la request y
+devuelve `201 /signature/requests/{id}`.
+
+### 29.6.4 Analytics
+
+| Verbo y ruta | Permiso |
+| --- | --- |
+| GET `/signature/analytics/summary?from=&to=` | `signature.request.read` |
+| GET `/signature/analytics/timeline?from=&to=` | `signature.request.read` |
+| GET `/signature/analytics/by-category?from=&to=` | `signature.request.read` |
+
+Rango default: ultimos 30 dias. Datos del snapshot diario alimentado por consumers
+propios de `SignatureRequestCreated/Completed/Canceled/Expired` y
+`DocumentSigned` (no consulta la tabla operacional).
+
+### 29.6.5 Settings
+
+| Verbo y ruta | Permiso |
+| --- | --- |
+| GET `/signature/settings` | `signature.settings.manage` |
+
+Devuelve la configuracion vigente del tenant (canales de verificacion habilitados,
+politicas de retencion, defaults de expiracion).
+
+### 29.6.6 JWKS
+
+| Verbo y ruta | Acceso |
+| --- | --- |
+| GET `/signature/.well-known/jwks.json` | anonimo |
+
+Publica la clave publica RSA del `SigningTokenService` para que verificadores
+terceros validen los tokens del firmante sin acceso a la BD.
+
+## 29.7 Endpoints publicos del firmante
+
+Base `/signature/public/{token}`. El token codifica firmado
+`TenantId + RequestId + SignerId + RevocationEpoch + exp` (RS256). Todos los
+endpoints comparten policy de rate limit `public-signature` (15 req/min por
+IP+ruta). El TenantContext se rehidrata desde el propio token — no requiere JWT
+del portal.
+
+| Verbo y ruta | Uso |
+| --- | --- |
+| GET `/signature/public/{token}` | Vista inicial: metadata, campos, PDF (URL temporal), estado |
+| POST `/signature/public/{token}/consent` | Aceptar consentimiento IRS / ESIGN Act |
+| POST `/signature/public/{token}/verify-pin` | Verificar el PIN opcional del practitioner |
+| POST `/signature/public/{token}/challenge` | Emitir reto (SMS OTP / Email OTP / KBA) — cubre resend (cooldown 30s) y switch-channel |
+| POST `/signature/public/{token}/verify-challenge` | Verificar la respuesta al reto |
+| POST `/signature/public/{token}/sign` | Enviar la firma con `Method` + evidencia (typedName o signatureImageFileId) |
+| POST `/signature/public/{token}/reject` | Rechazar con motivo (marca request `Rejected`) |
+| GET `/signature/public/{token}/verify-audit` | Verifica publicamente la cadena de audit HMAC |
+
+Body de `sign`:
+
+```json
+{
+  "method": "Typed",
+  "typedName": "Jorge Turbi"
+}
+```
+
+o
+
+```json
+{
+  "method": "Drawn",
+  "signatureImageFileId": "8f58a521-4c25-4d91-9f4e-7ad5df14c001"
+}
+```
+
+## 29.8 Sealing PAdES (cripto)
+
+El sellado se dispara al completarse la ultima firma del ultimo signer. Un
+consumer envuelve la pipeline con un lock distribuido Redis
+(`signature:sealing:{requestId}` TTL 10 min) para evitar doble sellado en despliegues
+multi-nodo. Fallback a `NoOpDistributedLock` si no hay Redis configurado.
+
+- **PAdES-B (Baseline)**: firma CMS/PKCS#7 sobre el hash pre-sellado del PDF via
+  BouncyCastle (`BouncyCastleCmsPdfSigner`). El `Signature Dictionary` con
+  `/ByteRange` y `/Contents` placeholder se materializa en el post-process
+  byte-level (ver 29.14).
+- **PAdES-B-T (Timestamp RFC 3161)**: si `Signature:Sealing:Tsa:Endpoint` esta
+  configurado, `FreeTsaClient` obtiene un token DER que se embebe como
+  `unsignedAttribute` (OID `1.2.840.113549.1.9.16.2.14`). Default: FreeTSA
+  (`https://freetsa.org/tsr`).
+- **PAdES-B-LT (Long-Term Validation)**: tras B-T, se emite un revision
+  incremental que incluye el `DSS Dictionary` con la cadena de certificados
+  (`/Certs`), CRLs (`/CRLs`) y respuestas OCSP (`/OCSPs`). Ver 29.15.
+- Salida: el PDF sellado se sube a CloudStorage con `OwnerType=Signature` usando
+  el token M2M `notification-worker` (o cliente propio `signature-worker`).
+
+## 29.9 Cadena de audit HMAC
+
+Cada evento relevante (`RequestCreated`, `RequestSent`, `SignerNotified`,
+`SignerViewed`, `SignerConsented`, `SignerVerified`, `SignerSigned`,
+`RequestSealed`, `RequestCanceled`, `RequestExpired`) se materializa como
+`SignatureAuditEvent` con hash HMAC-SHA256 encadenado al anterior. La clave HMAC
+por tenant se deriva del `Encryption:MasterKey` compartido via HKDF.
+
+`HmacAuditChainAppender` (write path) y `HmacAuditChainVerifier` (read path)
+comparten la misma formula sobre `(TenantId, RequestId, Kind, PayloadHash,
+OccurredAt, PreviousHash)`. El endpoint publico `/verify-audit` devuelve el veredicto
+y todos los eventos con material verificable, sin exponer el HMAC ni permitir mutar
+nada.
+
+## 29.10 Integration events publicados
+
+`taxvision-events` fanout. Contratos en `BuildingBlocks/Messaging/SignatureIntegrationEvents/`:
+
+- Ciclo de vida request: `SignatureRequestCreated`, `SignatureRequestReadyForSending`,
+  `SignatureRequestSent`, `SignatureRequestCanceled`, `SignatureRequestExpirationExtended`,
+  `SignatureRequestReminderDue`, `SignatureRequestExpired`, `SignatureRequestCompleted`,
+  `SignatureRequestSealed`, `SignatureRequestSealingFailed`.
+- Ciclo signer: `SignerInvited`, `SignerConsentAccepted`, `DocumentSigned`,
+  `SignerRejected`, `SignerPinVerified`, `SignerPinFailed`,
+  `SignerVerificationChallengeIssued`, `SignerVerificationSucceeded`,
+  `SignerVerificationFailed`.
+- Preparer: `PreparerSigned`.
+
+Ninguno transporta identificadores fiscales, PIN, OTP, ni SSN. Solo IDs, timestamps,
+metodo, canal y contadores. Consumers tipicos: Notification (envio), Analytics
+(snapshot), Communication (a futuro, notificaciones in-app).
+
+## 29.11 Background schedulers
+
+- `ExpirationScheduler` (BackgroundService): marca `SignatureRequest` como
+  `Expired` cuando pasa `ExpiresAtUtc` y publica `SignatureRequestExpired`.
+- `ReminderScheduler` (BackgroundService): identifica requests con firmantes
+  pendientes cerca de expirar y publica `SignatureRequestReminderDue`
+  (Notification consume la plantilla `sig.reminder.v1`).
+- `PurgeScheduler` (BackgroundService, feature flag OFF por default): purga
+  soft-deleted y requests fuera de retencion, respetando legal-hold. Config
+  `Signature:Purge:*`.
+
+## 29.12 Configuracion y User Secrets
+
+Requeridos para `TaxVision.Signature.Api`:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:Default" "<SIGNATURE_CONNECTION>" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:5672" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+dotnet user-secrets set "Jwt:Secret" "<SAME_HS256_SECRET>" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+dotnet user-secrets set "Encryption:MasterKey" "<BASE64_32_BYTES>" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+```
+
+Opcionales avanzados:
+
+```powershell
+# CMS signer (PAdES-B). Sin CertificatePath el DI no registra ICmsPdfSigner
+# y el sealing degrada a "raw PDF" (util para dev sin PFX).
+dotnet user-secrets set "Signature:Sealing:Cms:CertificatePath" "<C:\keys\signature.pfx>" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+dotnet user-secrets set "Signature:Sealing:Cms:CertificatePassword" "<pfx-password>" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+# TSA RFC 3161 para PAdES-B-T. Default: FreeTSA.
+dotnet user-secrets set "Signature:Sealing:Tsa:Endpoint" "https://freetsa.org/tsr" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+# M2M para llamar a CloudStorage sin usuario (background sealing worker).
+dotnet user-secrets set "Signature:ServiceAuth:ClientId" "signature-worker" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+dotnet user-secrets set "Signature:ServiceAuth:ClientSecret" "<secret-fuerte>" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+dotnet user-secrets set "Signature:ServiceAuth:AuthBaseUrl" "http://localhost:5050" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+dotnet user-secrets set "Signature:CloudStorage:BaseUrl" "http://localhost:5330" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+# PurgeScheduler (default OFF; solo produccion con backup verificado).
+dotnet user-secrets set "Signature:Purge:Enabled" "false" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+```
+
+Variables Docker equivalentes (`.env`):
+
+```env
+SIGNATURE_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Signature;User Id=sa;Password=<clave>;TrustServerCertificate=true
+SIGNATURE_SERVICE_CLIENT_ID=signature-worker
+SIGNATURE_SERVICE_CLIENT_SECRET=<secret-fuerte>
+Signature__Sealing__Cms__CertificatePath=/keys/signature.pfx
+Signature__Sealing__Cms__CertificatePassword=<pfx-password>
+Signature__Sealing__Tsa__Endpoint=https://freetsa.org/tsr
+```
+
+Auth debe mapear el `signature-worker` a los permisos
+`cloudstorage.file.upload|download|view` en `ServiceAuth:Clients`.
+
+## 29.13 Gateway
+
+Ruta YARP `/signature/{**catch-all}` enrutada al cluster `signature` en
+`http://localhost:5230/`. Health check `signature-api` agregado a `/health/ready`
+del Gateway. Rate limiting adicional en el Gateway sobre los publicos:
+
+- `POST /signature/public/{token}/challenge` — reto (respalda cooldown de 30s del aggregate)
+- `POST /signature/public/{token}/verify-challenge` — 5 intentos por token antes de lock
+- `POST /signature/public/{token}/sign` — 3 intentos por token antes de invalidar
+
+## 29.14 PAdES-B ByteRange (post-process byte-level)
+
+El sellado PAdES exige un **Signature Dictionary** dentro del PDF con dos claves
+que solo pueden materializarse tras conocer el offset final del blob CMS: `/ByteRange`
+y `/Contents`. El proceso es:
+
+1. `PdfSharpSealingEngine` estampa la representacion visual de cada firma (imagen o
+   texto) y agrega una entrada `/Sig` en el `AcroForm` con placeholders vacios.
+2. `ByteRangePlaceholderInjector` (`Infrastructure/Sealing/ByteRange/`) hace surgery
+   byte-level sobre el PDF resultante:
+   - localiza el token `/ByteRange [0 0 0 0]` y el `/Contents <00...00>` de tamano
+     fijo (default 16 KB en hex, ajustable via `Signature:Sealing:ContentsReservedBytes`);
+   - reemplaza el placeholder `/ByteRange` por
+     `[0 sigOffset (sigOffset+contentsLen) (docLen-(sigOffset+contentsLen))]`;
+   - reescribe solo esos bytes (no re-serializa el PDF).
+3. `PadesHasher` calcula el `messageDigest` SHA-256 sobre los rangos declarados en
+   `/ByteRange` (excluyendo el hueco de `/Contents`).
+4. `BouncyCastleCmsPdfSigner` firma ese digest y produce el CMS DER; opcionalmente
+   agrega el `unsignedAttribute` de timestamp (PAdES-B-T).
+5. `ContentsWriter` escribe el DER hexeado dentro del hueco de `/Contents`,
+   preservando la longitud reservada (padding con ceros).
+6. Resultado: PDF cuya firma verifica en Adobe Acrobat con "Signature is valid" y
+   "Timestamp signature is valid" si TSA esta habilitada.
+
+Cada clase tiene una unica responsabilidad — inyector, hasher, signer y writer no
+comparten estado ni conocimiento. Fallar rapido y con codigo de error propio:
+`Signature.PadesB.PlaceholderNotFound`, `Signature.PadesB.ContentsOverflow`,
+`Signature.PadesB.HashMismatch`.
+
+## 29.15 PAdES-B-LT (Long-Term Validation)
+
+Tras completar B-T, `LongTermValidationEnricher` produce una revision incremental
+al final del PDF con:
+
+- **`/DSS` Dictionary** (Document Security Store) con arrays `/Certs`, `/CRLs`,
+  `/OCSPs`.
+- Certificados de la cadena del signer y del TSA (embebidos como streams).
+- CRLs frescos obtenidos de los `CRL Distribution Points` de cada certificado
+  (`CrlFetcher` HTTP con timeout 15s, cache Redis por dia).
+- OCSP responses de cada cert intermedio contra los `Authority Info Access` de la
+  cadena (`OcspFetcher` con nonce, cache Redis 6h).
+- `/VRI` (Validation Related Information) dictionary indexado por hash de la firma
+  para que el validador encuentre rapidamente la evidencia de esa firma concreta.
+
+Requerimientos operativos: `OcspFetcher`/`CrlFetcher` toleran fallos parciales;
+si un cert no publica CRL/OCSP se registra `Signature.PadesLt.EvidenceMissing`
+con detalle y se persiste igual (validador reportara "no CRL"). Cache Redis
+opcional; sin Redis va a HTTP en vivo.
+
+## 29.16 CA comercial en produccion (documentacion)
+
+El pipeline PAdES no impone la CA. Para produccion se recomienda una CA comercial
+adherida a EUTL/AATL (Adobe Approved Trust List) o Adobe AATL, sin cambios de
+codigo — solo configuracion:
+
+```env
+Signature__Sealing__Cms__CertificatePath=/keys/prod-signature.pfx
+Signature__Sealing__Cms__CertificatePassword=${SIGN_CERT_PWD}
+```
+
+Opciones tipicas:
+
+- **DigiCert Document Signing Trust Assured** (AATL + EUTL) — recomendada para
+  documentos IRS y firmas de contratos internacionales.
+- **GlobalSign Document Signing Certificate** — alternativa con precios agresivos
+  para pymes.
+- **Sectigo Document Signing** — otra AATL comun.
+- **eIDAS QES (Qualified Electronic Signature)** — obligatoria para firmas
+  legalmente equivalentes a manuscrita en la UE (D-Trust, Buypass, Certipost).
+
+El PFX se monta como secreto (Key Vault, AWS Secrets Manager, Docker secret) —
+nunca se compromete al repositorio. La TSA en produccion debe apuntar a un TSA
+comercial (DigiCert Timestamp, Sectigo Timestamp) en lugar de FreeTSA:
+
+```env
+Signature__Sealing__Tsa__Endpoint=http://timestamp.digicert.com
+Signature__Sealing__Tsa__RequestCertificate=true
+```
+
+## 29.17 Aplicar migraciones
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Signature\TaxVision.Signature.Infrastructure\TaxVision.Signature.Infrastructure.csproj `
+  --startup-project src\Services\Signature\TaxVision.Signature.Api\TaxVision.Signature.Api.csproj
+```
+
+## 29.18 Pruebas
+
+Proyecto en `deploy/tests/TaxVision.Signature.Tests`. Cubre a nivel de dominio
+(sin BD) los invariantes criticos:
+
+- transiciones de la aggregate root y errores esperados;
+- consent + first-view no pisan valores previos;
+- practitioner PIN se hashea antes de comparar; N intentos → lock;
+- `SignatureCaptureMethod` valida evidencia por metodo (Typed / Drawn / Uploaded);
+- cooldown 30s en resend + bypass en switch-channel;
+- token de firmante rechaza expirado y epoch obsoleto;
+- audit HMAC-chain: recomputo por evento y deteccion de manipulacion;
+- template instantiate copia fields y liga slots correctamente.
+
+Testcontainers (SQL + Rabbit + Redis end-to-end) no forma parte de esta iteracion —
+se deja al pipeline general del proyecto cuando se defina la estrategia comun de
+integracion.
+
+## 29.19 Pendientes reales
+
+- **PAdES-B-LT DSS/VRI**: implementacion base descrita en 29.15; falta ejercitar
+  contra CAs comerciales reales (hoy testeado contra self-signed + FreeTSA).
+- **KBA (Knowledge-Based Authentication)**: framework de verificacion soporta
+  agregar `SignerVerificationMethod.Kba`; falta el adapter contra un proveedor
+  comercial (LexisNexis, IDology).
+- **App-based challenge**: canal `SignerVerificationMethod.App` reservado — falta
+  el consumer que empuje push notification via Communication.
+- **Retention policies**: `PurgeScheduler` respeta legal-hold pero la politica por
+  categoria (`Form 1040 = 7 anos`, `1099 = 4 anos`) hoy es un default global.
+- **Signature UI staff assets**: hoy el frontend consume los DTOs; falta un
+  visor PDF-in-browser con drag-and-drop de fields sobre paginas (fuera de
+  scope del backend).
+
+# 30. Communication Service (chat, calls, meetings, notifs realtime)
+
+`Communication` es el **unico microservicio en Node.js/TypeScript** del stack.
+Cubre chat 1:1, llamadas WebRTC, meetings multi-party, notifications in-app
+realtime, support cross-tenant y analytics diario. Reemplaza al legacy
+`RealTimeService` (Node.js + Socket.IO) del CRMTAXPROBACKEND cerrando 18 CRIT
+de seguridad y multi-tenant.
+
+## 30.1 Stack
+
+| Capa | Tecnologia |
+|---|---|
+| Runtime | Node.js >= 20.11 + TypeScript strict |
+| HTTP | Fastify 5 (+ helmet, cors, rate-limit, sensible) |
+| Realtime | Socket.IO 4 + `@socket.io/redis-adapter` (backplane multi-pod) |
+| Persistencia | Prisma 5 sobre SQL Server (`TaxVision_Communication`) |
+| Bus eventos | RabbitMQ (`amqplib`) al exchange `taxvision-events` |
+| Cache/lock/presence | Redis (`ioredis`) |
+| Auth | Verificacion JWT RS256 via JWKS remoto de Auth (`jose`) |
+| Validacion | Zod en boundaries + branded types en dominio |
+| Logs | Pino JSON estructurado |
+| Observabilidad | OpenTelemetry SDK Node -> OTLP |
+| Testing | Vitest |
+
+## 30.2 Layout DDD
+
+```text
+src/
++-- domain/            # aggregates, VOs, ports (interfaces)
+|   +-- conversations/ # Conversation + Message + Participant
+|   +-- calls/         # Call + CallParticipant + MediaStatus
+|   +-- meetings/      # Meeting + Participant + Invitation
+|   +-- notifications/ # Notification
+|   +-- support/       # SupportTicket (cross-tenant)
+|   +-- settings/      # TenantCommunicationSettings/Limits
+|   `-- shared/        # Result, ids branded, permissions mirror
++-- application/       # use cases, event handlers
++-- infrastructure/    # Prisma, Socket.IO, Fastify, Rabbit, Redis, JWKS
++-- api/
+|   +-- http/          # rutas + plugins Fastify
+|   `-- socket/        # handlers Socket.IO
+`-- contracts/         # integration events + tipos socket
+```
+
+## 30.3 Endpoints HTTP (bajo `/communication` del Gateway)
+
+| Verbo y ruta | Permiso |
+|---|---|
+| `GET /health/live` `/health/ready` | anonimo |
+| `GET /communication/webrtc/ice` | JWT valido |
+| `GET /communication/conversations` | JWT valido |
+| `GET /communication/conversations/{id}/messages` | JWT valido |
+| `POST /communication/conversations/{id}/read` | JWT valido |
+| `GET /communication/calls` | JWT valido |
+| `POST /communication/meetings` | `communication.meeting.create` |
+| `GET /communication/meetings` | JWT valido |
+| `POST /communication/meetings/{id}/start` `end` | host implicito |
+| `GET /communication/notifications` | JWT valido |
+| `GET /communication/notifications/unread-count` | JWT valido |
+| `POST /communication/notifications/{id}/read` | JWT valido |
+| `POST /communication/support` | `communication.support.open` |
+| `GET /communication/support?view=agent&mine=true` | `support.agent` requerido para view=agent |
+| `POST /communication/support/{id}/claim` `resolve` `close` | segun ownership + permisos |
+| `GET /communication/settings` | `communication.settings.manage` |
+| `PUT /communication/settings` | `communication.settings.manage` |
+| `GET /communication/analytics/summary` `timeline` | `communication.analytics.read` |
+
+## 30.4 Contratos Socket.IO
+
+Todos bajo `wss://gateway/communication/socket.io/` con JWT en
+`handshake.auth.token`. Nombres jerarquicos `dominio.entidad.accion`. Server
+emite envelopes `{ eventId, correlationId, emittedAtUtc, payload }`.
+
+**Chat**: `chat.conversation.start_direct`, `chat.message.send/edit/delete/mark_read`,
+`chat.typing.start/stop`. Server -> `chat.message.new/edited/deleted/read`,
+`chat.typing.started/stopped`, `chat.conversation.created`, `chat.presence.changed`.
+
+**Calls 1:1**: `call.initiate/accept/reject/cancel/end/signal/media_status/connection_quality`.
+Server -> `call.incoming/state_changed/peer_joined/signal_from/media_status_changed`.
+
+**Meetings**: `meeting.join/leave/host.admit|remove|lock|mute_all|transfer/signal/media_status/raise_hand/dominant_speaker`.
+Server -> `meeting.snapshot/participant.changed/state.changed/signal.from/dominant_speaker.changed/you.muted`.
+
+**Notifications**: `notification.mark_read/dismiss`. Server -> `notification.received/unread_count.changed/read.confirmed`,
+`session.revoked` (canal SEPARADO — cierre CRIT-legacy).
+
+## 30.5 Integration events publicados
+
+- **Chat**: `communication.chat.conversation_started.v1`, `.message_sent.v1` (sin contenido).
+- **Calls**: `.call.started.v1`, `.ended.v1`, `.missed.v1`, `.recording_ready.v1`.
+- **Meetings**: `.meeting.scheduled.v1`, `.started.v1`, `.ended.v1`, `.invitation_requested.v1`, `.recording_ready.v1`.
+- **Support**: `.support.opened.v1`, `.claimed.v1`, `.resolved.v1`, `.closed.v1`.
+
+## 30.6 Consumers de otros microservicios
+
+- **Signature**: `signer.invited`, `document.signed`, `request.completed|canceled|sealed|reminder_due`,
+  `signer.verification.challenge_issued` (con `method='App'` -> push in-app **Urgent**).
+  Cierra pendiente README §29.19 (canal App).
+- **Customer**: `customer.bulk_imported.v1` -> push al usuario que lanzo el import
+  (cierra TODO `Customer/DependencyInjection.cs:46`).
+- **Auth**: `user.registered/roles_changed/deactivated` -> alimentan la proyeccion
+  local `UserPermissionsProjection` para autorizacion fuera de banda.
+- **Subscription**: `activated/plan_changed/seats_purchased/suspended` ->
+  alimentan `TenantCommunicationLimits` (PlanGuard).
+
+Cada consumer es idempotente via inbox durable (`ProcessedEvent`).
+
+## 30.7 Persistencia
+
+Base propia `TaxVision_Communication` con Prisma. Tablas core:
+
+- `Conversation`, `ConversationParticipant`, `Message`, `MessageReceipt`
+- `Call`, `CallParticipant`
+- `Meeting`, `MeetingParticipant`, `MeetingInvitation`
+- `NotificationEntry`
+- `SupportTicket`
+- `TenantCommunicationSettings`, `TenantCommunicationLimits`
+- `UserPermissionsProjection`
+- `ProcessedEvent` (inbox), `OutboxMessage` (outbox transaccional), `IdempotencyRecord`
+- `CommunicationAnalyticsSnapshot` (event-sourced diario)
+
+Aplicar migraciones (dev):
+
+```powershell
+cd src\Services\Communication
+npm install
+npx prisma generate
+copy .env.example .env
+npx prisma migrate dev --name init
+npm run dev
+```
+
+## 30.8 Configuracion (`.env`)
+
+```env
+COMMUNICATION_HTTP_HOST=0.0.0.0
+COMMUNICATION_HTTP_PORT=5350
+COMMUNICATION_DB_CONNECTION="sqlserver://host.docker.internal:1433;database=TaxVision_Communication;user=sa;password=...;encrypt=false;trustServerCertificate=true"
+COMMUNICATION_REDIS_URI=redis://redis:6379/0
+COMMUNICATION_SESSION_DENYLIST_PREFIX=auth:session-denylist
+COMMUNICATION_RABBITMQ_URI=amqp://taxvision:...@rabbitmq:5672
+COMMUNICATION_RABBITMQ_EXCHANGE=taxvision-events
+COMMUNICATION_RABBITMQ_QUEUE=communication-events
+COMMUNICATION_JWT_ISSUER=TaxVision.Auth
+COMMUNICATION_JWT_AUDIENCE=TaxVision.Services
+COMMUNICATION_JWKS_URI=http://auth-api:8080/auth/.well-known/jwks.json
+COMMUNICATION_TURN_URL=turn:turn:3478
+COMMUNICATION_TURN_STATIC_AUTH_SECRET=...
+COMMUNICATION_PLATFORM_TENANT_ID=8f58a521-4c25-4d91-9f4e-7ad5df14c001
+COMMUNICATION_CORS_ORIGINS=http://localhost:5173
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+```
+
+## 30.9 Reglas de oro (no repetir el legacy)
+
+1. Redis adapter Socket.IO obligatorio — nunca in-memory Map.
+2. Rol/tenant SIEMPRE del JWT verificado con JWKS; jamas del handshake.query
+   (cierra CRIT-18 legacy).
+3. `console.log` prohibido; solo Pino estructurado con redact automatic.
+4. Idempotencia obligatoria en cada mutacion socket (`Idempotency-Key`).
+5. Passcodes con Argon2id 64MB; tokens de invitacion / recording opacos y con
+   solo SHA-256 persistido.
+6. Presence: Redis con lease TTL + heartbeat + Pub/Sub (no `sleep(2000)`).
+7. Session events (`session.revoked`, `force.logout`) en canal socket SEPARADO
+   del canal de business notifications.
+8. Fallback TURN dummy `'fallback'/'fallback'` PROHIBIDO — sin secreto, solo STUN.
+
+## 30.10 Pendientes documentados
+
+- **DLQ formal** para consumer runtime (hoy ack directo tras fallo).
+- **LiveKit SFU switching** en meetings >4 (feature flag reservado, adapter fuera).
+- **Server-side recording** (LiveKit Egress) — actualmente client-side canvas.
+- **Content moderation** (`IContentScanner`) para chat attachments.
+- **Transcripts** de meetings.
+- **Advisory lock Redis** en outbox drainer para dedup entre pods.
+- **Push nativo** FCM/APNs para el canal App-based challenge de Signature.

@@ -65,7 +65,12 @@ public sealed class EmailSyncedMessageConfiguration : IEntityTypeConfiguration<E
         builder.Property(m => m.CreatedAtUtc).IsRequired();
 
         builder.HasIndex(m => new { m.AccountId, m.ExternalMessageId }).IsUnique();
-        builder.HasIndex(m => new { m.AccountId, m.FolderId, m.ReceivedAtUtc });
+        builder.HasIndex(m => new
+        {
+            m.AccountId,
+            m.FolderId,
+            m.ReceivedAtUtc,
+        });
         builder.HasIndex(m => new { m.AccountId, m.ExternalThreadId });
     }
 }

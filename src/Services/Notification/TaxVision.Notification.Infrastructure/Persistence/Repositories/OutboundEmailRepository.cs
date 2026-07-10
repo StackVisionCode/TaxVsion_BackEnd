@@ -16,7 +16,11 @@ public sealed class OutboundEmailRepository(NotificationDbContext db) : IOutboun
             .Include(m => m.DeliveryLogs)
             .FirstOrDefaultAsync(m => m.Id == messageId, ct);
 
-    public async Task<OutboundEmailMessage?> GetByIdAsync(Guid messageId, Guid tenantId, CancellationToken ct = default) =>
+    public async Task<OutboundEmailMessage?> GetByIdAsync(
+        Guid messageId,
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
         await db
             .OutboundEmailMessages.AsNoTracking()
             .Include(m => m.Recipients)

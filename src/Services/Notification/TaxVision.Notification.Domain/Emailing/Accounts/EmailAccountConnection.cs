@@ -50,8 +50,17 @@ public sealed class EmailAccountConnection : TenantEntity
         DateTime? tokenExpiresAtUtc
     )
     {
-        if (provider is not (EmailExternalProvider.GmailApi or EmailExternalProvider.MicrosoftGraph or EmailExternalProvider.Custom))
-            return Result.Failure<EmailAccountConnection>(new Error("EmailAccount.Provider", "Provider is not an OAuth provider."));
+        if (
+            provider
+            is not (
+                EmailExternalProvider.GmailApi
+                or EmailExternalProvider.MicrosoftGraph
+                or EmailExternalProvider.Custom
+            )
+        )
+            return Result.Failure<EmailAccountConnection>(
+                new Error("EmailAccount.Provider", "Provider is not an OAuth provider.")
+            );
 
         var validation = ValidateBase(tenantId, ownerUserId, emailAddress);
         if (validation.IsFailure)

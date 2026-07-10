@@ -36,12 +36,13 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EmailCampaigns", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "EmailCampaignRecipients",
@@ -51,7 +52,7 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     CampaignId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Address = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
                     Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    VariablesJson = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                    VariablesJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -61,33 +62,36 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         column: x => x.CampaignId,
                         principalTable: "EmailCampaigns",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailCampaignRecipients_CampaignId",
                 table: "EmailCampaignRecipients",
-                column: "CampaignId");
+                column: "CampaignId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailCampaigns_Status_ScheduledAtUtc",
                 table: "EmailCampaigns",
-                columns: new[] { "Status", "ScheduledAtUtc" });
+                columns: new[] { "Status", "ScheduledAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailCampaigns_TenantId_Status",
                 table: "EmailCampaigns",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "EmailCampaignRecipients");
+            migrationBuilder.DropTable(name: "EmailCampaignRecipients");
 
-            migrationBuilder.DropTable(
-                name: "EmailCampaigns");
+            migrationBuilder.DropTable(name: "EmailCampaigns");
         }
     }
 }

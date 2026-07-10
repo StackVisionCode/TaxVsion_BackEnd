@@ -43,7 +43,10 @@ public interface IEmailProviderAdapter
 {
     EmailExternalProvider Provider { get; }
 
-    Task<Result<IReadOnlyList<ProviderFolder>>> ListFoldersAsync(EmailAccountConnection account, CancellationToken ct = default);
+    Task<Result<IReadOnlyList<ProviderFolder>>> ListFoldersAsync(
+        EmailAccountConnection account,
+        CancellationToken ct = default
+    );
 
     Task<Result<ProviderFolderSync>> SyncFolderAsync(
         EmailAccountConnection account,

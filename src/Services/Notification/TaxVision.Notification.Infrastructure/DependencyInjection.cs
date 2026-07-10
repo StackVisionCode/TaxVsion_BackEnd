@@ -48,9 +48,7 @@ public static class DependencyInjection
         services.AddScoped<ISmtpSendClient, SystemNetSmtpSendClient>();
 
         // Módulo de plantillas y layouts (metadata en BD; contenido en CloudStorage).
-        services.Configure<CloudStorageClientOptions>(
-            configuration.GetSection(CloudStorageClientOptions.SectionName)
-        );
+        services.Configure<CloudStorageClientOptions>(configuration.GetSection(CloudStorageClientOptions.SectionName));
         services.AddScoped<IEmailTemplateRepository, EmailTemplateRepository>();
         services.AddScoped<IEmailLayoutRepository, EmailLayoutRepository>();
         services.AddSingleton<ITemplateRenderer, FluidTemplateRenderer>();

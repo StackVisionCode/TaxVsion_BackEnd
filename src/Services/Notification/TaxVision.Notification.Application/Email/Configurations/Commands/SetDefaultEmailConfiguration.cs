@@ -23,7 +23,10 @@ public static class SetDefaultEmailConfigurationHandler
 
         if (config.Scope == ProviderScope.System && !command.IsPlatformAdmin)
             return Result.Failure(
-                new Error("EmailConfiguration.Forbidden", "Only platform administrators can manage global configurations.")
+                new Error(
+                    "EmailConfiguration.Forbidden",
+                    "Only platform administrators can manage global configurations."
+                )
             );
 
         if (!config.IsActive)

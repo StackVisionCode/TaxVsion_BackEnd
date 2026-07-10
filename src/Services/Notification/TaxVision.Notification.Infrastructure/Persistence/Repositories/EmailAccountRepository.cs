@@ -43,8 +43,11 @@ public sealed class EmailAccountRepository(NotificationDbContext db) : IEmailAcc
     public async Task<IReadOnlyList<EmailFolder>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) =>
         await db.EmailFolders.AsNoTracking().Where(f => f.AccountId == accountId).OrderBy(f => f.Name).ToListAsync(ct);
 
-    public async Task<EmailFolder?> GetFolderByExternalIdAsync(Guid accountId, string externalId, CancellationToken ct = default) =>
-        await db.EmailFolders.FirstOrDefaultAsync(f => f.AccountId == accountId && f.ExternalId == externalId, ct);
+    public async Task<EmailFolder?> GetFolderByExternalIdAsync(
+        Guid accountId,
+        string externalId,
+        CancellationToken ct = default
+    ) => await db.EmailFolders.FirstOrDefaultAsync(f => f.AccountId == accountId && f.ExternalId == externalId, ct);
 
     public async Task AddMessageAsync(EmailSyncedMessage message, CancellationToken ct = default) =>
         await db.EmailSyncedMessages.AddAsync(message, ct);
@@ -52,11 +55,24 @@ public sealed class EmailAccountRepository(NotificationDbContext db) : IEmailAcc
     public async Task AddAttachmentAsync(EmailMessageAttachment attachment, CancellationToken ct = default) =>
         await db.EmailMessageAttachments.AddAsync(attachment, ct);
 
-    public async Task<EmailSyncedMessage?> GetMessageByExternalIdAsync(Guid accountId, string externalMessageId, CancellationToken ct = default) =>
-        await db.EmailSyncedMessages.FirstOrDefaultAsync(m => m.AccountId == accountId && m.ExternalMessageId == externalMessageId, ct);
+    public async Task<EmailSyncedMessage?> GetMessageByExternalIdAsync(
+        Guid accountId,
+        string externalMessageId,
+        CancellationToken ct = default
+    ) =>
+        await db.EmailSyncedMessages.FirstOrDefaultAsync(
+            m => m.AccountId == accountId && m.ExternalMessageId == externalMessageId,
+            ct
+        );
 
-    public async Task<EmailSyncedMessage?> GetMessageAsync(Guid accountId, Guid messageId, CancellationToken ct = default) =>
-        await db.EmailSyncedMessages.AsNoTracking().FirstOrDefaultAsync(m => m.AccountId == accountId && m.Id == messageId, ct);
+    public async Task<EmailSyncedMessage?> GetMessageAsync(
+        Guid accountId,
+        Guid messageId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .EmailSyncedMessages.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.AccountId == accountId && m.Id == messageId, ct);
 
     public async Task<(IReadOnlyList<EmailSyncedMessage> Items, int TotalCount)> GetMessagesAsync(
         Guid accountId,
@@ -79,7 +95,11 @@ public sealed class EmailAccountRepository(NotificationDbContext db) : IEmailAcc
         return (items, total);
     }
 
-    public async Task<IReadOnlyList<EmailSyncedMessage>> GetThreadAsync(Guid accountId, string externalThreadId, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<EmailSyncedMessage>> GetThreadAsync(
+        Guid accountId,
+        string externalThreadId,
+        CancellationToken ct = default
+    ) =>
         await db
             .EmailSyncedMessages.AsNoTracking()
             .Where(m => m.AccountId == accountId && m.ExternalThreadId == externalThreadId)
@@ -89,7 +109,11 @@ public sealed class EmailAccountRepository(NotificationDbContext db) : IEmailAcc
     public async Task AddSyncLogAsync(EmailSyncLog log, CancellationToken ct = default) =>
         await db.EmailSyncLogs.AddAsync(log, ct);
 
-    public async Task<IReadOnlyList<EmailSyncLog>> GetSyncLogsAsync(Guid accountId, int max, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<EmailSyncLog>> GetSyncLogsAsync(
+        Guid accountId,
+        int max,
+        CancellationToken ct = default
+    ) =>
         await db
             .EmailSyncLogs.AsNoTracking()
             .Where(l => l.AccountId == accountId)

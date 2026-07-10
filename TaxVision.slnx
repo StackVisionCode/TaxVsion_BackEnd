@@ -43,6 +43,13 @@
     <Project Path="src/Services/Notification/TaxVision.Notification.Domain/TaxVision.Notification.Domain.csproj" />
     <Project Path="src/Services/Notification/TaxVision.Notification.Infrastructure/TaxVision.Notification.Infrastructure.csproj" />
   </Folder>
+  <!-- SignatureService -->
+  <Folder Name="/src/Services/Signature/">
+    <Project Path="src/Services/Signature/TaxVision.Signature.Api/TaxVision.Signature.Api.csproj" />
+    <Project Path="src/Services/Signature/TaxVision.Signature.Application/TaxVision.Signature.Application.csproj" />
+    <Project Path="src/Services/Signature/TaxVision.Signature.Domain/TaxVision.Signature.Domain.csproj" />
+    <Project Path="src/Services/Signature/TaxVision.Signature.Infrastructure/TaxVision.Signature.Infrastructure.csproj" />
+  </Folder>
   <!-- TenantService -->
   <Folder Name="/src/Services/Tenant/">
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Api/TaxVision.Tenant.Api.csproj" />
@@ -55,6 +62,7 @@
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Signature.Tests/TaxVision.Signature.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Subscription.Tests/TaxVision.Subscription.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />
   </Folder>

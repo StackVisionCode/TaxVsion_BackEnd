@@ -22,7 +22,15 @@ public sealed class EmailTemplateConfiguration : IEntityTypeConfiguration<EmailT
 
         // Una plantilla por (Scope, TenantId, Key). HasFilter(null) evita el filtro automático de EF
         // "[TenantId] IS NOT NULL" que dejaría las plantillas System (TenantId NULL) SIN unicidad.
-        builder.HasIndex(t => new { t.Scope, t.TenantId, t.TemplateKey }).IsUnique().HasFilter(null);
+        builder
+            .HasIndex(t => new
+            {
+                t.Scope,
+                t.TenantId,
+                t.TemplateKey,
+            })
+            .IsUnique()
+            .HasFilter(null);
         builder.HasIndex(t => new { t.TenantId, t.Scope });
     }
 }

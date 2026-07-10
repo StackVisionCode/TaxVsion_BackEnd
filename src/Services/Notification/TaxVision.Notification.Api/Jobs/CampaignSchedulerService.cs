@@ -9,8 +9,10 @@ namespace TaxVision.Notification.Api.Jobs;
 /// Servicio en segundo plano que detecta campañas programadas cuya hora ya llegó, las marca en ejecución
 /// y publica el evento de inicio del fan-out. Fuera del request HTTP (patrón de background del repo).
 /// </summary>
-public sealed class CampaignSchedulerService(IServiceScopeFactory scopeFactory, ILogger<CampaignSchedulerService> logger)
-    : BackgroundService
+public sealed class CampaignSchedulerService(
+    IServiceScopeFactory scopeFactory,
+    ILogger<CampaignSchedulerService> logger
+) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
     private const int BatchSize = 50;

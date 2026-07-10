@@ -45,7 +45,12 @@ public sealed class ServiceTokenAcquirer(
         {
             using var response = await http.PostAsJsonAsync(
                 "auth/service-token",
-                new { clientId = opt.ClientId, clientSecret = opt.ClientSecret, tenantId },
+                new
+                {
+                    clientId = opt.ClientId,
+                    clientSecret = opt.ClientSecret,
+                    tenantId,
+                },
                 ct
             );
             if (!response.IsSuccessStatusCode)
@@ -58,7 +63,10 @@ public sealed class ServiceTokenAcquirer(
             if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
                 return null;
 
-            Cache[tenantId] = new CachedToken(payload.AccessToken, DateTime.UtcNow.AddSeconds(payload.ExpiresInSeconds));
+            Cache[tenantId] = new CachedToken(
+                payload.AccessToken,
+                DateTime.UtcNow.AddSeconds(payload.ExpiresInSeconds)
+            );
             return payload.AccessToken;
         }
         catch (Exception ex)

@@ -46,7 +46,9 @@ public static class SendTemplateEmailHandler
             return Result.Failure<OutboundEmailResponse>(new Error("Email.Tenant", "Tenant is required."));
 
         if (command.Recipients is null || command.Recipients.Count == 0)
-            return Result.Failure<OutboundEmailResponse>(new Error("Email.Recipients", "At least one recipient is required."));
+            return Result.Failure<OutboundEmailResponse>(
+                new Error("Email.Recipients", "At least one recipient is required.")
+            );
 
         var template = await templates.GetByIdAsync(command.TemplateId, command.TenantId, ct);
         if (template is null)
@@ -59,7 +61,9 @@ public static class SendTemplateEmailHandler
 
         var version = await templates.GetVersionAsync(template.Id, template.CurrentVersionId.Value, ct);
         if (version is null)
-            return Result.Failure<OutboundEmailResponse>(new Error("EmailTemplate.NotFound", "Published version not found."));
+            return Result.Failure<OutboundEmailResponse>(
+                new Error("EmailTemplate.NotFound", "Published version not found.")
+            );
 
         var htmlResult = await templateStorage.GetHtmlAsync(version.HtmlFileId, ct);
         if (htmlResult.IsFailure)

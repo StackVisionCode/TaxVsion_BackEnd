@@ -46,7 +46,10 @@ public static class UpdateEmailConfigurationHandler
 
         if (config.Scope == ProviderScope.System && !command.IsPlatformAdmin)
             return Result.Failure<EmailConfigurationResponse>(
-                new Error("EmailConfiguration.Forbidden", "Only platform administrators can manage global configurations.")
+                new Error(
+                    "EmailConfiguration.Forbidden",
+                    "Only platform administrators can manage global configurations."
+                )
             );
 
         var result = config.Update(

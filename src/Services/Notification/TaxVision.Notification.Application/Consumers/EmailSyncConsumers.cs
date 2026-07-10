@@ -15,7 +15,11 @@ public static class EmailFullSyncRequestedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
             await sync.SyncAccountAsync(evt.AccountId, SyncType.Full, ct);
     }
 }
@@ -30,7 +34,11 @@ public static class EmailIncrementalSyncRequestedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
             await sync.SyncAccountAsync(evt.AccountId, SyncType.Incremental, ct);
     }
 }
