@@ -1,12 +1,19 @@
+import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import { MeetingInvitation } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { PasscodeHasher } from '../ports/passcode-hasher.js';
+import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import {
+  MeetingEventTypes,
+  type MeetingParticipantJoinedEvent,
+} from '../../contracts/events/meeting-events.js';
 import type { MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
 import { participantSnapshotToDto } from './meeting-mappers.js';
 
 export interface JoinMeetingCommand {
   readonly tenantId: string;
+  readonly correlationId: string;
   readonly meetingId: string;
   readonly user: { userId: string; displayName: string };
   readonly passcode?: string;
@@ -21,6 +28,7 @@ export interface JoinMeetingResult {
 export interface JoinMeetingDeps {
   readonly meetings: MeetingRepository;
   readonly passcodes: PasscodeHasher;
+  readonly publisher: IntegrationEventPublisher;
 }
 
 export async function joinMeeting(
@@ -65,6 +73,22 @@ export async function joinMeeting(
   await deps.meetings.save(meeting);
   const snapshot = meeting.toSnapshot();
   const yourRole = joinResult.value.role;
+  const requiresAdmission = joinResult.value.requiresAdmission;
+
+  if (!requiresAdmission) {
+    const now = new Date();
+    const event: MeetingParticipantJoinedEvent = {
+      eventId: randomUUID(),
+      eventType: MeetingEventTypes.ParticipantJoined,
+      tenantId: command.tenantId,
+      correlationId: command.correlationId,
+      occurredOnUtc: now.toISOString(),
+      meetingId: command.meetingId,
+      participantUserId: command.user.userId,
+      joinedAtUtc: now.toISOString(),
+    };
+    await deps.publisher.enqueue(event);
+  }
 
   const dto: MeetingSnapshotDto = {
     meetingId: snapshot.id,
@@ -77,5 +101,5 @@ export async function joinMeeting(
     sequence: 0,
   };
 
-  return Result.ok({ snapshot: dto, requiresAdmission: joinResult.value.requiresAdmission });
+  return Result.ok({ snapshot: dto, requiresAdmission });
 }

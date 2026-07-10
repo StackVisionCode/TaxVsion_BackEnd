@@ -1,16 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
+import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import { ChatEventTypes, type MessageEditedEvent } from '../../contracts/events/chat-events.js';
 import type { MessageEditedDto } from '../../contracts/socket/chat-socket-events.js';
 
-/**
- * Comando: editar el body de un mensaje Text. Solo el sender puede editar.
- * Idempotente por (tenantId, senderId, clientKey) — reintentos del cliente no
- * agregan `IsEdited`. El aggregate valida las reglas; el use case solo carga
- * y persiste.
- */
 export interface EditMessageCommand {
   readonly tenantId: string;
+  readonly correlationId: string;
   readonly clientKey: string;
   readonly messageId: string;
   readonly senderUserId: string;
@@ -24,6 +22,7 @@ export interface EditMessageResult {
 export interface EditMessageDeps {
   readonly messages: MessageRepository;
   readonly idempotency: IdempotencyStore;
+  readonly publisher: IntegrationEventPublisher;
 }
 
 export async function editMessage(
@@ -66,11 +65,26 @@ export async function editMessage(
   await deps.messages.update(command.tenantId, message);
 
   const snapshot = message.toSnapshot();
+  const editedAtUtc = (snapshot.editedAtUtc ?? now).toISOString();
+
+  const event: MessageEditedEvent = {
+    eventId: randomUUID(),
+    eventType: ChatEventTypes.MessageEdited,
+    tenantId: command.tenantId,
+    correlationId: command.correlationId,
+    occurredOnUtc: editedAtUtc,
+    conversationId: snapshot.conversationId,
+    messageId: snapshot.id,
+    editedByUserId: command.senderUserId,
+    editedAtUtc,
+  };
+  await deps.publisher.enqueue(event);
+
   const dto: MessageEditedDto = {
     messageId: snapshot.id,
     conversationId: snapshot.conversationId,
     body: snapshot.body ?? '',
-    editedAtUtc: (snapshot.editedAtUtc ?? now).toISOString(),
+    editedAtUtc,
   };
   const result: EditMessageResult = { edited: dto };
   await deps.idempotency.commit({

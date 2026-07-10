@@ -162,6 +162,50 @@ export class SupportTicket {
     return Result.okVoid();
   }
 
+  escalate(input: {
+    escalatedByUserId: string;
+    newPriority: SupportPriority;
+    now?: Date;
+  }): Result<{ previousPriority: SupportPriority }> {
+    if (isTerminalSupport(this.state.status)) {
+      return Result.fail(makeError('Support.Terminal', 'Cannot escalate a terminal ticket.'));
+    }
+    if (this.state.priority === input.newPriority) {
+      return Result.fail(makeError('Support.SamePriority', 'New priority is the same as current.'));
+    }
+    const previousPriority = this.state.priority;
+    const now = input.now ?? new Date();
+    this.state = { ...this.state, priority: input.newPriority, updatedAtUtc: now };
+    return Result.ok({ previousPriority });
+  }
+
+  reopen(input: {
+    reopenedByUserId: string;
+    isPlatformAdmin: boolean;
+    now?: Date;
+  }): Result<void> {
+    if (this.state.status !== SupportStatus.Resolved && this.state.status !== SupportStatus.Closed) {
+      return Result.fail(makeError('Support.NotTerminal', `Cannot reopen from ${this.state.status}.`));
+    }
+    const isAssignedAgent = input.reopenedByUserId === this.state.assignedAgentId;
+    const isOpener = input.reopenedByUserId === this.state.openedByUserId;
+    if (!isOpener && !isAssignedAgent && !input.isPlatformAdmin) {
+      return Result.fail(
+        makeError('Support.ReopenForbidden', 'Only opener, assigned agent, or PlatformAdmin can reopen.'),
+      );
+    }
+    const now = input.now ?? new Date();
+    const nextStatus = this.state.assignedAgentId ? SupportStatus.Claimed : SupportStatus.Open;
+    this.state = {
+      ...this.state,
+      status: nextStatus,
+      resolvedAtUtc: null,
+      closedAtUtc: null,
+      updatedAtUtc: now,
+    };
+    return Result.okVoid();
+  }
+
   toSnapshot(): SupportTicketSnapshot {
     return this.state;
   }

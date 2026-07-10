@@ -152,6 +152,7 @@ async function wireSocket(
     const result = await editMessage(
       {
         tenantId,
+        correlationId: socket.id,
         clientKey: parsed.data.clientKey,
         messageId: parsed.data.messageId,
         senderUserId: userId,
@@ -188,6 +189,7 @@ async function wireSocket(
     const result = await deleteMessage(
       {
         tenantId,
+        correlationId: socket.id,
         clientKey: parsed.data.clientKey,
         messageId: parsed.data.messageId,
         actorUserId: userId,

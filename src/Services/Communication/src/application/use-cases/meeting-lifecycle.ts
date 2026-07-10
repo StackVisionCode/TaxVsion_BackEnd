@@ -69,6 +69,7 @@ export async function endMeeting(
     hostUserId: snapshot.hostUserId,
     endedAtUtc: now.toISOString(),
     durationSeconds: snapshot.durationSeconds ?? 0,
+    participantCount: snapshot.participants.length,
     recordingFileId: snapshot.recordingFileId,
   };
   await deps.publisher.enqueue(event);

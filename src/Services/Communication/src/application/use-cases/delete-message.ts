@@ -1,15 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
+import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import { ChatEventTypes, type MessageDeletedEvent } from '../../contracts/events/chat-events.js';
 import type { MessageDeletedDto } from '../../contracts/socket/chat-socket-events.js';
 
-/**
- * Comando: eliminacion suave. El sender o quien tenga chat.moderate puede
- * borrarlo. El aggregate valida la regla; aqui se decide `actorCanModerate`
- * por el permiso claim del JWT (el socket handler lo pasa).
- */
 export interface DeleteMessageCommand {
   readonly tenantId: string;
+  readonly correlationId: string;
   readonly clientKey: string;
   readonly messageId: string;
   readonly actorUserId: string;
@@ -23,6 +22,7 @@ export interface DeleteMessageResult {
 export interface DeleteMessageDeps {
   readonly messages: MessageRepository;
   readonly idempotency: IdempotencyStore;
+  readonly publisher: IntegrationEventPublisher;
 }
 
 export async function deleteMessage(
@@ -65,11 +65,26 @@ export async function deleteMessage(
   await deps.messages.update(command.tenantId, message);
 
   const snapshot = message.toSnapshot();
+  const deletedAtUtc = (snapshot.deletedAtUtc ?? now).toISOString();
+
+  const event: MessageDeletedEvent = {
+    eventId: randomUUID(),
+    eventType: ChatEventTypes.MessageDeleted,
+    tenantId: command.tenantId,
+    correlationId: command.correlationId,
+    occurredOnUtc: deletedAtUtc,
+    conversationId: snapshot.conversationId,
+    messageId: snapshot.id,
+    deletedByUserId: command.actorUserId,
+    deletedAtUtc,
+  };
+  await deps.publisher.enqueue(event);
+
   const result: DeleteMessageResult = {
     deleted: {
       messageId: snapshot.id,
       conversationId: snapshot.conversationId,
-      deletedAtUtc: (snapshot.deletedAtUtc ?? now).toISOString(),
+      deletedAtUtc,
     },
   };
   await deps.idempotency.commit({

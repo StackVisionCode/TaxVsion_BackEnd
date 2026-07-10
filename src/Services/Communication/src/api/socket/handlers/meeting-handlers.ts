@@ -24,6 +24,7 @@ import {
 } from '../../../contracts/socket/meeting-socket-events.js';
 import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
 import { joinMeeting } from '../../../application/use-cases/join-meeting.js';
+import { leaveMeeting } from '../../../application/use-cases/leave-meeting.js';
 import { relayMeetingSignal } from '../../../application/use-cases/relay-meeting-signal.js';
 import { updateMeetingMediaStatus, updateRaiseHand } from '../../../application/use-cases/update-meeting-media-status.js';
 import {
@@ -33,7 +34,6 @@ import {
   setMeetingLocked,
   transferMeetingHost,
 } from '../../../application/use-cases/meeting-host-actions.js';
-import { endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 
 export function registerMeetingHandlers(io: CommunicationIoServer, container: AppContainer): void {
   const emitter = new SocketRealtimeEmitter(io);
@@ -68,6 +68,7 @@ function wireMeetingSocket(
     const result = await joinMeeting(
       {
         tenantId,
+        correlationId: socket.id,
         meetingId: parsed.data.meetingId,
         user: { userId, displayName: principal.userId },
         ...(parsed.data.passcode !== undefined ? { passcode: parsed.data.passcode } : {}),
@@ -97,20 +98,23 @@ function wireMeetingSocket(
   socket.on(MeetingSocketEvents.Leave, async (...args: unknown[]) => {
     const parsed = LeaveMeetingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
-    const meeting = await container.meetings.findById(tenantId, parsed.data.meetingId);
-    if (!meeting) return;
-    meeting.leave({ userId });
-    await container.meetings.save(meeting);
+    const result = await leaveMeeting(
+      { tenantId, correlationId: socket.id, meetingId: parsed.data.meetingId, userId },
+      container,
+    );
+    if (!result.isSuccess) return;
     await socket.leave(`t:${tenantId}:m:${parsed.data.meetingId}`);
+    const meetingAfterLeave = await container.meetings.findById(tenantId, parsed.data.meetingId);
+    const snap = meetingAfterLeave?.toSnapshot();
     emitter.emitToConversation({
       tenantId,
       conversationId: `m:${parsed.data.meetingId}`,
       event: MeetingSocketEvents.StateChanged,
       envelope: envelope({
         meetingId: parsed.data.meetingId,
-        status: meeting.status,
-        isLocked: false,
-        hostUserId: meeting.hostUserId,
+        status: snap?.status ?? 'Live',
+        isLocked: snap?.isLocked ?? false,
+        hostUserId: snap?.hostUserId ?? userId,
         sequence: 0,
       }),
     });
@@ -129,6 +133,7 @@ function wireMeetingSocket(
     const result = await admitParticipant(
       {
         tenantId,
+        correlationId: socket.id,
         meetingId: parsed.data.meetingId,
         hostUserId: userId,
         targetUserId: parsed.data.targetUserId,
@@ -161,6 +166,7 @@ function wireMeetingSocket(
     const result = await removeParticipant(
       {
         tenantId,
+        correlationId: socket.id,
         meetingId: parsed.data.meetingId,
         hostUserId: userId,
         targetUserId: parsed.data.targetUserId,
@@ -196,7 +202,7 @@ function wireMeetingSocket(
     const parsed = LockPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
     const result = await setMeetingLocked(
-      { tenantId, meetingId: parsed.data.meetingId, hostUserId: userId, locked: parsed.data.locked },
+      { tenantId, correlationId: socket.id, meetingId: parsed.data.meetingId, hostUserId: userId, locked: parsed.data.locked },
       container,
     );
     if (!result.isSuccess) {
@@ -239,6 +245,7 @@ function wireMeetingSocket(
     const result = await transferMeetingHost(
       {
         tenantId,
+        correlationId: socket.id,
         meetingId: parsed.data.meetingId,
         currentHostUserId: userId,
         newHostUserId: parsed.data.newHostUserId,
@@ -349,7 +356,6 @@ function wireMeetingSocket(
   socket.on('disconnect', () => {
     // No-op — leave manual mediante Meeting.Leave. Un scheduler futuro puede
     // detectar participants Joined sin heartbeat prolongado (fuera de scope Fase 3).
-    void endMeeting;
   });
 }
 

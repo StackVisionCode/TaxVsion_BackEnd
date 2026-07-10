@@ -3,7 +3,7 @@ import { Result, makeError } from '../../domain/shared/result.js';
 import type { CallRepository } from '../ports/call-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
-import { CallEventTypes, type CallEndedEvent } from '../../contracts/events/call-events.js';
+import { CallEventTypes, type CallAcceptedEvent, type CallEndedEvent } from '../../contracts/events/call-events.js';
 import type { CallStateDto, CallPeerDto } from '../../contracts/socket/call-socket-events.js';
 
 /**
@@ -80,6 +80,25 @@ export async function respondToCall(
 
   await deps.calls.save(call);
   const snapshot = call.toSnapshot();
+
+  if (command.action === 'accept') {
+    const acceptedEvent: CallAcceptedEvent = {
+      eventId: randomUUID(),
+      eventType: CallEventTypes.Accepted,
+      tenantId: command.tenantId,
+      correlationId: command.correlationId,
+      occurredOnUtc: (snapshot.acceptedAtUtc ?? now).toISOString(),
+      callId: snapshot.id,
+      callerUserId: snapshot.callerUserId,
+      calleeUserId: snapshot.calleeUserId,
+      kind: snapshot.kind,
+      acceptedAtUtc: (snapshot.acceptedAtUtc ?? now).toISOString(),
+      ringTimeMs: snapshot.acceptedAtUtc
+        ? snapshot.acceptedAtUtc.getTime() - snapshot.ringingAtUtc.getTime()
+        : 0,
+    };
+    await deps.publisher.enqueue(acceptedEvent);
+  }
 
   if (command.action === 'reject' || command.action === 'cancel') {
     const endedEvent: CallEndedEvent = {

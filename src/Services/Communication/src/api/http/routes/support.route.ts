@@ -6,6 +6,9 @@ import {
   claimSupportTicket,
   closeSupportTicket,
   resolveSupportTicket,
+  reassignSupportTicket,
+  escalateSupportTicket,
+  reopenSupportTicket,
 } from '../../../application/use-cases/support-actions.js';
 import {
   listSupportTicketsForAgent,
@@ -19,6 +22,10 @@ const OpenBody = z.object({
   priority: z.enum(['Low', 'Normal', 'High', 'Urgent']).default('Normal'),
   initialMessage: z.string().max(4000).optional(),
 });
+
+const ReassignBody = z.object({ newAgentUserId: z.string().uuid() });
+const EscalateBody = z.object({ newPriority: z.enum(['Low', 'Normal', 'High', 'Urgent']) });
+const ReopenBody = z.object({ reason: z.string().max(500).optional() });
 
 const ListQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -160,6 +167,101 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
           ),
           isPlatformAdmin: principal.actorType === 'PlatformAdmin',
         },
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+        code: result.error.code,
+        message: result.error.message,
+      });
+    }
+    return reply.send(result.value);
+  });
+
+  // POST /communication/support/:id/reassign — agente o PlatformAdmin reasigna a otro agente.
+  app.post('/communication/support/:id/reassign', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const params = IdParams.parse(request.params);
+    const body = ReassignBody.parse(request.body);
+    const hasAgentPerm = hasPermission(
+      principal.actorType,
+      principal.permissions,
+      CommunicationPermissions.SupportAgent,
+    );
+    const isPlatformAdmin = principal.actorType === 'PlatformAdmin';
+    const result = await reassignSupportTicket(
+      {
+        correlationId: request.id,
+        ticketId: params.id,
+        actor: {
+          userId: principal.userId,
+          tenantId: principal.tenantId,
+          hasAgentPermission: hasAgentPerm,
+          isPlatformAdmin,
+        },
+        newAgentUserId: body.newAgentUserId,
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+        code: result.error.code,
+        message: result.error.message,
+      });
+    }
+    return reply.send(result.value);
+  });
+
+  // POST /communication/support/:id/escalate — agente o PlatformAdmin cambia prioridad.
+  app.post('/communication/support/:id/escalate', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const params = IdParams.parse(request.params);
+    const body = EscalateBody.parse(request.body);
+    const hasAgentPerm = hasPermission(
+      principal.actorType,
+      principal.permissions,
+      CommunicationPermissions.SupportAgent,
+    );
+    const isPlatformAdmin = principal.actorType === 'PlatformAdmin';
+    const result = await escalateSupportTicket(
+      {
+        correlationId: request.id,
+        ticketId: params.id,
+        actor: {
+          userId: principal.userId,
+          tenantId: principal.tenantId,
+          hasAgentPermission: hasAgentPerm,
+          isPlatformAdmin,
+        },
+        newPriority: body.newPriority,
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+        code: result.error.code,
+        message: result.error.message,
+      });
+    }
+    return reply.send(result.value);
+  });
+
+  // POST /communication/support/:id/reopen — opener, agente asignado o PlatformAdmin.
+  app.post('/communication/support/:id/reopen', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const params = IdParams.parse(request.params);
+    const body = ReopenBody.safeParse(request.body);
+    const result = await reopenSupportTicket(
+      {
+        correlationId: request.id,
+        ticketId: params.id,
+        actor: {
+          userId: principal.userId,
+          tenantId: principal.tenantId,
+          isPlatformAdmin: principal.actorType === 'PlatformAdmin',
+        },
+        reason: body.success ? body.data.reason ?? null : null,
       },
       container,
     );
