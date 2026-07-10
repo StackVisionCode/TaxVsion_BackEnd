@@ -19,7 +19,19 @@ export interface RabbitContext {
 let context: RabbitContext | undefined;
 
 async function tryConnect(): Promise<RabbitContext> {
-  const connection = await amqplib.connect(config.rabbitmq.uri);
+  // Pass an object so amqplib skips url-parse and uses decoded credentials verbatim.
+  const parsed = new URL(config.rabbitmq.uri);
+  const connection = await amqplib.connect({
+    protocol:  parsed.protocol.replace(':', ''),
+    hostname:  parsed.hostname,
+    port:      parsed.port ? Number(parsed.port) : 5672,
+    username:  decodeURIComponent(parsed.username),
+    password:  decodeURIComponent(parsed.password),
+    vhost:     parsed.pathname && parsed.pathname !== '/'
+                 ? decodeURIComponent(parsed.pathname.slice(1))
+                 : '/',
+    frameMax:  131072, // RabbitMQ 4.x requires >= 8192; amqplib default 4096 is rejected
+  });
   const channel = await connection.createChannel();
   await channel.assertExchange(config.rabbitmq.exchange, 'fanout', { durable: true });
   await channel.assertQueue(config.rabbitmq.queue, { durable: true, deadLetterExchange: '' });

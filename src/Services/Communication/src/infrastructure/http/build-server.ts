@@ -24,7 +24,7 @@ import type { AppContainer } from '../container.js';
  */
 export async function buildHttpServer(container: AppContainer): Promise<FastifyInstance> {
   const app = Fastify({
-    logger,
+    loggerInstance: logger,
     disableRequestLogging: false,
     trustProxy: true,
     genReqId: (req) => normalizeCorrelationId(req.headers[CORRELATION_HEADER] as string | undefined),
