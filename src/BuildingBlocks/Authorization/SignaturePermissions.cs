@@ -38,4 +38,8 @@ public static class SignaturePermissions
 
     // Verificación pública de un certificado (link con token)
     public const string CertificateVerify = "signature.certificate.verify";
+
+    // Restricciones de plan controladas por la PLATAFORMA (no exponer al SDK de tenant).
+    // Solo el PlatformAdmin o un servicio interno obtiene este claim en su JWT.
+    public const string PlanConstraintsManage = "signature.constraints.manage";
 }

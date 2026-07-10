@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Signature.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Signature.Infrastructure.Persistence;
 namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SignatureDbContext))]
-    partial class SignatureDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260710213738_AddSignaturePlanConstraints")]
+    partial class AddSignaturePlanConstraints
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -57,6 +57,13 @@ public sealed class TenantSignatureSettings : BaseEntity
     public RetentionPolicy Retention { get; private set; } = default!;
 
     /// <summary>
+    /// Techos que la plataforma impone sobre la configuración que este tenant puede elegir.
+    /// Actualizado por PlatformAdmin vía PUT /admin/tenants/{id}/signature-constraints.
+    /// Nunca nulo: se inicializa con <see cref="SignaturePlanConstraints.Default()"/> al crear el tenant.
+    /// </summary>
+    public SignaturePlanConstraints PlanConstraints { get; private set; } = default!;
+
+    /// <summary>
     /// Secreto HMAC per-tenant cifrado con AES-GCM. Alimenta la cadena de auditoría
     /// tamper-evident. Nunca se expone en responses.
     /// </summary>
@@ -102,6 +109,7 @@ public sealed class TenantSignatureSettings : BaseEntity
                 GenerateCertificateByDefault = true,
                 DocumentLimits = DocumentLimits.Default(),
                 Retention = RetentionPolicy.Default(),
+                PlanConstraints = SignaturePlanConstraints.Default(),
                 AuditSecretEncrypted = auditSecretEncrypted,
                 AuditKeyVersion = 1,
                 CreatedAtUtc = now,
@@ -229,6 +237,72 @@ public sealed class TenantSignatureSettings : BaseEntity
     {
         ArgumentNullException.ThrowIfNull(newPolicy);
         Retention = newPolicy;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Aplica nuevas restricciones de plan y auto-corrige la configuración del tenant
+    /// para que no exceda los techos. Llamado por PlatformAdmin.
+    ///
+    /// Auto-corrección:
+    /// - canales que ya no están en el plan → se deshabilitan (manteniendo al menos uno).
+    /// - DefaultVerificationChannel → se recalcula si quedó fuera del nuevo set permitido.
+    /// - TokenExpiration → se clampea al nuevo máximo.
+    /// - DocumentLimits → se clampean a los nuevos techos.
+    /// - RetentionYears → se eleva al nuevo mínimo si estaba por debajo.
+    /// - AllowPurge → se deshabilita si el plan ya no lo permite.
+    /// </summary>
+    public Result ApplyPlanConstraints(SignaturePlanConstraints newConstraints)
+    {
+        ArgumentNullException.ThrowIfNull(newConstraints);
+
+        PlanConstraints = newConstraints;
+
+        // 1. Canales: quitar los que ya no están en el plan.
+        var validChannels = AllowedVerificationChannels & newConstraints.AllowedChannels;
+        if (validChannels == VerificationChannel.None)
+            validChannels = newConstraints.AllowedChannels; // fuerza al menos los del plan
+
+        AllowedVerificationChannels = validChannels;
+
+        if (!AllowedVerificationChannels.HasFlag(DefaultVerificationChannel))
+            DefaultVerificationChannel = FirstEnabled(AllowedVerificationChannels);
+
+        // 2. Token expiration.
+        if (DefaultTokenExpirationHoursValue > newConstraints.MaxTokenExpirationHours)
+            DefaultTokenExpirationHoursValue = newConstraints.MaxTokenExpirationHours;
+
+        // 3. Document limits (clampear a los nuevos techos del plan).
+        var clampedPdf   = Math.Min(DocumentLimits.MaxPdfBytes,        newConstraints.MaxAllowedPdfBytes);
+        var clampedImage = Math.Min(DocumentLimits.MaxImageBytes,       newConstraints.MaxAllowedImageBytes);
+        var clampedPages = Math.Min(DocumentLimits.MaxPagesPerDocument, newConstraints.MaxAllowedPages);
+
+        var limitsResult = DocumentLimits.Default()
+            .WithMaxPdfBytes(clampedPdf);
+        if (limitsResult.IsFailure)
+            return limitsResult;
+
+        var imgResult = limitsResult.Value.WithMaxImageBytes(clampedImage);
+        if (imgResult.IsFailure)
+            return imgResult;
+
+        var pagesResult = imgResult.Value.WithMaxPages(clampedPages);
+        if (pagesResult.IsFailure)
+            return pagesResult;
+
+        DocumentLimits = pagesResult.Value;
+
+        // 4. Retention: elevar años si están por debajo del nuevo mínimo.
+        var effectiveYears = Math.Max(Retention.RetentionYears, newConstraints.MinRetentionYears);
+        var yearsResult = RetentionPolicy.Default().WithYears(effectiveYears);
+        if (yearsResult.IsFailure)
+            return yearsResult;
+
+        // 5. Purge: deshabilitar si el plan ya no lo permite.
+        var purge = Retention.AllowPurge && newConstraints.PurgeAllowed;
+        Retention = purge ? yearsResult.Value.WithPurgeAllowed() : yearsResult.Value.WithPurgeBlocked();
+
         Touch();
         return Result.Success();
     }

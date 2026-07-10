@@ -6,6 +6,9 @@ namespace TaxVision.Signature.Application.Settings;
 /// Vista pública de <see cref="TenantSignatureSettings"/> para el staff. Omite
 /// deliberadamente el secreto HMAC del audit trail (nunca se expone en respuestas ni
 /// en logs, incluso cifrado).
+///
+/// Incluye <see cref="PlanConstraints"/> para que el frontend pueda mostrar al tenant
+/// admin los techos de su plan y deshabilitar opciones que excedan esos límites.
 /// </summary>
 public sealed record TenantSignatureSettingsResponse(
     Guid TenantId,
@@ -21,7 +24,8 @@ public sealed record TenantSignatureSettingsResponse(
     bool AllowPurge,
     int AuditKeyVersion,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc
+    DateTime UpdatedAtUtc,
+    SignaturePlanConstraintsResponse PlanConstraints
 )
 {
     public static TenantSignatureSettingsResponse From(TenantSignatureSettings settings) =>
@@ -39,7 +43,8 @@ public sealed record TenantSignatureSettingsResponse(
             settings.Retention.AllowPurge,
             settings.AuditKeyVersion,
             settings.CreatedAtUtc,
-            settings.UpdatedAtUtc
+            settings.UpdatedAtUtc,
+            SignaturePlanConstraintsResponse.From(settings.PlanConstraints)
         );
 
     private static IReadOnlyList<string> ChannelsAsStrings(VerificationChannel mask)

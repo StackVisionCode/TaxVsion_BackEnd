@@ -3015,11 +3015,88 @@ propios de `SignatureRequestCreated/Completed/Canceled/Expired` y
 | Verbo y ruta | Permiso |
 | --- | --- |
 | GET `/signature/settings` | `signature.settings.manage` |
+| PUT `/signature/settings` | `signature.settings.manage` |
 
-Devuelve la configuracion vigente del tenant (canales de verificacion habilitados,
-politicas de retencion, defaults de expiracion).
+**GET** devuelve la configuracion vigente del tenant.
 
-### 29.6.6 JWKS
+**PUT** reemplaza toda la configuracion del tenant (semantica PUT: se deben enviar
+todos los campos). El TenantId se toma del JWT; los admins solo pueden modificar
+su propio tenant.
+
+```json
+{
+  "allowedVerificationChannels": ["Email", "Sms"],
+  "defaultVerificationChannel": "Email",
+  "defaultTokenExpirationHours": 168,
+  "remindersEnabledByDefault": true,
+  "generateCertificateByDefault": true,
+  "documentLimits": {
+    "maxPdfBytes": 26214400,
+    "maxImageBytes": 10485760,
+    "maxPagesPerDocument": 100
+  },
+  "retentionPolicy": {
+    "retentionYears": 7,
+    "allowPurge": false
+  }
+}
+```
+
+Canales validos: `Email`, `Sms`, `PractitionerPin` (y `WhatsApp` / `AuthenticatorApp` /
+`KnowledgeBased` reservados para fases futuras). El `defaultVerificationChannel` debe
+estar incluido en `allowedVerificationChannels`.
+
+Limites: `maxPdfBytes` 1 KB – 200 MB; `maxImageBytes` 1 KB – 200 MB;
+`maxPagesPerDocument` 1 – 1000; `retentionYears` 1 – 20.
+
+**Restricciones de plan**: cada campo del PUT es validado contra `PlanConstraints` del
+tenant antes de aplicar los cambios. Si el valor excede el techo del plan se retorna
+`400`. El GET incluye un objeto `planConstraints` con los techos actuales del plan para
+que el frontend pueda deshabilitar las opciones que los excedan.
+
+Respuestas: `204 No Content` en exito, `400` si los valores violan invariantes del
+dominio o exceden los limites del plan, `404` si el tenant aun no tiene settings (se
+crean automaticamente al recibir `TenantCreatedIntegrationEvent`).
+
+### 29.6.6 Signature Plan Constraints (Platform Admin)
+
+| Verbo y ruta | Permiso |
+| --- | --- |
+| PUT `/admin/tenants/{tenantId}/signature-constraints` | `signature.constraints.manage` |
+
+Endpoint exclusivo de la **plataforma** (PlatformAdmin). Establece los techos de plan
+para un tenant. La configuracion existente del tenant se auto-corrige si excede los
+nuevos limites (canales no permitidos se deshabilitan, limites se clampean, retention
+se eleva al minimo si estaba por debajo).
+
+```json
+{
+  "maxAllowedPdfBytes": 52428800,
+  "maxAllowedImageBytes": 10485760,
+  "maxAllowedPages": 200,
+  "minRetentionYears": 7,
+  "purgeAllowed": false,
+  "allowedChannels": ["Email", "Sms", "PractitionerPin"],
+  "maxTokenExpirationHours": 720
+}
+```
+
+Defaults plan basico: 25 MB PDF, 10 MB imagen, 100 paginas, 7 anos minimo,
+purge deshabilitada, Email + SMS, 720 h token (30 dias).
+
+Respuestas: `204 No Content` en exito, `400` si los valores superan los techos absolutos
+del dominio Signature, `401` si el JWT no tiene `signature.constraints.manage`, `404` si
+el tenant no existe.
+
+**Eventos publicados**:
+- `SignaturePlanConstraintsUpdatedIntegrationEvent` → RabbitMQ `taxvision-events`
+  (Notification para informar al tenant admin; Billing/Subscription para reconciliar plan).
+
+**Eventos del PUT /signature/settings**:
+- `SignatureSettingsUpdatedIntegrationEvent` → RabbitMQ `taxvision-events`
+  (Audit service para log de cambios; Notification para confirmacion al admin).
+
+### 29.6.7 JWKS
 
 | Verbo y ruta | Acceso |
 | --- | --- |
