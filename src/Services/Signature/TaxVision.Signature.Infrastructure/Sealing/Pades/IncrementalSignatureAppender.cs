@@ -125,7 +125,7 @@ public sealed class IncrementalSignatureAppender(PadesOptions options)
         {
             var offset = Position;
             WriteAscii(
-                $"{objectNumber} 0 obj\n<<\n/Type /Annot\n/Subtype /Widget\n/FT /Sig\n/T (TaxVision.Signature)\n/F 132\n/Rect [0 0 0 0]\n/V {sigObj} 0 R\n>>\nendobj\n"
+                $"{objectNumber} 0 obj\n<<\n/Type /Annot\n/Subtype /Widget\n/FT /Sig\n/T (TaxProCore.Signature)\n/F 132\n/Rect [0 0 0 0]\n/V {sigObj} 0 R\n>>\nendobj\n"
             );
             return offset;
         }

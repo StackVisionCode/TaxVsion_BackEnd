@@ -40,6 +40,7 @@ public sealed class EmailRecipientConfiguration : IEntityTypeConfiguration<Email
     {
         builder.ToTable("EmailRecipients");
         builder.HasKey(r => r.Id);
+        builder.Property(r => r.Id).ValueGeneratedNever();
         builder.Property(r => r.MessageId).IsRequired();
         builder.Property(r => r.Address).HasMaxLength(320).IsRequired();
         builder.Property(r => r.Kind).HasConversion<string>().HasMaxLength(8).IsRequired();

@@ -2881,8 +2881,14 @@ Cuatro proyectos en `src/Services/Signature/`:
 - `Signer` entity: guarda estado (Pending/Notified/Consent/Verified/Signed/Rejected),
   metodo de captura (`Typed`/`Drawn`/`Uploaded`), evidencia (`typedName`,
   `signatureImageFileId`), verificacion (`PractitionerPin`, `OtpChallenge`).
-- `SignatureField` entity: `Kind` (Signature/Initial/Date/TypedName), pagina y
-  bounding-box con validacion contra medidas del PDF.
+- `SignatureField` entity: `Kind` (Signature/Initials/Date/Text/Checkbox), pagina y
+  `FieldPosition` con **coordenadas normalizadas en `[0.0, 1.0]`** (fracciones
+  del ancho/alto de la pagina). El VO valida `x, y, w, h ∈ [0, 1]` y ademas
+  `x + w <= 1`, `y + h <= 1`. La API devuelve `Signature.FieldPosition.Origin`,
+  `Signature.FieldPosition.Size` o `Signature.FieldPosition.Overflow` si el
+  request usa puntos PDF o pixeles. El motor de sellado multiplica por
+  `page.Width.Point` / `page.Height.Point` en tiempo real, asi el mismo campo
+  funciona con cualquier tamano de pagina (Letter, A4, Legal).
 - `SignatureTemplate` aggregate root: reutilizable por tenant con `Slots` (roles) y
   `Fields` fijas; instanciar produce una `SignatureRequest` lista para asignar
   signers concretos al slot.
@@ -2977,6 +2983,29 @@ crear una request sobre un PDF que no paso por aqui.
 `GET /signature/requests` acepta query params `status`, `category`, `page`, `size`;
 la lectura pasa por `CachedSignatureRequestReadService` con TTL 30s en Redis
 (clave versionada `v1`).
+
+**`POST /signature/requests/{id}/fields`** — el body espera coordenadas
+normalizadas en `[0.0, 1.0]` (fracciones de las dimensiones de la pagina), NO
+puntos PDF ni pixeles. El VO `FieldPosition` valida `x, y, w, h ∈ [0, 1]` y
+ademas `x + w <= 1`, `y + h <= 1`. Ejemplo de body:
+
+```json
+{
+  "signerId": "...",
+  "kind": "Signature",
+  "page": 1,
+  "x": 0.20,
+  "y": 0.83,
+  "width": 0.30,
+  "height": 0.05,
+  "label": "Firma del contribuyente",
+  "isRequired": true
+}
+```
+
+Errores comunes: `Signature.FieldPosition.Origin` si `x` o `y` estan fuera de
+`[0, 1]`; `Signature.FieldPosition.Size` si `width` o `height` no cumplen;
+`Signature.FieldPosition.Overflow` si `x + w` o `y + h` exceden `1`.
 
 ### 29.6.3 Signature templates
 
@@ -3150,19 +3179,41 @@ consumer envuelve la pipeline con un lock distribuido Redis
 (`signature:sealing:{requestId}` TTL 10 min) para evitar doble sellado en despliegues
 multi-nodo. Fallback a `NoOpDistributedLock` si no hay Redis configurado.
 
+- **Font resolver global (obligatorio)**: PdfSharp 6.x es puro managed .NET sin
+  backend GDI y requiere un `IFontResolver`. `SealingFontResolver` se registra
+  una sola vez en `AddSignatureInfrastructure`, busca TTFs en `C:\Windows\Fonts`
+  (Windows), `/usr/share/fonts/**` (Linux) y `/System/Library/Fonts` (macOS), y
+  aliasa `"Helvetica"` → Arial / Liberation Sans / DejaVu Sans. Sin este
+  resolver, `new XFont(...)` explota con
+  `No appropriate font found for family name`.
 - **PAdES-B (Baseline)**: firma CMS/PKCS#7 sobre el hash pre-sellado del PDF via
-  BouncyCastle (`BouncyCastleCmsPdfSigner`). El `Signature Dictionary` con
+  BouncyCastle (`PadesCmsSigner` + `PadesBSealer`). El `Signature Dictionary` con
   `/ByteRange` y `/Contents` placeholder se materializa en el post-process
-  byte-level (ver 29.14).
+  byte-level (ver 29.14). El PFX se carga con
+  `EphemeralKeySet | Exportable` — sin `Exportable` Windows CNG bloquea el
+  `RSA.ExportParameters(true)` que BouncyCastle necesita.
 - **PAdES-B-T (Timestamp RFC 3161)**: si `Signature:Sealing:Tsa:Endpoint` esta
   configurado, `FreeTsaClient` obtiene un token DER que se embebe como
   `unsignedAttribute` (OID `1.2.840.113549.1.9.16.2.14`). Default: FreeTSA
-  (`https://freetsa.org/tsr`).
+  (`https://freetsa.org/tsr`). `PadesCmsSigner.AddTimestampAttributeAsync`
+  **hashea SHA-256 la `signer.GetSignature()` antes de pasarla al TSA** — el TSA
+  recibe siempre un digest de 32 bytes segun RFC 3161 §2.4.1, nunca la firma
+  raw de 256 bytes.
 - **PAdES-B-LT (Long-Term Validation)**: tras B-T, se emite un revision
   incremental que incluye el `DSS Dictionary` con la cadena de certificados
   (`/Certs`), CRLs (`/CRLs`) y respuestas OCSP (`/OCSPs`). Ver 29.15.
-- Salida: el PDF sellado se sube a CloudStorage con `OwnerType=Signature` usando
-  el token M2M `notification-worker` (o cliente propio `signature-worker`).
+- **Rendering profesional**: `PdfSharpCertificateRenderer` produce el
+  Certificate of Completion con branding **TaxProCore**, hashes SHA-256
+  chunked cada 8 chars (convencion DocuSign / Adobe Sign) y cards por signer
+  con status pills; `PdfSharpSealingEngine.DrawFieldBox` dibuja la firma sin
+  fondo azul: nombre del signer en **Times BoldItalic** imitando manuscrita,
+  caption `DIGITALLY SIGNED BY` arriba, timestamp UTC abajo y una franja
+  acento azul marino de 2pt a la izquierda.
+- Salida: el PDF sellado se sube a CloudStorage con `OwnerType=Signature`,
+  `FolderType=Signatures`, `TaxYear=CompletedAtUtc.Year` usando el token M2M
+  `signature-worker`. Objeto resultante en el bucket `taxvision-storage`:
+  `tenants/.../signatures/{year}/signed-{requestId}.pdf` (mas
+  `certificate-{requestId}.pdf` si `generateCertificate=true`).
 
 ## 29.9 Cadena de audit HMAC
 
@@ -3231,31 +3282,61 @@ dotnet user-secrets set "Encryption:MasterKey" "<BASE64_32_BYTES>" `
 Opcionales avanzados:
 
 ```powershell
-# CMS signer (PAdES-B). Sin CertificatePath el DI no registra ICmsPdfSigner
-# y el sealing degrada a "raw PDF" (util para dev sin PFX).
+# --- CMS signer (PAdES-B) ---
+# Sin CertificatePath el DI no registra ICmsPdfSigner y el sealing degrada
+# a "visual stamp only" (util para dev sin PFX; sin firma criptografica).
+# El PFX debe generarse via .NET (RSA.Create + CertificateRequest + cert.Export)
+# porque PowerShell New-SelfSignedCertificate produce keys que Windows CNG
+# marca como no exportables al recargarse con EphemeralKeySet.
 dotnet user-secrets set "Signature:Sealing:Cms:CertificatePath" "<C:\keys\signature.pfx>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 dotnet user-secrets set "Signature:Sealing:Cms:CertificatePassword" "<pfx-password>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-# TSA RFC 3161 para PAdES-B-T. Default: FreeTSA.
+# --- TSA RFC 3161 para PAdES-B-T ---
+# Default: FreeTSA. El PadesCmsSigner hashea SHA-256 la firma antes de pedir
+# el timestamp (RFC 3161 §2.4.1 exige digest de 32 bytes, no la firma raw).
 dotnet user-secrets set "Signature:Sealing:Tsa:Endpoint" "https://freetsa.org/tsr" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-# M2M para llamar a CloudStorage sin usuario (background sealing worker).
+# --- M2M para llamar a CloudStorage sin usuario (background sealing worker) ---
+# El prefijo correcto es Signature:ServiceAuth (no ServiceAuthClient, que era
+# un bug historico). Auth service debe tener el cliente signature-worker
+# registrado en ServiceAuth:Clients con los permisos correspondientes.
+dotnet user-secrets set "Signature:ServiceAuth:AuthBaseUrl" "http://localhost:5124" `
+  --project src\Services\Signature\TaxVision.Signature.Api
 dotnet user-secrets set "Signature:ServiceAuth:ClientId" "signature-worker" `
   --project src\Services\Signature\TaxVision.Signature.Api
 dotnet user-secrets set "Signature:ServiceAuth:ClientSecret" "<secret-fuerte>" `
-  --project src\Services\Signature\TaxVision.Signature.Api
-dotnet user-secrets set "Signature:ServiceAuth:AuthBaseUrl" "http://localhost:5050" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
 dotnet user-secrets set "Signature:CloudStorage:BaseUrl" "http://localhost:5330" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-# PurgeScheduler (default OFF; solo produccion con backup verificado).
+# --- Clave RSA persistente para tokens del firmante externo ---
+# Sin esto, RsaSigningKeyProvider genera una RSA-2048 efimera al arrancar y
+# todos los links de firma activos se invalidan al reiniciar el servicio.
+dotnet user-secrets set "Signature:SignerJwt:PrivateKeyPem" "<C:\...\dev-keys\jwt-private.pem>" `
+  --project src\Services\Signature\TaxVision.Signature.Api
+
+# --- PurgeScheduler (default OFF; solo produccion con backup verificado) ---
 dotnet user-secrets set "Signature:Purge:Enabled" "false" `
   --project src\Services\Signature\TaxVision.Signature.Api
+```
+
+Auth service (`c9f518b8-3374-4abd-a7b6-f0b20cb0877f`) debe declarar el cliente
+M2M `signature-worker` con los permisos `cloudstorage.file.download`,
+`cloudstorage.file.view` y `cloudstorage.file.upload`. En user secrets del
+Auth:
+
+```json
+{
+  "ServiceAuth:Clients:0:ClientId": "signature-worker",
+  "ServiceAuth:Clients:0:Secret": "<mismo-secret>",
+  "ServiceAuth:Clients:0:Permissions:0": "cloudstorage.file.download",
+  "ServiceAuth:Clients:0:Permissions:1": "cloudstorage.file.view",
+  "ServiceAuth:Clients:0:Permissions:2": "cloudstorage.file.upload"
+}
 ```
 
 Variables Docker equivalentes (`.env`):
@@ -3267,15 +3348,21 @@ SIGNATURE_SERVICE_CLIENT_SECRET=<secret-fuerte>
 Signature__Sealing__Cms__CertificatePath=/keys/signature.pfx
 Signature__Sealing__Cms__CertificatePassword=<pfx-password>
 Signature__Sealing__Tsa__Endpoint=https://freetsa.org/tsr
+Signature__SignerJwt__PrivateKeyPem=/keys/jwt-private.pem
 ```
 
-Auth debe mapear el `signature-worker` a los permisos
-`cloudstorage.file.upload|download|view` en `ServiceAuth:Clients`.
+Para el font resolver en Docker Linux instala `fonts-liberation` (una fuente
+sans-serif compatible con Helvetica) en el image base:
+
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberation \
+  && rm -rf /var/lib/apt/lists/*
+```
 
 ## 29.13 Gateway
 
 Ruta YARP `/signature/{**catch-all}` enrutada al cluster `signature` en
-`http://localhost:5230/`. Health check `signature-api` agregado a `/health/ready`
+`http://localhost:5340/`. Health check `signature-api` agregado a `/health/ready`
 del Gateway. Rate limiting adicional en el Gateway sobre los publicos:
 
 - `POST /signature/public/{token}/challenge` — reto (respalda cooldown de 30s del aggregate)

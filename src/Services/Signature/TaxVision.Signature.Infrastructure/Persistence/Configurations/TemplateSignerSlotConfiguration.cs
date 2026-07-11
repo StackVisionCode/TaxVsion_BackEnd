@@ -11,6 +11,7 @@ public sealed class TemplateSignerSlotConfiguration : IEntityTypeConfiguration<T
     {
         builder.ToTable("TemplateSignerSlots");
         builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
 
         builder.Property(s => s.SignatureTemplateId).IsRequired();
         builder.Property(s => s.Order).IsRequired();

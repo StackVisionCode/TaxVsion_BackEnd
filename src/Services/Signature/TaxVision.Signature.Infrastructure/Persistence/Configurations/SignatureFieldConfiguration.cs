@@ -10,6 +10,7 @@ public sealed class SignatureFieldConfiguration : IEntityTypeConfiguration<Signa
     {
         builder.ToTable("SignatureFields");
         builder.HasKey(field => field.Id);
+        builder.Property(field => field.Id).ValueGeneratedNever();
 
         builder.Property(field => field.SignatureRequestId).IsRequired();
         builder.Property(field => field.SignerId).IsRequired();

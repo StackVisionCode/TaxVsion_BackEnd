@@ -232,10 +232,12 @@ public static class SignatureRequestCompletedConsumer
             Content: sealResult.SealedPdfBytes,
             FileName: $"signed-{request.Id:D}.pdf",
             ContentType: "application/pdf",
-            OwnerType: "SignatureRequest",
+            // Values must match CloudStorage's OwnerType / FolderType enums; "SignatureRequest"
+            // and "SignatureSealed" don't exist and produce a 400 from initiate-upload.
+            OwnerType: "Signature",
             OwnerId: request.Id,
-            FolderType: "SignatureSealed",
-            TaxYear: null
+            FolderType: "Signatures",
+            TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year
         );
 
     // ============== Fase 3b: certificate opcional ==============
@@ -258,10 +260,10 @@ public static class SignatureRequestCompletedConsumer
             Content: rendered.CertificatePdfBytes,
             FileName: $"certificate-{request.Id:D}.pdf",
             ContentType: "application/pdf",
-            OwnerType: "SignatureRequest",
+            OwnerType: "Signature",
             OwnerId: request.Id,
-            FolderType: "SignatureCertificate",
-            TaxYear: null
+            FolderType: "Signatures",
+            TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year
         );
         var uploadResult = await storage.UploadAsync(request.TenantId, upload, ct);
         if (uploadResult.IsFailure)

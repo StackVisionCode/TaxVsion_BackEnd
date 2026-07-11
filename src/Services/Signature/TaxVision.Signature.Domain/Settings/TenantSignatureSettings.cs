@@ -274,12 +274,11 @@ public sealed class TenantSignatureSettings : BaseEntity
             DefaultTokenExpirationHoursValue = newConstraints.MaxTokenExpirationHours;
 
         // 3. Document limits (clampear a los nuevos techos del plan).
-        var clampedPdf   = Math.Min(DocumentLimits.MaxPdfBytes,        newConstraints.MaxAllowedPdfBytes);
-        var clampedImage = Math.Min(DocumentLimits.MaxImageBytes,       newConstraints.MaxAllowedImageBytes);
+        var clampedPdf = Math.Min(DocumentLimits.MaxPdfBytes, newConstraints.MaxAllowedPdfBytes);
+        var clampedImage = Math.Min(DocumentLimits.MaxImageBytes, newConstraints.MaxAllowedImageBytes);
         var clampedPages = Math.Min(DocumentLimits.MaxPagesPerDocument, newConstraints.MaxAllowedPages);
 
-        var limitsResult = DocumentLimits.Default()
-            .WithMaxPdfBytes(clampedPdf);
+        var limitsResult = DocumentLimits.Default().WithMaxPdfBytes(clampedPdf);
         if (limitsResult.IsFailure)
             return limitsResult;
 

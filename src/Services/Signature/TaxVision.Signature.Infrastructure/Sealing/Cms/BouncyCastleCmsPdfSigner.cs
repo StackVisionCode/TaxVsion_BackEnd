@@ -83,7 +83,11 @@ public sealed class BouncyCastleCmsPdfSigner : ICmsPdfSigner
             throw new FileNotFoundException($"Certificate PFX not found: {opt.CertificatePath}");
 
         var raw = File.ReadAllBytes(opt.CertificatePath);
-        return X509CertificateLoader.LoadPkcs12(raw, opt.CertificatePassword, X509KeyStorageFlags.EphemeralKeySet);
+        return X509CertificateLoader.LoadPkcs12(
+            raw,
+            opt.CertificatePassword,
+            X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable
+        );
     }
 
     private static BcX509Certificate ConvertToBc(SysX509Certificate2 sys) =>

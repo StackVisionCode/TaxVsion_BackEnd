@@ -93,7 +93,13 @@ public sealed class PadesCmsSigner
         var updatedSigners = new List<SignerInformation>();
         foreach (var signer in signerInformationStore.GetSigners().Cast<SignerInformation>())
         {
-            var tsResult = await _tsaClient!.RequestTimestampAsync(signer.GetSignature(), ct);
+            // RFC 3161 § 2.4.1: the TSA is given the SHA-256 hash of the data to be
+            // timestamped, not the data itself. For a PAdES-B-T signature-timestamp
+            // attribute, that data is the CMS signer's SignatureValue (the raw RSA
+            // signature bytes), which for a 2048-bit key is 256 bytes.
+            var signatureBytes = signer.GetSignature();
+            var signatureDigest = System.Security.Cryptography.SHA256.HashData(signatureBytes);
+            var tsResult = await _tsaClient!.RequestTimestampAsync(signatureDigest, ct);
             if (tsResult.IsFailure)
                 return Result.Failure<byte[]>(tsResult.Error);
 
@@ -116,7 +122,14 @@ public sealed class PadesCmsSigner
         if (!File.Exists(opt.CertificatePath))
             throw new FileNotFoundException($"Certificate PFX not found: {opt.CertificatePath}");
         var raw = File.ReadAllBytes(opt.CertificatePath);
-        return X509CertificateLoader.LoadPkcs12(raw, opt.CertificatePassword, X509KeyStorageFlags.EphemeralKeySet);
+        // Exportable is required because ExtractPrivateKey() below calls rsa.ExportParameters(true)
+        // to hand the key to BouncyCastle. Without this flag, Windows CNG loads the key as
+        // non-exportable and ExportParameters throws "The requested operation is not supported."
+        return X509CertificateLoader.LoadPkcs12(
+            raw,
+            opt.CertificatePassword,
+            X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable
+        );
     }
 
     private static AsymmetricKeyParameter ExtractPrivateKey(SysX509Certificate2 cert)

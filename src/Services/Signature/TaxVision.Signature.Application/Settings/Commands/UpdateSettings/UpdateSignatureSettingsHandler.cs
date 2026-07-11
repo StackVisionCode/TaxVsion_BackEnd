@@ -26,44 +26,65 @@ public static class UpdateSignatureSettingsHandler
 
         var disallowedChannels = cmd.AllowedChannels & ~plan.AllowedChannels;
         if (disallowedChannels != VerificationChannel.None)
-            return Result.Failure(new Error(
-                "Signature.Settings.ChannelNotInPlan",
-                $"Your plan does not allow the following channel(s): {disallowedChannels}."));
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.ChannelNotInPlan",
+                    $"Your plan does not allow the following channel(s): {disallowedChannels}."
+                )
+            );
 
         if ((cmd.DefaultChannel & ~plan.AllowedChannels) != VerificationChannel.None)
-            return Result.Failure(new Error(
-                "Signature.Settings.ChannelNotInPlan",
-                $"Your plan does not allow the default channel '{cmd.DefaultChannel}'."));
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.ChannelNotInPlan",
+                    $"Your plan does not allow the default channel '{cmd.DefaultChannel}'."
+                )
+            );
 
         if (cmd.DefaultTokenExpirationHours > plan.MaxTokenExpirationHours)
-            return Result.Failure(new Error(
-                "Signature.Settings.TokenExpirationExceedsPlan",
-                $"Your plan allows a maximum token expiration of {plan.MaxTokenExpirationHours} hours."));
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.TokenExpirationExceedsPlan",
+                    $"Your plan allows a maximum token expiration of {plan.MaxTokenExpirationHours} hours."
+                )
+            );
 
         if (cmd.MaxPdfBytes > plan.MaxAllowedPdfBytes)
-            return Result.Failure(new Error(
-                "Signature.Settings.PdfBytesExceedsPlan",
-                $"Your plan allows a maximum PDF size of {plan.MaxAllowedPdfBytes} bytes."));
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.PdfBytesExceedsPlan",
+                    $"Your plan allows a maximum PDF size of {plan.MaxAllowedPdfBytes} bytes."
+                )
+            );
 
         if (cmd.MaxImageBytes > plan.MaxAllowedImageBytes)
-            return Result.Failure(new Error(
-                "Signature.Settings.ImageBytesExceedsPlan",
-                $"Your plan allows a maximum image size of {plan.MaxAllowedImageBytes} bytes."));
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.ImageBytesExceedsPlan",
+                    $"Your plan allows a maximum image size of {plan.MaxAllowedImageBytes} bytes."
+                )
+            );
 
         if (cmd.MaxPagesPerDocument > plan.MaxAllowedPages)
-            return Result.Failure(new Error(
-                "Signature.Settings.PagesExceedsPlan",
-                $"Your plan allows a maximum of {plan.MaxAllowedPages} pages per document."));
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.PagesExceedsPlan",
+                    $"Your plan allows a maximum of {plan.MaxAllowedPages} pages per document."
+                )
+            );
 
         if (cmd.RetentionYears < plan.MinRetentionYears)
-            return Result.Failure(new Error(
-                "Signature.Settings.RetentionBelowPlan",
-                $"Your plan requires a minimum retention of {plan.MinRetentionYears} years."));
+            return Result.Failure(
+                new Error(
+                    "Signature.Settings.RetentionBelowPlan",
+                    $"Your plan requires a minimum retention of {plan.MinRetentionYears} years."
+                )
+            );
 
         if (cmd.AllowPurge && !plan.PurgeAllowed)
-            return Result.Failure(new Error(
-                "Signature.Settings.PurgeNotInPlan",
-                "Your plan does not allow enabling document purge."));
+            return Result.Failure(
+                new Error("Signature.Settings.PurgeNotInPlan", "Your plan does not allow enabling document purge.")
+            );
 
         // Enable requested channels first so there is always at least one active
         // before we disable the ones that were removed.
@@ -149,12 +170,14 @@ public static class UpdateSignatureSettingsHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(new SignatureSettingsUpdatedIntegrationEvent
-        {
-            TenantId        = cmd.TenantId,
-            ChangedByUserId = cmd.ChangedByUserId,
-            UpdatedAtUtc    = settings.UpdatedAtUtc,
-        });
+        await bus.PublishAsync(
+            new SignatureSettingsUpdatedIntegrationEvent
+            {
+                TenantId = cmd.TenantId,
+                ChangedByUserId = cmd.ChangedByUserId,
+                UpdatedAtUtc = settings.UpdatedAtUtc,
+            }
+        );
 
         return Result.Success();
     }

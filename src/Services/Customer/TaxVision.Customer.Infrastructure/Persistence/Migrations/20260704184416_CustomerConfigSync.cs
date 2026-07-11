@@ -12,69 +12,81 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerAddresses_Customers_CustomerId",
-                table: "CustomerAddresses");
+                table: "CustomerAddresses"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerContactPoints_Customers_CustomerId",
-                table: "CustomerContactPoints");
+                table: "CustomerContactPoints"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerFiscalProfiles_Customers_CustomerId",
-                table: "CustomerFiscalProfiles");
+                table: "CustomerFiscalProfiles"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerImportRows_CustomerImportAttempts_CustomerImportAttemptId",
-                table: "CustomerImportRows");
+                table: "CustomerImportRows"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerRelationFiscalProfiles_CustomerRelations_CustomerRelationId",
-                table: "CustomerRelationFiscalProfiles");
+                table: "CustomerRelationFiscalProfiles"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerRelations_Customers_CustomerId",
-                table: "CustomerRelations");
+                table: "CustomerRelations"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerAddresses_Customers_CustomerId",
                 table: "CustomerAddresses",
                 column: "CustomerId",
                 principalTable: "Customers",
-                principalColumn: "Id");
+                principalColumn: "Id"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerContactPoints_Customers_CustomerId",
                 table: "CustomerContactPoints",
                 column: "CustomerId",
                 principalTable: "Customers",
-                principalColumn: "Id");
+                principalColumn: "Id"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerFiscalProfiles_Customers_CustomerId",
                 table: "CustomerFiscalProfiles",
                 column: "CustomerId",
                 principalTable: "Customers",
-                principalColumn: "Id");
+                principalColumn: "Id"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerImportRows_CustomerImportAttempts_CustomerImportAttemptId",
                 table: "CustomerImportRows",
                 column: "CustomerImportAttemptId",
                 principalTable: "CustomerImportAttempts",
-                principalColumn: "Id");
+                principalColumn: "Id"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerRelationFiscalProfiles_CustomerRelations_CustomerRelationId",
                 table: "CustomerRelationFiscalProfiles",
                 column: "CustomerRelationId",
                 principalTable: "CustomerRelations",
-                principalColumn: "Id");
+                principalColumn: "Id"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerRelations_Customers_CustomerId",
                 table: "CustomerRelations",
                 column: "CustomerId",
                 principalTable: "Customers",
-                principalColumn: "Id");
+                principalColumn: "Id"
+            );
         }
 
         /// <inheritdoc />
@@ -82,27 +94,33 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerAddresses_Customers_CustomerId",
-                table: "CustomerAddresses");
+                table: "CustomerAddresses"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerContactPoints_Customers_CustomerId",
-                table: "CustomerContactPoints");
+                table: "CustomerContactPoints"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerFiscalProfiles_Customers_CustomerId",
-                table: "CustomerFiscalProfiles");
+                table: "CustomerFiscalProfiles"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerImportRows_CustomerImportAttempts_CustomerImportAttemptId",
-                table: "CustomerImportRows");
+                table: "CustomerImportRows"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerRelationFiscalProfiles_CustomerRelations_CustomerRelationId",
-                table: "CustomerRelationFiscalProfiles");
+                table: "CustomerRelationFiscalProfiles"
+            );
 
             migrationBuilder.DropForeignKey(
                 name: "FK_CustomerRelations_Customers_CustomerId",
-                table: "CustomerRelations");
+                table: "CustomerRelations"
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerAddresses_Customers_CustomerId",
@@ -110,7 +128,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 column: "CustomerId",
                 principalTable: "Customers",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+                onDelete: ReferentialAction.Cascade
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerContactPoints_Customers_CustomerId",
@@ -118,7 +137,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 column: "CustomerId",
                 principalTable: "Customers",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+                onDelete: ReferentialAction.Cascade
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerFiscalProfiles_Customers_CustomerId",
@@ -126,7 +146,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 column: "CustomerId",
                 principalTable: "Customers",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+                onDelete: ReferentialAction.Cascade
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerImportRows_CustomerImportAttempts_CustomerImportAttemptId",
@@ -134,7 +155,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 column: "CustomerImportAttemptId",
                 principalTable: "CustomerImportAttempts",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+                onDelete: ReferentialAction.Cascade
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerRelationFiscalProfiles_CustomerRelations_CustomerRelationId",
@@ -142,7 +164,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 column: "CustomerRelationId",
                 principalTable: "CustomerRelations",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+                onDelete: ReferentialAction.Cascade
+            );
 
             migrationBuilder.AddForeignKey(
                 name: "FK_CustomerRelations_Customers_CustomerId",
@@ -150,7 +173,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                 column: "CustomerId",
                 principalTable: "Customers",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
+                onDelete: ReferentialAction.Cascade
+            );
         }
     }
 }

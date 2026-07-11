@@ -32,6 +32,7 @@ public sealed class EmailCampaignRecipientConfiguration : IEntityTypeConfigurati
     {
         builder.ToTable("EmailCampaignRecipients");
         builder.HasKey(r => r.Id);
+        builder.Property(r => r.Id).ValueGeneratedNever();
         builder.Property(r => r.CampaignId).IsRequired();
         builder.Property(r => r.Address).HasMaxLength(320).IsRequired();
         builder.Property(r => r.Name).HasMaxLength(200);

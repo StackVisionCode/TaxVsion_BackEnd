@@ -41,7 +41,7 @@ public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpE
                 message.Subject,
                 message.To
             );
-            logger.LogDebug("[DEV] Cuerpo del email para {To}:\n{Body}", message.To, message.TextBody);
+            logger.LogWarning("[DEV] Link de firma para {To}:\n{Body}", message.To, message.TextBody);
             return Result.Success();
         }
 

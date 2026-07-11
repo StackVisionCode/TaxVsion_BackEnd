@@ -11,6 +11,7 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
     {
         builder.ToTable("Signers");
         builder.HasKey(signer => signer.Id);
+        builder.Property(signer => signer.Id).ValueGeneratedNever();
 
         builder.Property(signer => signer.SignatureRequestId).IsRequired();
         builder.Property(signer => signer.MappedCustomerId);

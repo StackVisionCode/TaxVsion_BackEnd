@@ -128,6 +128,9 @@ public static class DependencyInjection
         services.AddSingleton<IOtpCodeGenerator, CryptoOtpCodeGenerator>();
 
         // Sealing worker: engines puros (singleton) + HTTP clients con token M2M.
+        // PdfSharp 6.x requires an explicit IFontResolver — register once, process-wide.
+        if (PdfSharp.Fonts.GlobalFontSettings.FontResolver is null)
+            PdfSharp.Fonts.GlobalFontSettings.FontResolver = new SealingFontResolver();
         services.AddSingleton<IDocumentSealingEngine, PdfSharpSealingEngine>();
         services.AddSingleton<ICertificateOfCompletionRenderer, PdfSharpCertificateRenderer>();
 

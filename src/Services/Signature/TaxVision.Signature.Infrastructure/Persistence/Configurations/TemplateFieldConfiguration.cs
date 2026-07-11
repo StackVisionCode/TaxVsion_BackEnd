@@ -10,6 +10,7 @@ public sealed class TemplateFieldConfiguration : IEntityTypeConfiguration<Templa
     {
         builder.ToTable("TemplateFields");
         builder.HasKey(f => f.Id);
+        builder.Property(f => f.Id).ValueGeneratedNever();
 
         builder.Property(f => f.SignatureTemplateId).IsRequired();
         builder.Property(f => f.SlotOrder).IsRequired();

@@ -42,12 +42,14 @@ public static class ApplyPlanConstraintsHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(new SignaturePlanConstraintsUpdatedIntegrationEvent
-        {
-            TenantId        = cmd.TenantId,
-            ChangedByUserId = cmd.ChangedByUserId,
-            UpdatedAtUtc    = settings.UpdatedAtUtc,
-        });
+        await bus.PublishAsync(
+            new SignaturePlanConstraintsUpdatedIntegrationEvent
+            {
+                TenantId = cmd.TenantId,
+                ChangedByUserId = cmd.ChangedByUserId,
+                UpdatedAtUtc = settings.UpdatedAtUtc,
+            }
+        );
 
         return Result.Success();
     }

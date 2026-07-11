@@ -10,6 +10,7 @@ public sealed class SignerVerificationChallengeConfiguration : IEntityTypeConfig
     {
         builder.ToTable("SignerVerificationChallenges");
         builder.HasKey(c => c.Id);
+        builder.Property(c => c.Id).ValueGeneratedNever();
 
         builder.Property(c => c.SignerId).IsRequired();
         builder.Property(c => c.Method).HasConversion<string>().HasMaxLength(24).IsRequired();
