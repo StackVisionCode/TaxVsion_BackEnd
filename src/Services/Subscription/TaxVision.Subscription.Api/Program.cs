@@ -9,7 +9,7 @@ using BuildingBlocks.Security;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
-using TaxVision.Subscription.Application.Subscriptions.Commands;
+using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using Wolverine;
@@ -83,6 +83,12 @@ builder.Host.UseWolverine(options =>
 });
 
 var app = builder.Build();
+
+await using (var seedScope = app.Services.CreateAsyncScope())
+{
+    var seedDb = seedScope.ServiceProvider.GetRequiredService<SubscriptionDbContext>();
+    await SubscriptionPlanCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
+}
 
 if (app.Environment.IsDevelopment())
 {

@@ -25,7 +25,9 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<SubscriptionDbContext>());
         services.AddScoped<IPlanRepository, PlanRepository>();
-        services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+        services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
+        services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
+        services.AddScoped<ISubscriptionTenantSettingsRepository, SubscriptionTenantSettingsRepository>();
 
         return services;
     }

@@ -2,7 +2,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Subscription.Application.Subscriptions.Queries;
+using TaxVision.Subscription.Application.Plans.Queries;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
