@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Seats;
 using Wolverine;
 
@@ -45,6 +46,8 @@ public static class AssignSeatToUserHandler
             CorrelationId = correlation.CorrelationId,
         });
         await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
         logger.LogInformation("Seat {SeatId} assigned to user {UserId} for tenant {TenantId}.", seat.Id, command.UserId, command.TenantId);
         return Result.Success();

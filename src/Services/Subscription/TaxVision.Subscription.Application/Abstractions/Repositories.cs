@@ -1,3 +1,5 @@
+using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Settings;
@@ -30,4 +32,24 @@ public interface ISubscriptionTenantSettingsRepository
 {
     Task<SubscriptionTenantSettings?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(SubscriptionTenantSettings settings, CancellationToken ct = default);
+}
+
+public interface IAddOnDefinitionRepository
+{
+    Task<IReadOnlyList<AddOnDefinition>> GetPublishedAsync(CancellationToken ct = default);
+    Task<AddOnDefinition?> GetByCodeAsync(string code, CancellationToken ct = default);
+    Task<AddOnDefinition?> GetByIdAsync(Guid addOnDefinitionId, CancellationToken ct = default);
+}
+
+public interface ITenantAddOnRepository
+{
+    Task<TenantAddOn?> GetByIdAsync(Guid tenantAddOnId, Guid tenantId, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantAddOn>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+    Task AddAsync(TenantAddOn addOn, CancellationToken ct = default);
+}
+
+public interface ITenantEntitlementSnapshotRepository
+{
+    Task<TenantEntitlementSnapshot?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+    Task UpsertAsync(TenantEntitlementSnapshot snapshot, CancellationToken ct = default);
 }

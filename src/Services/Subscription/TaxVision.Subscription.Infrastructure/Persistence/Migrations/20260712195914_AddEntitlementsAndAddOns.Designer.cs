@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Subscription.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Subscription.Infrastructure.Persistence;
 namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SubscriptionDbContext))]
-    partial class SubscriptionDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260712195914_AddEntitlementsAndAddOns")]
+    partial class AddEntitlementsAndAddOns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

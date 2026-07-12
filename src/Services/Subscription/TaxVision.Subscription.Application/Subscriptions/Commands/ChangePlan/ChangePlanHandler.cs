@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
@@ -44,6 +45,8 @@ public static class ChangePlanHandler
 
         await bus.PublishAsync(SubscriptionEventFactory.PlanChanged(subscription, plan, planVersion, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
         logger.LogInformation(
             "Tenant {TenantId} changed plan to {PlanCode} (requested by {UserId}).",

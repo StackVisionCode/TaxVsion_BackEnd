@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -49,6 +50,8 @@ public static class PurchaseSeatsHandler
             CorrelationId = correlation.CorrelationId,
         });
         await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
         logger.LogInformation(
             "Tenant {TenantId} purchased {Quantity} {SeatType} seat(s) (requested by {UserId}).",

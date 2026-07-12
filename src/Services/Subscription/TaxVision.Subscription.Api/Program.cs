@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
@@ -35,6 +36,7 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "subscription-service");
+builder.Services.AddRedisCache(builder.Configuration);
 
 // Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
 // esta policy. No se expone vía gateway público.
@@ -45,10 +47,13 @@ var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
 );
 
+var redisEndpoint = (builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379").Split(':');
+
 builder
     .Services.AddHealthChecks()
     .AddDbContextCheck<SubscriptionDbContext>("sql-server", tags: ["ready"])
-    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"]);
+    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"])
+    .AddCheck("redis", new TcpEndpointHealthCheck(redisEndpoint[0], int.Parse(redisEndpoint[1])), tags: ["ready"]);
 
 builder.Host.UseWolverine(options =>
 {
@@ -72,6 +77,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SeatsPurchasedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatAssignedToUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatReleasedFromUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated (alta de suscripción trial).
     options

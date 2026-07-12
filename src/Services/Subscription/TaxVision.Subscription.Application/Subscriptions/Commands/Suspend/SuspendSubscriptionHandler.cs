@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -39,6 +40,8 @@ public static class SuspendSubscriptionHandler
             }
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
         logger.LogWarning("Subscription suspended for tenant {TenantId}: {Reason}.", command.TenantId, command.Reason);
         return Result.Success();

@@ -28,6 +28,9 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
         services.AddScoped<ISubscriptionTenantSettingsRepository, SubscriptionTenantSettingsRepository>();
+        services.AddScoped<IAddOnDefinitionRepository, AddOnDefinitionRepository>();
+        services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
+        services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
 
         return services;
     }

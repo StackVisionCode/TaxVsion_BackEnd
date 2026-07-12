@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -39,6 +40,8 @@ public static class CancelSubscriptionHandler
             }
         );
         await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
         logger.LogInformation(
             "Tenant {TenantId} cancelled its subscription (requested by {UserId}): {Reason}.",

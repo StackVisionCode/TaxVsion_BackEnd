@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -57,6 +58,8 @@ public static class TenantCreatedConsumer
 
             await bus.PublishAsync(SubscriptionEventFactory.Activated(subscription, plan, planVersion, correlationId));
             await unitOfWork.SaveChangesAsync(ct);
+
+            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(evt.NewTenantId), ct);
 
             logger.LogInformation(
                 "Trial subscription created for tenant {TenantId} on plan {PlanCode} until {TrialEnd}.",
