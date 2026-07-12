@@ -87,6 +87,8 @@ internal static class FileTypeCompatibility
             ".json" => detectedContentType == "application/json",
             // El HTML es texto plano sin magic bytes fuertes: los detectores suelen devolver text/plain.
             ".html" => detectedContentType is "text/html" or "text/plain",
+            // Grabaciones de meetings/calls (MediaRecorder del navegador via meeting.recording.attach).
+            ".webm" => detectedContentType == "video/webm",
             _ => false,
         };
     }

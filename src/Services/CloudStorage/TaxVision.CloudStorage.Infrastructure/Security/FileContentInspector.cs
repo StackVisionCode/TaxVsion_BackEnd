@@ -66,6 +66,11 @@ public sealed class FileContentInspector : IFileContentInspector
             };
         if (StartsWith(header, @"{\rtf"u8))
             return "application/rtf";
+        // EBML magic number — WebM es un perfil de Matroska; MediaRecorder del
+        // navegador (grabacion de meetings/calls) solo produce .webm, nunca .mkv,
+        // asi que asumir WebM directamente es correcto para este caso de uso.
+        if (StartsWith(header, new byte[] { 0x1A, 0x45, 0xDF, 0xA3 }))
+            return "video/webm";
 
         if (header.All(value => value is 9 or 10 or 13 || value >= 32))
         {

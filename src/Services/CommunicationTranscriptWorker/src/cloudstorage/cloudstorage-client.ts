@@ -83,6 +83,15 @@ export class CloudStorageClient {
     for (const [key, value] of Object.entries(initiate.formData)) {
       form.append(key, value);
     }
+    // El SDK de Minio firma una condicion Content-Type en la policy
+    // (`policy.SetContentType(...)`) pero `PresignedPostPolicyAsync` no
+    // siempre la refleja como campo dentro de `formData` — si el campo
+    // Content-Type no viaja en el multipart, Minio rechaza el POST con 403
+    // aunque la firma sea valida (mismo caso ya resuelto en el cliente de
+    // Communication, ver cloudstorage-client.ts de ese servicio).
+    if (!Object.keys(initiate.formData).some((k) => k.toLowerCase() === 'content-type')) {
+      form.append('Content-Type', input.contentType);
+    }
     form.append('file', new Blob([fileBuffer], { type: input.contentType }), input.originalName);
 
     const uploadResponse = await fetch(initiate.uploadUrl, { method: 'POST', body: form });

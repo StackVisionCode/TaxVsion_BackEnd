@@ -16,6 +16,10 @@ const CreateMeetingBody = z.object({
 });
 
 const IdParams = z.object({ id: z.string().uuid() });
+const StartMeetingBody = z.object({
+  audioDefault: z.boolean().optional(),
+  videoDefault: z.boolean().optional(),
+});
 const HistoryQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   size: z.coerce.number().int().min(1).max(100).default(20),
@@ -83,12 +87,15 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
   app.post('/communication/meetings/:id/start', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
     const params = IdParams.parse(request.params);
+    const body = StartMeetingBody.parse(request.body ?? {});
     const result = await startMeeting(
       {
         tenantId: principal.tenantId,
         correlationId: request.id,
         meetingId: params.id,
         hostUserId: principal.userId,
+        ...(body.audioDefault !== undefined ? { audioDefault: body.audioDefault } : {}),
+        ...(body.videoDefault !== undefined ? { videoDefault: body.videoDefault } : {}),
       },
       container,
     );

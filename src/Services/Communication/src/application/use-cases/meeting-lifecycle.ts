@@ -13,6 +13,8 @@ export interface StartMeetingCommand {
   readonly correlationId: string;
   readonly meetingId: string;
   readonly hostUserId: string;
+  readonly audioDefault?: boolean;
+  readonly videoDefault?: boolean;
 }
 
 export async function startMeeting(
@@ -22,7 +24,12 @@ export async function startMeeting(
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
   const now = new Date();
-  const result = meeting.start({ hostUserId: cmd.hostUserId, now });
+  const result = meeting.start({
+    hostUserId: cmd.hostUserId,
+    ...(cmd.audioDefault !== undefined ? { audioDefault: cmd.audioDefault } : {}),
+    ...(cmd.videoDefault !== undefined ? { videoDefault: cmd.videoDefault } : {}),
+    now,
+  });
   if (!result.isSuccess) return Result.fail(result.error);
   await deps.meetings.save(meeting);
 

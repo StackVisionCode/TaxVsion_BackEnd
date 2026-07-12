@@ -1341,6 +1341,7 @@ Incluye:
 - child entities: addresses, contact points, relations, fiscal profile y fiscal profile de relaciones;
 - catalogos seed: 171 occupations y 769 NAICS (PrincipalBusinessActivities);
 - cifra SSN/ITIN/EIN con AES-256-GCM y mantiene blind index HMAC por tenant para deduplicar;
+- permite revelar el SSN/ITIN/EIN en claro via permiso granular auditado y rate-limited (ver sec 25.5);
 - expone CRUD, invitacion al portal, archive y fiscal profile;
 - publica eventos al exchange `taxvision-events`;
 - usa outbox transaccional EF Core + Wolverine sobre SQL Server.
@@ -1391,6 +1392,8 @@ Base `TaxVision_Customer`. Migraciones aplicadas en orden:
   `(TenantId, TaxIdentifierBlindIndex)` de fiscal profiles (customer y relation)
   en unique. Garantiza a nivel BD que un mismo SSN/EIN no puede aparecer en dos
   customers o dos relaciones del mismo tenant.
+- `AddCustomerAuditLog`: crea `CustomerAuditLogs` — audit trail de acciones
+  sensibles (hoy solo `RevealTaxIdentifier`, ver sec 25.5).
 
 Tablas de dominio core:
 
@@ -1402,6 +1405,7 @@ Tablas de dominio core:
 - `CustomerRelationFiscalProfiles`
 - `Occupations`
 - `PrincipalBusinessActivities`
+- `CustomerAuditLogs`
 
 Tablas del flujo de bulk import:
 
@@ -1440,6 +1444,25 @@ abstraida via `ISensitiveDataProtector` en Application.
 - Identificadores fiscales y datos bancarios no aparecen en logs, eventos
   generales ni read models.
 
+**Revelar el numero completo** — `GET /customers/{id}/fiscal-profile/tax-identifier`
+(`RevealTaxIdentifierHandler.cs`) es el unico consumidor de `Unprotect()` en todo
+el servicio. Formatea segun `SubjectKind` (`123-45-6789` para Individual,
+`12-3456789` para Business — asi trabaja el software profesional de impuestos:
+Drake, ProSeries, UltraTax muestran la mascara por defecto y solo revelan bajo
+accion explicita del preparador). Controles, todos nuevos para este endpoint:
+
+- Permiso granular `customers.fiscalprofile.reveal` (no solo el rol
+  TenantAdmin — un TenantEmployee puede recibirlo puntualmente sin volverse
+  admin). Primera vez que este servicio usa autorizacion por permiso en vez de
+  solo rol; plumbing copiado de Signature (`HasPermissionAttribute` +
+  `PermissionPolicyProvider`).
+- Audit trail propio: tabla `CustomerAuditLogs` (actor, outcome, IP, user
+  agent, correlationId) — se escribe tanto si la revelacion es exitosa como si
+  se deniega (customer inexistente o sin fiscal profile), asi que un intento
+  fallido de scraping tambien queda registrado.
+- Rate limit dedicado: 5 req/min por usuario+ruta (`AddRateLimiter`, policy
+  `fiscal-reveal`), independiente del rate limit generico del Gateway.
+
 ### 25.6 Endpoints CRUD y child entities
 
 Base path `/customers`. Autorizacion por rol claim del JWT firmado.
@@ -1457,6 +1480,7 @@ Base path `/customers`. Autorizacion por rol claim del JWT firmado.
 | POST `/customers/{id}/archive` | TenantAdmin |
 | PUT `/customers/{id}/fiscal-profile` | TenantAdmin |
 | PUT `/customers/{id}/relations/{relationId}/fiscal-profile` | TenantAdmin |
+| GET `/customers/{id}/fiscal-profile/tax-identifier` | Permiso `customers.fiscalprofile.reveal` (TenantAdmin lo tiene siempre) |
 
 `GET /customers/{id}` incluye `OccupationName` y `PrincipalBusinessActivityDescription`
 resueltos por JOIN via `ICustomerReadService` con `AsNoTracking` y proyeccion a DTO.

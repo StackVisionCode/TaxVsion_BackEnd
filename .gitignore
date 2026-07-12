@@ -495,3 +495,4 @@ output/
 # Nunca versionar el zip del entorno (contiene secretos)
 .env.zip
 jwt-private.pem
+src/Services/CommunicationTranscriptWorker/vendor/whisper/models/*.bin

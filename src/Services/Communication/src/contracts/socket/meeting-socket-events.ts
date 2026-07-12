@@ -11,6 +11,10 @@ export const JoinMeetingPayloadSchema = z.object({
   meetingId: z.string().uuid(),
   passcode: z.string().max(120).optional(),
   invitationToken: z.string().length(64).optional(),
+  // Preferencia del cliente al unirse — default true (encendido) si se
+  // omite, preservando el comportamiento anterior.
+  audioDefault: z.boolean().optional(),
+  videoDefault: z.boolean().optional(),
 });
 export type JoinMeetingPayload = z.infer<typeof JoinMeetingPayloadSchema>;
 

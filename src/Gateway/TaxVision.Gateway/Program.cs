@@ -13,6 +13,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("gateway");
 builder.Services.AddBuildingBlocks();
 
+// Default de Kestrel es ~28.6MB (30_000_000 bytes) — insuficiente para el
+// upload de grabaciones de meetings/calls (Communication ->
+// uploads/meeting-recording, hasta 220MB). Sin este override el gateway
+// corta la conexion antes de que la request llegue al cluster de destino.
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 220 * 1024 * 1024);
+
 // CORS explícito para la SPA (orígenes en Cors:Origins).
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>

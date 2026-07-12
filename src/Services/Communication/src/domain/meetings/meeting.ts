@@ -118,6 +118,8 @@ export class Meeting {
     displayName: string;
     hasValidInvitation: boolean;
     passcodeMatch: boolean | null;
+    audioDefault?: boolean;
+    videoDefault?: boolean;
     now?: Date;
   }): Result<{ requiresAdmission: boolean; role: MeetingRole }> {
     if (this.state.status === MeetingStatus.Ended || this.state.status === MeetingStatus.Cancelled) {
@@ -156,8 +158,8 @@ export class Meeting {
       role,
       status: requiresAdmission ? ParticipantStatus.Waiting : ParticipantStatus.Joined,
       joinOrder,
-      audioDefault: true,
-      videoDefault: true,
+      audioDefault: input.audioDefault ?? true,
+      videoDefault: input.videoDefault ?? true,
       now,
     });
 
@@ -201,7 +203,7 @@ export class Meeting {
     return Result.okVoid();
   }
 
-  start(input: { hostUserId: string; now?: Date }): Result<void> {
+  start(input: { hostUserId: string; audioDefault?: boolean; videoDefault?: boolean; now?: Date }): Result<void> {
     if (this.state.status !== MeetingStatus.Scheduled) {
       return Result.fail(makeError('Meeting.InvalidTransition', `Cannot start from ${this.state.status}.`));
     }
@@ -222,8 +224,8 @@ export class Meeting {
       role: MeetingRole.Host,
       status: ParticipantStatus.Joined,
       joinOrder: 1,
-      audioDefault: true,
-      videoDefault: true,
+      audioDefault: input.audioDefault ?? true,
+      videoDefault: input.videoDefault ?? true,
       now,
     });
     this.participants.push(hostParticipant);

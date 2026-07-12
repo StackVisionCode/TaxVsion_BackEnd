@@ -1,10 +1,13 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using TaxVision.Customer.Api.Authorization;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Customers.Commands.Activate;
@@ -20,6 +23,7 @@ using TaxVision.Customer.Application.Customers.Commands.RemoveAddress;
 using TaxVision.Customer.Application.Customers.Commands.RemoveContactPoint;
 using TaxVision.Customer.Application.Customers.Commands.RemoveRelation;
 using TaxVision.Customer.Application.Customers.Commands.RequestPortalInvitation;
+using TaxVision.Customer.Application.Customers.Commands.RevealTaxIdentifier;
 using TaxVision.Customer.Application.Customers.Commands.SetCustomerFiscalProfile;
 using TaxVision.Customer.Application.Customers.Commands.SetRelationFiscalProfile;
 using TaxVision.Customer.Application.Customers.Commands.Update;
@@ -610,6 +614,37 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         if (result.IsSuccess)
             return Ok(result.Value);
         if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // Revela el SSN/ITIN/EIN en claro. Gateado por permiso granular (no solo el rol
+    // TenantAdmin — un TenantEmployee puede recibir este permiso puntual sin volverse
+    // admin), con audit trail (quien/cuando/IP) y rate limit propio para desanimar
+    // scraping aunque el actor tenga el permiso.
+    [HttpGet("{id:guid}/fiscal-profile/tax-identifier")]
+    [HasPermission(CustomersPermissions.FiscalProfileReveal)]
+    [EnableRateLimiting("fiscal-reveal")]
+    [ProducesResponseType<RevealedTaxIdentifierResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevealTaxIdentifier(Guid id, CancellationToken ct)
+    {
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var cmd = new RevealTaxIdentifierCommand(
+            tenantId,
+            id,
+            userId,
+            HttpContext.TraceIdentifier,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString()
+        );
+
+        var result = await bus.InvokeAsync<Result<RevealedTaxIdentifierResponse>>(cmd, ct);
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code is "Customer.NotFound" or "FiscalProfile.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

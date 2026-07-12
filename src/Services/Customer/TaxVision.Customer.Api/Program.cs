@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
@@ -7,8 +8,11 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
+using TaxVision.Customer.Api.Authorization;
 using TaxVision.Customer.Application.Customers.Commands.Create;
 using TaxVision.Customer.Infrastructure;
 using TaxVision.Customer.Infrastructure.Persistence;
@@ -36,6 +40,37 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddCustomerInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "customer-service");
+
+// Autorización por permiso ([HasPermission("customers.*")]); los admins pasan siempre.
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// Rate limiter dedicado para revelar tax identifiers en claro: 5 req/min por
+// usuario+ruta. Desanima el scraping de SSN/EIN aunque el actor tenga el
+// permiso — un preparador legitimo no necesita revelar mas de un puñado por
+// minuto, un script si.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(
+        "fiscal-reveal",
+        context =>
+        {
+            var userId =
+                context.User.FindFirst("sub")?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{userId}:{path}",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+});
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -96,6 +131,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

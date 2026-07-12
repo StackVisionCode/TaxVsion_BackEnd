@@ -20,6 +20,8 @@ export interface JoinMeetingCommand {
   readonly user: { userId: string; displayName: string };
   readonly passcode?: string;
   readonly invitationToken?: string;
+  readonly audioDefault?: boolean;
+  readonly videoDefault?: boolean;
 }
 
 export interface JoinMeetingResult {
@@ -70,6 +72,8 @@ export async function joinMeeting(
     displayName: command.user.displayName,
     hasValidInvitation: invitationValid,
     passcodeMatch,
+    ...(command.audioDefault !== undefined ? { audioDefault: command.audioDefault } : {}),
+    ...(command.videoDefault !== undefined ? { videoDefault: command.videoDefault } : {}),
   });
   if (!joinResult.isSuccess) return Result.fail(joinResult.error);
 

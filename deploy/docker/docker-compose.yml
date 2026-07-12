@@ -5,9 +5,13 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+    # Solo loopback — igual que sqlserver: nada de esto se expone a la interfaz
+    # publica, se accede via VPN + SSH al server (127.0.0.1 desde ahi mismo).
+    # 5672 (AMQP) y 15672 (management UI) no los necesita nadie fuera del
+    # server: los servicios de la app usan rabbitmq:5672 por DNS interno.
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     networks:
@@ -22,8 +26,10 @@ services:
     image: redis:7.2.12-alpine
     container_name: taxvision-redis
     command: ["redis-server", "--appendonly", "yes"]
+    # Solo loopback — para redis-cli via VPN+SSH, ningun servicio de la app lo
+    # necesita publicado (usan redis:6379 por DNS interno).
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     networks:
@@ -45,9 +51,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    # El puerto 9000 (API S3) NO se publica al host — Caddy le pega a minio:9000
+    # directo por la red interna de docker, no necesita ports: para eso. El 9001
+    # (consola de administracion) queda solo loopback, via VPN+SSH.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
     networks:
@@ -73,6 +81,30 @@ services:
       timeout: 10s
       retries: 20
       start_period: 120s
+
+  # SQL Server 2022 Developer edition — gratis para no-produccion-comercial-interna
+  # (uso propio del negocio, sin redistribuir), version completa sin los limites de
+  # Express. Solo alcanzable via loopback (127.0.0.1) + VPN al server, nunca en la
+  # interfaz publica — ver seccion 3 del plan de deploy.
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: taxvision-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   loki:
     image: grafana/loki:3.7.2
@@ -117,6 +149,45 @@ services:
     networks:
       - taxvision-network
 
+  # Metricas de contenedores (CPU/memoria/IO por servicio) — sin esto Prometheus
+  # solo tiene metricas de aplicacion (OTel), cero visibilidad de infraestructura.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: taxvision-cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+    networks:
+      - taxvision-network
+
+  # Metricas del host: disco/memoria/CPU del server — vigila que sqlserver-data
+  # y minio-data no se llenen en silencio.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: taxvision-node-exporter
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    expose:
+      - "9100"
+    networks:
+      - taxvision-network
+
   prometheus:
     image: prom/prometheus:v3.5.3
     container_name: taxvision-prometheus
@@ -126,10 +197,13 @@ services:
     volumes:
       - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    # Solo loopback, via VPN+SSH — Grafana ya reexpone lo que hace falta ver.
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     depends_on:
       - otel-collector
+      - cadvisor
+      - node-exporter
     networks:
       - taxvision-network
 
@@ -144,8 +218,9 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    # Solo loopback — vos entras via VPN+SSH al server y ahi si abris localhost:3000.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - prometheus
       - loki
@@ -167,13 +242,17 @@ services:
       ConnectionStrings__Default: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
@@ -197,9 +276,17 @@ services:
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # RS256: unico servicio con la clave privada — firma los JWT y publica el
+      # JWKS real en /auth/.well-known/jwks.json (con HS256 ese endpoint
+      # devuelve un keyset vacio, ver SigningKeyProvider.cs:65-69 — rompe la
+      # validacion de Communication, que SOLO valida via JWKS).
+      Jwt__PrivateKeyPath: /run/secrets/jwt-private.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Clave de cifrado de secretos de MFA (AesGcmSecretProtector.cs). Antes caia
+      # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
+      # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.
+      Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY in .env}
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de CloudStorage.
       ServiceAuth__Clients__0__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
       ServiceAuth__Clients__0__Secret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
@@ -216,7 +303,10 @@ services:
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-private.pem:/run/secrets/jwt-private.pem:ro
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
@@ -239,13 +329,17 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       otel-collector:
@@ -266,7 +360,8 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       Subscriptions__DefaultPlanCode: starter
@@ -274,7 +369,10 @@ services:
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       otel-collector:
@@ -295,7 +393,8 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
@@ -324,7 +423,10 @@ services:
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       otel-collector:
@@ -345,24 +447,82 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
-      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
-      Minio__Endpoint: minio:9000
+      # El endpoint es el dominio PUBLICO, no el DNS interno de docker (minio:9000):
+      # las URLs presignadas que genera este servicio se le entregan directo al
+      # navegador del cliente para subir/bajar bytes sin pasar por la API — tienen
+      # que ser alcanzables desde fuera del server. Caddy rutea los 3 prefijos de
+      # bucket (taxvision-storage/temp/quarantine) de ese mismo dominio hacia
+      # minio:9000 internamente (ver deploy/docker/caddy/Caddyfile) — MinIO en si
+      # nunca se expone directo.
+      Minio__Endpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxprocore.com}
       Minio__AccessKey: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-      Minio__UseTls: "false"
+      Minio__UseTls: "true"
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       minio:
         condition: service_healthy
       clamav:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  signature-api:
+    image: taxvision/signature-api:dev
+    container_name: taxvision-signature-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Signature/TaxVision.Signature.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Clave de cifrado de secretos compartida (BuildingBlocks.Infrastructure.Security) —
+      # usada para el audit trail append-only (ConsentEvent) y otros campos sensibles.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Signature__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Signature__ServiceAuth__ClientId: ${SIGNATURE_SERVICE_CLIENT_ID:-signature-worker}
+      Signature__ServiceAuth__ClientSecret: ${SIGNATURE_SERVICE_CLIENT_SECRET:-}
+      Signature__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Certificado PAdES-B (CMS signing) montado desde /run/secrets — ver seccion 4 del plan
+      # de deploy. Sin CertificatePath configurado, el registro del CMS signer queda inerte
+      # (no crashea, pero el sellado no funciona) — ver DependencyInjection.cs linea 73-83.
+      Signature__Sealing__Cms__CertificatePath: /run/secrets/signature-sealing.pfx
+      Signature__Sealing__Cms__CertificatePassword: ${SIGNATURE_PFX_PASSWORD:?Set SIGNATURE_PFX_PASSWORD in .env}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-sealing.pfx:/run/secrets/signature-sealing.pfx:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -386,6 +546,9 @@ services:
       COMMUNICATION_DB_CONNECTION: ${COMMUNICATION_DB_CONNECTION:?Set COMMUNICATION_DB_CONNECTION in .env}
       COMMUNICATION_REDIS_URI: redis://redis:6379/0
       COMMUNICATION_SESSION_DENYLIST_PREFIX: auth:session-denylist
+      # Tenant especial "de plataforma" para el modulo de Support cross-tenant
+      # (Fase 5) — existe en .env local pero faltaba en este compose.
+      COMMUNICATION_PLATFORM_TENANT_ID: ${COMMUNICATION_PLATFORM_TENANT_ID:?Set COMMUNICATION_PLATFORM_TENANT_ID in .env}
       COMMUNICATION_RABBITMQ_URI: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
       COMMUNICATION_RABBITMQ_EXCHANGE: taxvision-events
       COMMUNICATION_RABBITMQ_QUEUE: communication-events
@@ -399,11 +562,21 @@ services:
       COMMUNICATION_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
       COMMUNICATION_TURN_URL: ${COMMUNICATION_TURN_URL:-}
       COMMUNICATION_TURN_STATIC_AUTH_SECRET: ${COMMUNICATION_TURN_STATIC_AUTH_SECRET:-}
-      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-}
+      # Temporal (pedido explicito): mismo criterio que Cors__Origins del gateway.
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-http://localhost:5173,http://localhost:4200}
+      # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
+      # esta apagado salvo que se prenda a proposito; el mesh WebRTC actual usa
+      # TURN (arriba) para NAT traversal, no esto. Si en el futuro se activa el
+      # SFU, ANNOUNCED_IP tiene que ser la IP publica del server (sin esto, los
+      # workers de mediasoup anuncian la IP interna del contenedor y el ICE
+      # candidate queda inalcanzable desde afuera).
+      COMMUNICATION_MEDIASOUP_ANNOUNCED_IP: ${COMMUNICATION_MEDIASOUP_ANNOUNCED_IP:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: communication-service
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
@@ -436,6 +609,8 @@ services:
       # Modelo/binario/idioma se dejan en los defaults del Dockerfile
       # (ggml-base, whisper-cli, auto-detect) salvo que se sobreescriban aca.
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
@@ -459,6 +634,10 @@ services:
       SUBSCRIPTION_DB_CONNECTION: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
       NOTIFICATION_DB_CONNECTION: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
       CLOUDSTORAGE_DB_CONNECTION: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
+      SIGNATURE_DB_CONNECTION: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
     networks:
       - taxvision-network
 
@@ -468,23 +647,35 @@ services:
     build:
       context: ../..
       dockerfile: src/Gateway/TaxVision.Gateway/Dockerfile
-    ports:
-      - "5047:8080"
+    # Ya no publica al host — Caddy es el unico punto de entrada publico
+    # (ver servicio "caddy" mas abajo), el gateway solo es alcanzable
+    # dentro de taxvision-network.
+    expose:
+      - "8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Temporal (pedido explicito): permite pegarle a la API de produccion desde
+      # los frontends React/Angular corriendo en localhost durante desarrollo.
+      # Sacar estos 2 origins cuando el frontend tenga su dominio real.
+      Cors__Origins__0: http://localhost:5173
+      Cors__Origins__1: http://localhost:4200
       ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
       ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
       ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/
       ReverseProxy__Clusters__subscription__Destinations__subscription1__Address: http://subscription-api:8080/
       ReverseProxy__Clusters__notification__Destinations__notification1__Address: http://notification-api:8080/
       ReverseProxy__Clusters__cloudstorage__Destinations__cloudstorage1__Address: http://cloudstorage-api:8080/
+      ReverseProxy__Clusters__signature__Destinations__signature1__Address: http://signature-api:8080/
+      ReverseProxy__Clusters__communication__Destinations__communication1__Address: http://communication-api:5350/
     volumes:
       - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
       - auth-api
       - tenant-api
@@ -492,7 +683,27 @@ services:
       - subscription-api
       - notification-api
       - cloudstorage-api
+      - signature-api
+      - communication-api
       - otel-collector
+    networks:
+      - taxvision-network
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: taxvision-caddy
+    environment:
+      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxprocore.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - gateway
+      - minio
     networks:
       - taxvision-network
 
@@ -500,12 +711,15 @@ volumes:
   rabbitmq-data:
   redis-data:
   minio-data:
+  sqlserver-data:
   clamav-data:
   loki-data:
   tempo-data:
   prometheus-data:
   grafana-data:
   taxvision-logs:
+  caddy-data:
+  caddy-config:
 
 networks:
   taxvision-network:
