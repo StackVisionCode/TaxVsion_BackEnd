@@ -150,12 +150,15 @@ public static class UpdateMyProfileHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
         var user = await users.GetByIdAsync(command.UserId, ct);
         if (user is null || !user.IsActive)
             return Result.Failure(new Error("User.NotFound", "User does not exist."));
+
+        var nameChanged = user.Name != command.Name || user.LastName != command.LastName;
 
         var profileResult = user.UpdateProfile(command.Name, command.LastName);
         if (profileResult.IsFailure)
@@ -164,6 +167,23 @@ public static class UpdateMyProfileHandler
         var timeZoneResult = user.SetTimeZone(command.TimeZoneId);
         if (timeZoneResult.IsFailure)
             return timeZoneResult;
+
+        // Solo publicar cuando el nombre realmente cambio — evita ruido en el bus
+        // (y en la proyeccion de displayName de Communication) cuando el usuario
+        // solo actualizo su TimeZoneId.
+        if (nameChanged)
+        {
+            await bus.PublishAsync(
+                new UserProfileUpdatedIntegrationEvent
+                {
+                    TenantId = user.TenantId,
+                    UserId = user.Id,
+                    Name = user.Name,
+                    LastName = user.LastName,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
+        }
 
         await audit.AddAsync(
             AuthAuditLog.Record(

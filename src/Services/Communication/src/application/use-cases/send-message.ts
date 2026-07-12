@@ -4,6 +4,7 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
+import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
 import { ChatEventTypes, type MessageSentEvent } from '../../contracts/events/chat-events.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
 
@@ -41,6 +42,7 @@ export interface SendMessageDeps {
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly settings: TenantSettingsProvider;
+  readonly attachmentTracking: AttachmentTrackingRepository;
 }
 
 export async function sendMessage(
@@ -112,6 +114,16 @@ export async function sendMessage(
   await deps.conversations.save(conversation);
 
   const messageSnapshot = messageResult.value.toSnapshot();
+
+  if (messageSnapshot.attachmentFileId !== null) {
+    await deps.attachmentTracking.register({
+      fileId: messageSnapshot.attachmentFileId,
+      messageId: messageSnapshot.id,
+      conversationId: command.conversationId,
+      tenantId: command.tenantId,
+    });
+  }
+
   const recipients = conversation
     .getParticipantSnapshots()
     .filter((p) => !p.isRemoved && p.userId !== command.senderUserId)

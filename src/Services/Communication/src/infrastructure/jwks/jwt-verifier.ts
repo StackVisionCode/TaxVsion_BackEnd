@@ -87,10 +87,18 @@ async function ensureNotDenied(jti: string | undefined, sessionId: string | unde
     }
   } catch (err) {
     if (err instanceof UnauthorizedError) throw err;
-    // No fallamos abierto: si Redis se cae, seguimos con verificacion basica pero
-    // avisamos ruidosamente en logs. Politica alternativa (fail-closed) se activa
-    // via feature flag en Fase 4.
-    logger.warn({ err: (err as Error).message }, 'Session denylist unavailable');
+    logger.error({ err: (err as Error).message }, 'Session denylist unavailable');
+    if (config.redis.sessionDenylistFailClosed) {
+      // Fail-closed (default): no podemos confirmar que el token/sesion no fue
+      // revocado, asi que rechazamos la conexion. Mas seguro que fail-open, a
+      // costa de rechazar conexiones nuevas mientras Redis este caido.
+      throw new UnauthorizedError(
+        'Auth.DenylistUnavailable',
+        'Could not verify session revocation status.',
+      );
+    }
+    // Escotilla de emergencia: COMMUNICATION_SESSION_DENYLIST_FAIL_CLOSED=false
+    // permite seguir aceptando conexiones durante un incidente de Redis.
   }
 }
 

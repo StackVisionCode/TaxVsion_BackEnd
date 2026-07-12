@@ -152,7 +152,7 @@ export class PrismaConversationRepository implements ConversationRepository {
     return rows.map((row) => ({
       id: row.Id,
       tenantId: row.TenantId,
-      kind: row.Kind as 'Direct' | 'Group' | 'Support',
+      kind: row.Kind as 'Direct' | 'Group' | 'Support' | 'Meeting',
       title: row.Title,
       uniquenessKey: row.UniquenessKey,
       isArchived: row.IsArchived,
@@ -178,9 +178,18 @@ export class PrismaConversationRepository implements ConversationRepository {
     tenantId: string;
     conversationId: string;
     beforeUtc?: Date;
+    afterUtc?: Date;
     take: number;
   }): Promise<MessageSnapshot[]> {
     const whereBase = { TenantId: input.tenantId, ConversationId: input.conversationId };
+    if (input.afterUtc) {
+      const rows = await this.prisma.message.findMany({
+        where: { ...whereBase, CreatedAtUtc: { gt: input.afterUtc } },
+        orderBy: { CreatedAtUtc: 'asc' },
+        take: input.take,
+      });
+      return rows.map(toDomainMessage);
+    }
     const where = input.beforeUtc
       ? { ...whereBase, CreatedAtUtc: { lt: input.beforeUtc } }
       : whereBase;

@@ -34,8 +34,17 @@ async function tryConnect(): Promise<RabbitContext> {
   });
   const channel = await connection.createChannel();
   await channel.assertExchange(config.rabbitmq.exchange, 'fanout', { durable: true });
-  await channel.assertQueue(config.rabbitmq.queue, { durable: true, deadLetterExchange: '' });
+  // DLQ must exist before the main queue references it as dead-letter target.
   await channel.assertQueue(config.rabbitmq.dlq, { durable: true });
+  // Route rejected/expired messages to the DLQ via the default exchange (empty
+  // string). With the default exchange, the routing key IS the target queue
+  // name, so we hard-set `deadLetterRoutingKey` to the DLQ. Without this
+  // routing key, messages nack'd with requeue=false get silently dropped.
+  await channel.assertQueue(config.rabbitmq.queue, {
+    durable: true,
+    deadLetterExchange: '',
+    deadLetterRoutingKey: config.rabbitmq.dlq,
+  });
   await channel.bindQueue(config.rabbitmq.queue, config.rabbitmq.exchange, '');
 
   const emitter = connection as unknown as EventEmitter;

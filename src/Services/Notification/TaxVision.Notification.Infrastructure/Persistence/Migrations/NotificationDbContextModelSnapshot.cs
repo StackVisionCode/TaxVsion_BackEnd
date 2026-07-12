@@ -418,7 +418,6 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaignRecipient", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Address")
@@ -603,7 +602,6 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Sending.EmailDeliveryLog", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("AttemptedAtUtc")
@@ -631,7 +629,6 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Sending.EmailRecipient", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Address")
@@ -946,6 +943,51 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Status");
 
                     b.ToTable("NotificationLogs", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Notification.Domain.Notifications.PushDeviceToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DeviceId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime>("RegisteredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Token")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UserId", "IsActive");
+
+                    b.ToTable("PushDeviceTokens", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaignRecipient", b =>

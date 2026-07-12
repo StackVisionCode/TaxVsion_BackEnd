@@ -92,6 +92,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<MfaChallengeRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SecurityAlertIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailChangeRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserProfileUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
     options

@@ -270,6 +270,7 @@ public static class ScanFileHandler
         IStorageAuditRepository audit,
         IObjectStorage storage,
         IVirusScanner virusScanner,
+        IContentScanner contentScanner,
         IFileContentInspector inspector,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
@@ -282,7 +283,15 @@ public static class ScanFileHandler
             await files.GetAsync(command.TenantId, command.FileId, ct)
             ?? throw new InvalidOperationException($"File {command.FileId} does not exist.");
 
-        if (file.Status is FileStatus.Available or FileStatus.Infected)
+        // Terminales — un redelivery de ScanFileCommand (retry de Wolverine tras
+        // un crash post-transition-pre-ack) no debe relanzar el scan.
+        if (
+            file.Status
+            is FileStatus.Available
+                or FileStatus.Infected
+                or FileStatus.BlockedByPolicy
+                or FileStatus.PendingReview
+        )
             return;
 
         var transition = file.MarkScanning();
@@ -363,6 +372,84 @@ public static class ScanFileHandler
             var scan = await virusScanner.ScanAsync(content, ct);
             if (scan.Verdict == VirusScanVerdict.Clean)
             {
+                // ClamAV solo mira virus/malware — IContentScanner es una pasada
+                // aparte para moderacion de contenido (NSFW/CSAM/politica). Se
+                // corre SIEMPRE, no solo cuando hay un scanner real conectado:
+                // el NoOp de MVP siempre da Clean, asi que este bloque es
+                // transparente hasta que se enchufe una implementacion real.
+                content.Position = 0;
+                var contentScan = await contentScanner.ScanAsync(
+                    content,
+                    new ContentScanContext(command.TenantId, file.Id, file.OwnerType, file.OriginalName),
+                    ct
+                );
+                if (contentScan.Verdict != ContentScanVerdict.Clean)
+                {
+                    await storage.CopyAsync(sourceBucket, file.ObjectKey, options.Value.QuarantineBucket, ct);
+                    await storage.DeleteAsync(sourceBucket, file.ObjectKey, ct);
+                    limit.Release(file.SizeBytes);
+                    var reason = contentScan.Reason ?? "Content policy verdict without detail.";
+
+                    if (contentScan.Verdict == ContentScanVerdict.PolicyViolation)
+                    {
+                        file.MarkBlockedByPolicy(reason, inspected.ContentType, clock.UtcNow);
+                        audit.Add(
+                            StorageAccessLog.Create(
+                                command.TenantId,
+                                file.Id,
+                                file.CreatedBy,
+                                "scan",
+                                "blocked-by-policy",
+                                null,
+                                null,
+                                command.CorrelationId,
+                                reason,
+                                clock.UtcNow
+                            )
+                        );
+                        await bus.PublishAsync(
+                            new FileBlockedByPolicyIntegrationEvent
+                            {
+                                TenantId = command.TenantId,
+                                FileId = file.Id,
+                                ObjectKey = file.ObjectKey,
+                                PolicyReason = reason,
+                                CorrelationId = command.CorrelationId,
+                            }
+                        );
+                    }
+                    else
+                    {
+                        file.MarkPendingReview(reason, inspected.ContentType, clock.UtcNow);
+                        audit.Add(
+                            StorageAccessLog.Create(
+                                command.TenantId,
+                                file.Id,
+                                file.CreatedBy,
+                                "scan",
+                                "pending-review",
+                                null,
+                                null,
+                                command.CorrelationId,
+                                reason,
+                                clock.UtcNow
+                            )
+                        );
+                        await bus.PublishAsync(
+                            new FilePendingReviewIntegrationEvent
+                            {
+                                TenantId = command.TenantId,
+                                FileId = file.Id,
+                                ObjectKey = file.ObjectKey,
+                                Reason = reason,
+                                CorrelationId = command.CorrelationId,
+                            }
+                        );
+                    }
+                    await unitOfWork.SaveChangesAsync(ct);
+                    return;
+                }
+
                 var checksum = ChecksumSha256.Create(inspected.Sha256);
                 if (checksum.IsFailure)
                     throw new InvalidOperationException(checksum.Error.Message);

@@ -9,8 +9,7 @@ public sealed class TenantContext : ITenantContext
 {
     private Guid? _tenantId;
 
-    public Guid TenantId =>
-        _tenantId ?? throw new InvalidOperationException("TenantId is not set");
+    public Guid TenantId => _tenantId ?? throw new InvalidOperationException("TenantId is not set");
 
     public bool HasTenant => _tenantId.HasValue;
 

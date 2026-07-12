@@ -7,7 +7,8 @@ public sealed class TcpEndpointHealthCheck(string host, int port) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         try
         {
@@ -17,9 +18,7 @@ public sealed class TcpEndpointHealthCheck(string host, int port) : IHealthCheck
         }
         catch (Exception ex)
         {
-            return HealthCheckResult.Unhealthy(
-                $"{host}:{port} is not reachable.",
-                ex);
+            return HealthCheckResult.Unhealthy($"{host}:{port} is not reachable.", ex);
         }
     }
 }

@@ -11,20 +11,20 @@ public static class OpenTelemetryRegistration
     public static IServiceCollection AddTaxVisionOpenTelemetry(
         this IServiceCollection services,
         IConfiguration configuration,
-        string serviceName)
+        string serviceName
+    )
     {
         var endpoint = configuration["OpenTelemetry:OtlpEndpoint"];
 
-        services.AddOpenTelemetry()
-            .ConfigureResource(resource => resource
-                .AddService(serviceName: serviceName))
+        services
+            .AddOpenTelemetry()
+            .ConfigureResource(resource => resource.AddService(serviceName: serviceName))
             .WithTracing(tracing =>
             {
                 tracing
                     .AddAspNetCoreInstrumentation(options =>
                     {
-                        options.Filter = context =>
-                            !context.Request.Path.StartsWithSegments("/health");
+                        options.Filter = context => !context.Request.Path.StartsWithSegments("/health");
                     })
                     .AddHttpClientInstrumentation();
 
@@ -33,10 +33,7 @@ public static class OpenTelemetryRegistration
             })
             .WithMetrics(metrics =>
             {
-                metrics
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                metrics.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddRuntimeInstrumentation();
 
                 if (Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
                     metrics.AddOtlpExporter(options => options.Endpoint = uri);

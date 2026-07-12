@@ -1,0 +1,22 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[Call] ADD [TranscriptFileId] UNIQUEIDENTIFIER;
+
+-- AlterTable
+ALTER TABLE [dbo].[Meeting] ADD [TranscriptFileId] UNIQUEIDENTIFIER;
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

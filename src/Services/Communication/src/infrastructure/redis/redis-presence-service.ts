@@ -24,11 +24,22 @@ export class RedisPresenceService implements PresenceService {
     sessionId: string;
     leaseSeconds: number;
   }): Promise<void> {
-    const wasOffline = !(await this.isOnline(input.tenantId, input.userId));
+    // Order matters: SET first, then check if we're the only session key. If we
+    // check before SET, two concurrent registers of the same user can both see
+    // `wasOffline=true` and both publish 'online' → duplicate transitions.
+    // With SET first, when the second register runs isOnline it finds the first
+    // key already there → count >= 2 → doesn't publish again.
     await this.redis.set(this.sessionKey(input), '1', 'EX', input.leaseSeconds);
-    if (wasOffline) {
+    const sessions = await this.countSessions(input.tenantId, input.userId);
+    if (sessions <= 1) {
       await this.publishChange(input.tenantId, input.userId, true);
     }
+  }
+
+  private async countSessions(tenantId: string, userId: string): Promise<number> {
+    const pattern = `comm:presence:t:${tenantId}:u:${userId}:s:*`;
+    const [_cursor, keys] = await this.redis.scan(0, 'MATCH', pattern, 'COUNT', 25);
+    return keys.length;
   }
 
   async heartbeat(input: {

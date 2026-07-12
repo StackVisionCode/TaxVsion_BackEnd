@@ -49,6 +49,22 @@ export const ConnectionQualityPayloadSchema = z.object({
 });
 export type ConnectionQualityPayload = z.infer<typeof ConnectionQualityPayloadSchema>;
 
+export const AttachCallRecordingPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  callId: z.string().uuid(),
+  // fileId ya subido a CloudStorage por el cliente (MediaRecorder -> upload
+  // directo, fuera de este servicio — mismo patron que attachmentFileId de chat).
+  fileId: z.string().uuid(),
+});
+export type AttachCallRecordingPayload = z.infer<typeof AttachCallRecordingPayloadSchema>;
+
+export interface CallTranscriptReadyDto {
+  callId: string;
+  transcriptFileId: string;
+  language: string | null;
+  readyAtUtc: string;
+}
+
 // ---------- DTOs server -> client ----------
 
 export interface IncomingCallDto {
@@ -105,10 +121,12 @@ export const CallSocketEvents = {
   Signal: 'call.signal',
   MediaStatus: 'call.media_status',
   ConnectionQuality: 'call.connection_quality',
+  AttachRecording: 'call.recording.attach',
   // s -> c
   Incoming: 'call.incoming',
   StateChanged: 'call.state_changed',
   PeerJoined: 'call.peer_joined',
   SignalFrom: 'call.signal_from',
   MediaStatusChanged: 'call.media_status_changed',
+  TranscriptReady: 'call.transcript_ready',
 } as const;

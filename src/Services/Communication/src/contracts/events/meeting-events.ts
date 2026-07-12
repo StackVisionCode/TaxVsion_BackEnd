@@ -22,6 +22,7 @@ export const MeetingEventTypes = {
   RecordingStarted:        'communication.meeting.recording_started.v1',
   RecordingStopped:        'communication.meeting.recording_stopped.v1',
   RecordingReady:          'communication.meeting.recording_ready.v1',
+  TranscriptReady:         'communication.meeting.transcript_ready.v1',
   InvitationRequested:     'communication.meeting.invitation_requested.v1',
 } as const;
 
@@ -154,6 +155,16 @@ export interface MeetingRecordingReadyEvent extends IntegrationEvent {
   readonly recordingFileId: string;
   readonly durationSeconds: number;
   readonly participantCount: number;
+  readonly readyAtUtc: string;
+}
+
+/** Ver docblock de CallTranscriptReadyEvent — mismo flujo, para meetings. */
+export interface MeetingTranscriptReadyEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.transcript_ready.v1';
+  readonly meetingId: string;
+  readonly recordingFileId: string;
+  readonly transcriptFileId: string;
+  readonly language: string | null;
   readonly readyAtUtc: string;
 }
 

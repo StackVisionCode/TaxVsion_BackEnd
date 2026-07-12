@@ -25,6 +25,7 @@ export interface MeetingSnapshot {
   readonly strategy: MeetingStrategy;
   readonly recordingRequested: boolean;
   readonly recordingFileId: string | null;
+  readonly transcriptFileId: string | null;
   readonly hostUserId: string;
   readonly scheduledForUtc: Date | null;
   readonly startedAtUtc: Date | null;
@@ -98,6 +99,7 @@ export class Meeting {
       strategy: maxParticipants <= 4 ? MeetingStrategy.Mesh : MeetingStrategy.Sfu,
       recordingRequested: input.recordingRequested ?? false,
       recordingFileId: null,
+      transcriptFileId: null,
       hostUserId: input.host.userId,
       scheduledForUtc: input.scheduledForUtc ?? null,
       startedAtUtc: null,
@@ -366,10 +368,29 @@ export class Meeting {
   }
 
   attachRecording(fileId: string): Result<void> {
+    if (this.state.status !== MeetingStatus.Ended && this.state.status !== MeetingStatus.Live) {
+      return Result.fail(
+        makeError('Meeting.Recording.InvalidState', `Cannot attach recording in status ${this.state.status}.`),
+      );
+    }
     if (this.state.recordingFileId !== null) {
       return Result.fail(makeError('Meeting.Recording.Duplicate', 'Recording already attached.'));
     }
     this.state = { ...this.state, recordingFileId: fileId, updatedAtUtc: new Date() };
+    return Result.okVoid();
+  }
+
+  /** Mismo criterio que Call.attachTranscript — solo despues de Ended. */
+  attachTranscript(fileId: string): Result<void> {
+    if (this.state.status !== MeetingStatus.Ended) {
+      return Result.fail(
+        makeError('Meeting.Transcript.InvalidState', `Cannot attach transcript in status ${this.state.status}.`),
+      );
+    }
+    if (this.state.transcriptFileId !== null) {
+      return Result.fail(makeError('Meeting.Transcript.Duplicate', 'Transcript already attached.'));
+    }
+    this.state = { ...this.state, transcriptFileId: fileId, updatedAtUtc: new Date() };
     return Result.okVoid();
   }
 

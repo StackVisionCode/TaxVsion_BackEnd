@@ -8,6 +8,10 @@ import type { ConversationKind } from './conversation-kind.js';
  *   que `startDirect(A,B)` y `startDirect(B,A)` colapsen a la misma fila.
  * Group: `group:{groupId}` — el groupId lo genera el creador.
  * Support: `support:{ticketId}` — el ticketId lo genera Communication.
+ * Meeting: `meeting:{meetingId}` — 1:1 con el aggregate Meeting; el lookup
+ *   por esta key es como `ensureMeetingConversation` encuentra el chat de
+ *   un meeting sin guardar el conversationId en `Meeting` (evita acoplar
+ *   los dos aggregates a nivel de escritura).
  */
 export function computeDirectUniquenessKey(userA: string, userB: string): string {
   if (userA === userB) {
@@ -25,6 +29,10 @@ export function computeSupportUniquenessKey(ticketId: string): string {
   return `support:${ticketId}`;
 }
 
+export function computeMeetingUniquenessKey(meetingId: string): string {
+  return `meeting:${meetingId}`;
+}
+
 export function extractDirectParticipants(uniquenessKey: string): [string, string] | null {
   if (!uniquenessKey.startsWith('direct:')) return null;
   const parts = uniquenessKey.slice('direct:'.length).split(':');
@@ -39,4 +47,5 @@ export function assertKindMatchesKey(kind: ConversationKind, key: string): void 
   if (kind === 'Direct' && !key.startsWith('direct:')) throw new Error('Direct kind requires direct: key.');
   if (kind === 'Group' && !key.startsWith('group:')) throw new Error('Group kind requires group: key.');
   if (kind === 'Support' && !key.startsWith('support:')) throw new Error('Support kind requires support: key.');
+  if (kind === 'Meeting' && !key.startsWith('meeting:')) throw new Error('Meeting kind requires meeting: key.');
 }

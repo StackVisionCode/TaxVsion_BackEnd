@@ -13,6 +13,8 @@ const ListQuerySchema = z.object({
 
 const GetMessagesQuerySchema = z.object({
   before: z.string().datetime().optional(),
+  // `since`: cursor de backfill al reconectar — ver docblock en get-messages.ts.
+  since: z.string().datetime().optional(),
   take: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -58,6 +60,7 @@ export async function registerConversationRoutes(
           conversationId: params.id,
           requesterUserId: principal.userId,
           ...(query.before !== undefined ? { beforeUtc: query.before } : {}),
+          ...(query.since !== undefined ? { afterUtc: query.since } : {}),
           take: query.take,
         },
         container,

@@ -15,7 +15,68 @@ import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/
  *
  * Consumers se registran con `register(eventType, handler)` y arrancan con
  * `start()`. No reinventamos rueda tipo rascal: consumer set fijo por servicio.
+ *
+ * WIRE FORMAT — dos productores distintos, dos formatos distintos:
+ *   1. Communication mismo (outbox propio, `PrismaOutboxPublisher`): el JSON
+ *      del body SI incluye un campo `eventType` literal (viene de su propio
+ *      contrato `IntegrationEvent` en TS). Este es el path feliz original.
+ *   2. Servicios .NET (Auth/Signature/Customer/Subscription) publicando via
+ *      Wolverine nativo (`options.PublishMessage<T>().ToRabbitExchange(...)`):
+ *      Wolverine NO agrega ningun campo `eventType`/`EventType` al JSON body.
+ *      El unico lugar donde el tipo de mensaje viaja es el header AMQP
+ *      `properties.type`, con el CLR type name COMPLETO (namespace + clase),
+ *      ej. "BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent".
+ *      Verificado empiricamente (publish de prueba + inspeccion via RabbitMQ
+ *      Management API) el 2026-07-12 — antes de este fix, CADA consumer
+ *      registrado para eventos .NET (auth.*, signature.*, customer.*,
+ *      subscription.*) resolvia `envelope.eventType === undefined`, nunca
+ *      encontraba handler, y hacia ack-and-skip silencioso en TODOS los
+ *      mensajes, para siempre. `CLR_TYPE_TO_EVENT_TYPE` traduce ese header a
+ *      la string dotted-lowercase que los `bindXxxConsumers` ya registran.
  */
+const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
+  // Auth
+  'TaxVision.Auth.Application.Users.IntegrationEvents.UserRegisteredIntegrationEvent': 'auth.user.registered.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRolesChangedIntegrationEvent': 'auth.user.roles_changed.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent': 'auth.user.deactivated.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent': 'auth.user.profile_updated.v1',
+  // Customer
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent': 'customer.bulk_imported.v1',
+  // Signature
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerInvitedIntegrationEvent': 'signature.signer.invited.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.DocumentSignedIntegrationEvent': 'signature.document.signed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestCompletedIntegrationEvent':
+    'signature.request.completed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestCanceledIntegrationEvent':
+    'signature.request.canceled.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestReminderDueIntegrationEvent':
+    'signature.request.reminder_due.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestSealedIntegrationEvent':
+    'signature.request.sealed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationChallengeIssuedIntegrationEvent':
+    'signature.signer.verification.challenge_issued.v1',
+  // Subscription
+  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionActivatedIntegrationEvent':
+    'subscription.activated.v1',
+  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionPlanChangedIntegrationEvent':
+    'subscription.plan_changed.v1',
+  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SeatsPurchasedIntegrationEvent':
+    'subscription.seats_purchased.v1',
+  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionSuspendedIntegrationEvent':
+    'subscription.suspended.v1',
+  // CloudStorage
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileAvailableIntegrationEvent':
+    'cloudstorage.file.available.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileInfectedDetectedIntegrationEvent':
+    'cloudstorage.file.infected.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileDeletedIntegrationEvent':
+    'cloudstorage.file.deleted.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileBlockedByPolicyIntegrationEvent':
+    'cloudstorage.file.blocked_by_policy.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FilePendingReviewIntegrationEvent':
+    'cloudstorage.file.pending_review.v1',
+};
+
 export type { ConsumerHandler, IncomingEnvelope };
 
 export class ConsumerRuntime {
@@ -46,7 +107,17 @@ export class ConsumerRuntime {
     let envelope: IncomingEnvelope;
     try {
       const parsed = JSON.parse(raw) as Partial<IncomingEnvelope> & { [k: string]: unknown };
-      envelope = this.normalizeEnvelope(parsed);
+      // AMQP `type` property: Wolverine-published .NET messages carry the CLR
+      // type name here instead of an `eventType` field in the JSON body. See
+      // the module docblock above for why this fallback exists.
+      const amqpTypeHeader = typeof msg.properties.type === 'string' ? msg.properties.type : undefined;
+      envelope = this.normalizeEnvelope(parsed, amqpTypeHeader);
+      if (amqpTypeHeader && !envelope.eventType) {
+        // A .NET-originated message we don't have a CLR_TYPE_TO_EVENT_TYPE
+        // mapping for — surfaces new event types immediately instead of
+        // silently ack-skipping forever (the bug this fallback fixed).
+        logger.warn({ amqpTypeHeader }, 'consumer: unmapped CLR type in AMQP type header; ack to skip');
+      }
     } catch (err) {
       logger.warn({ err: (err as Error).message }, 'consumer: unparseable payload; ack to skip');
       rabbit.channel.ack(msg);
@@ -77,17 +148,34 @@ export class ConsumerRuntime {
     } catch (err) {
       logger.error(
         { err: (err as Error).message, eventId: envelope.eventId, eventType: envelope.eventType },
-        'consumer handler failed',
+        'consumer handler failed — sending to DLQ',
       );
-      // Politica: ack + persistir a DLQ manual seria lo correcto; en Fase 4
-      // hacemos ack directo para no bucle infinito. Fase 6 agrega DLQ formal.
-      rabbit.channel.ack(msg);
+      // Rollback the inbox mark so a retry from the DLQ (manual reprocess) is
+      // not treated as a duplicate. If the DB write fails, log and continue —
+      // the message is going to the DLQ either way.
+      await this.processedEvents
+        .unmark({
+          eventId: envelope.eventId,
+          source: this.extractSource(envelope.eventType),
+        })
+        .catch((unmarkErr: unknown) =>
+          logger.warn({ err: (unmarkErr as Error).message }, 'inbox unmark after handler failure failed'),
+        );
+      // nack with requeue=false → dead-letter routing (see rabbit-connection.ts:
+      // main queue has deadLetterExchange:'' + deadLetterRoutingKey:dlq).
+      rabbit.channel.nack(msg, false, false);
     }
   }
 
-  private normalizeEnvelope(raw: Partial<IncomingEnvelope> & Record<string, unknown>): IncomingEnvelope {
+  private normalizeEnvelope(
+    raw: Partial<IncomingEnvelope> & Record<string, unknown>,
+    amqpTypeHeader?: string,
+  ): IncomingEnvelope {
     const eventId = typeof raw['eventId'] === 'string' ? (raw['eventId'] as string) : (raw['EventId'] as string);
-    const eventType = typeof raw['eventType'] === 'string' ? (raw['eventType'] as string) : (raw['EventType'] as string);
+    const bodyEventType =
+      typeof raw['eventType'] === 'string' ? (raw['eventType'] as string) : (raw['EventType'] as string | undefined);
+    const eventType = (bodyEventType ??
+      (amqpTypeHeader ? CLR_TYPE_TO_EVENT_TYPE[amqpTypeHeader] : undefined)) as string;
     const tenantId = typeof raw['tenantId'] === 'string' ? (raw['tenantId'] as string) : (raw['TenantId'] as string);
     const occurredOnUtc =
       typeof raw['occurredOnUtc'] === 'string'

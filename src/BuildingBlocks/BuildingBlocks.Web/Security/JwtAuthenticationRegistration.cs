@@ -22,12 +22,11 @@ public static class JwtAuthenticationRegistration
     /// </summary>
     public static IServiceCollection AddTaxVisionJwtAuthentication(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration
+    )
     {
-        var issuer = configuration["Jwt:Issuer"]
-            ?? throw new InvalidOperationException("Jwt:Issuer is missing.");
-        var audience = configuration["Jwt:Audience"]
-            ?? throw new InvalidOperationException("Jwt:Audience is missing.");
+        var issuer = configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer is missing.");
+        var audience = configuration["Jwt:Audience"] ?? throw new InvalidOperationException("Jwt:Audience is missing.");
 
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -41,7 +40,7 @@ public static class JwtAuthenticationRegistration
                     ValidateIssuerSigningKey = true,
                     ValidIssuer = issuer,
                     ValidAudience = audience,
-                    ClockSkew = TimeSpan.FromSeconds(30)
+                    ClockSkew = TimeSpan.FromSeconds(30),
                 };
             });
 
@@ -55,9 +54,12 @@ public static class JwtAuthenticationRegistration
                 JwtBearerDefaults.AuthenticationScheme,
                 options =>
                 {
-                    options.TokenValidationParameters.IssuerSigningKey =
-                        ResolveSigningKey(configuration, env.ContentRootPath);
-                });
+                    options.TokenValidationParameters.IssuerSigningKey = ResolveSigningKey(
+                        configuration,
+                        env.ContentRootPath
+                    );
+                }
+            );
         });
 
         services.AddAuthorization();
@@ -89,9 +91,11 @@ public static class JwtAuthenticationRegistration
             return new RsaSecurityKey(rsa);
         }
 
-        var secret = configuration["Jwt:Secret"]
+        var secret =
+            configuration["Jwt:Secret"]
             ?? throw new InvalidOperationException(
-                "Configure Jwt:PublicKeyPem/Jwt:PublicKeyPath (RS256) or Jwt:Secret (HS256).");
+                "Configure Jwt:PublicKeyPem/Jwt:PublicKeyPath (RS256) or Jwt:Secret (HS256)."
+            );
 
         if (Encoding.UTF8.GetByteCount(secret) < 32)
             throw new InvalidOperationException("Jwt:Secret must contain at least 32 bytes.");

@@ -19,7 +19,7 @@ export const ChatEventTypes = {
 export interface ConversationStartedEvent extends IntegrationEvent {
   readonly eventType: 'communication.chat.conversation_started.v1';
   readonly conversationId: string;
-  readonly kind: 'Direct' | 'Group' | 'Support';
+  readonly kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
   readonly createdByUserId: string;
   readonly participantUserIds: readonly string[];
 }

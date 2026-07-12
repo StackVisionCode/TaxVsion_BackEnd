@@ -12,6 +12,7 @@ export const CallEventTypes = {
   ScreenShareStarted: 'communication.call.screen_share_started.v1',
   ScreenShareStopped: 'communication.call.screen_share_stopped.v1',
   RecordingReady:     'communication.call.recording_ready.v1',
+  TranscriptReady:    'communication.call.transcript_ready.v1',
 } as const;
 
 export interface CallStartedEvent extends IntegrationEvent {
@@ -78,5 +79,20 @@ export interface CallRecordingReadyEvent extends IntegrationEvent {
   readonly callId: string;
   readonly recordingFileId: string;
   readonly durationSeconds: number;
+  readonly readyAtUtc: string;
+}
+
+/**
+ * Publicado por el worker de transcripts (proceso separado, Fase 6) al
+ * terminar de transcribir `recordingFileId` con whisper.cpp y subir el
+ * resultado a CloudStorage. Communication lo consume (transcript-consumers.ts)
+ * para adjuntarlo al Call via `attachTranscript`.
+ */
+export interface CallTranscriptReadyEvent extends IntegrationEvent {
+  readonly eventType: 'communication.call.transcript_ready.v1';
+  readonly callId: string;
+  readonly recordingFileId: string;
+  readonly transcriptFileId: string;
+  readonly language: string | null;
   readonly readyAtUtc: string;
 }

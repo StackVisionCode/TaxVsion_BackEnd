@@ -56,6 +56,14 @@ export class PrismaSettingsRepository implements SettingsRepository {
     });
   }
 
+  async listPurgeEnabled(): Promise<Array<{ tenantId: string; messageRetentionDays: number }>> {
+    const rows = await this.prisma.tenantCommunicationSettings.findMany({
+      where: { PurgeEnabled: true },
+      select: { TenantId: true, MessageRetentionDays: true },
+    });
+    return rows.map((r) => ({ tenantId: r.TenantId, messageRetentionDays: r.MessageRetentionDays }));
+  }
+
   private toSnapshot(row: {
     TenantId: string;
     ChatEnabled: boolean;

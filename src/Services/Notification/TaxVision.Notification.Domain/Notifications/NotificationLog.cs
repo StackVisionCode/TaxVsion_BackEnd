@@ -8,6 +8,7 @@ public enum NotificationChannel
     Email,
     Sms,
     InApp,
+    Push,
 }
 
 public enum NotificationStatus

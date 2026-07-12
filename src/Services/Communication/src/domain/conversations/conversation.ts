@@ -10,8 +10,14 @@ import {
   assertKindMatchesKey,
   computeDirectUniquenessKey,
   computeGroupUniquenessKey,
+  computeMeetingUniquenessKey,
   computeSupportUniquenessKey,
 } from './uniqueness-key.js';
+
+/** Direct y Support tienen exactamente 2 participantes fijos de por vida — solo Group y Meeting soportan alta/baja dinamica. */
+function isMultiPartyKind(kind: ConversationKind): boolean {
+  return kind === ConversationKind.Group || kind === ConversationKind.Meeting;
+}
 
 /**
  * Snapshot serializable del aggregate. El repo persiste el root + los child
@@ -115,9 +121,9 @@ export class Conversation {
   }
 
   /**
-   * Factories internas de Group y Support quedan disponibles a nivel dominio
-   * pero SIN endpoints publicos en Fase 1. El plan §9D las apaga por default
-   * via TenantCommunicationSettings.
+   * Wireada a endpoints publicos desde Fase 7 (antes solo existia a nivel de
+   * dominio). Sigue apagada por default via `TenantCommunicationSettings
+   * .internalGroupsEnabled` — el use case la consulta antes de llamar aca.
    */
   static startGroup(input: {
     tenantId: string;
@@ -167,6 +173,48 @@ export class Conversation {
       createdAtUtc: now,
       updatedAtUtc: now,
       participants: [owner, ...members].map((p) => p.toSnapshot()),
+      recentMessages: [],
+    };
+    return Result.ok(new Conversation(snapshot));
+  }
+
+  /**
+   * Chat 1:1 con un `Meeting` (Fase 8). Se crea al primer join real (no al
+   * agendar el meeting) — ver `ensureMeetingConversation`. El unico
+   * participante inicial es quien dispara la creacion (el primero en entrar,
+   * casi siempre el host); el resto se auto-agrega via `joinMeetingChat` a
+   * medida que se unen al meeting — nunca se pre-carga la lista de invitados.
+   */
+  static startMeetingChat(input: {
+    tenantId: string;
+    meetingId: string;
+    meetingTitle: string;
+    creator: { userId: string; displayName: string; actorType: string };
+    now?: Date;
+  }): Result<Conversation> {
+    const now = input.now ?? new Date();
+    const id = randomUUID();
+    const creator = ConversationParticipant.create({
+      conversationId: id,
+      tenantId: input.tenantId,
+      userId: input.creator.userId,
+      displayName: input.creator.displayName,
+      actorType: input.creator.actorType,
+      role: 'Owner',
+      now,
+    });
+    const snapshot: ConversationSnapshot = {
+      id,
+      tenantId: input.tenantId,
+      kind: ConversationKind.Meeting,
+      title: input.meetingTitle.trim().slice(0, 120) || null,
+      uniquenessKey: computeMeetingUniquenessKey(input.meetingId),
+      isArchived: false,
+      lastMessageAtUtc: null,
+      createdByUserId: input.creator.userId,
+      createdAtUtc: now,
+      updatedAtUtc: now,
+      participants: [creator.toSnapshot()],
       recentMessages: [],
     };
     return Result.ok(new Conversation(snapshot));
@@ -263,6 +311,91 @@ export class Conversation {
 
     this.applyNewMessage(messageResult.value, now);
     return messageResult;
+  }
+
+  /**
+   * Group o Meeting: agrega un miembro.
+   *
+   * Group: el actor debe ser ya participante activo (invita a otro) — la
+   * politica de QUIEN puede invitar (cualquier miembro vs solo quien tenga
+   * `communication.group.manage_members`) se decide en el caller.
+   *
+   * Meeting: unico caso de auto-alta — `actorUserId === newMember.userId`
+   * (el que entra al meeting se agrega a si mismo al chat) NO requiere ser
+   * ya participante, porque por definicion todavia no lo es. El dominio
+   * confia en que el caller (`ensureMeetingConversation`) solo llega aca
+   * despues de que `Meeting.requestJoin`/`admit` ya autorizo la entrada.
+   */
+  addParticipant(input: {
+    actorUserId: string;
+    newMember: { userId: string; displayName: string; actorType: string };
+    now?: Date;
+  }): Result<void> {
+    if (!isMultiPartyKind(this.state.kind)) {
+      return Result.fail(
+        makeError('Chat.Conversation.NotMultiParty', 'Only group or meeting conversations support adding participants.'),
+      );
+    }
+    const isMeetingSelfJoin =
+      this.state.kind === ConversationKind.Meeting && input.actorUserId === input.newMember.userId;
+    if (!isMeetingSelfJoin) {
+      const actorGuard = this.ensureActiveParticipant(input.actorUserId);
+      if (!actorGuard.isSuccess) return Result.fail(actorGuard.error);
+    }
+    if (this.findActiveParticipant(input.newMember.userId)) {
+      return Result.fail(makeError('Chat.Conversation.AlreadyParticipant', 'User is already a participant.'));
+    }
+
+    const now = input.now ?? new Date();
+    const participant = ConversationParticipant.create({
+      conversationId: this.state.id,
+      tenantId: this.state.tenantId,
+      userId: input.newMember.userId,
+      displayName: input.newMember.displayName,
+      actorType: input.newMember.actorType,
+      role: 'Member',
+      now,
+    });
+    this.participants.push(participant);
+    this.state = {
+      ...this.state,
+      participants: this.participants.map((p) => p.toSnapshot()),
+      updatedAtUtc: now,
+    };
+    return Result.okVoid();
+  }
+
+  /**
+   * Group o Meeting: quita un miembro. `reason` se infiere de si el actor se
+   * quita a si mismo (Left) o a otro (Kicked) — el caller decide si el
+   * actor tiene permiso para lo segundo.
+   */
+  removeParticipant(input: {
+    actorUserId: string;
+    targetUserId: string;
+    now?: Date;
+  }): Result<{ reason: 'Left' | 'Kicked' }> {
+    if (!isMultiPartyKind(this.state.kind)) {
+      return Result.fail(
+        makeError('Chat.Conversation.NotMultiParty', 'Only group or meeting conversations support removing participants.'),
+      );
+    }
+    const actorGuard = this.ensureActiveParticipant(input.actorUserId);
+    if (!actorGuard.isSuccess) return Result.fail(actorGuard.error);
+    const target = this.findActiveParticipant(input.targetUserId);
+    if (!target) {
+      return Result.fail(makeError('Chat.Conversation.NotParticipant', 'Target user is not a participant.'));
+    }
+
+    const now = input.now ?? new Date();
+    target.remove(now);
+    this.state = {
+      ...this.state,
+      participants: this.participants.map((p) => p.toSnapshot()),
+      updatedAtUtc: now,
+    };
+    const reason: 'Left' | 'Kicked' = input.actorUserId === input.targetUserId ? 'Left' : 'Kicked';
+    return Result.ok({ reason });
   }
 
   markRead(input: { participantUserId: string; lastReadMessageId: string; now?: Date }): Result<void> {

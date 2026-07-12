@@ -11,6 +11,7 @@ using TaxVision.Notification.Infrastructure.Email;
 using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Persistence.Repositories;
 using TaxVision.Notification.Infrastructure.Providers;
+using TaxVision.Notification.Infrastructure.Push;
 using TaxVision.Notification.Infrastructure.Sms;
 using TaxVision.Notification.Infrastructure.Storage;
 using TaxVision.Notification.Infrastructure.Templates;
@@ -37,6 +38,11 @@ public static class DependencyInjection
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<ISmsSender, LoggingSmsSender>();
+        // Push FCM/APNs: LoggingPushSender es provisional, mismo criterio que
+        // LoggingSmsSender — reemplazar por Firebase Admin SDK / APNs HTTP2
+        // cuando exista un proveedor real, sin tocar NotificationDispatcher.
+        services.AddScoped<IPushSender, LoggingPushSender>();
+        services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<NotificationDispatcher>();
 
         // Cifrado compartido de secretos (Encryption:MasterKey) para configuraciones y tokens.

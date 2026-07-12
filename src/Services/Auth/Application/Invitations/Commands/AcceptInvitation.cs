@@ -128,6 +128,26 @@ public static class AcceptInvitationHandler
         if (roleIds.Count > 0)
             await roles.ReplaceUserRolesAsync(user.Id, roleIds, invitation.InvitedByUserId, ct);
 
+        // Publicar ANTES de SaveChangesAsync: Wolverine + UseEntityFrameworkCoreTransactions()
+        // agrupa el outbox del mensaje con el commit del UnitOfWork cuando PublishAsync
+        // ocurre antes del SaveChanges del mismo DbContext (mismo patrón que
+        // DeactivateUserHandler/AssignUserRolesHandler). Publicar después del commit
+        // (como estaba antes) rompe la atomicidad: si el proceso muere entre el
+        // SaveChanges y el PublishAsync, el usuario queda creado pero el evento nunca sale.
+        await bus.PublishAsync(
+            new UserRegisteredIntegrationEvent
+            {
+                UserId = user.Id,
+                TenantId = user.TenantId,
+                Email = user.Email,
+                ActorType = user.ActorType.ToString(),
+                CustomerId = user.CustomerId,
+                Name = user.Name,
+                LastName = user.LastName,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
         await audit.AddAsync(
             AuthAuditLog.Record(
                 invitation.TenantId,
@@ -143,18 +163,6 @@ public static class AcceptInvitationHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
-
-        await bus.PublishAsync(
-            new UserRegisteredIntegrationEvent
-            {
-                UserId = user.Id,
-                TenantId = user.TenantId,
-                Email = user.Email,
-                ActorType = user.ActorType.ToString(),
-                CustomerId = user.CustomerId,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         return Result.Success(ToResponse(user));
     }

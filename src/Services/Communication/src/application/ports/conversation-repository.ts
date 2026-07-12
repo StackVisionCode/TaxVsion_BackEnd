@@ -24,10 +24,17 @@ export interface ConversationRepository {
 
   countForUser(tenantId: string, userId: string, includeArchived?: boolean): Promise<number>;
 
+  /**
+   * `beforeUtc` pagina hacia atras (scrollback, desc). `afterUtc` pagina hacia
+   * adelante (asc) — usado para backfill al reconectar: el cliente manda el
+   * `createdAtUtc` del ultimo mensaje que ya tiene y recibe todo lo posterior
+   * en orden cronologico. Mutuamente excluyentes (ver getMessages).
+   */
   listMessages(input: {
     tenantId: string;
     conversationId: string;
     beforeUtc?: Date;
+    afterUtc?: Date;
     take: number;
   }): Promise<MessageSnapshot[]>;
 

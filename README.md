@@ -3562,25 +3562,47 @@ Todos bajo `wss://gateway/communication/socket.io/` con JWT en
 `handshake.auth.token`. Nombres jerarquicos `dominio.entidad.accion`. Server
 emite envelopes `{ eventId, correlationId, emittedAtUtc, payload }`.
 
-**Chat**: `chat.conversation.start_direct`, `chat.message.send/edit/delete/mark_read`,
-`chat.typing.start/stop`. Server -> `chat.message.new/edited/deleted/read`,
-`chat.typing.started/stopped`, `chat.conversation.created`, `chat.presence.changed`.
+**Chat**: `chat.conversation.start_direct/start_group/add_participant/remove_participant`,
+`chat.message.send/edit/delete/mark_read`, `chat.typing.start/stop`. Server ->
+`chat.message.new/edited/deleted/read`, `chat.typing.started/stopped`,
+`chat.conversation.created/participant_added/participant_removed`,
+`chat.presence.changed`, `chat.message.attachment_flagged` (status `Infected` |
+`Deleted` | `BlockedByPolicy` — Fase 7). Grupos (`start_group`/`add_participant`/
+`remove_participant`) apagados por default via
+`TenantCommunicationSettings.internalGroupsEnabled`.
 
 **Calls 1:1**: `call.initiate/accept/reject/cancel/end/signal/media_status/connection_quality`.
-Server -> `call.incoming/state_changed/peer_joined/signal_from/media_status_changed`.
+Server -> `call.incoming/state_changed/peer_joined/signal_from/media_status_changed`,
+`call.transcript_ready` (Fase 6 — `CommunicationTranscriptWorker`, whisper.cpp).
 
-**Meetings**: `meeting.join/leave/host.admit|remove|lock|mute_all|transfer/signal/media_status/raise_hand/dominant_speaker`.
-Server -> `meeting.snapshot/participant.changed/state.changed/signal.from/dominant_speaker.changed/you.muted`.
+**Meetings**: `meeting.join/leave/host.admit|remove|lock|mute_all|transfer/signal/media_status/raise_hand/dominant_speaker/recording.attach`,
+`meeting.chat.send/edit/delete/mark_read` (Fase 8 — chat visible para TODOS los
+presentes, no 1:1; reusa `sendMessage`/`editMessage`/`deleteMessage`/
+`markMessagesRead` sobre una `Conversation` kind `Meeting` cuyos participantes
+se sincronizan solos con quien esta `Joined`, autorizado por "estar en el
+meeting", no por `communication.chat.reply`).
+Server -> `meeting.snapshot/participant.changed/state.changed/signal.from/dominant_speaker.changed/you.muted/transcript_ready`,
+`meeting.chat.message.new/edited/deleted/read` (mismos DTOs que `chat.message.*`,
+namespace propio). `meeting.snapshot`/ack de `meeting.join` incluyen
+`conversationId` (null en waiting room).
 
 **Notifications**: `notification.mark_read/dismiss`. Server -> `notification.received/unread_count.changed/read.confirmed`,
 `session.revoked` (canal SEPARADO — cierre CRIT-legacy).
 
 ## 30.5 Integration events publicados
 
-- **Chat**: `communication.chat.conversation_started.v1`, `.message_sent.v1` (sin contenido).
-- **Calls**: `.call.started.v1`, `.ended.v1`, `.missed.v1`, `.recording_ready.v1`.
-- **Meetings**: `.meeting.scheduled.v1`, `.started.v1`, `.ended.v1`, `.invitation_requested.v1`, `.recording_ready.v1`.
+- **Chat**: `communication.chat.conversation_started.v1` (kind `Direct`|`Group`|`Support`|`Meeting`),
+  `.message_sent.v1` (sin contenido), `.message_edited.v1`, `.message_deleted.v1`,
+  `.conversation_participant_added.v1`, `.conversation_participant_removed.v1`
+  (solo grupos — el alta/baja de chat de meeting NO publica estos, ya la cubre
+  `meeting.participant_joined/left.v1`, evita señal duplicada).
+- **Calls**: `.call.started.v1`, `.ended.v1`, `.missed.v1`, `.recording_ready.v1`, `.transcript_ready.v1` (Fase 6).
+- **Meetings**: `.meeting.scheduled.v1`, `.started.v1`, `.ended.v1`, `.invitation_requested.v1`, `.recording_ready.v1`, `.transcript_ready.v1` (Fase 6).
 - **Support**: `.support.opened.v1`, `.claimed.v1`, `.resolved.v1`, `.closed.v1`.
+- **Consumido** (no publicado): `cloudstorage.file.blocked_by_policy.v1` — CloudStorage
+  lo emite cuando `IContentScanner` (Fase 7, hoy `NoOpContentScanner`) marca un
+  archivo. Communication lo refleja como `chat.message.attachment_flagged`
+  (status `BlockedByPolicy`).
 
 ## 30.6 Consumers de otros microservicios
 
@@ -3658,13 +3680,44 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 ## 30.10 Pendientes documentados
 
-- **DLQ formal** para consumer runtime (hoy ack directo tras fallo).
-- **LiveKit SFU switching** en meetings >4 (feature flag reservado, adapter fuera).
-- **Server-side recording** (LiveKit Egress) — actualmente client-side canvas.
-- **Content moderation** (`IContentScanner`) para chat attachments.
-- **Transcripts** de meetings.
-- **Advisory lock Redis** en outbox drainer para dedup entre pods.
-- **Push nativo** FCM/APNs para el canal App-based challenge de Signature.
+Cerrados en esta iteracion (ver 30.11):
+- ~~DLQ formal para consumer runtime~~ — ahora hay binding real (deadLetterExchange + deadLetterRoutingKey a la DLQ; nack con requeue=false).
+- ~~Room mismatch calls/meetings~~ — `emitter.emitToCall/emitToMeeting` alineados con los joins.
+- ~~Presence broadcast~~ — watcher `presence-changed-watcher` subscribe al canal Redis y emite `chat.presence.changed`.
+- ~~TURN sin STUN propio~~ — el `HmacTurnCredentialFactory` deriva `stun:host:port` del propio TURN URL; username hasheado (no expone UUID).
+
+Sigue pendiente:
+
+- **`UserDirectoryProjection` para hidratar `displayName` real en payloads de chat/call/meeting**. Hoy los handlers ponen el `userId` (UUID) como placeholder porque el FE no recibe nombres. Requiere:
+  1. Extender `UserRegisteredIntegrationEvent` en Auth para incluir `Name` + `LastName` (compat: son nullable en el consumer).
+  2. Nueva tabla Prisma `UserDirectoryEntry(userId, tenantId, displayName, email, isActive, updatedAtUtc)`.
+  3. Consumer que hidrata desde `auth.user.registered.v1` + un nuevo `auth.user.profile_updated.v1` para tracking de cambios.
+  4. Refactorizar los handlers de `send-message.ts`, `initiate-call.ts`, `join-meeting.ts` para leer del directorio antes de emitir.
+- **CloudStorage attachment validation consumer** (`cloudstorage.file.available.v1` / `.infected.v1` / `.deleted.v1`). Hoy los chat attachments confian en el `fileId` que pasa el cliente sin validacion server-side. Requiere:
+  1. Nueva tabla Prisma `AttachmentTracking(fileId, messageId, tenantId, status)`.
+  2. Refactorizar `send-message.ts` para registrar el tracking al insertar.
+  3. Consumer que actualiza el status y broadcastea `chat.message.attachment_flagged` al room de la conversation si el file resulta infected.
+- **LiveKit SFU switching** en meetings >4 — hoy `strategy: Sfu` se declara en el snapshot pero el signaling sigue siendo mesh peer-to-peer, asi que meetings >6-8 fallan por N^2 conexiones del cliente. Feature flag reservado, adapter (LiveKit / mediasoup / janus) fuera del scope actual.
+- **Server-side recording** (LiveKit Egress o similar) para calls y meetings. `Call.attachRecording` y `Meeting.attachRecording` existen en el dominio pero **nunca se llaman** — no hay orquestador que suba el resultado a CloudStorage con `OwnerType=Communication`, `FolderType=Recordings`. Recording client-side sigue siendo la unica via.
+- **Backfill / catchup al reconectar**: no hay `chat.sync.since`, `call.resync` ni `meeting.reconnect`. Un cliente que reconecta despues de la desconexion pierde eventos emitidos durante la caida y debe reconstruir via HTTP.
+- **Auto-timeout de typing indicators** — si el cliente pierde la conexion sin emitir `chat.typing.stop`, el otro peer queda con "Escribiendo..." pegado. Fix: TTL server-side en Redis + broadcast automatico al expirar.
+- **Rate limit no aplicado**: `config.rateLimit.*` (typingPerMinute, messagesPerMinute, etc.) existe pero no hay middleware que lo consulte. Requiere un `SocketRateLimiter` con Redis token-bucket.
+- **Cleanup en disconnect abrupto de calls/meetings**: hoy solo el `missed-call-scheduler` procesa calls Ringing con timeout. Calls Active y meetings con participantes sin heartbeat quedan colgados.
+- **Purge/retention scheduler**: `TenantCommunicationSettings.recordingRetentionDays` y `messageRetentionDays` son configurables pero no hay purgador que ejerza la politica.
+- **Denylist Redis fail-open**: si Redis se cae, `JwtVerifier` sigue aceptando tokens revocados. Feature flag para modo fail-closed pendiente.
+- ~~**Grupos de chat**~~ — RESUELTO (Fase 7): `startGroupConversation`/`addGroupParticipant`/`removeGroupParticipant` + handlers socket (`chat.conversation.start_group`/`add_participant`/`remove_participant`), gateado por `TenantCommunicationSettings.internalGroupsEnabled` y permisos `communication.group.create`/`manage_members`.
+- ~~**Content moderation** (`IContentScanner`)~~ — RESUELTO (Fase 7) del lado de CloudStorage: `IContentScanner`/`NoOpContentScanner` (siempre Clean) wireado en `ScanFileHandler` tras ClamAV, con los 3 verdicts reales (Clean/PolicyViolation/Uncertain) manejados aunque el NoOp de MVP solo dispare Clean. Communication consume `cloudstorage.file.blocked_by_policy.v1`. Falta: un scanner real (NSFW/CSAM) que reemplace el NoOp.
+- ~~**Transcripts** de meetings~~ — RESUELTO (Fase 6): worker separado `CommunicationTranscriptWorker` (whisper.cpp + ffmpeg), con inbox Redis propio para idempotencia ante redeliveries de RabbitMQ.
+- ~~**Advisory lock Redis** en outbox drainer~~ — ya implementado (`RedisDistributedLock.withLock` en `outbox-drainer.ts`); esta entrada estaba desactualizada.
+- **Push nativo** FCM/APNs — PARCIAL (Fase 7): infraestructura real y reusable en Notification (`PushDeviceToken`, `IPushSender`, `NotificationDispatcher.SendPushAsync`, endpoints `POST/DELETE notifications/push/devices`), y el canal `"AppPush"` ya está wireado en `SignerVerificationChallengeIssuedConsumer`. Falta: (1) un `IPushSender` real (Firebase Admin SDK / APNs HTTP2) — hoy `LoggingPushSender` solo loguea; (2) un flujo de registro de dispositivo para signers externos — el link de firma es web sin sesión autenticada, así que `AppPush` siempre resuelve "sin dispositivos registrados" hasta que ese flujo se construya.
+- ~~**Chat y media dentro de meetings**~~ — RESUELTO (Fase 8): nuevo `ConversationKind.Meeting`, 1:1 con cada `Meeting`, con participantes sincronizados automáticamente con quién está `Joined` (`ensureMeetingConversation`/`removeFromMeetingConversation`, wireados en join/leave/admit/host-remove). Reusa integramente `sendMessage`/`editMessage`/`deleteMessage`/`markMessagesRead` — adjuntos/media incluidos gratis vía `AttachmentTracking`, sin código nuevo. Eventos socket dedicados (`meeting.chat.send/edit/delete/mark_read`) en vez de los genéricos `chat.*` porque la autorización correcta es "estás Joined en este meeting", no `communication.chat.reply`. El historial se lee con los mismos endpoints HTTP `GET/POST /communication/conversations/:id/messages` — el cliente recibe el `conversationId` en el snapshot del meeting al entrar.
+
+## 30.11 Fixes aplicados en la iteracion 07-11 (post-auditoria)
+
+- **Room mismatch en calls y meetings**: los handlers hacian `socket.join('t:{tenantId}:call:{callId}')` / `:m:{meetingId}` pero los emits pasaban por `emitToConversation({conversationId: 'call:...'})` que construia `t:{tenantId}:c:call:{callId}` (con `:c:` en medio). Los rooms no coincidian y `state_changed`, `peer_joined`, `media_status_changed`, `participant.changed`, `dominant_speaker.changed`, `you.muted` no llegaban a nadie. Fix: `RealtimeEmitter` gano `emitToCall`, `emitToMeeting`, `emitToTenant` con room names correctos; `call-handlers.ts` y `meeting-handlers.ts` refactorizados.
+- **Presence sin broadcast**: `RedisPresenceService` publicaba en `comm:presence:changed:{tenantId}` pero nadie subscribia. Nuevo `presence-changed-watcher.ts` hace `PSUBSCRIBE` al patron y emite `chat.presence.changed` al room del tenant. Ademas se corrigio una race condition en `register` (dos sockets simultaneos del mismo user podian ambos publicar 'online' — ahora SET va primero, count despues).
+- **TURN sin STUN propio**: `HmacTurnCredentialFactory` solo devolvia `stun:stun.l.google.com:19302` (dependencia externa). Ahora deriva `stun:host:port` del propio TURN URL y lo devuelve como primer ICE server (menor latencia). El username del TURN ahora usa SHA-256 truncado de `tenantId:userId` en vez del UUID crudo (no expone identidad en logs de coturn / traza WebRTC).
+- **DLQ no bindeada**: la cola principal se declaraba con `deadLetterExchange: ''` pero sin `deadLetterRoutingKey`, y el consumer runtime hacia `ack` ciego en error. Los failures se descartaban silenciosamente. Fix: `assertQueue` ahora usa `deadLetterExchange: ''` + `deadLetterRoutingKey: <dlq>` (routing al default exchange con la DLQ como target); el consumer runtime hace `nack(requeue=false)` en error y `unmark` la inbox para permitir reproceso manual.
 
 ---
 

@@ -18,6 +18,11 @@ const rawEnv = z
     COMMUNICATION_DB_CONNECTION: z.string().min(1),
     COMMUNICATION_REDIS_URI: z.string().url(),
     COMMUNICATION_SESSION_DENYLIST_PREFIX: z.string().default('auth:session-denylist'),
+    // Fail-closed por defecto: si Redis no responde al chequear el denylist,
+    // rechazamos la conexion en vez de asumir "no revocado". Flag de emergencia
+    // para operar en fail-open temporalmente si un incidente de Redis tumba
+    // todas las conexiones nuevas.
+    COMMUNICATION_SESSION_DENYLIST_FAIL_CLOSED: z.coerce.boolean().default(true),
 
     COMMUNICATION_RABBITMQ_URI: z.string().min(1),
     COMMUNICATION_RABBITMQ_EXCHANGE: z.string().default('taxvision-events'),
@@ -37,6 +42,18 @@ const rawEnv = z
     COMMUNICATION_TURN_URL: z.string().optional(),
     COMMUNICATION_TURN_STATIC_AUTH_SECRET: z.string().optional(),
     COMMUNICATION_TURN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+
+    // SFU (mediasoup) — meetings con mas de 4 participantes. `listenIp` es la
+    // interfaz local donde escucha cada WebRtcTransport; `announcedIp` es la
+    // IP publica que se anuncia en los ICE candidates cuando el server esta
+    // detras de NAT (cloud VM tipico). Sin `announcedIp`, `listenIp` debe ser
+    // ya la IP publica (deploy con IP directa, sin NAT).
+    COMMUNICATION_MEDIASOUP_LISTEN_IP: z.string().default('0.0.0.0'),
+    COMMUNICATION_MEDIASOUP_ANNOUNCED_IP: z.string().optional(),
+    COMMUNICATION_MEDIASOUP_RTC_MIN_PORT: z.coerce.number().int().positive().default(40000),
+    COMMUNICATION_MEDIASOUP_RTC_MAX_PORT: z.coerce.number().int().positive().default(49999),
+    // 0 = auto (un worker por core disponible, tope 4 en dev para no saturar).
+    COMMUNICATION_MEDIASOUP_NUM_WORKERS: z.coerce.number().int().min(0).default(0),
 
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
     OTEL_EXPORTER_OTLP_PROTOCOL: z.enum(['grpc', 'http/protobuf']).default('http/protobuf'),
@@ -78,6 +95,7 @@ export const config = {
   redis: {
     uri: rawEnv.COMMUNICATION_REDIS_URI,
     sessionDenylistPrefix: rawEnv.COMMUNICATION_SESSION_DENYLIST_PREFIX,
+    sessionDenylistFailClosed: rawEnv.COMMUNICATION_SESSION_DENYLIST_FAIL_CLOSED,
   },
 
   rabbitmq: {
@@ -105,6 +123,14 @@ export const config = {
     url: rawEnv.COMMUNICATION_TURN_URL,
     staticAuthSecret: rawEnv.COMMUNICATION_TURN_STATIC_AUTH_SECRET,
     ttlSeconds: rawEnv.COMMUNICATION_TURN_TTL_SECONDS,
+  },
+
+  mediasoup: {
+    listenIp: rawEnv.COMMUNICATION_MEDIASOUP_LISTEN_IP,
+    announcedIp: rawEnv.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP,
+    rtcMinPort: rawEnv.COMMUNICATION_MEDIASOUP_RTC_MIN_PORT,
+    rtcMaxPort: rawEnv.COMMUNICATION_MEDIASOUP_RTC_MAX_PORT,
+    numWorkers: rawEnv.COMMUNICATION_MEDIASOUP_NUM_WORKERS,
   },
 
   otel: {

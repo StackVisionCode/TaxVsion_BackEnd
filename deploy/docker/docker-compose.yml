@@ -206,6 +206,13 @@ services:
       ServiceAuth__Clients__0__Permissions__0: cloudstorage.file.upload
       ServiceAuth__Clients__0__Permissions__1: cloudstorage.file.download
       ServiceAuth__Clients__0__Permissions__2: cloudstorage.file.view
+      # Cliente de servicio (M2M) para el worker de Transcripts de Communication (Fase 6):
+      # descarga la grabacion, sube el .txt transcrito, mismos permisos de CloudStorage.
+      ServiceAuth__Clients__1__ClientId: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
+      ServiceAuth__Clients__1__Secret: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET:-}
+      ServiceAuth__Clients__1__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__1__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__1__Permissions__2: cloudstorage.file.view
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -402,6 +409,38 @@ services:
       redis:
         condition: service_started
       otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  communication-transcript-worker:
+    image: taxvision/communication-transcript-worker:dev
+    container_name: taxvision-communication-transcript-worker
+    build:
+      context: ../../src/Services/CommunicationTranscriptWorker
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      SERVICE_NAME: communication-transcript-worker
+      TRANSCRIPT_WORKER_RABBITMQ_URI: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      TRANSCRIPT_WORKER_RABBITMQ_EXCHANGE: taxvision-events
+      TRANSCRIPT_WORKER_RABBITMQ_QUEUE: communication-transcript-worker
+      # Inbox de idempotencia (Redis SET NX EX por eventId) — evita reprocesar
+      # una grabacion ya transcrita ante una redelivery de RabbitMQ.
+      TRANSCRIPT_WORKER_REDIS_URI: redis://redis:6379/1
+      TRANSCRIPT_WORKER_AUTH_BASE_URL: http://auth-api:8080
+      TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_ID: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
+      TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET:-}
+      TRANSCRIPT_WORKER_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      # Modelo/binario/idioma se dejan en los defaults del Dockerfile
+      # (ggml-base, whisper-cli, auto-detect) salvo que se sobreescriban aca.
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-api:
         condition: service_started
     networks:
       - taxvision-network

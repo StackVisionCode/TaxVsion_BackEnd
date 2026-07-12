@@ -11,7 +11,7 @@ export interface ListConversationsQuery {
 
 export interface ConversationListItem {
   readonly id: string;
-  readonly kind: 'Direct' | 'Group' | 'Support';
+  readonly kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
   readonly title: string | null;
   readonly lastMessageAtUtc: string | null;
   readonly updatedAtUtc: string;

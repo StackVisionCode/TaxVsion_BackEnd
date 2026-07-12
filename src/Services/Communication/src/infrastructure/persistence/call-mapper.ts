@@ -53,6 +53,7 @@ export function toDomainCall(row: PrismaCall, participants: PrismaParticipant[])
     durationSeconds: row.DurationSeconds,
     recordingRequested: row.RecordingRequested,
     recordingFileId: row.RecordingFileId,
+    transcriptFileId: row.TranscriptFileId,
     createdAtUtc: row.CreatedAtUtc,
     updatedAtUtc: row.UpdatedAtUtc,
     participants: participants.map(toDomainCallParticipant),

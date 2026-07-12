@@ -18,6 +18,7 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
         IUnitOfWork
 {
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+    public DbSet<PushDeviceToken> PushDeviceTokens => Set<PushDeviceToken>();
     public DbSet<EmailProviderConfiguration> EmailProviderConfigurations => Set<EmailProviderConfiguration>();
     public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
     public DbSet<EmailTemplateVersion> EmailTemplateVersions => Set<EmailTemplateVersion>();

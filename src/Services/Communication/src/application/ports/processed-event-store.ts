@@ -13,4 +13,12 @@ export interface ProcessedEventStore {
     eventType: string;
     tenantId?: string | null;
   }): Promise<boolean>;
+
+  /**
+   * Elimina la marca de un evento previamente marcado como procesado. Se usa
+   * cuando el handler explota tras haber tomado el lock inbox y el mensaje se
+   * enrutara al DLQ: si en el futuro se reprocesa manualmente, no debe
+   * saltarselo por "duplicado". Idempotente: no falla si la marca no existe.
+   */
+  unmark(input: { eventId: string; source: string }): Promise<void>;
 }

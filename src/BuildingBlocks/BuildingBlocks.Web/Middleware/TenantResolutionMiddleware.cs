@@ -12,5 +12,4 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
             tenant.SetTenant(tenantId);
         await next(ctx);
     }
-
 }

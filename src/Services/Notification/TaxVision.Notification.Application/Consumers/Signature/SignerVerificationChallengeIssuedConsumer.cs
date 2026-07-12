@@ -29,6 +29,8 @@ public static class SignerVerificationChallengeIssuedConsumer
         SignerVerificationChallengeIssuedIntegrationEvent evt,
         IEmailSender emailSender,
         ISmsSender smsSender,
+        IPushSender pushSender,
+        IPushDeviceTokenRepository pushDeviceTokens,
         INotificationLogRepository logRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -40,10 +42,15 @@ public static class SignerVerificationChallengeIssuedConsumer
         using (correlation.Push(correlationId))
         {
             var channel = ChannelFor(evt.Method);
+            // AppPush no tiene "direccion" de entrega (email/telefono) — el
+            // destino real son los tokens de dispositivo del signer. Usamos su
+            // Id como identificador de log, igual que el resto de canales
+            // registran el "recipient" real de ese canal.
+            var recipient = channel == NotificationChannel.Push ? evt.SignerId.ToString() : evt.DeliveryAddress;
             var logResult = NotificationLog.Create(
                 evt.TenantId,
                 channel,
-                evt.DeliveryAddress,
+                recipient,
                 BuildSubject(evt),
                 TemplateKey,
                 evt.EventId,
@@ -63,7 +70,7 @@ public static class SignerVerificationChallengeIssuedConsumer
             var log = logResult.Value;
             await logRepository.AddAsync(log, ct);
 
-            var deliver = await DispatchAsync(evt, emailSender, smsSender, ct);
+            var deliver = await DispatchAsync(evt, emailSender, smsSender, pushSender, pushDeviceTokens, ct);
             ApplyOutcomeToLog(deliver, log, logger, evt);
             await unitOfWork.SaveChangesAsync(ct);
         }
@@ -83,6 +90,7 @@ public static class SignerVerificationChallengeIssuedConsumer
             "WhatsAppOtp" => NotificationChannel.Sms,
             "EmailOtp" => NotificationChannel.Email,
             "KbaQuiz" => NotificationChannel.Email,
+            "AppPush" => NotificationChannel.Push,
             _ => NotificationChannel.InApp,
         };
 
@@ -93,6 +101,8 @@ public static class SignerVerificationChallengeIssuedConsumer
         SignerVerificationChallengeIssuedIntegrationEvent evt,
         IEmailSender emailSender,
         ISmsSender smsSender,
+        IPushSender pushSender,
+        IPushDeviceTokenRepository pushDeviceTokens,
         CancellationToken ct
     ) =>
         evt.Method switch
@@ -101,6 +111,7 @@ public static class SignerVerificationChallengeIssuedConsumer
             "WhatsAppOtp" => SendSmsAsync(evt, smsSender, ct), // fallback provisional hasta ms WhatsApp dedicado
             "EmailOtp" => SendEmailOtpAsync(evt, emailSender, ct),
             "KbaQuiz" => SendKbaLinkAsync(evt, emailSender, ct),
+            "AppPush" => SendAppPushAsync(evt, pushSender, pushDeviceTokens, ct),
             _ => Task.FromResult(
                 Result.Failure(new Error("Notification.UnknownMethod", "Verification method not supported."))
             ),
@@ -147,6 +158,52 @@ public static class SignerVerificationChallengeIssuedConsumer
                 ? $"<p>Hola {evt.SignerFullName},</p><p>Necesitas completar un cuestionario de verificación de identidad antes de firmar.</p>"
                 : $"<p>Hi {evt.SignerFullName},</p><p>You need to complete an identity verification questionnaire before signing.</p>";
         return emailSender.SendAsync(new EmailMessage(evt.DeliveryAddress, subject, body, body), ct);
+    }
+
+    /// <summary>
+    /// Push al signer via sus tokens de dispositivo registrados — ver
+    /// <c>IPushDeviceTokenRepository</c>. IMPORTANTE: hoy NO existe ningun
+    /// flujo publico de registro de dispositivo para signers (el link de
+    /// firma es web, sin sesion autenticada que permita registrar un token);
+    /// este metodo siempre resuelve "sin dispositivos" hasta que ese flujo se
+    /// construya. La infraestructura de envio (IPushSender +
+    /// IPushDeviceTokenRepository) es real y reusable — lo que falta es
+    /// exclusivamente el registro de token del lado del signer.
+    /// </summary>
+    private static async Task<Result> SendAppPushAsync(
+        SignerVerificationChallengeIssuedIntegrationEvent evt,
+        IPushSender pushSender,
+        IPushDeviceTokenRepository pushDeviceTokens,
+        CancellationToken ct
+    )
+    {
+        var devices = await pushDeviceTokens.ListActiveForUserAsync(evt.TenantId, evt.SignerId, ct);
+        if (devices.Count == 0)
+            return Result.Failure(
+                new Error(
+                    "Notification.NoPushDevices",
+                    "Signer has no registered push devices — public signer device registration is not implemented yet."
+                )
+            );
+
+        var title =
+            evt.SignerLanguage == "Es" ? "TaxVision — Verificación requerida" : "TaxVision — Verification required";
+        var body =
+            evt.SignerLanguage == "Es"
+                ? "Abre la app para aprobar tu firma."
+                : "Open the app to approve your signature.";
+
+        var anySucceeded = false;
+        var lastError = new Error("Notification.PushFailed", "All device deliveries failed.");
+        foreach (var device in devices)
+        {
+            var result = await pushSender.SendAsync(new PushMessage(device.Token, device.Platform, title, body), ct);
+            if (result.IsSuccess)
+                anySucceeded = true;
+            else
+                lastError = result.Error;
+        }
+        return anySucceeded ? Result.Success() : Result.Failure(lastError);
     }
 
     private static (string Html, string Text) BuildOtpEmail(SignerVerificationChallengeIssuedIntegrationEvent evt)

@@ -113,6 +113,10 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     if (!result.isSuccess) {
       return reply.code(400).send({ code: result.error.code, message: result.error.message });
     }
+    // Libera el router SFU (transports/producers/consumers de todos los
+    // participantes) si el meeting tenia strategy 'Sfu' — no-op si nunca se
+    // creo router (meetings Mesh, o Sfu que nadie llego a usar via socket).
+    await container.sfu.closeMeeting(params.id);
     return reply.send(result.value);
   });
 }

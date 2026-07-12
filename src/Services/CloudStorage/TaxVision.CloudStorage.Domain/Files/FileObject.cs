@@ -142,6 +142,28 @@ public sealed class FileObject : TenantEntity
         return Result.Success();
     }
 
+    public Result MarkBlockedByPolicy(string report, string detectedContentType, DateTime nowUtc)
+    {
+        if (Status != FileStatus.Scanning)
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.BlockedByPolicy;
+        DetectedContentType = detectedContentType;
+        ScanReport = report;
+        ScannedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
+    public Result MarkPendingReview(string report, string detectedContentType, DateTime nowUtc)
+    {
+        if (Status != FileStatus.Scanning)
+            return Result.Failure(FileErrors.InvalidTransition);
+        Status = FileStatus.PendingReview;
+        DetectedContentType = detectedContentType;
+        ScanReport = report;
+        ScannedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
     public Result SoftDelete(DateTime nowUtc, TimeSpan retention)
     {
         if (IsLegalHeld)

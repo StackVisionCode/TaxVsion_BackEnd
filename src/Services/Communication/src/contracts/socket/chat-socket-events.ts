@@ -18,6 +18,28 @@ export const StartDirectConversationPayloadSchema = z.object({
 });
 export type StartDirectConversationPayload = z.infer<typeof StartDirectConversationPayloadSchema>;
 
+export const StartGroupConversationPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  title: z.string().min(1).max(120),
+  memberUserIds: z.array(z.string().uuid()).min(1).max(200),
+});
+export type StartGroupConversationPayload = z.infer<typeof StartGroupConversationPayloadSchema>;
+
+export const AddGroupParticipantPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  conversationId: z.string().uuid(),
+  newMemberUserId: z.string().uuid(),
+});
+export type AddGroupParticipantPayload = z.infer<typeof AddGroupParticipantPayloadSchema>;
+
+export const RemoveGroupParticipantPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  conversationId: z.string().uuid(),
+  // Omitido = el actor se quita a si mismo (salir del grupo).
+  targetUserId: z.string().uuid().optional(),
+});
+export type RemoveGroupParticipantPayload = z.infer<typeof RemoveGroupParticipantPayloadSchema>;
+
 export const SendMessagePayloadSchema = z.object({
   clientKey: z.string().min(1).max(128),
   conversationId: z.string().uuid(),
@@ -56,7 +78,7 @@ export type TypingPayload = z.infer<typeof TypingPayloadSchema>;
 
 export interface ConversationSummaryDto {
   id: string;
-  kind: 'Direct' | 'Group' | 'Support';
+  kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
   title: string | null;
   lastMessageAtUtc: string | null;
   updatedAtUtc: string;
@@ -109,9 +131,44 @@ export interface PresenceChangedDto {
   changedAtUtc: string;
 }
 
+export interface AttachmentFlaggedDto {
+  messageId: string;
+  conversationId: string;
+  fileId: string;
+  status: 'Infected' | 'Deleted' | 'BlockedByPolicy';
+  flaggedAtUtc: string;
+}
+
+export interface ConversationCreatedDto {
+  id: string;
+  kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
+  title: string | null;
+  createdByUserId: string;
+  createdAtUtc: string;
+}
+
+export interface ConversationParticipantAddedDto {
+  conversationId: string;
+  addedByUserId: string;
+  newParticipantUserId: string;
+  newParticipantDisplayName: string;
+  addedAtUtc: string;
+}
+
+export interface ConversationParticipantRemovedDto {
+  conversationId: string;
+  removedByUserId: string;
+  removedParticipantUserId: string;
+  reason: 'Left' | 'Kicked';
+  removedAtUtc: string;
+}
+
 export const ChatSocketEvents = {
   // c -> s
   StartDirectConversation: 'chat.conversation.start_direct',
+  StartGroupConversation: 'chat.conversation.start_group',
+  AddGroupParticipant: 'chat.conversation.add_participant',
+  RemoveGroupParticipant: 'chat.conversation.remove_participant',
   SendMessage: 'chat.message.send',
   EditMessage: 'chat.message.edit',
   DeleteMessage: 'chat.message.delete',
@@ -127,5 +184,8 @@ export const ChatSocketEvents = {
   TypingStarted: 'chat.typing.started',
   TypingStopped: 'chat.typing.stopped',
   ConversationCreated: 'chat.conversation.created',
+  ConversationParticipantAdded: 'chat.conversation.participant_added',
+  ConversationParticipantRemoved: 'chat.conversation.participant_removed',
   PresenceChanged: 'chat.presence.changed',
+  AttachmentFlagged: 'chat.message.attachment_flagged',
 } as const;

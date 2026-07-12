@@ -76,6 +76,37 @@ public interface IFileContentInspector
     Task<InspectedContent> InspectAsync(Stream content, string originalName, CancellationToken ct);
 }
 
+/// <summary>
+/// Escaneo de CONTENIDO (no virus — eso es <see cref="IVirusScanner"/>): NSFW,
+/// CSAM, u otra politica de moderacion. MVP registra <c>NoOpContentScanner</c>
+/// (siempre Clean) via DI — el pipeline en <c>ScanFileHandler</c> ya maneja los
+/// 3 verdicts reales para que enchufar un scanner de verdad despues sea swap de
+/// implementacion, sin tocar el flujo. Corre SIEMPRE (no hay flag por tenant):
+/// mismo criterio que <see cref="IVirusScanner"/>, que tampoco es opcional.
+/// </summary>
+public interface IContentScanner
+{
+    Task<ContentScanResult> ScanAsync(Stream content, ContentScanContext context, CancellationToken ct);
+}
+
+public sealed record ContentScanContext(Guid TenantId, Guid FileId, OwnerType OwnerType, string OriginalName);
+
+public sealed record ContentScanResult(ContentScanVerdict Verdict, string? Reason)
+{
+    public static ContentScanResult Clean() => new(ContentScanVerdict.Clean, null);
+
+    public static ContentScanResult PolicyViolation(string reason) => new(ContentScanVerdict.PolicyViolation, reason);
+
+    public static ContentScanResult Uncertain(string reason) => new(ContentScanVerdict.Uncertain, reason);
+}
+
+public enum ContentScanVerdict
+{
+    Clean,
+    PolicyViolation,
+    Uncertain,
+}
+
 public sealed record InspectedContent(
     string ContentType,
     string Sha256,

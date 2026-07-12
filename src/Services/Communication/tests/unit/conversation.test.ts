@@ -74,6 +74,204 @@ describe('Conversation.startDirect', () => {
   });
 });
 
+describe('Conversation.startGroup / addParticipant / removeParticipant', () => {
+  const tenantId = u();
+  const owner = u();
+  const memberA = u();
+  const memberB = u();
+  const outsider = u();
+
+  function newGroup(): Conversation {
+    const r = Conversation.startGroup({
+      tenantId,
+      groupId: u(),
+      title: 'Equipo de auditoria',
+      creator: { userId: owner, displayName: 'Owner', actorType: 'TenantEmployee' },
+      members: [{ userId: memberA, displayName: 'A', actorType: 'TenantEmployee' }],
+    });
+    if (!r.isSuccess) throw new Error();
+    return r.value;
+  }
+
+  it('rejects group with no members', () => {
+    const result = Conversation.startGroup({
+      tenantId,
+      groupId: u(),
+      title: 'Solo',
+      creator: { userId: owner, displayName: 'Owner', actorType: 'TenantEmployee' },
+      members: [],
+    });
+    expect(result.isSuccess).toBe(false);
+    if (result.isSuccess) return;
+    expect(result.error.code).toBe('Chat.Conversation.NoMembers');
+  });
+
+  it('rejects empty title', () => {
+    const result = Conversation.startGroup({
+      tenantId,
+      groupId: u(),
+      title: '   ',
+      creator: { userId: owner, displayName: 'Owner', actorType: 'TenantEmployee' },
+      members: [{ userId: memberA, displayName: 'A', actorType: 'TenantEmployee' }],
+    });
+    expect(result.isSuccess).toBe(false);
+    if (result.isSuccess) return;
+    expect(result.error.code).toBe('Chat.Conversation.MissingTitle');
+  });
+
+  it('addParticipant: active participant can add a new member', () => {
+    const group = newGroup();
+    const result = group.addParticipant({
+      actorUserId: owner,
+      newMember: { userId: memberB, displayName: 'B', actorType: 'TenantEmployee' },
+    });
+    expect(result.isSuccess).toBe(true);
+    expect(group.getParticipantSnapshots().some((p) => p.userId === memberB && !p.isRemoved)).toBe(true);
+  });
+
+  it('addParticipant: rejects a non-participant actor', () => {
+    const group = newGroup();
+    const result = group.addParticipant({
+      actorUserId: outsider,
+      newMember: { userId: memberB, displayName: 'B', actorType: 'TenantEmployee' },
+    });
+    expect(result.isSuccess).toBe(false);
+    if (result.isSuccess) return;
+    expect(result.error.code).toBe('Chat.Conversation.NotParticipant');
+  });
+
+  it('addParticipant: rejects duplicate active participant', () => {
+    const group = newGroup();
+    const result = group.addParticipant({
+      actorUserId: owner,
+      newMember: { userId: memberA, displayName: 'A', actorType: 'TenantEmployee' },
+    });
+    expect(result.isSuccess).toBe(false);
+    if (result.isSuccess) return;
+    expect(result.error.code).toBe('Chat.Conversation.AlreadyParticipant');
+  });
+
+  it('addParticipant: rejects on a Direct conversation', () => {
+    const direct = Conversation.startDirect({
+      tenantId,
+      initiator: { userId: owner, displayName: 'Owner', actorType: 'TenantEmployee' },
+      recipient: { userId: memberA, displayName: 'A', actorType: 'TenantEmployee' },
+    });
+    if (!direct.isSuccess) throw new Error();
+    const result = direct.value.addParticipant({
+      actorUserId: owner,
+      newMember: { userId: memberB, displayName: 'B', actorType: 'TenantEmployee' },
+    });
+    expect(result.isSuccess).toBe(false);
+    if (result.isSuccess) return;
+    expect(result.error.code).toBe('Chat.Conversation.NotMultiParty');
+  });
+
+  it('removeParticipant: self-removal reports reason Left', () => {
+    const group = newGroup();
+    const result = group.removeParticipant({ actorUserId: memberA, targetUserId: memberA });
+    expect(result.isSuccess).toBe(true);
+    if (!result.isSuccess) return;
+    expect(result.value.reason).toBe('Left');
+    expect(group.isParticipant(memberA)).toBe(false);
+  });
+
+  it('removeParticipant: removing another participant reports reason Kicked', () => {
+    const group = newGroup();
+    const result = group.removeParticipant({ actorUserId: owner, targetUserId: memberA });
+    expect(result.isSuccess).toBe(true);
+    if (!result.isSuccess) return;
+    expect(result.value.reason).toBe('Kicked');
+    expect(group.isParticipant(memberA)).toBe(false);
+  });
+
+  it('removeParticipant: rejects removing a non-participant target', () => {
+    const group = newGroup();
+    const result = group.removeParticipant({ actorUserId: owner, targetUserId: outsider });
+    expect(result.isSuccess).toBe(false);
+    if (result.isSuccess) return;
+    expect(result.error.code).toBe('Chat.Conversation.NotParticipant');
+  });
+});
+
+describe('Conversation.startMeetingChat / Meeting self-join (Fase 8)', () => {
+  const tenantId = u();
+  const meetingId = u();
+  const host = u();
+  const attendee = u();
+  const outsider = u();
+
+  function newMeetingChat(): Conversation {
+    const r = Conversation.startMeetingChat({
+      tenantId,
+      meetingId,
+      meetingTitle: 'Weekly sync',
+      creator: { userId: host, displayName: 'Host', actorType: 'TenantEmployee' },
+    });
+    if (!r.isSuccess) throw new Error();
+    return r.value;
+  }
+
+  it('creates a Meeting conversation with only the creator as participant', () => {
+    const chat = newMeetingChat();
+    const snapshot = chat.toSnapshot();
+    expect(snapshot.kind).toBe('Meeting');
+    expect(snapshot.title).toBe('Weekly sync');
+    expect(snapshot.uniquenessKey).toBe(`meeting:${meetingId}`);
+    expect(snapshot.participants).toHaveLength(1);
+  });
+
+  it('addParticipant: self-join works even though the joiner is not active yet', () => {
+    const chat = newMeetingChat();
+    const result = chat.addParticipant({
+      actorUserId: attendee,
+      newMember: { userId: attendee, displayName: 'Attendee', actorType: 'TenantEmployee' },
+    });
+    expect(result.isSuccess).toBe(true);
+    expect(chat.isParticipant(attendee)).toBe(true);
+  });
+
+  it('addParticipant: a non-participant cannot add someone ELSE (self-join bypass does not extend to inviting others)', () => {
+    const chat = newMeetingChat();
+    const result = chat.addParticipant({
+      actorUserId: outsider,
+      newMember: { userId: attendee, displayName: 'Attendee', actorType: 'TenantEmployee' },
+    });
+    expect(result.isSuccess).toBe(false);
+    if (result.isSuccess) return;
+    expect(result.error.code).toBe('Chat.Conversation.NotParticipant');
+  });
+
+  it('sendText works once self-joined', () => {
+    const chat = newMeetingChat();
+    chat.addParticipant({
+      actorUserId: attendee,
+      newMember: { userId: attendee, displayName: 'Attendee', actorType: 'TenantEmployee' },
+    });
+    const msg = chat.sendText({ senderId: attendee, body: 'hola a todos' });
+    expect(msg.isSuccess).toBe(true);
+  });
+
+  it('removeParticipant: leaving reports reason Left and revokes send access', () => {
+    const chat = newMeetingChat();
+    chat.addParticipant({
+      actorUserId: attendee,
+      newMember: { userId: attendee, displayName: 'Attendee', actorType: 'TenantEmployee' },
+    });
+    const left = chat.removeParticipant({ actorUserId: attendee, targetUserId: attendee });
+    expect(left.isSuccess).toBe(true);
+    if (!left.isSuccess) return;
+    expect(left.value.reason).toBe('Left');
+    const msg = chat.sendText({ senderId: attendee, body: 'ya no deberia poder' });
+    expect(msg.isSuccess).toBe(false);
+  });
+
+  it('rejects starting a meeting chat that collides with an existing key shape', () => {
+    const chat = newMeetingChat();
+    expect(() => Conversation.rehydrate({ ...chat.toSnapshot(), kind: 'Group' })).toThrow();
+  });
+});
+
 describe('Conversation.sendText', () => {
   const tenantId = u();
   const initiator = u();

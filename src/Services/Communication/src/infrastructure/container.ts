@@ -9,6 +9,8 @@ import { PrismaMeetingRepository } from './persistence/prisma-meeting-repository
 import { PrismaNotificationRepository } from './persistence/prisma-notification-repository.js';
 import { PrismaProcessedEventStore } from './persistence/prisma-processed-event-store.js';
 import { PrismaUserPermissionsProjectionRepository } from './persistence/prisma-user-permissions-projection.js';
+import { PrismaUserDirectoryRepository } from './persistence/prisma-user-directory-repository.js';
+import { PrismaAttachmentTrackingRepository } from './persistence/prisma-attachment-tracking-repository.js';
 import { PrismaSupportTicketRepository } from './persistence/prisma-support-ticket-repository.js';
 import { PrismaLimitsRepository, PrismaSettingsRepository } from './persistence/prisma-settings-repository.js';
 import { PrismaAnalyticsRepository } from './persistence/prisma-analytics-repository.js';
@@ -18,6 +20,9 @@ import { RedisPresenceService } from './redis/redis-presence-service.js';
 import { HmacTurnCredentialFactory } from './turn/hmac-turn-credential-factory.js';
 import { Argon2PasscodeHasher } from './security/argon2-passcode-hasher.js';
 import { DominantSpeakerThrottle } from './redis/dominant-speaker-throttle.js';
+import { SocketRateLimiter } from './redis/socket-rate-limiter.js';
+import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
+import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
 import type { ConversationRepository } from '../application/ports/conversation-repository.js';
 import type { MessageRepository } from '../application/ports/message-repository.js';
 import type { IntegrationEventPublisher } from '../application/ports/integration-event-publisher.js';
@@ -31,10 +36,13 @@ import type { PasscodeHasher } from '../application/ports/passcode-hasher.js';
 import type { NotificationRepository } from '../application/ports/notification-repository.js';
 import type { ProcessedEventStore } from '../application/ports/processed-event-store.js';
 import type { UserPermissionsProjectionRepository } from '../application/ports/user-permissions-projection-repository.js';
+import type { UserDirectoryRepository } from '../application/ports/user-directory-repository.js';
+import type { AttachmentTrackingRepository } from '../application/ports/attachment-tracking-repository.js';
 import type { SupportTicketRepository } from '../application/ports/support-ticket-repository.js';
 import type { PlatformTenantProvider } from '../application/ports/platform-tenant-provider.js';
 import type { LimitsRepository, SettingsRepository } from '../application/ports/settings-repository.js';
 import type { AnalyticsRepository } from '../application/ports/analytics-repository.js';
+import type { SfuService } from '../application/ports/sfu-service.js';
 
 /**
  * Contenedor de dependencias — sin frameworks DI. Cada campo es una interfaz
@@ -53,14 +61,19 @@ export interface AppContainer {
   readonly turn: TurnCredentialFactory;
   readonly passcodes: PasscodeHasher;
   readonly dominantSpeakerThrottle: DominantSpeakerThrottle;
+  readonly rateLimiter: SocketRateLimiter;
+  readonly distributedLock: RedisDistributedLock;
   readonly notifications: NotificationRepository;
   readonly processedEvents: ProcessedEventStore;
   readonly userPermissions: UserPermissionsProjectionRepository;
+  readonly userDirectory: UserDirectoryRepository;
+  readonly attachmentTracking: AttachmentTrackingRepository;
   readonly supportTickets: SupportTicketRepository;
   readonly platform: PlatformTenantProvider;
   readonly tenantSettings: SettingsRepository;
   readonly limits: LimitsRepository;
   readonly analytics: AnalyticsRepository;
+  readonly sfu: SfuService;
 }
 
 export function buildContainer(): AppContainer {
@@ -76,13 +89,18 @@ export function buildContainer(): AppContainer {
     turn: new HmacTurnCredentialFactory(),
     passcodes: new Argon2PasscodeHasher(),
     dominantSpeakerThrottle: new DominantSpeakerThrottle(redis),
+    rateLimiter: new SocketRateLimiter(redis),
+    distributedLock: new RedisDistributedLock(redis),
     notifications: new PrismaNotificationRepository(prisma),
     processedEvents: new PrismaProcessedEventStore(prisma),
     userPermissions: new PrismaUserPermissionsProjectionRepository(prisma),
+    userDirectory: new PrismaUserDirectoryRepository(prisma),
+    attachmentTracking: new PrismaAttachmentTrackingRepository(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
     tenantSettings: new PrismaSettingsRepository(prisma),
     limits: new PrismaLimitsRepository(prisma),
     analytics: new PrismaAnalyticsRepository(prisma),
+    sfu: new MediasoupSfuService(),
   };
 }

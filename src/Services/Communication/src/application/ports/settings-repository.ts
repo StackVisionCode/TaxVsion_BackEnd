@@ -4,6 +4,8 @@ import type { TenantCommunicationLimitsSnapshot } from '../../domain/settings/te
 export interface SettingsRepository {
   findByTenantId(tenantId: string): Promise<TenantCommunicationSettings | null>;
   save(settings: TenantCommunicationSettings): Promise<void>;
+  /** Tenants con PurgeEnabled=true — consumido por PurgeScheduler. */
+  listPurgeEnabled(): Promise<Array<{ tenantId: string; messageRetentionDays: number }>>;
 }
 
 export interface LimitsRepository {

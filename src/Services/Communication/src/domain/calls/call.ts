@@ -23,6 +23,7 @@ export interface CallSnapshot {
   readonly durationSeconds: number | null;
   readonly recordingRequested: boolean;
   readonly recordingFileId: string | null;
+  readonly transcriptFileId: string | null;
   readonly createdAtUtc: Date;
   readonly updatedAtUtc: Date;
   readonly participants: readonly CallParticipantSnapshot[];
@@ -89,6 +90,7 @@ export class Call {
       durationSeconds: null,
       recordingRequested: input.recordingRequested ?? false,
       recordingFileId: null,
+      transcriptFileId: null,
       createdAtUtc: now,
       updatedAtUtc: now,
       participants: [callerParticipant.toSnapshot()],
@@ -291,6 +293,30 @@ export class Call {
     this.state = {
       ...this.state,
       recordingFileId: fileId,
+      updatedAtUtc: new Date(),
+    };
+    return Result.okVoid();
+  }
+
+  /**
+   * Adjunta el transcript STT generado por el worker de transcripts a partir
+   * de `recordingFileId`. Solo tiene sentido una vez terminada la llamada —
+   * a diferencia de attachRecording, no se permite en Active (el transcript
+   * siempre llega despues, via pipeline asincronico sobre la grabacion ya
+   * completa).
+   */
+  attachTranscript(fileId: string): Result<void> {
+    if (this.state.status !== CallStatus.Ended) {
+      return Result.fail(
+        makeError('Call.Transcript.InvalidState', `Cannot attach transcript in status ${this.state.status}.`),
+      );
+    }
+    if (this.state.transcriptFileId !== null) {
+      return Result.fail(makeError('Call.Transcript.Duplicate', 'Transcript already attached.'));
+    }
+    this.state = {
+      ...this.state,
+      transcriptFileId: fileId,
       updatedAtUtc: new Date(),
     };
     return Result.okVoid();

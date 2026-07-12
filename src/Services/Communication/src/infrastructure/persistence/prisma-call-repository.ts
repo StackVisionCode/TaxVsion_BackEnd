@@ -27,6 +27,7 @@ export class PrismaCallRepository implements CallRepository {
           DurationSeconds: snapshot.durationSeconds,
           RecordingRequested: snapshot.recordingRequested,
           RecordingFileId: snapshot.recordingFileId,
+          TranscriptFileId: snapshot.transcriptFileId,
           CreatedAtUtc: snapshot.createdAtUtc,
           UpdatedAtUtc: snapshot.updatedAtUtc,
         },
@@ -38,6 +39,7 @@ export class PrismaCallRepository implements CallRepository {
           EndReason: snapshot.endReason,
           DurationSeconds: snapshot.durationSeconds,
           RecordingFileId: snapshot.recordingFileId,
+          TranscriptFileId: snapshot.transcriptFileId,
           UpdatedAtUtc: snapshot.updatedAtUtc,
         },
       });
@@ -103,6 +105,7 @@ export class PrismaCallRepository implements CallRepository {
       durationSeconds: row.DurationSeconds,
       recordingRequested: row.RecordingRequested,
       recordingFileId: row.RecordingFileId,
+      transcriptFileId: row.TranscriptFileId,
       createdAtUtc: row.CreatedAtUtc,
       updatedAtUtc: row.UpdatedAtUtc,
       participants: row.Participants.map(toDomainCallParticipant),

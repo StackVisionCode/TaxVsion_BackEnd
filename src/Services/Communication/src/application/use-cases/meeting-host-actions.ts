@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
 import {
   MeetingEventTypes,
   type MeetingParticipantAdmittedEvent,
@@ -12,6 +13,7 @@ import {
 } from '../../contracts/events/meeting-events.js';
 import type { MeetingParticipantDto } from '../../contracts/socket/meeting-socket-events.js';
 import { participantSnapshotToDto } from './meeting-mappers.js';
+import { ensureMeetingConversation, removeFromMeetingConversation } from './ensure-meeting-conversation.js';
 
 export interface AdmitCommand {
   readonly tenantId: string;
@@ -21,10 +23,15 @@ export interface AdmitCommand {
   readonly targetUserId: string;
 }
 
+export interface AdmitResult {
+  readonly participant: MeetingParticipantDto;
+  readonly conversationId: string | null;
+}
+
 export async function admitParticipant(
   cmd: AdmitCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
-): Promise<Result<MeetingParticipantDto>> {
+  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; conversations: ConversationRepository },
+): Promise<Result<AdmitResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
 
@@ -46,9 +53,26 @@ export async function admitParticipant(
   };
   await deps.publisher.enqueue(event);
 
-  const target = meeting.toSnapshot().participants.find((p) => p.userId === cmd.targetUserId);
+  const snapshot = meeting.toSnapshot();
+  const target = snapshot.participants.find((p) => p.userId === cmd.targetUserId);
   if (!target) return Result.fail(makeError('Meeting.NotFound', 'Target vanished after admit.'));
-  return Result.ok(participantSnapshotToDto(target));
+
+  // Best-effort — un fallo aca no debe deshacer la admision ya confirmada.
+  const chatResult = await ensureMeetingConversation(
+    {
+      tenantId: cmd.tenantId,
+      correlationId: cmd.correlationId,
+      meetingId: cmd.meetingId,
+      meetingTitle: snapshot.title,
+      member: { userId: target.userId, displayName: target.displayName, actorType: 'TenantEmployee' },
+    },
+    deps,
+  );
+
+  return Result.ok({
+    participant: participantSnapshotToDto(target),
+    conversationId: chatResult.isSuccess ? chatResult.value.conversationId : null,
+  });
 }
 
 export interface HostSingleTargetCommand {
@@ -59,10 +83,15 @@ export interface HostSingleTargetCommand {
   readonly targetUserId: string;
 }
 
+export interface RemoveParticipantResult {
+  readonly participant: MeetingParticipantDto;
+  readonly conversationId: string | null;
+}
+
 export async function removeParticipant(
   cmd: HostSingleTargetCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher },
-): Promise<Result<MeetingParticipantDto>> {
+  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; conversations: ConversationRepository },
+): Promise<Result<RemoveParticipantResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
   const result = meeting.removeParticipant({
@@ -88,7 +117,18 @@ export async function removeParticipant(
 
   const target = meeting.toSnapshot().participants.find((p) => p.userId === cmd.targetUserId);
   if (!target) return Result.fail(makeError('Meeting.NotFound', 'Target vanished after remove.'));
-  return Result.ok(participantSnapshotToDto(target));
+
+  // Best-effort — la expulsion del meeting ya se confirmo; un fallo aca solo
+  // deja al expulsado con acceso de lectura al chat historico, no rompe nada.
+  const chatResult = await removeFromMeetingConversation(
+    { tenantId: cmd.tenantId, meetingId: cmd.meetingId, actorUserId: cmd.hostUserId, targetUserId: cmd.targetUserId },
+    deps,
+  ).catch(() => null);
+
+  return Result.ok({
+    participant: participantSnapshotToDto(target),
+    conversationId: chatResult?.isSuccess && chatResult.value ? chatResult.value.conversationId : null,
+  });
 }
 
 export interface LockCommand {

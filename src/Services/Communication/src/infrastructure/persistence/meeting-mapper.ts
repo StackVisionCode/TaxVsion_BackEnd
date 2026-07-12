@@ -58,6 +58,7 @@ export function toDomainMeeting(row: PrismaMeeting, participants: PrismaParticip
     strategy: row.Strategy,
     recordingRequested: row.RecordingRequested,
     recordingFileId: row.RecordingFileId,
+    transcriptFileId: row.TranscriptFileId,
     hostUserId: row.HostUserId,
     scheduledForUtc: row.ScheduledForUtc,
     startedAtUtc: row.StartedAtUtc,

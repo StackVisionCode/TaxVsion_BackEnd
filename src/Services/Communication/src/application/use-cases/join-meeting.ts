@@ -4,12 +4,14 @@ import { MeetingInvitation } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { PasscodeHasher } from '../ports/passcode-hasher.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import type { ConversationRepository } from '../ports/conversation-repository.js';
 import {
   MeetingEventTypes,
   type MeetingParticipantJoinedEvent,
 } from '../../contracts/events/meeting-events.js';
 import type { MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
 import { participantSnapshotToDto } from './meeting-mappers.js';
+import { ensureMeetingConversation } from './ensure-meeting-conversation.js';
 
 export interface JoinMeetingCommand {
   readonly tenantId: string;
@@ -29,6 +31,7 @@ export interface JoinMeetingDeps {
   readonly meetings: MeetingRepository;
   readonly passcodes: PasscodeHasher;
   readonly publisher: IntegrationEventPublisher;
+  readonly conversations: ConversationRepository;
 }
 
 export async function joinMeeting(
@@ -75,6 +78,7 @@ export async function joinMeeting(
   const yourRole = joinResult.value.role;
   const requiresAdmission = joinResult.value.requiresAdmission;
 
+  let conversationId: string | null = null;
   if (!requiresAdmission) {
     const now = new Date();
     const event: MeetingParticipantJoinedEvent = {
@@ -88,6 +92,23 @@ export async function joinMeeting(
       joinedAtUtc: now.toISOString(),
     };
     await deps.publisher.enqueue(event);
+
+    // El chat del meeting es best-effort respecto del join en si — si falla
+    // (bug, DB lenta) el usuario igual entra al meeting por WebRTC; solo se
+    // queda sin chat hasta el proximo Join/reconnect. No abortamos el join.
+    const chatResult = await ensureMeetingConversation(
+      {
+        tenantId: command.tenantId,
+        correlationId: command.correlationId,
+        meetingId: command.meetingId,
+        meetingTitle: snapshot.title,
+        member: { userId: command.user.userId, displayName: command.user.displayName, actorType: 'TenantEmployee' },
+      },
+      deps,
+    );
+    if (chatResult.isSuccess) {
+      conversationId = chatResult.value.conversationId;
+    }
   }
 
   const dto: MeetingSnapshotDto = {
@@ -99,6 +120,7 @@ export async function joinMeeting(
     participants: snapshot.participants.map(participantSnapshotToDto),
     yourRole,
     sequence: 0,
+    conversationId,
   };
 
   return Result.ok({ snapshot: dto, requiresAdmission });

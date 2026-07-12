@@ -56,6 +56,10 @@ public static class DependencyInjection
         services.AddSingleton<IObjectStorage, MinioObjectStorage>();
         services.AddSingleton<IObjectKeyBuilder, DefaultObjectKeyBuilder>();
         services.AddSingleton<IVirusScanner, ClamAvVirusScanner>();
+        // Moderacion de contenido (NSFW/CSAM/politica) — NoOp por defecto en este
+        // MVP. Swap a una implementacion real cuando exista sin tocar el pipeline
+        // de ScanFileHandler (ver docblock de IContentScanner).
+        services.AddSingleton<IContentScanner, NoOpContentScanner>();
         services.AddSingleton<IFileContentInspector, FileContentInspector>();
         services.AddSingleton<ISystemClock, SystemClock>();
         services.AddHostedService<MinioBucketBootstrapper>();

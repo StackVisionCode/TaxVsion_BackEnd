@@ -86,6 +86,49 @@ model UserPermissionsProjection {
 }
 
 // -----------------------------------------------------------------------------
+// UserDirectoryEntry — copia local de (UserId → DisplayName, Email).
+// Alimentada por consumers de Auth.UserRegistered/UserProfileUpdated/UserDeactivated.
+// Se usa para resolver el displayName real en payloads de chat/call/meeting sin
+// depender de un round-trip HTTP a Auth por cada emit de socket. Mismo estilo que
+// UserPermissionsProjection (arriba).
+// -----------------------------------------------------------------------------
+model UserDirectoryEntry {
+  UserId          String   @id @db.UniqueIdentifier
+  TenantId        String   @db.UniqueIdentifier
+  DisplayName     String   @db.NVarChar(200)
+  Email           String   @db.NVarChar(320)
+  IsActive        Boolean  @default(true)
+  UpdatedAtUtc    DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@index([TenantId, IsActive])
+}
+
+// -----------------------------------------------------------------------------
+// AttachmentTracking — vincula un CloudStorage FileId con el Message de chat
+// que lo referencia, y su estado de disponibilidad (Pending/Available/
+// Infected/Deleted). Alimentada por `send-message.ts` (crea Pending al enviar
+// el mensaje) y los consumers de cloudstorage.file.available/infected/deleted.
+//
+// Antes de esto, `Message.AttachmentFileId` era un UUID que el cliente pasaba
+// sin ninguna validacion server-side: si el archivo nunca completaba el scan
+// ClamAV, resultaba infected, o se borraba por retencion, el chat seguia
+// mostrandolo como si nada. Con esta tabla, un consumer puede detectar el caso
+// infected y notificar a la conversacion via `chat.message.attachment_flagged`.
+// -----------------------------------------------------------------------------
+model AttachmentTracking {
+  FileId         String   @id @db.UniqueIdentifier
+  MessageId      String   @db.UniqueIdentifier
+  ConversationId String   @db.UniqueIdentifier
+  TenantId       String   @db.UniqueIdentifier
+  Status         String   @default("Pending") @db.NVarChar(16) // Pending | Available | Infected | Deleted | BlockedByPolicy
+  CreatedAtUtc   DateTime @default(now()) @db.DateTime2
+  UpdatedAtUtc   DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@index([MessageId])
+  @@index([TenantId, Status])
+}
+
+// -----------------------------------------------------------------------------
 // ProcessedEvent — inbox durable para RabbitMQ consumers.
 // Idempotencia por EventId; el consumer sólo procesa si no existe.
 // -----------------------------------------------------------------------------
@@ -151,12 +194,14 @@ model IdempotencyRecord {
 //   Direct         — 1:1 entre dos usuarios del mismo tenant (cliente <-> preparer).
 //   Group          — grupo interno por tenant (feature apagada por default).
 //   Support        — chat de soporte cross-tenant (PlatformTenant <-> tenant customer).
+//   Meeting        — chat 1:1 con un Meeting (Fase 8); participantes sincronizados
+//                    con quien esta Joined en el meeting, nunca editados a mano.
 model Conversation {
   Id                String    @id @default(uuid()) @db.UniqueIdentifier
   TenantId          String    @db.UniqueIdentifier
-  // "Direct" | "Group" | "Support" — validado en dominio.
+  // "Direct" | "Group" | "Support" | "Meeting" — validado en dominio.
   Kind              String    @db.NVarChar(32)
-  // Solo para Group: nombre visible. Direct/Support = null.
+  // Group: nombre del grupo. Meeting: titulo del meeting (informativo). Direct/Support = null.
   Title             String?   @db.NVarChar(120)
   // Direct: `direct:{userA}:{userB}` (ids ordenados) para lookup rapido.
   // Group: `group:{groupId}`. Support: `support:{ticketId}`.
@@ -280,6 +325,9 @@ model Call {
   // Recording (opcional; feature flag por tenant).
   RecordingRequested Boolean @default(false)
   RecordingFileId    String? @db.UniqueIdentifier
+  // Transcript STT (Fase 6) — lo llena el worker de transcripts via evento
+  // communication.call.transcript_ready.v1, nunca escrito por el socket.
+  TranscriptFileId   String? @db.UniqueIdentifier
   CreatedAtUtc   DateTime  @default(now()) @db.DateTime2
   UpdatedAtUtc   DateTime  @default(now()) @updatedAt @db.DateTime2
 
@@ -340,6 +388,8 @@ model Meeting {
   Strategy           String    @default("Mesh") @db.NVarChar(16)
   RecordingRequested Boolean   @default(false)
   RecordingFileId    String?   @db.UniqueIdentifier
+  // Transcript STT (Fase 6) — mismo criterio que Call.TranscriptFileId.
+  TranscriptFileId   String?   @db.UniqueIdentifier
   HostUserId         String    @db.UniqueIdentifier
   ScheduledForUtc    DateTime? @db.DateTime2
   StartedAtUtc       DateTime? @db.DateTime2

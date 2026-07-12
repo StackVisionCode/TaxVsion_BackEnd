@@ -7,42 +7,42 @@ namespace BuildingBlocks.Observability;
 public static class TaxVisionLogging
 {
     private const string Template =
-        "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] " +
-        "[{Service}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}";
+        "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] "
+        + "[{Service}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}";
 
-    public static IHostBuilder UseTaxVisionSerilog(
-        this IHostBuilder host,
-        string serviceName)
+    public static IHostBuilder UseTaxVisionSerilog(this IHostBuilder host, string serviceName)
     {
-        return host.UseSerilog((context, logger) =>
-        {
-            logger
-                .ReadFrom.Configuration(context.Configuration)
-                .Enrich.FromLogContext()
-                .Enrich.WithProperty("Service", serviceName)
-                .WriteTo.Console(outputTemplate: Template)
-                .WriteTo.File(
-                    new CompactJsonFormatter(),
-                    Path.Combine(AppContext.BaseDirectory, "Logs", $"{serviceName}-.log"),
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 30,
-                    shared: true);
-
-            var otlpEndpoint = context.Configuration["OpenTelemetry:OtlpEndpoint"];
-            if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+        return host.UseSerilog(
+            (context, logger) =>
             {
-                logger.WriteTo.OpenTelemetry(options =>
+                logger
+                    .ReadFrom.Configuration(context.Configuration)
+                    .Enrich.FromLogContext()
+                    .Enrich.WithProperty("Service", serviceName)
+                    .WriteTo.Console(outputTemplate: Template)
+                    .WriteTo.File(
+                        new CompactJsonFormatter(),
+                        Path.Combine(AppContext.BaseDirectory, "Logs", $"{serviceName}-.log"),
+                        rollingInterval: RollingInterval.Day,
+                        retainedFileCountLimit: 30,
+                        shared: true
+                    );
+
+                var otlpEndpoint = context.Configuration["OpenTelemetry:OtlpEndpoint"];
+                if (!string.IsNullOrWhiteSpace(otlpEndpoint))
                 {
-                    options.Endpoint = otlpEndpoint;
-                    options.ResourceAttributes = new Dictionary<string, object>
+                    logger.WriteTo.OpenTelemetry(options =>
                     {
-                        ["service.name"] = serviceName,
-                        ["service.namespace"] = "taxvision",
-                        ["deployment.environment"] =
-                            context.HostingEnvironment.EnvironmentName
-                    };
-                });
+                        options.Endpoint = otlpEndpoint;
+                        options.ResourceAttributes = new Dictionary<string, object>
+                        {
+                            ["service.name"] = serviceName,
+                            ["service.namespace"] = "taxvision",
+                            ["deployment.environment"] = context.HostingEnvironment.EnvironmentName,
+                        };
+                    });
+                }
             }
-        });
+        );
     }
 }

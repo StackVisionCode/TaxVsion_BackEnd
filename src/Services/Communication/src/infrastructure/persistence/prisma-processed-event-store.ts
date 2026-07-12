@@ -33,4 +33,12 @@ export class PrismaProcessedEventStore implements ProcessedEventStore {
       throw err;
     }
   }
+
+  async unmark(input: { eventId: string; source: string }): Promise<void> {
+    // deleteMany is idempotent: 0-row deletes do not throw. Matching by the
+    // same (EventId, Source) pair the create used.
+    await this.prisma.processedEvent.deleteMany({
+      where: { EventId: input.eventId, Source: input.source },
+    });
+  }
 }
