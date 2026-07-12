@@ -39,5 +39,11 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
             .WithMany()
             .HasForeignKey(subscription => subscription.PlanVersionId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasMany(subscription => subscription.Renewals)
+            .WithOne()
+            .HasForeignKey(renewal => renewal.TenantSubscriptionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(subscription => subscription.Renewals).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

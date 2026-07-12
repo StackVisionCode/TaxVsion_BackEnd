@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Cancel;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Reactivate;
+using TaxVision.Subscription.Application.Subscriptions.Commands.Renew;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Suspend;
 using TaxVision.Subscription.Application.Subscriptions.Queries;
 using Wolverine;
@@ -87,6 +88,20 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ReactivateSubscriptionCommand(tenantId, userId), ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Renovación manual (mientras no exista Billing). Solo plataforma.</summary>
+    [HttpPost("{tenantId:guid}/renew")]
+    [Authorize(Roles = "PlatformAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Renew(Guid tenantId, CancellationToken ct)
+    {
+        if (!TryGetTenantAndUser(out _, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RenewTenantSubscriptionCommand(tenantId, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

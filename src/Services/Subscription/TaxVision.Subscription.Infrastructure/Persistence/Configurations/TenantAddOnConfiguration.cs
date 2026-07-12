@@ -31,5 +31,11 @@ public sealed class TenantAddOnConfiguration : IEntityTypeConfiguration<TenantAd
         builder.HasIndex(addOn => addOn.NextRenewalAtUtc)
             .HasFilter("[Status] = 'Active' AND [AutoRenew] = 1")
             .HasDatabaseName("IX_TenantAddOns_NextRenewalAtUtc");
+
+        builder.HasMany(addOn => addOn.Renewals)
+            .WithOne()
+            .HasForeignKey(renewal => renewal.TenantAddOnId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(addOn => addOn.Renewals).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

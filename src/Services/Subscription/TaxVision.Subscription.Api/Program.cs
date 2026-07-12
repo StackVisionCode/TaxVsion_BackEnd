@@ -13,6 +13,7 @@ using Serilog;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
 using TaxVision.Subscription.Infrastructure.Persistence;
+using TaxVision.Subscription.Infrastructure.Scheduling;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
@@ -37,6 +38,18 @@ builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "subscription-service");
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Jobs de renovacion/expiracion/grace (Fase 4). Cada uno es independiente: renovar la
+// suscripcion base no renueva seats ni add-ons, y viceversa (ver diseno §34).
+builder.Services.AddHostedService<TenantSubscriptionRenewalJob>();
+builder.Services.AddHostedService<SeatRenewalJob>();
+builder.Services.AddHostedService<AddOnRenewalJob>();
+builder.Services.AddHostedService<TrialExpirationJob>();
+builder.Services.AddHostedService<GracePeriodExpirationJob>();
+builder.Services.AddHostedService<SubscriptionExpirationJob>();
+builder.Services.AddHostedService<SeatExpirationJob>();
+builder.Services.AddHostedService<AddOnExpirationJob>();
+builder.Services.AddHostedService<RenewalNotificationJob>();
 
 // Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
 // esta policy. No se expone vía gateway público.
@@ -80,6 +93,11 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<AddOnActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated (alta de suscripción trial).
     options

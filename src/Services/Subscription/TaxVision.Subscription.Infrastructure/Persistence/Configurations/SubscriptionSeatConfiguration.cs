@@ -40,5 +40,11 @@ public sealed class SubscriptionSeatConfiguration : IEntityTypeConfiguration<Sub
             .HasForeignKey(assignment => assignment.SeatId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(seat => seat.Assignments).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(seat => seat.Renewals)
+            .WithOne()
+            .HasForeignKey(renewal => renewal.SeatId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(seat => seat.Renewals).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

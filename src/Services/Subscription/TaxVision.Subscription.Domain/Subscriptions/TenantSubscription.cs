@@ -1,6 +1,7 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.Renewals;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Domain.Subscriptions;
@@ -13,6 +14,8 @@ namespace TaxVision.Subscription.Domain.Subscriptions;
 /// </summary>
 public sealed class TenantSubscription : TenantEntity
 {
+    private readonly List<TenantSubscriptionRenewal> _renewals = [];
+
     public Guid PlanId { get; private set; }
     public Guid PlanVersionId { get; private set; }
     public string PlanCode { get; private set; } = default!;
@@ -34,6 +37,8 @@ public sealed class TenantSubscription : TenantEntity
     public DateTime UpdatedAtUtc { get; private set; }
     public Guid CreatedBy { get; private set; }
     public Guid UpdatedBy { get; private set; }
+
+    public IReadOnlyCollection<TenantSubscriptionRenewal> Renewals => _renewals;
 
     private TenantSubscription() { }
 
@@ -280,6 +285,110 @@ public sealed class TenantSubscription : TenantEntity
         ExpiredAtUtc = nowUtc;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Programa una renovación de la suscripción base. Idempotente por
+    /// <paramref name="idempotencyKey"/> — un segundo intento con la misma key no crea un
+    /// renewal duplicado.</summary>
+    public Result BeginRenewal(string idempotencyKey, Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status != SubscriptionStatus.Active)
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot begin renewal from {Status}."));
+
+        if (FindRenewalByKey(idempotencyKey) is not null)
+            return Result.Success();
+
+        var newPeriodEndUtc = BillingCycle.CalculateNext(CurrentPeriodEndUtc);
+        var renewalResult = TenantSubscriptionRenewal.Schedule(Id, TenantId, idempotencyKey, CurrentPeriodEndUtc, newPeriodEndUtc, nowUtc);
+        if (renewalResult.IsFailure)
+            return Result.Failure(renewalResult.Error);
+
+        _renewals.Add(renewalResult.Value);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Aplica una renovación exitosa: avanza el período de la suscripción base al
+    /// que quedó agendado en el renewal. No toca seats ni add-ons.</summary>
+    public Result CompleteRenewal(Guid renewalId, string? externalPaymentReference, Guid actorUserId, DateTime nowUtc)
+    {
+        var renewal = FindRenewalById(renewalId);
+        if (renewal is null)
+            return Result.Failure(new Error("Subscription.RenewalNotFound", "Renewal does not exist."));
+
+        var succeeded = CompleteRenewalAttempt(renewal, externalPaymentReference, nowUtc);
+        if (succeeded.IsFailure)
+            return succeeded;
+
+        if (Status != SubscriptionStatus.Active)
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot apply renewal while {Status}."));
+
+        CurrentPeriodStartUtc = renewal.PeriodStartUtc;
+        CurrentPeriodEndUtc = renewal.PeriodEndUtc;
+        NextRenewalAtUtc = renewal.PeriodEndUtc;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Registra el fallo de una renovación. Si <paramref name="willRetry"/> es
+    /// false agota los reintentos y transiciona la suscripción a PastDue.</summary>
+    public Result FailRenewal(
+        Guid renewalId, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, Guid actorUserId, DateTime nowUtc)
+    {
+        var renewal = FindRenewalById(renewalId);
+        if (renewal is null)
+            return Result.Failure(new Error("Subscription.RenewalNotFound", "Renewal does not exist."));
+
+        var markResult = MarkRenewalAttemptFailed(renewal, failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);
+        if (markResult.IsFailure)
+            return markResult;
+
+        return willRetry ? Result.Success() : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+    }
+
+    private static Result CompleteRenewalAttempt(TenantSubscriptionRenewal renewal, string? externalPaymentReference, DateTime nowUtc)
+    {
+        if (renewal.Status != RenewalStatus.Processing)
+        {
+            var processing = renewal.MarkProcessing(nowUtc);
+            if (processing.IsFailure) return processing;
+        }
+
+        return renewal.MarkSucceeded(externalPaymentReference, nowUtc);
+    }
+
+    private static Result MarkRenewalAttemptFailed(
+        TenantSubscriptionRenewal renewal, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, DateTime nowUtc)
+    {
+        if (renewal.Status != RenewalStatus.Processing)
+        {
+            var processing = renewal.MarkProcessing(nowUtc);
+            if (processing.IsFailure) return processing;
+        }
+
+        return renewal.MarkFailed(failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);
+    }
+
+    private TenantSubscriptionRenewal? FindRenewalByKey(string idempotencyKey)
+    {
+        foreach (var renewal in _renewals)
+        {
+            if (renewal.IdempotencyKey == idempotencyKey)
+                return renewal;
+        }
+
+        return null;
+    }
+
+    private TenantSubscriptionRenewal? FindRenewalById(Guid renewalId)
+    {
+        foreach (var renewal in _renewals)
+        {
+            if (renewal.Id == renewalId)
+                return renewal;
+        }
+
+        return null;
     }
 
     private static Result EnsureTenant(Guid tenantId) =>

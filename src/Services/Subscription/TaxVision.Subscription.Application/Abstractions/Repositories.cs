@@ -18,6 +18,15 @@ public interface ISubscriptionRepository
 {
     Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantSubscription subscription, CancellationToken ct = default);
+
+    /// <summary>Active subscriptions whose NextRenewalAtUtc has passed. Batch job query —
+    /// crosses tenants intentionally (only the scheduler calls this, never a tenant-scoped handler).</summary>
+    Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantSubscription>> GetExpiredTrialsAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(DateTime fromUtc, DateTime toUtc, int batchSize, CancellationToken ct = default);
 }
 
 public interface ISubscriptionSeatRepository
@@ -26,6 +35,13 @@ public interface ISubscriptionSeatRepository
     Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
     Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default);
+
+    /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>
+    Task<IReadOnlyList<SubscriptionSeat>> GetDueForRenewalAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<SubscriptionSeat>> GetPastGracePeriodAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<SubscriptionSeat>> GetSuspendedBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<SubscriptionSeat>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<SubscriptionSeat>> GetRenewingBetweenAsync(DateTime fromUtc, DateTime toUtc, int batchSize, CancellationToken ct = default);
 }
 
 public interface ISubscriptionTenantSettingsRepository
@@ -46,6 +62,12 @@ public interface ITenantAddOnRepository
     Task<TenantAddOn?> GetByIdAsync(Guid tenantAddOnId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<TenantAddOn>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantAddOn addOn, CancellationToken ct = default);
+
+    /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>
+    Task<IReadOnlyList<TenantAddOn>> GetDueForRenewalAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantAddOn>> GetPastGracePeriodAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantAddOn>> GetSuspendedBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantAddOn>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
 }
 
 public interface ITenantEntitlementSnapshotRepository
