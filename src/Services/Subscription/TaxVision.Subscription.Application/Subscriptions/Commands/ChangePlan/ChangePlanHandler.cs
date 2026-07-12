@@ -20,6 +20,7 @@ public static class ChangePlanHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISubscriptionAuditLogWriter audit,
         ILogger<TenantSubscription> logger,
         CancellationToken ct
     )
@@ -39,12 +40,22 @@ public static class ChangePlanHandler
         if (subscription.PlanId == plan.Id && subscription.PlanVersionId == planVersion.Id)
             return Result.Success();
 
-        var result = subscription.ChangePlan(plan, planVersion, command.RequestedByUserId, DateTime.UtcNow);
+        var nowUtc = DateTime.UtcNow;
+        var previousPlanCode = subscription.PlanCode;
+
+        var result = subscription.ChangePlan(plan, planVersion, command.RequestedByUserId, nowUtc);
         if (result.IsFailure)
             return result;
 
         await bus.PublishAsync(SubscriptionEventFactory.PlanChanged(subscription, plan, planVersion, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+
+        await AuditEntryFactory.AppendAsync(
+            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanChanged",
+            command.RequestedByUserId, correlation.CorrelationId,
+            before: new { PlanCode = previousPlanCode },
+            after: new { PlanCode = subscription.PlanCode },
+            reason: null, nowUtc, ct);
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 

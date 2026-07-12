@@ -56,6 +56,21 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
+    public async Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        var query = db.Subscriptions.AsNoTracking().Where(s => s.Status == SubscriptionStatus.PastDue);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(s => s.NextRenewalAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
+
     private static IQueryable<TenantSubscription> WithRenewals(IQueryable<TenantSubscription> query) =>
         query.Include(s => s.Renewals);
 }

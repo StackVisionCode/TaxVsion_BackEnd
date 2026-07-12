@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Seats;
 using Wolverine;
@@ -19,6 +20,7 @@ public static class ReassignSeatHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISubscriptionAuditLogWriter audit,
         ILogger<SubscriptionSeat> logger,
         CancellationToken ct
     )
@@ -61,6 +63,13 @@ public static class ReassignSeatHandler
             CorrelationId = correlation.CorrelationId,
         });
         await unitOfWork.SaveChangesAsync(ct);
+
+        await AuditEntryFactory.AppendAsync(
+            audit, command.TenantId, "SubscriptionSeat", seat.Id, "Seat.Reassigned",
+            command.ActorUserId, correlation.CorrelationId,
+            before: new { CurrentUserId = previousUserId },
+            after: new { CurrentUserId = seat.CurrentUserId },
+            reason: command.Reason, nowUtc, ct);
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 

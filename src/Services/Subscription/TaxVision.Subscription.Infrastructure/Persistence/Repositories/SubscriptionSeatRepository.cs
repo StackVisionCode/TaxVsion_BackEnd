@@ -55,6 +55,21 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
             .Take(batchSize)
             .ToListAsync(ct);
 
+    public async Task<(IReadOnlyList<SubscriptionSeat> Items, int TotalCount)> GetExpiredAsync(
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        var query = db.Seats.AsNoTracking().Where(seat => seat.Status == SeatStatus.Expired);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(seat => seat.ExpiredAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
+
     private static IQueryable<SubscriptionSeat> WithChildren(IQueryable<SubscriptionSeat> query) =>
         query.Include(seat => seat.Assignments).Include(seat => seat.Renewals);
 }

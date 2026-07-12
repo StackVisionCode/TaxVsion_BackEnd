@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Audit;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Seats;
@@ -23,6 +24,7 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     public DbSet<AddOnDefinition> AddOnDefinitions => Set<AddOnDefinition>();
     public DbSet<TenantAddOn> TenantAddOns => Set<TenantAddOn>();
     public DbSet<TenantEntitlementSnapshot> EntitlementSnapshots => Set<TenantEntitlementSnapshot>();
+    public DbSet<SubscriptionAuditLog> AuditLogs => Set<SubscriptionAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

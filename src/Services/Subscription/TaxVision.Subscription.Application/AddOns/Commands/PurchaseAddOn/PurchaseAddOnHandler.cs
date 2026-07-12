@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -26,6 +27,7 @@ public static class PurchaseAddOnHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISubscriptionAuditLogWriter audit,
         ILogger<TenantAddOn> logger,
         CancellationToken ct
     )
@@ -35,12 +37,13 @@ public static class PurchaseAddOnHandler
             return Result.Failure<Guid>(validation.Error);
 
         var definition = validation.Value;
+        var nowUtc = DateTime.UtcNow;
 
         // Precio real pendiente de integración con Billing (fuera del bounded context de
         // Subscription); se persiste en 0 hasta que exista un catálogo de precios (Fase 5+).
         var addOnResult = TenantAddOn.Purchase(
             command.TenantId, definition, command.Quantity, Money.Zero("USD"), BillingCycle.Monthly, command.AutoRenew,
-            command.RequestedByUserId, DateTime.UtcNow);
+            command.RequestedByUserId, nowUtc);
         if (addOnResult.IsFailure)
             return Result.Failure<Guid>(addOnResult.Error);
 
@@ -57,6 +60,13 @@ public static class PurchaseAddOnHandler
             CorrelationId = correlation.CorrelationId,
         });
         await unitOfWork.SaveChangesAsync(ct);
+
+        await AuditEntryFactory.AppendAsync(
+            audit, command.TenantId, "TenantAddOn", addOn.Id, "AddOn.Purchased",
+            command.RequestedByUserId, correlation.CorrelationId,
+            before: (object?)null,
+            after: new { addOn.AddOnCode, addOn.Quantity, Status = addOn.Status.ToString() },
+            reason: null, nowUtc, ct);
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 

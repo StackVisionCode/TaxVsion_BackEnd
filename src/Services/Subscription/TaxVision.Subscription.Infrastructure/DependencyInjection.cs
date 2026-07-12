@@ -33,6 +33,8 @@ public static class DependencyInjection
         services.AddScoped<IAddOnDefinitionRepository, AddOnDefinitionRepository>();
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
         services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
+        services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
+        services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
             ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379"));

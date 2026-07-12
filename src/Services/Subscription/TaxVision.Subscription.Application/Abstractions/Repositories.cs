@@ -27,6 +27,9 @@ public interface ISubscriptionRepository
     Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default);
     Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
     Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(DateTime fromUtc, DateTime toUtc, int batchSize, CancellationToken ct = default);
+
+    /// <summary>Admin cross-tenant query — only PlatformAdmin endpoints call this.</summary>
+    Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(int page, int pageSize, CancellationToken ct = default);
 }
 
 public interface ISubscriptionSeatRepository
@@ -42,6 +45,9 @@ public interface ISubscriptionSeatRepository
     Task<IReadOnlyList<SubscriptionSeat>> GetSuspendedBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSeat>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSeat>> GetRenewingBetweenAsync(DateTime fromUtc, DateTime toUtc, int batchSize, CancellationToken ct = default);
+
+    /// <summary>Admin cross-tenant query — only PlatformAdmin endpoints call this.</summary>
+    Task<(IReadOnlyList<SubscriptionSeat> Items, int TotalCount)> GetExpiredAsync(int page, int pageSize, CancellationToken ct = default);
 }
 
 public interface ISubscriptionTenantSettingsRepository

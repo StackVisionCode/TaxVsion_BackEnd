@@ -20,6 +20,7 @@ public static class ReactivateSubscriptionHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISubscriptionAuditLogWriter audit,
         ILogger<TenantSubscription> logger,
         CancellationToken ct
     )
@@ -38,6 +39,7 @@ public static class ReactivateSubscriptionHandler
 
         var nowUtc = DateTime.UtcNow;
         var periodEndUtc = subscription.BillingCycle.CalculateNext(nowUtc);
+        var previousStatus = subscription.Status;
 
         var result = subscription.ReactivateAfterAdminReview(nowUtc, periodEndUtc, command.RequestedByUserId, nowUtc);
         if (result.IsFailure)
@@ -45,6 +47,13 @@ public static class ReactivateSubscriptionHandler
 
         await bus.PublishAsync(SubscriptionEventFactory.Activated(subscription, plan, planVersion, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
+
+        await AuditEntryFactory.AppendAsync(
+            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.Reactivated",
+            command.RequestedByUserId, correlation.CorrelationId,
+            before: new { Status = previousStatus.ToString() },
+            after: new { Status = subscription.Status.ToString() },
+            reason: null, nowUtc, ct);
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 

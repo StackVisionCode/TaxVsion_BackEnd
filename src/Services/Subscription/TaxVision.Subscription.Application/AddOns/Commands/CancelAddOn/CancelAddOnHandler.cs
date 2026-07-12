@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.AddOns;
 using Wolverine;
@@ -18,6 +19,7 @@ public static class CancelAddOnHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISubscriptionAuditLogWriter audit,
         ILogger<TenantAddOn> logger,
         CancellationToken ct
     )
@@ -26,7 +28,10 @@ public static class CancelAddOnHandler
         if (addOn is null)
             return Result.Failure(new Error("AddOn.NotFound", "Add-on does not exist."));
 
-        var result = addOn.CancelActive(command.Reason, command.RequestedByUserId, DateTime.UtcNow);
+        var nowUtc = DateTime.UtcNow;
+        var previousStatus = addOn.Status;
+
+        var result = addOn.CancelActive(command.Reason, command.RequestedByUserId, nowUtc);
         if (result.IsFailure)
             return result;
 
@@ -39,6 +44,13 @@ public static class CancelAddOnHandler
             CorrelationId = correlation.CorrelationId,
         });
         await unitOfWork.SaveChangesAsync(ct);
+
+        await AuditEntryFactory.AppendAsync(
+            audit, command.TenantId, "TenantAddOn", addOn.Id, "AddOn.Cancelled",
+            command.RequestedByUserId, correlation.CorrelationId,
+            before: new { Status = previousStatus.ToString() },
+            after: new { Status = addOn.Status.ToString() },
+            reason: command.Reason, nowUtc, ct);
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
