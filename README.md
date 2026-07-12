@@ -63,6 +63,7 @@ OpenTelemetry.
 29. Signature Service (firma electronica multi-tenant)
 30. Communication Service (chat, calls, meetings, notifs realtime)
 31. Claves JWT RS256 — Setup de desarrollo
+32. Subscription Service: implementacion completa (Fases 1-4, 6-7)
 
 ## 1. Introduccion y objetivo
 
@@ -3869,3 +3870,209 @@ activo siempre usar RS256.
   `Jwt__PublicKeyPem`.
 - Si se compromete la clave privada: regenerar el par, reiniciar Auth, invalidar todos los
   tokens activos (limpiar denylist o cambiar `Jwt:Issuer` para forzar re-login).
+
+## 32.1 Alcance y arquitectura
+
+Ruta: `src/Services/Subscription`. Cuatro proyectos siguiendo el mismo patron Clean
+Architecture del resto del backend:
+
+```text
+TaxVision.Subscription.Domain          (agregados, value objects, sin EF/HTTP)
+TaxVision.Subscription.Application     (comandos/queries vertical-slice, Wolverine)
+TaxVision.Subscription.Infrastructure  (EF Core, repos, jobs, Redis)
+TaxVision.Subscription.Api             (controllers, DI, Program.cs)
+```
+
+El disenio completo (49 secciones) vive en el documento
+`Subscription_Service_Analysis_And_Design.md/.pdf` entregado aparte. Se implemento por
+fases sobre la rama `task/ms-subscription-redesign`:
+
+| Fase | Contenido | Estado |
+| --- | --- | --- |
+| 1 | Plan, TenantSubscription, SubscriptionSeat, SubscriptionTenantSettings | Hecho |
+| 2 | SubscriptionSeatAssignment (asignar/liberar/reasignar asientos a usuarios) | Hecho |
+| 3 | TenantEntitlementSnapshot, AddOns, cache Redis de entitlements | Hecho |
+| 4 | Renovaciones (base/seats/add-ons), expiraciones, grace period, jobs | Hecho |
+| 5 | Billing/cobro real | No implementado — depende de un proveedor de pagos |
+| 6 | Cambios de plan (`PlanChangeRequest`, Immediate/EndOfPeriod) | Hecho, **sin prorrateo** |
+| 7 | Audit log (`SubscriptionAuditLog`) + endpoints admin cross-tenant | Hecho |
+
+La Fase 5 (Billing real) y cualquier calculo de prorrateo quedan fuera de este
+microservicio a proposito — ver §32.3.
+
+## 32.2 Dominio: agregados y ciclo de vida
+
+- **`SubscriptionPlan`** + **`SubscriptionPlanVersion`**: catalogo versionado
+  (Starter/Pro/Enterprise), con `PlanFeature`/`PlanEntitlementDefinition`/`PlanPriceTier`
+  por version. Solo una version `Published` a la vez por plan.
+- **`TenantSubscription`**: raiz del agregado de suscripcion base. Estados
+  `Trialing -> Active -> (Suspended | PastDue | Cancelled | Expired)`, con
+  `GracePeriod` antes de suspender por impago. Hijas: `TenantSubscriptionRenewal`
+  (historial de renovaciones) y `PlanChangeRequest` (cambios de plan en curso).
+- **`SubscriptionSeat`** + **`SubscriptionSeatAssignment`**: asientos comprados por
+  el tenant y su asignacion a un usuario concreto (con cooldown configurable de
+  reasignacion).
+- **`TenantAddOn`** + **`AddOnDefinition`**: add-ons opcionales (almacenamiento
+  extra, modulos), con su propio ciclo de renovacion independiente del plan base.
+- **`TenantEntitlementSnapshot`**: proyeccion combinada (plan + seats + add-ons)
+  que responde "que puede hacer este tenant ahora mismo", cacheada en Redis e
+  invalidada por `RecalculateEntitlementsCommand` cada vez que algo cambia.
+- **`SubscriptionTenantSettings`**: configuracion por tenant (`PlanChangeEffective`,
+  `AllowSeatReassignment`, `SeatReassignmentCooldownDays`, `AllowAddons`,
+  `AllowTrial`, `TrialDays`, `AutoRenewCascadeMode`, etc.), con default sensato si
+  el tenant no tiene fila propia todavia.
+- **`SubscriptionAuditLog`**: bitacora append-only de toda mutacion relevante
+  (before/after JSON), consultable via `GET /audit`.
+
+Todas las entidades siguen el mismo guardrail: `sealed class`, constructor privado,
+factory estatica `Create(...)` que devuelve `Result<T>`, colecciones hijas expuestas
+como `IReadOnlyCollection<T>` respaldadas por un campo privado, y cero LINQ dentro de
+`TaxVision.Subscription.Domain` (las transiciones de estado se escriben con
+`foreach`/loops explicitos, no con `Where`/`Select`/`Any`).
+
+## 32.3 Cambios de plan: Immediate vs EndOfPeriod (sin prorrateo)
+
+`PlanChangeRequest` registra la intencion de cambiar de plan sin calcular nunca
+cuanto cobrar — ese calculo es responsabilidad de un futuro Billing (Fase 5), no de
+Subscription:
+
+- **`PlanChangeEffectiveMode.Immediate`** (default de `SubscriptionTenantSettings`,
+  igual que Hostinger y la mayoria de plataformas de suscripcion): el plan cambia
+  en el acto (`TenantSubscription.RequestPlanChange` llama a `ChangePlan`
+  internamente) y la solicitud queda `Applied` de una vez. El nuevo precio se cobra
+  de inmediato porque el plan ya es el nuevo — sin matematica de dias restantes.
+- **`PlanChangeEffectiveMode.EndOfPeriod`**: la solicitud queda `Pending` con
+  `EffectiveAtUtc = CurrentPeriodEndUtc`. El plan actual sigue vigente hasta esa
+  fecha; `PendingPlanChangeApplicationJob` (background job, corre cada hora) aplica
+  el cambio cuando `EffectiveAtUtc` ya paso, y el precio del plan nuevo se cobra sin
+  mas en la proxima renovacion normal — no hay un paso especial de facturacion
+  intermedia.
+- Una solicitud pendiente nueva cancela automaticamente la anterior
+  (`SupersedePendingPlanChangeRequest`); nunca hay dos `Pending` al mismo tiempo.
+- `GET /subscriptions/plan-change` consulta el cambio pendiente actual (si existe) y
+  `POST /subscriptions/plan-change/cancel` lo cancela.
+
+## 32.4 Endpoints HTTP
+
+Todos bajo el Gateway (`http://localhost:5047`), salvo el interno. `TenantAdmin`
+para mutaciones del propio tenant, `PlatformAdmin` para operaciones cross-tenant.
+
+| Recurso | Endpoints |
+| --- | --- |
+| Plans | `GET /plans` (publico) |
+| Subscriptions | `GET /subscriptions/me`, `POST /change-plan`, `GET /plan-change`, `POST /plan-change/cancel`, `POST /cancel`, `PATCH /{tenantId}/suspend`, `PATCH /{tenantId}/reactivate`, `POST /{tenantId}/renew` |
+| Seats | `GET /seats`, `GET /seats/{id}`, `POST /seats/purchase`, `POST /seats/{id}/assign`, `POST /seats/{id}/release`, `POST /seats/{id}/reassign`, `POST /seats/{id}/renew` |
+| AddOns | `GET /addons` (publico), `GET /addons/tenant`, `POST /addons`, `POST /addons/{id}/cancel`, `POST /addons/{id}/renew` |
+| Entitlements | `GET /entitlements/summary`, `GET /entitlements/{key}` |
+| Audit | `GET /audit` (TenantAdmin o PlatformAdmin) |
+| Admin | `GET /admin/subscription/upcoming-renewals`, `/expired-seats`, `/past-due-subscriptions` (PlatformAdmin) |
+| Interno | `GET /internal/users/{userId}/access` (policy `ServiceOnly`, solo Auth lo llama) |
+
+## 32.5 Jobs en segundo plano
+
+Todos heredan de `PeriodicSubscriptionJob` (timer + lock distribuido en Redis +
+scope de DI por iteracion), para que dos replicas nunca procesen el mismo lote:
+
+| Job | Que hace |
+| --- | --- |
+| `TenantSubscriptionRenewalJob` | Publica el intent de cobro cuando `NextRenewalAtUtc` llega |
+| `SeatRenewalJob` / `AddOnRenewalJob` | Igual que el anterior, para seats y add-ons |
+| `TrialExpirationJob` | Expira trials no convertidos a `Active` |
+| `GracePeriodExpirationJob` | Suspende tras agotar el `GracePeriod` por impago |
+| `SubscriptionExpirationJob` / `SeatExpirationJob` / `AddOnExpirationJob` | Cierran definitivamente lo cancelado/expirado |
+| `RenewalNotificationJob` | Dispara aviso de renovacion proxima |
+| `PendingPlanChangeApplicationJob` | Aplica cambios de plan `EndOfPeriod` cuya `EffectiveAtUtc` ya paso (§32.3) |
+
+## 32.6 Eventos de integracion
+
+Publicados en `taxvision-events` (RabbitMQ), consumidos por `Auth` en
+`SubscriptionEventsConsumer` para mantener su proyeccion local de limites/estado:
+
+`SubscriptionActivatedIntegrationEvent`, `SubscriptionPlanChangedIntegrationEvent`,
+`SubscriptionSuspendedIntegrationEvent`, `SubscriptionRenewalDueIntegrationEvent`,
+`SubscriptionRenewalUpcomingIntegrationEvent`, `SeatsPurchasedIntegrationEvent`,
+`SeatAssignedToUserIntegrationEvent`, `SeatReleasedFromUserIntegrationEvent`,
+`SeatRenewalDueIntegrationEvent`, `SeatRenewalUpcomingIntegrationEvent`,
+`AddOnActivatedIntegrationEvent`, `AddOnCancelledIntegrationEvent`,
+`AddOnRenewalDueIntegrationEvent`, `TenantEntitlementsChangedIntegrationEvent`.
+
+Subscription tambien consume `TenantCreatedIntegrationEvent` (Tenant) via
+`TenantCreatedConsumer` para abrir la suscripcion en trial al crear un tenant.
+
+## 32.7 Persistencia y migraciones
+
+Base `TaxVision_Subscription`, EF Core + SQL Server. Migraciones en orden:
+
+```text
+InitialSubscriptionRedesign     -- Plan/TenantSubscription/Seat/Settings
+AddSeatAssignments              -- SubscriptionSeatAssignment
+AddEntitlementsAndAddOns        -- TenantEntitlementSnapshot/AddOns
+AddRenewals                     -- *Renewal (base/seats/add-ons)
+AddAuditLog                     -- SubscriptionAuditLog
+AddPlanChangeRequests           -- PlanChangeRequest (Fase 6)
+```
+
+Aplicar:
+
+```powershell
+dotnet ef database update `
+  --project src\Services\Subscription\TaxVision.Subscription.Infrastructure `
+  --startup-project src\Services\Subscription\TaxVision.Subscription.Api
+```
+
+Guardrail de persistencia: toda entidad hija cuyo `Id` se genera en la factory de
+dominio (`Guid.NewGuid()` via `BaseEntity`) y cuelga de un `HasMany` del agregado
+padre requiere `builder.Property(x => x.Id).ValueGeneratedNever()` en su
+configuracion EF — de lo contrario EF Core confunde el insert con un update.
+
+## 32.8 Configuracion y pruebas locales (Docker Desktop)
+
+`subscription-api` (puerto interno 8080, expuesto localmente en `5360` fuera de
+Docker) necesita, ademas de lo comun a todo microservicio:
+
+```env
+SUBSCRIPTION_DB_CONNECTION=Server=host.docker.internal,1433;Database=TaxVision_Subscription;User Id=sa;Password=...;TrustServerCertificate=true
+```
+
+En `deploy/docker/docker-compose.yml` el servicio tambien depende de `rabbitmq` y
+`redis` (`ConnectionStrings__Redis: redis:6379`) — el cache de entitlements y el
+lock distribuido de los jobs de §32.5 lo necesitan. `Subscriptions__DefaultPlanCode`
+y `Subscriptions__TrialDays` fijan el plan/duracion de trial que recibe un tenant
+nuevo.
+
+El Gateway rutea `/plans`, `/subscriptions`, `/seats`, `/addons`, `/entitlements`,
+`/audit` y `/admin/subscription` al cluster `subscription`
+(`src/Gateway/TaxVision.Gateway/appsettings.json`).
+
+Para probar en Docker Desktop:
+
+```powershell
+docker compose -f deploy/docker/docker-compose.yml up -d --build subscription-api
+```
+
+La coleccion Postman `Postman_Collection/TaxVision_Subscription.postman_collection.json`
+cubre los 21 endpoints agrupados por recurso (Plans, Subscriptions, Seats, AddOns,
+Entitlements, Audit, Admin). Usa el mismo environment `TaxVisionBackEnd` que el
+resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
+/auth/login`, `tenantId` del claim del JWT). Flujo minimo sugerido:
+
+1. `POST /tenants` + aceptar invitacion de `TenantAdmin` (coleccion Tenant/Auth) —
+   esto crea la suscripcion en trial automaticamente.
+2. `GetMySubscription` para confirmar el plan/estado inicial.
+3. `ChangePlan` y luego `GetPendingPlanChange` — si `PlanChangeEffective` es
+   `Immediate` (default) el plan ya cambio; si el tenant lo configuro en
+   `EndOfPeriod`, aparece la solicitud pendiente.
+4. `PurchaseSeats` / `PurchaseAddOn` y sus variantes de asignar/cancelar/renovar.
+5. `GetEntitlementSummary` para ver el efecto combinado.
+6. `SearchAuditLog` para confirmar que cada mutacion anterior quedo registrada.
+
+## 32.9 Pendientes documentados
+
+- **Billing real (Fase 5)**: no hay integracion con un proveedor de pagos. Los
+  endpoints `renew` manuales y los jobs de renovacion son un sustituto temporal
+  mientras no exista ese microservicio.
+- **Prorrateo**: excluido a proposito de todo el microservicio (§32.3) — no es
+  logica de este sistema, sera responsabilidad exclusiva de Billing si alguna vez
+  se necesita cobrar la diferencia de un cambio de plan a mitad de periodo.
+- `/internal/users/{userId}/access` no se expone via Gateway — solo Auth lo llama
+  en la red interna con un JWT de servicio (`actor_type=Service`).

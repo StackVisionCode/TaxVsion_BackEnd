@@ -265,6 +265,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
       Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env}
       Jwt__Issuer: TaxVision.Auth
@@ -276,6 +277,8 @@ services:
       - taxvision-logs:/app/Logs
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       otel-collector:
         condition: service_started
