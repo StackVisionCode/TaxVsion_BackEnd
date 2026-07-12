@@ -300,6 +300,20 @@ services:
       ServiceAuth__Clients__1__Permissions__0: cloudstorage.file.upload
       ServiceAuth__Clients__1__Permissions__1: cloudstorage.file.download
       ServiceAuth__Clients__1__Permissions__2: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Signature: descarga el documento pendiente de sellado
+      # y sube el PDF sellado/PAdES a CloudStorage (README.md:3352-3362).
+      ServiceAuth__Clients__2__ClientId: ${SIGNATURE_SERVICE_CLIENT_ID:-signature-worker}
+      ServiceAuth__Clients__2__Secret: ${SIGNATURE_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__2__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__2__Permissions__1: cloudstorage.file.view
+      ServiceAuth__Clients__2__Permissions__2: cloudstorage.file.upload
+      # Cliente de servicio (M2M) para Communication (communication-worker): sube grabaciones
+      # de meetings y adjuntos de chat a CloudStorage (cloudstorage-client.ts).
+      ServiceAuth__Clients__3__ClientId: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
+      ServiceAuth__Clients__3__Secret: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:-}
+      ServiceAuth__Clients__3__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__3__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__3__Permissions__2: cloudstorage.file.view
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
