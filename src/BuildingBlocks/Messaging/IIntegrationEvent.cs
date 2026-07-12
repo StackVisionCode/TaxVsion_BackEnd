@@ -6,8 +6,8 @@ public interface IIntegrationEvent
     Guid TenantId { get; }
     DateTime OccurredOn { get; }
     string CorrelationId { get; }
-
 }
+
 public abstract record IntegrationEvent : IIntegrationEvent
 {
     public Guid EventId { get; init; } = Guid.NewGuid();

@@ -1,0 +1,15 @@
+# Unico punto de entrada publico del stack. TLS automatico (Let's Encrypt) sin
+# tocar nada mas — Caddy renueva los certificados solo. Requiere que el DNS de
+# {$TAXVISION_DOMAIN} ya apunte a este server antes del primer arranque.
+#
+# Los 3 prefijos de bucket de MinIO se rutean directo al contenedor interno
+# (proxy transparente de bytes, sin logica de aplicacion) porque las URLs
+# presignadas que genera CloudStorage usan el nombre del bucket como primer
+# segmento de path — no pisan ninguna ruta del Gateway (/auth, /customers,
+# /storage, etc). Todo lo demas va al Gateway.
+{$TAXVISION_DOMAIN:api.taxprocore.com} {
+	@minio path /taxvision-storage/* /taxvision-temp/* /taxvision-quarantine/*
+	reverse_proxy @minio minio:9000
+
+	reverse_proxy gateway:8080
+}

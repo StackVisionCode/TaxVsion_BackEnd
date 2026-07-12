@@ -1,0 +1,6 @@
+services:
+  tests:
+    image: taxvision/tests:dev
+    build:
+      context: ../..
+      dockerfile: deploy/tests/Dockerfile

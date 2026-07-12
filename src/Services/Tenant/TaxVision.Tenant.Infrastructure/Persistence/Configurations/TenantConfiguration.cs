@@ -1,7 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using BuildingBlocks.Tenancy;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using TaxVision.Tenant.Domain.Enums;
 using DomainTenant = TaxVision.Tenant.Domain.Tenant;
-
 
 namespace TaxVision.Tenant.Infrastructure.Persistence.Configurations;
 
@@ -14,10 +15,23 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
         b.HasKey(t => t.Id);
         b.Property(t => t.Name).HasMaxLength(200).IsRequired();
         b.Property(t => t.SubDomain).HasMaxLength(40).IsRequired();
+        b.Property(t => t.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(t => t.DefaultTimeZoneId).HasMaxLength(100).IsRequired();
         b.Property(t => t.Status).HasConversion<string>(); // enum como texto legible
-                                                           // El subdominio es único globalmente (a diferencia del email por tenant).
+        // El subdominio es único globalmente (a diferencia del email por tenant).
         b.HasIndex(t => t.SubDomain).IsUnique();
-        // Ignorar la colección de eventos: no es una columna, es estado en memoria.
-        b.Ignore(t => t.DomainEvents);
+
+        b.HasData(
+            new
+            {
+                Id = PlatformTenant.Id,
+                Name = PlatformTenant.Name,
+                SubDomain = PlatformTenant.SubDomain,
+                Kind = TenantKind.Platform,
+                DefaultTimeZoneId = "Etc/UTC",
+                Status = EnumTenantStatus.TenantStatus.Active,
+                CreatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, DateTimeKind.Utc),
+            }
+        );
     }
 }

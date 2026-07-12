@@ -1,0 +1,70 @@
+@Gateway = http://localhost:5047
+@TenantId = 00000000-0000-0000-0000-000000000000
+@PlatformTenantId = 8f58a521-4c25-4d91-9f4e-7ad5df14c001
+@AdminToken = replace-with-tenant-admin-jwt
+@PlatformAdminToken = replace-with-platform-admin-jwt
+@InvitationToken = replace-with-one-time-invitation-token
+@InvitationId = 00000000-0000-0000-0000-000000000000
+
+### Accept any invitation
+POST {{Gateway}}/auth/invitations/accept
+Content-Type: application/json
+
+{
+  "invitationToken": "{{InvitationToken}}",
+  "name": "Ana",
+  "lastName": "Perez",
+  "password": "Use-A-Strong-Password-123!"
+}
+
+### TenantAdmin invites an employee
+POST {{Gateway}}/auth/invitations
+Authorization: Bearer {{AdminToken}}
+Content-Type: application/json
+
+{
+  "tenantId": "{{TenantId}}",
+  "email": "employee@example.com",
+  "actorType": "TenantEmployee",
+  "customerId": null
+}
+
+### TenantAdmin invites a customer portal user
+POST {{Gateway}}/auth/invitations
+Authorization: Bearer {{AdminToken}}
+Content-Type: application/json
+
+{
+  "tenantId": "{{TenantId}}",
+  "email": "customer@example.com",
+  "actorType": "CustomerPortal",
+  "customerId": "11111111-1111-4111-8111-111111111111"
+}
+
+### PlatformAdmin invites another PlatformAdmin
+POST {{Gateway}}/auth/invitations
+Authorization: Bearer {{PlatformAdminToken}}
+Content-Type: application/json
+
+{
+  "tenantId": "{{PlatformTenantId}}",
+  "email": "platform-admin@example.com",
+  "actorType": "PlatformAdmin",
+  "customerId": null
+}
+
+### PlatformAdmin invites a TenantAdmin
+POST {{Gateway}}/auth/invitations
+Authorization: Bearer {{PlatformAdminToken}}
+Content-Type: application/json
+
+{
+  "tenantId": "{{TenantId}}",
+  "email": "second-admin@example.com",
+  "actorType": "TenantAdmin",
+  "customerId": null
+}
+
+### Cancel a pending invitation
+POST {{Gateway}}/auth/invitations/{{InvitationId}}/cancel
+Authorization: Bearer {{AdminToken}}

@@ -6,6 +6,6 @@ public static class EnumTenantStatus
     {
         Active,
         Suspended,
-        Closed
+        Closed,
     }
 }

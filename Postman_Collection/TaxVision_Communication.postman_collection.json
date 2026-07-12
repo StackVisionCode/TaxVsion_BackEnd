@@ -1,0 +1,1432 @@
+{
+  "info": {
+    "name": "TaxVision — Communication Service",
+    "description": "Colección completa del microservicio Communication.\nBase URL: {{base_url}} (ej. http://localhost:5350)\nAutenticación: Bearer {{token}} en cada request.\n\nSocket.IO se documenta como requests especiales de tipo 'socketio'.\nTodos los integration events son contratos RabbitMQ — no se prueban aquí directamente, pero sus payloads están documentados en los tests/scripts de cada carpeta.",
+    "version": "2.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5350",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "<paste accessToken here>",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "<your tenantId UUID>",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "<your userId UUID>",
+      "type": "string"
+    },
+    {
+      "key": "conversation_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "message_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "call_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "meeting_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ticket_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "notification_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "00 · Health",
+      "item": [
+        {
+          "name": "Live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/live",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/ready",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 · Chat — Conversaciones",
+      "item": [
+        {
+          "name": "Listar mis conversaciones",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/conversations?page=1&size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "includeArchived",
+                  "value": "false",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Historial de mensajes de una conversación",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/conversations/{{conversation_id}}/messages?take=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "conversations",
+                "{{conversation_id}}",
+                "messages"
+              ],
+              "query": [
+                {
+                  "key": "take",
+                  "value": "50"
+                },
+                {
+                  "key": "before",
+                  "value": "",
+                  "disabled": true,
+                  "description": "ISO datetime — scrollback hacia atrás"
+                },
+                {
+                  "key": "since",
+                  "value": "",
+                  "disabled": true,
+                  "description": "ISO datetime — backfill al reconectar (mensajes posteriores)"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Marcar mensajes como leídos",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/conversations/{{conversation_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "conversations",
+                "{{conversation_id}}",
+                "read"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lastReadMessageId\": \"{{message_id}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "[Socket] Iniciar chat directo — chat.conversation.start_direct",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S — REEMPLAZA a cualquier POST /communication/conversations, que NO existe (crear conversación es socket-only).\n\nsocket.emit('chat.conversation.start_direct', {\n  clientKey: nanoid(12),\n  recipientUserId: '<uuid>'\n}, (ack) => { ... })\n\nack.value = { conversationId, wasCreated }. Idempotente: si ya existe un Direct con ese par de usuarios, devuelve el mismo conversationId (wasCreated=false) en vez de duplicar.\nRequiere permiso communication.chat.start. Publica communication.chat.conversation_started.v1 solo si wasCreated=true.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Crear grupo — chat.conversation.start_group",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (Fase 7 — grupos internos, apagado por default vía TenantCommunicationSettings.internalGroupsEnabled)\n\nsocket.emit('chat.conversation.start_group', {\n  clientKey: nanoid(12),\n  title: 'Tax Season 2025 Team',\n  memberUserIds: ['<uuid1>', '<uuid2>']\n}, (ack) => { ... })\n\nack.value = { conversationId }. El creador queda como Owner; cada memberUserId se agrega como Member.\nRequiere permiso communication.group.create. Publica communication.chat.conversation_started.v1 (kind: 'Group').\nA los miembros (no al creador) se les emite chat.conversation.created a su room personal — no están en la room de la conversación todavía hasta que la abran.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Agregar participante al grupo — chat.conversation.add_participant",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (Fase 7)\n\nsocket.emit('chat.conversation.add_participant', {\n  clientKey: nanoid(12),\n  conversationId: '{{conversation_id}}',\n  newMemberUserId: '<uuid>'\n}, (ack) => { ... })\n\nRequiere permiso communication.group.manage_members. Emite chat.conversation.participant_added al room de la conversación Y a la room personal del nuevo miembro (todavía no está unido a la room hasta que abra el chat).",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Salir o remover participante del grupo — chat.conversation.remove_participant",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (Fase 7)\n\nsocket.emit('chat.conversation.remove_participant', {\n  clientKey: nanoid(12),\n  conversationId: '{{conversation_id}}',\n  targetUserId: '<uuid>'   // OMITIR targetUserId = salir uno mismo del grupo\n}, (ack) => { ... })\n\nSi targetUserId === tu propio userId (o se omite): 'salir', no requiere permiso especial, reason='Left'.\nSi targetUserId es otro usuario: 'expulsar', requiere communication.group.manage_members, reason='Kicked'.\nEmite chat.conversation.participant_removed. Si fue expulsión, el servidor saca por la fuerza todos los sockets del expulsado de la room (aunque tenga varias pestañas abiertas).",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Enviar mensaje (con o sin adjunto) — chat.message.send",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S — REEMPLAZA a cualquier POST /communication/conversations/:id/messages, que NO existe (enviar mensaje es socket-only, no hay fallback HTTP).\n\nsocket.emit('chat.message.send', {\n  clientKey: nanoid(12),\n  conversationId: '{{conversation_id}}',\n  body: 'Hola equipo',            // o attachmentFileId, NUNCA ambos\n  attachmentFileId: undefined,\n  replyToMessageId: undefined\n}, (ack) => { ... })\n\nPara adjuntos: primero sube el archivo a CloudStorage (fuera de Communication) y manda el fileId resultante.\nEmite chat.message.new a todos los participantes activos. Publica communication.chat.message_sent.v1.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Editar mensaje — chat.message.edit",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S\n\nsocket.emit('chat.message.edit', {\n  clientKey: nanoid(12),\n  messageId: '{{message_id}}',\n  body: 'texto corregido'\n}, (ack) => { ... })\n\nSolo el autor puede editar. Emite chat.message.edited. Publica communication.chat.message_edited.v1.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Eliminar mensaje — chat.message.delete",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S\n\nsocket.emit('chat.message.delete', {\n  clientKey: nanoid(12),\n  messageId: '{{message_id}}'\n}, (ack) => { ... })\n\nEl autor siempre puede borrar el suyo; un moderador (communication.chat.moderate) puede borrar cualquiera. Soft-delete. Emite chat.message.deleted. Publica communication.chat.message_deleted.v1.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 · Llamadas (WebRTC 1:1)",
+      "description": "Las llamadas se inician/aceptan/rechazan por Socket.IO. Este endpoint solo obtiene los ICE servers para el cliente WebRTC.",
+      "item": [
+        {
+          "name": "Obtener ICE servers (STUN/TURN)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/webrtc/ice",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "webrtc",
+                "ice"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 — ICE servers con TTL",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"iceServers\": [\n    { \"urls\": [\"stun:stun.l.google.com:19302\"] },\n    { \"urls\": [\"turn:turn.example.com:3478\"], \"username\": \"taxvision\", \"credential\": \"<ephemeral>\" }\n  ],\n  \"ttlSeconds\": 86400\n}"
+            }
+          ]
+        },
+        {
+          "name": "Listar historial de llamadas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/calls?page=1&size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "calls"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Iniciar llamada — call.initiate",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S\n\nEmitir con:\nsocket.emit('call.initiate', { calleeUserId: '<uuid>', kind: 'Video' })\n\nEl servidor responde emitiendo 'call.incoming' al callee y un callId al caller.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Señalización WebRTC — call.signal",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S\n\nsocket.emit('call.signal', {\n  callId: '{{call_id}}',\n  signal: <RTCSessionDescriptionInit | RTCIceCandidateInit>\n})\n\nEl servidor reenvía la señal al otro participante. NUNCA se publica al bus RabbitMQ.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 · Meetings",
+      "item": [
+        {
+          "name": "Crear meeting",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('meeting_id', json.meetingId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"allowGuestLinks\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/communication/meetings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "meetings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar meetings del tenant",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/meetings?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "meetings"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Iniciar meeting (host)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/meetings/{{meeting_id}}/start",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "meetings",
+                "{{meeting_id}}",
+                "start"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Finalizar meeting (host o cohost)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/meetings/{{meeting_id}}/end",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "meetings",
+                "{{meeting_id}}",
+                "end"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Unirse al meeting — meeting.join",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S\n\nsocket.emit('meeting.join', { meetingId: '{{meeting_id}}', passcode: 'abc123' })\n\nSi el meeting está abierto → joinOrder asignado por servidor → emite 'meeting.participant.joined' a todos.\nSi el meeting tiene waiting room → va a waiting room y el host recibe 'meeting.participant.waiting'.\n\nFase 8: el snapshot que llega en el ack (y en 'meeting.snapshot') ahora incluye conversationId — null mientras estás en la waiting room, con valor real apenas entrás de verdad al meeting. Usalo para los eventos meeting.chat.* de abajo.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Señalización WebRTC en meeting — meeting.signal",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (perfect negotiation)\n\nsocket.emit('meeting.signal', {\n  meetingId: '{{meeting_id}}',\n  toUserId: '<peerUserId>',\n  signal: <RTCSessionDescriptionInit | RTCIceCandidateInit>\n})\n\nPolite peer = mayor joinOrder. NUNCA se publica al bus.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Host — Admitir participante",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (solo host)\n\nsocket.emit('meeting.host.admit', { meetingId: '{{meeting_id}}', userId: '<waitingUserId>' })",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Host — Expulsar participante",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (solo host)\n\nsocket.emit('meeting.host.remove', { meetingId: '{{meeting_id}}', userId: '<targetUserId>' })\n\nPublica integration event: communication.meeting.participant_removed_by_host.v1",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Host — Transferir host",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (solo host)\n\nsocket.emit('meeting.host.transfer', { meetingId: '{{meeting_id}}', newHostUserId: '<uuid>' })\n\nPublica integration event: communication.meeting.host_transferred.v1",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Adjuntar grabación — meeting.recording.attach",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S\n\nLa grabación es 100% client-side (MediaRecorder en el browser capturando los <video>/<audio> tags) — NO existe un 'meeting.host.recording_start' que orquesta grabación server-side. El cliente graba localmente, sube el blob resultante a CloudStorage por su cuenta, y luego:\n\nsocket.emit('meeting.recording.attach', {\n  clientKey: nanoid(12),\n  meetingId: '{{meeting_id}}',\n  fileId: '<fileId ya subido a CloudStorage>'\n}, (ack) => { ... })\n\nPublica communication.meeting.recording_ready.v1 → dispara CommunicationTranscriptWorker (whisper.cpp) → communication.meeting.transcript_ready.v1 (ver carpeta 09).",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Chat del meeting — Enviar mensaje — meeting.chat.send",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (Fase 8 — chat visible para TODOS los presentes en el meeting, no solo 1:1)\n\nsocket.emit('meeting.chat.send', {\n  clientKey: nanoid(12),\n  meetingId: '{{meeting_id}}',\n  body: 'Todos pueden ver esto',   // o attachmentFileId (mismo flujo que chat.message.send), nunca ambos\n  replyToMessageId: undefined\n}, (ack) => { ... })\n\nAutorización: estar Joined en el meeting (NO requiere communication.chat.reply — son permisos distintos). El chat del meeting es una Conversation kind='Meeting' cuyos participantes se sincronizan solos con quién está Joined (te agregás al entrar, te sacan al salir/ser expulsado).\nEmite meeting.chat.message.new a todos los presentes. Publica communication.chat.message_sent.v1 (mismo evento genérico que chat 1:1/grupos).",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Chat del meeting — Editar mensaje — meeting.chat.edit",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (Fase 8)\n\nsocket.emit('meeting.chat.edit', {\n  clientKey: nanoid(12),\n  meetingId: '{{meeting_id}}',\n  messageId: '<uuid>',\n  body: 'texto corregido'\n}, (ack) => { ... })\n\nEmite meeting.chat.message.edited a todos los presentes.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Chat del meeting — Eliminar mensaje — meeting.chat.delete",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (Fase 8)\n\nsocket.emit('meeting.chat.delete', {\n  clientKey: nanoid(12),\n  meetingId: '{{meeting_id}}',\n  messageId: '<uuid>'\n}, (ack) => { ... })\n\nEl autor siempre puede borrar el suyo. Moderar mensaje ajeno es privilegio de host/cohost del meeting (no de communication.chat.moderate — son conceptos distintos). Emite meeting.chat.message.deleted.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Socket] Chat del meeting — Marcar leído — meeting.chat.mark_read",
+          "request": {
+            "method": "GET",
+            "description": "Socket.IO C→S (Fase 8)\n\nsocket.emit('meeting.chat.mark_read', {\n  clientKey: nanoid(12),\n  meetingId: '{{meeting_id}}',\n  lastReadMessageId: '<uuid>'\n}, (ack) => { ... })\n\nEmite meeting.chat.message.read (read receipt) a todos los presentes.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 · Notificaciones",
+      "item": [
+        {
+          "name": "Listar notificaciones (paginado)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/notifications?page=1&limit=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Contador de no leídas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/notifications/unread-count",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "notifications",
+                "unread-count"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 — Unread count",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"unreadCount\": 5\n}"
+            }
+          ]
+        },
+        {
+          "name": "Marcar notificación como leída",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/notifications/{{notification_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "notifications",
+                "{{notification_id}}",
+                "read"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Marcar todas como leídas",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/notifications/read-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "notifications",
+                "read-all"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 · Soporte Cross-Tenant",
+      "description": "Canal Support: PlatformTenant (TaxVision) ↔ office tenant (preparadores).\nNUNCA preparador ↔ contribuyente.\nAgentes deben pertenecer al PlatformTenant y tener permiso support.agent.",
+      "item": [
+        {
+          "name": "Abrir ticket",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('ticket_id', json.ticketId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Error al subir PDF de firma\",\n  \"initialMessage\": \"Cuando intento subir el formulario 1040, la carga falla con error 413.\",\n  \"category\": \"Technical\",\n  \"priority\": \"High\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/communication/support",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar tickets (customer)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/support?page=1&size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar tickets (agente — mis asignados)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/support?page=1&size=20&view=agent&mine=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "view",
+                  "value": "agent"
+                },
+                {
+                  "key": "mine",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reclamar ticket (agente)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/support/{{ticket_id}}/claim",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support",
+                "{{ticket_id}}",
+                "claim"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reasignar ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newAgentUserId\": \"<UUID del nuevo agente>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/communication/support/{{ticket_id}}/reassign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support",
+                "{{ticket_id}}",
+                "reassign"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Escalar prioridad",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPriority\": \"Urgent\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/communication/support/{{ticket_id}}/escalate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support",
+                "{{ticket_id}}",
+                "escalate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolver ticket",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/support/{{ticket_id}}/resolve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support",
+                "{{ticket_id}}",
+                "resolve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cerrar ticket",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/communication/support/{{ticket_id}}/close",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support",
+                "{{ticket_id}}",
+                "close"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reabrir ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"El problema volvió a ocurrir después de marcar resuelto.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/communication/support/{{ticket_id}}/reopen",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "support",
+                "{{ticket_id}}",
+                "reopen"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 · Settings",
+      "item": [
+        {
+          "name": "Leer settings del tenant",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "settings"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 — Settings",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"tenantId\": \"{{tenant_id}}\",\n  \"maxMeetingParticipants\": 25,\n  \"maxGroupConversationMembers\": 50,\n  \"recordingEnabled\": true,\n  \"supportEnabled\": false,\n  \"retentionDays\": 365\n}"
+            }
+          ]
+        },
+        {
+          "name": "Actualizar settings (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxMeetingParticipants\": 50,\n  \"recordingEnabled\": true,\n  \"retentionDays\": 730\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/communication/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "settings"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 · Analytics",
+      "item": [
+        {
+          "name": "Snapshot diario (hoy)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/analytics/snapshot",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "analytics",
+                "snapshot"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 — Daily snapshot",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"tenantId\": \"{{tenant_id}}\",\n  \"snapshotDateUtc\": \"2026-07-10\",\n  \"chat\": {\n    \"activeConversations\": 12,\n    \"messagesSent\": 148,\n    \"messagesEdited\": 3,\n    \"messagesDeleted\": 1,\n    \"attachmentsSent\": 7\n  },\n  \"calls\": {\n    \"totalCalls\": 5,\n    \"acceptedCalls\": 4,\n    \"missedCalls\": 1,\n    \"totalDurationSeconds\": 3600,\n    \"avgRingTimeMs\": 4200,\n    \"screenShareDurationSeconds\": 900\n  },\n  \"meetings\": {\n    \"totalMeetings\": 3,\n    \"totalParticipantMinutes\": 210,\n    \"avgParticipantsPerMeeting\": 4.3,\n    \"recordingsCreated\": 1\n  },\n  \"support\": {\n    \"ticketsOpened\": 2,\n    \"ticketsResolved\": 1,\n    \"avgFirstResponseSeconds\": 1200\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Snapshot por rango de fechas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/analytics/snapshot/range?from=2026-07-01&to=2026-07-10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "analytics",
+                "snapshot",
+                "range"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-07-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-07-10"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 · Socket.IO — Referencia Rápida",
+      "description": "Esta carpeta documenta los eventos Socket.IO como referencia. No son requests HTTP reales.\nConexión: io('http://localhost:5350/communication/socket.io', { auth: { token: '<accessToken>' } })\n\nSi el token es inválido → handshake falla con error 401.\nSi la sesión fue revocada → servidor emite 'session.revoked' y cierra el socket.",
+      "item": [
+        {
+          "name": "[Doc] session.revoked — Acción requerida: LOGOUT",
+          "request": {
+            "method": "GET",
+            "description": "S→C emitido en canal separado cuando Auth revoca la sesión.\n\nsocket.on('session.revoked', ({ reason }) => {\n  // LOGOUT INMEDIATO, sin preguntar\n  clearAuth()\n  router.push('/login')\n})\n\nNUNCA mezclado con 'notification.received'.",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] chat.message.send — Enviar mensaje optimista",
+          "request": {
+            "method": "GET",
+            "description": "C→S\n\nsocket.emit('chat.message.send', {\n  conversationId: '{{conversation_id}}',\n  body: 'Hola equipo',\n  kind: 'Text',\n  clientKey: nanoid(12)  // idempotencia — misma key = mismo mensaje\n})\n\nEl servidor responde emitiendo 'chat.message.new' a todos los participantes.\nPublica integration event: communication.chat.message_sent.v1",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] chat.message.edit — Editar mensaje en vivo",
+          "request": {
+            "method": "GET",
+            "description": "C→S\n\nsocket.emit('chat.message.edit', {\n  conversationId: '{{conversation_id}}',\n  messageId: '{{message_id}}',\n  newBody: 'Texto corregido'\n})\n\nServidor emite 'chat.message.edited' a todos los participantes.\nPublica integration event: communication.chat.message_edited.v1",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] chat.message.delete — Eliminar mensaje",
+          "request": {
+            "method": "GET",
+            "description": "C→S\n\nsocket.emit('chat.message.delete', {\n  conversationId: '{{conversation_id}}',\n  messageId: '{{message_id}}'\n})\n\nServidor emite 'chat.message.deleted' a todos.\nPublica integration event: communication.chat.message_deleted.v1",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] notification.received — Notificación push in-app",
+          "request": {
+            "method": "GET",
+            "description": "S→C\n\nsocket.on('notification.received', (notification) => {\n  // notification.kind => routing a la UI\n  // Kinds disponibles:\n  // 'message_received' → abrir conversación\n  // 'call_missed' → historial de llamadas\n  // 'meeting_started' → unirse al meeting\n  // 'meeting_cancelled' → actualizar calendar\n  // 'meeting_rescheduled' → actualizar calendar\n  // 'support_ticket_new' → (agentes) abrir ticket\n  // 'support_ticket_claimed' → (customer) ver ticket\n  // 'support_ticket_escalated' → ver ticket\n  // 'support_ticket_resolved' → ver ticket\n  // 'support_ticket_reopened' → (agentes) ver ticket\n  // 'signature_signer_invited' → ir al portal firma\n  // 'signature_completed' → descargar documento firmado\n  // 'signature_expired' → renovar proceso de firma\n  // 'recording_ready' → descargar grabación\n})",
+            "url": {
+              "raw": "{{base_url}}/communication/socket.io",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "socket.io"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] chat.conversation.participant_added — S→C (grupos)",
+          "request": {
+            "method": "GET",
+            "description": "S→C. Se emite al room de la conversación Y a la room personal del nuevo miembro cuando se agrega alguien a un grupo.\n\nPayload:\n{\n  conversationId,\n  addedByUserId,\n  newParticipantUserId,\n  newParticipantDisplayName,\n  addedAtUtc\n}",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] chat.conversation.participant_removed — S→C (grupos)",
+          "request": {
+            "method": "GET",
+            "description": "S→C. Se emite al room de la conversación cuando alguien sale o es expulsado de un grupo.\n\nPayload:\n{\n  conversationId,\n  removedByUserId,\n  removedParticipantUserId,\n  reason: 'Left' | 'Kicked',\n  removedAtUtc\n}",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] chat.message.attachment_flagged — S→C",
+          "request": {
+            "method": "GET",
+            "description": "S→C. Se emite cuando un adjunto ya enviado en un mensaje resulta Infected (ClamAV), Deleted (purga) o BlockedByPolicy (content moderation, Fase 7 — IContentScanner en CloudStorage). El cliente debe ocultar/reemplazar el adjunto.\n\nPayload:\n{\n  messageId,\n  conversationId,\n  fileId,\n  status: 'Infected' | 'Deleted' | 'BlockedByPolicy',\n  flaggedAtUtc\n}",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] meeting.chat.message.new — S→C (Fase 8)",
+          "request": {
+            "method": "GET",
+            "description": "S→C. Mismo MessageDto que chat.message.new, pero namespace propio (meeting.chat.*) — se emite a todos los presentes en el meeting cuando alguien manda un mensaje al chat del meeting. Ver carpeta '03 · Meetings' para los eventos C→S.",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] meeting.transcript_ready — S→C (Fase 6)",
+          "request": {
+            "method": "GET",
+            "description": "S→C. Se emite cuando CommunicationTranscriptWorker (whisper.cpp) termina de transcribir la grabación adjuntada con meeting.recording.attach.\n\nPayload:\n{\n  meetingId,\n  transcriptFileId,\n  language: string | null,\n  readyAtUtc\n}\n\nEquivalente para calls 1:1: call.transcript_ready.",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 · Integration Events — Referencia",
+      "description": "Eventos publicados al exchange RabbitMQ 'taxvision-events'. NO son endpoints HTTP.\nEsta carpeta documenta sus payloads de referencia para consumidores (.NET Notification, Analytics, Planner).",
+      "item": [
+        {
+          "name": "[Doc] communication.meeting.cancelled.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado cuando un host cancela un meeting antes de que empiece.\n\nPayload:\n{\n  eventId: string,          // UUID\n  eventType: 'communication.meeting.cancelled.v1',\n  tenantId: string,\n  correlationId: string,\n  occurredOnUtc: string,    // ISO-8601\n  meetingId: string,\n  cancelledByUserId: string,\n  cancelledAtUtc: string,\n  participantUserIds: string[]  // para Notification envíe emails a todos\n}\n\nConsumidores:\n- Notification (.NET): email de cancelación a participantUserIds\n- Planner (futuro): liberar slot de agenda",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.meeting.rescheduled.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado cuando se reprograma un meeting.\n\nPayload:\n{\n  eventId, eventType: 'communication.meeting.rescheduled.v1',\n  tenantId, correlationId, occurredOnUtc,\n  meetingId,\n  rescheduledByUserId,\n  previousScheduledForUtc,\n  newScheduledForUtc,\n  rescheduledAtUtc,\n  participantUserIds\n}\n\nConsumidores:\n- Notification: email con nueva hora\n- Planner: actualizar slot de agenda",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.meeting.participant_removed_by_host.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado cuando el host expulsa a un participante.\n\nPayload:\n{\n  eventId, eventType: 'communication.meeting.participant_removed_by_host.v1',\n  tenantId, correlationId, occurredOnUtc,\n  meetingId,\n  removedParticipantUserId,\n  removedByUserId,\n  removedAtUtc\n}\n\nConsumidor: Compliance/Audit (audit trail de moderación)",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.chat.message_edited.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado cuando un mensaje es editado. Compliance/Audit necesita este evento.\n\nPayload:\n{\n  eventId, eventType: 'communication.chat.message_edited.v1',\n  tenantId, correlationId, occurredOnUtc,\n  conversationId,\n  messageId,\n  editedByUserId,\n  editedAtUtc\n}\n\nNota: el nuevo contenido NO va en el evento — Compliance lee el mensaje por ID si lo necesita.",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.support.first_response_set.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado cuando el agente responde por primera vez a un ticket. Métrica SLA.\n\nPayload:\n{\n  eventId, eventType: 'communication.support.first_response_set.v1',\n  tenantId, correlationId, occurredOnUtc,\n  ticketId,\n  respondingAgentId,\n  openedAtUtc,\n  firstResponseAtUtc,\n  responseTimeSeconds   // Analytics SLA compliance\n}\n\nConsumidor: Analytics (dashboard de SLA de soporte)",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.chat.conversation_started.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado al crear cualquier conversación (Direct, Group, Support, o Meeting — Fase 8).\n\nPayload:\n{\n  eventId, eventType, tenantId, correlationId, occurredOnUtc,\n  conversationId,\n  kind: 'Direct' | 'Group' | 'Support' | 'Meeting',\n  createdByUserId,\n  participantUserIds: string[]\n}\n\nPara Meeting, se publica UNA sola vez (cuando la primera persona entra), no en cada join subsiguiente.",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.chat.conversation_participant_added.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado al agregar un miembro a un grupo (chat.conversation.add_participant). NO se publica para altas de chat de meeting (Fase 8) — esas ya están cubiertas por communication.meeting.participant_joined.v1, publicar ambas sería señal duplicada.\n\nPayload: { conversationId, addedByUserId, newParticipantUserId }",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.chat.conversation_participant_removed.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicado al salir/expulsar un miembro de un grupo. Mismo criterio que el evento de alta: para meetings se usa communication.meeting.participant_left.v1 / participant_removed_by_host.v1 en su lugar, no este.\n\nPayload: { conversationId, removedByUserId, removedParticipantUserId, reason: 'Left' | 'Kicked' }",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] communication.call.transcript_ready.v1 / communication.meeting.transcript_ready.v1",
+          "request": {
+            "method": "GET",
+            "description": "Publicados por CommunicationTranscriptWorker (proceso separado, whisper.cpp + ffmpeg) al terminar de transcribir una grabación. Communication los consume (transcript-consumers.ts) y los adjunta al Call/Meeting, luego reemite por socket (call.transcript_ready / meeting.transcript_ready).\n\nPayload: { callId | meetingId, recordingFileId, transcriptFileId, language: string | null, readyAtUtc }",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "[Doc] cloudstorage.file.blocked_by_policy.v1 (CONSUMIDO, no publicado por Communication)",
+          "request": {
+            "method": "GET",
+            "description": "Publicado por CloudStorage (Fase 7 — IContentScanner tras ClamAV) cuando un archivo viola política de contenido. Communication lo CONSUME (cloudstorage-consumers.ts) y marca el AttachmentTracking correspondiente como BlockedByPolicy, luego emite chat.message.attachment_flagged por socket.\n\nHoy CloudStorage usa NoOpContentScanner (siempre Clean) — este evento nunca se dispara en producción hasta que se conecte un scanner real (NSFW/CSAM).",
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -31,6 +31,16 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("DefaultTimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -51,6 +61,18 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Tenants", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("8f58a521-4c25-4d91-9f4e-7ad5df14c001"),
+                            CreatedAtUtc = new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Utc),
+                            DefaultTimeZoneId = "Etc/UTC",
+                            Kind = "Platform",
+                            Name = "TaxVision Platform",
+                            Status = "Active",
+                            SubDomain = "platform-internal"
+                        });
                 });
 #pragma warning restore 612, 618
         }
