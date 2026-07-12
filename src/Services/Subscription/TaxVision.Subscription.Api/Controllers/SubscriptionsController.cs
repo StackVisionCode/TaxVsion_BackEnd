@@ -5,6 +5,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Cancel;
+using TaxVision.Subscription.Application.Subscriptions.Commands.CancelPendingPlanChange;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Reactivate;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Renew;
@@ -44,6 +45,32 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ChangePlanCommand(tenantId, request.PlanCode, userId), ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Cambio de plan pendiente (diferido a fin de período), si existe alguno.</summary>
+    [HttpGet("plan-change")]
+    [ProducesResponseType<PendingPlanChangeResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPendingPlanChange(CancellationToken ct)
+    {
+        if (!TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<PendingPlanChangeResponse?>>(new GetPendingPlanChangeQuery(tenantId), ct);
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpPost("plan-change/cancel")]
+    [Authorize(Roles = "TenantAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> CancelPendingPlanChange(CancellationToken ct)
+    {
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new CancelPendingPlanChangeCommand(tenantId, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

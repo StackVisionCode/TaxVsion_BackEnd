@@ -51,6 +51,9 @@ builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
 
+// Aplica cambios de plan diferidos (EndOfPeriod) cuya EffectiveAtUtc ya llegó (Fase 6).
+builder.Services.AddHostedService<PendingPlanChangeApplicationJob>();
+
 // Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
 // esta policy. No se expone vía gateway público.
 builder.Services.AddAuthorizationBuilder()

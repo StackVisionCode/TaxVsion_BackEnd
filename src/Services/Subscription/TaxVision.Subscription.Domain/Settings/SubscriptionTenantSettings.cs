@@ -32,7 +32,7 @@ public sealed class SubscriptionTenantSettings : TenantEntity
     public int NotifyAfterFailedRenewalDays { get; private set; } = 1;
     public AutoRenewCascadeMode AutoRenewCascadeMode { get; private set; } = AutoRenewCascadeMode.None;
     public bool PauseSeatRenewalsWhenBaseSuspended { get; private set; } = true;
-    public PlanChangeEffectiveMode PlanChangeEffective { get; private set; } = PlanChangeEffectiveMode.EndOfPeriod;
+    public PlanChangeEffectiveMode PlanChangeEffective { get; private set; } = PlanChangeEffectiveMode.Immediate;
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }

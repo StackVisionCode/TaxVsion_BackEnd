@@ -6,6 +6,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -17,6 +18,7 @@ public static class ChangePlanHandler
         ChangePlanCommand command,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        ISubscriptionTenantSettingsRepository settingsRepository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -40,27 +42,50 @@ public static class ChangePlanHandler
         if (subscription.PlanId == plan.Id && subscription.PlanVersionId == planVersion.Id)
             return Result.Success();
 
+        var settings = await settingsRepository.GetByTenantIdAsync(command.TenantId, ct);
+        var mode = settings?.PlanChangeEffective ?? PlanChangeEffectiveMode.Immediate;
+
         var nowUtc = DateTime.UtcNow;
         var previousPlanCode = subscription.PlanCode;
 
-        var result = subscription.ChangePlan(plan, planVersion, command.RequestedByUserId, nowUtc);
+        var result = subscription.RequestPlanChange(plan, planVersion, mode, command.RequestedByUserId, nowUtc);
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(SubscriptionEventFactory.PlanChanged(subscription, plan, planVersion, correlation.CorrelationId));
+        if (mode == PlanChangeEffectiveMode.Immediate)
+        {
+            await bus.PublishAsync(SubscriptionEventFactory.PlanChanged(subscription, plan, planVersion, correlation.CorrelationId));
+            await unitOfWork.SaveChangesAsync(ct);
+
+            await AuditEntryFactory.AppendAsync(
+                audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanChanged",
+                command.RequestedByUserId, correlation.CorrelationId,
+                before: new { PlanCode = previousPlanCode },
+                after: new { PlanCode = subscription.PlanCode },
+                reason: null, nowUtc, ct);
+
+            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+
+            logger.LogInformation(
+                "Tenant {TenantId} changed plan to {PlanCode} immediately (requested by {UserId}).",
+                command.TenantId,
+                plan.Code.Value,
+                command.RequestedByUserId
+            );
+            return Result.Success();
+        }
+
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanChanged",
+            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanChangeRequested",
             command.RequestedByUserId, correlation.CorrelationId,
             before: new { PlanCode = previousPlanCode },
-            after: new { PlanCode = subscription.PlanCode },
+            after: new { PlanCode = previousPlanCode, PendingPlanCode = plan.Code.Value, EffectiveAtUtc = subscription.CurrentPeriodEndUtc },
             reason: null, nowUtc, ct);
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
-
         logger.LogInformation(
-            "Tenant {TenantId} changed plan to {PlanCode} (requested by {UserId}).",
+            "Tenant {TenantId} queued plan change to {PlanCode}, effective at end of period (requested by {UserId}).",
             command.TenantId,
             plan.Code.Value,
             command.RequestedByUserId

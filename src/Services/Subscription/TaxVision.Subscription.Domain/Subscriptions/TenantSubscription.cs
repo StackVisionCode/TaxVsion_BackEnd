@@ -2,6 +2,7 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Renewals;
+using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Domain.Subscriptions;
@@ -15,6 +16,7 @@ namespace TaxVision.Subscription.Domain.Subscriptions;
 public sealed class TenantSubscription : TenantEntity
 {
     private readonly List<TenantSubscriptionRenewal> _renewals = [];
+    private readonly List<PlanChangeRequest> _planChangeRequests = [];
 
     public Guid PlanId { get; private set; }
     public Guid PlanVersionId { get; private set; }
@@ -39,6 +41,7 @@ public sealed class TenantSubscription : TenantEntity
     public Guid UpdatedBy { get; private set; }
 
     public IReadOnlyCollection<TenantSubscriptionRenewal> Renewals => _renewals;
+    public IReadOnlyCollection<PlanChangeRequest> PlanChangeRequests => _planChangeRequests;
 
     private TenantSubscription() { }
 
@@ -155,6 +158,108 @@ public sealed class TenantSubscription : TenantEntity
         PlanCode = newPlan.Code.Value;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Solicita un cambio de plan. En modo Immediate lo aplica ya (vía <see cref="ChangePlan"/>)
+    /// y deja el request marcado como Applied para el historial. En modo EndOfPeriod solo
+    /// lo encola — no calcula prorrateo ni cobra nada; el plan nuevo se aplica solo cuando
+    /// termine el período actual (ver <see cref="ApplyPendingPlanChange"/>), y el precio del
+    /// plan nuevo se cobra con normalidad en esa renovación. Reemplaza cualquier solicitud
+    /// pendiente anterior (la más reciente gana).
+    /// </summary>
+    public Result RequestPlanChange(
+        SubscriptionPlan newPlan, SubscriptionPlanVersion newPlanVersion, PlanChangeEffectiveMode mode, Guid actorUserId, DateTime nowUtc)
+    {
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot change plan from {Status}."));
+
+        if (PlanId == newPlan.Id && PlanVersionId == newPlanVersion.Id)
+            return Result.Success();
+
+        var supersedeResult = SupersedePendingPlanChangeRequest(nowUtc);
+        if (supersedeResult.IsFailure)
+            return supersedeResult;
+
+        var effectiveAtUtc = mode == PlanChangeEffectiveMode.Immediate ? nowUtc : CurrentPeriodEndUtc;
+        var requestResult = PlanChangeRequest.Create(
+            Id, TenantId, PlanId, PlanVersionId, PlanCode, newPlan.Id, newPlanVersion.Id, newPlan.Code.Value,
+            mode, actorUserId, effectiveAtUtc, nowUtc);
+        if (requestResult.IsFailure)
+            return Result.Failure(requestResult.Error);
+
+        var request = requestResult.Value;
+        _planChangeRequests.Add(request);
+
+        if (mode != PlanChangeEffectiveMode.Immediate)
+            return Result.Success();
+
+        var switchResult = ChangePlan(newPlan, newPlanVersion, actorUserId, nowUtc);
+        if (switchResult.IsFailure)
+            return switchResult;
+
+        return request.MarkApplied(nowUtc);
+    }
+
+    /// <summary>Aplica una solicitud de cambio de plan diferida cuyo período ya terminó.
+    /// La llama el job de renovación, no un caller directo — nunca se dispara sola.</summary>
+    public Result ApplyPendingPlanChange(Guid requestId, SubscriptionPlan toPlan, SubscriptionPlanVersion toPlanVersion, Guid actorUserId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        if (request.Status != PlanChangeRequestStatus.Pending)
+            return Result.Failure(new Error("PlanChangeRequest.InvalidTransition", $"Cannot apply from {request.Status}."));
+
+        var switchResult = ChangePlan(toPlan, toPlanVersion, actorUserId, nowUtc);
+        if (switchResult.IsFailure)
+            return switchResult;
+
+        return request.MarkApplied(nowUtc);
+    }
+
+    /// <summary>Cancela una solicitud de cambio de plan diferida antes de que se aplique.</summary>
+    public Result CancelPendingPlanChange(Guid requestId, Guid actorUserId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        var result = request.MarkCancelled(nowUtc);
+        if (result.IsFailure)
+            return result;
+
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    private Result SupersedePendingPlanChangeRequest(DateTime nowUtc)
+    {
+        var pending = FindPendingPlanChangeRequest();
+        return pending is null ? Result.Success() : pending.MarkCancelled(nowUtc);
+    }
+
+    private PlanChangeRequest? FindPendingPlanChangeRequest()
+    {
+        foreach (var request in _planChangeRequests)
+        {
+            if (request.Status == PlanChangeRequestStatus.Pending)
+                return request;
+        }
+
+        return null;
+    }
+
+    private PlanChangeRequest? FindPlanChangeRequestById(Guid requestId)
+    {
+        foreach (var request in _planChangeRequests)
+        {
+            if (request.Id == requestId)
+                return request;
+        }
+
+        return null;
     }
 
     public Result MarkPastDueBecauseRenewalFailed(string failureCode, Guid actorUserId, DateTime nowUtc)

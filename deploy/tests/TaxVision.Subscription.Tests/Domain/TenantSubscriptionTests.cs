@@ -1,4 +1,5 @@
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
 
@@ -69,6 +70,86 @@ public sealed class TenantSubscriptionTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Subscription.InvalidTransition", result.Error.Code);
+    }
+
+    [Fact]
+    public void RequestPlanChange_immediate_switches_plan_right_away_and_marks_request_applied()
+    {
+        var (starter, starterVersion) = CreatePublishedPlan("starter");
+        var (pro, proVersion) = CreatePublishedPlan("pro");
+        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+
+        var result = subscription.RequestPlanChange(pro, proVersion, PlanChangeEffectiveMode.Immediate, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("pro", subscription.PlanCode);
+        var request = Assert.Single(subscription.PlanChangeRequests);
+        Assert.Equal(PlanChangeRequestStatus.Applied, request.Status);
+    }
+
+    [Fact]
+    public void RequestPlanChange_endOfPeriod_queues_without_switching_plan_now()
+    {
+        var (starter, starterVersion) = CreatePublishedPlan("starter");
+        var (pro, proVersion) = CreatePublishedPlan("pro");
+        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+
+        var result = subscription.RequestPlanChange(pro, proVersion, PlanChangeEffectiveMode.EndOfPeriod, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("starter", subscription.PlanCode);
+        var request = Assert.Single(subscription.PlanChangeRequests);
+        Assert.Equal(PlanChangeRequestStatus.Pending, request.Status);
+        Assert.Equal(subscription.CurrentPeriodEndUtc, request.EffectiveAtUtc);
+    }
+
+    [Fact]
+    public void CancelPendingPlanChange_leaves_plan_unchanged_and_marks_request_cancelled()
+    {
+        var (starter, starterVersion) = CreatePublishedPlan("starter");
+        var (pro, proVersion) = CreatePublishedPlan("pro");
+        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+        subscription.RequestPlanChange(pro, proVersion, PlanChangeEffectiveMode.EndOfPeriod, Guid.Empty, DateTime.UtcNow);
+        var request = Assert.Single(subscription.PlanChangeRequests);
+
+        var result = subscription.CancelPendingPlanChange(request.Id, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("starter", subscription.PlanCode);
+        Assert.Equal(PlanChangeRequestStatus.Cancelled, request.Status);
+    }
+
+    [Fact]
+    public void ApplyPendingPlanChange_switches_plan_and_marks_request_applied()
+    {
+        var (starter, starterVersion) = CreatePublishedPlan("starter");
+        var (pro, proVersion) = CreatePublishedPlan("pro");
+        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+        subscription.RequestPlanChange(pro, proVersion, PlanChangeEffectiveMode.EndOfPeriod, Guid.Empty, DateTime.UtcNow);
+        var request = Assert.Single(subscription.PlanChangeRequests);
+
+        var result = subscription.ApplyPendingPlanChange(request.Id, pro, proVersion, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("pro", subscription.PlanCode);
+        Assert.Equal(PlanChangeRequestStatus.Applied, request.Status);
+    }
+
+    [Fact]
+    public void RequestPlanChange_supersedes_previous_pending_request()
+    {
+        var (starter, starterVersion) = CreatePublishedPlan("starter");
+        var (pro, proVersion) = CreatePublishedPlan("pro");
+        var (enterprise, enterpriseVersion) = CreatePublishedPlan("enterprise");
+        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+        subscription.RequestPlanChange(pro, proVersion, PlanChangeEffectiveMode.EndOfPeriod, Guid.Empty, DateTime.UtcNow);
+
+        var result = subscription.RequestPlanChange(enterprise, enterpriseVersion, PlanChangeEffectiveMode.EndOfPeriod, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, subscription.PlanChangeRequests.Count);
+        Assert.Contains(subscription.PlanChangeRequests, r => r.ToPlanCode == "pro" && r.Status == PlanChangeRequestStatus.Cancelled);
+        Assert.Contains(subscription.PlanChangeRequests, r => r.ToPlanCode == "enterprise" && r.Status == PlanChangeRequestStatus.Pending);
     }
 
     private static (SubscriptionPlan Plan, SubscriptionPlanVersion Version) CreatePublishedPlan(string code)
