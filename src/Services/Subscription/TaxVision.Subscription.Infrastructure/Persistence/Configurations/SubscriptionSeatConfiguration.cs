@@ -27,8 +27,18 @@ public sealed class SubscriptionSeatConfiguration : IEntityTypeConfiguration<Sub
 
         builder.HasIndex(seat => new { seat.TenantId, seat.Status });
 
+        builder.HasIndex(seat => seat.CurrentUserId)
+            .HasFilter("[CurrentUserId] IS NOT NULL")
+            .HasDatabaseName("IX_SubscriptionSeats_CurrentUserId");
+
         builder.HasIndex(seat => seat.NextRenewalAtUtc)
             .HasFilter("[Status] IN ('Active','PastDue') AND [AutoRenew] = 1")
             .HasDatabaseName("IX_SubscriptionSeats_NextRenewalAtUtc");
+
+        builder.HasMany(seat => seat.Assignments)
+            .WithOne()
+            .HasForeignKey(assignment => assignment.SeatId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(seat => seat.Assignments).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

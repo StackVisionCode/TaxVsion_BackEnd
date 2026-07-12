@@ -36,6 +36,11 @@ builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "subscription-service");
 
+// Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
+// esta policy. No se expone vía gateway público.
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
 );
@@ -65,6 +70,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SubscriptionPlanChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionSuspendedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatsPurchasedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatAssignedToUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatReleasedFromUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated (alta de suscripción trial).
     options

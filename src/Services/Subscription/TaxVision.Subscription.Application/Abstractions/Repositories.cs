@@ -22,6 +22,7 @@ public interface ISubscriptionSeatRepository
 {
     Task<SubscriptionSeat?> GetByIdAsync(Guid seatId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+    Task<SubscriptionSeat?> GetByCurrentUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
     Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default);
 }
 
