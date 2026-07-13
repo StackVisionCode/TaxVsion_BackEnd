@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 
@@ -12,8 +13,15 @@ public sealed class PlanRepository(SubscriptionDbContext db) : IPlanRepository
             .OrderBy(plan => plan.Tier)
             .ToListAsync(ct);
 
-    public Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default) =>
-        WithVersions(db.Plans.AsNoTracking()).FirstOrDefaultAsync(plan => plan.Code.Value == code, ct);
+    public Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default)
+    {
+        var planCodeResult = PlanCode.Create(code);
+        if (planCodeResult.IsFailure)
+            return Task.FromResult<SubscriptionPlan?>(null);
+
+        var planCode = planCodeResult.Value;
+        return WithVersions(db.Plans.AsNoTracking()).FirstOrDefaultAsync(plan => plan.Code == planCode, ct);
+    }
 
     public Task<SubscriptionPlan?> GetByIdAsync(Guid planId, CancellationToken ct = default) =>
         WithVersions(db.Plans.AsNoTracking()).FirstOrDefaultAsync(plan => plan.Id == planId, ct);
