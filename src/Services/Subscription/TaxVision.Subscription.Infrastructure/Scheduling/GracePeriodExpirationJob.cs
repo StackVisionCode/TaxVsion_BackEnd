@@ -1,4 +1,3 @@
-using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,12 +53,6 @@ public sealed class GracePeriodExpirationJob(
             if (result.IsFailure) continue;
 
             await unitOfWork.SaveChangesAsync(ct);
-            await bus.PublishAsync(new SubscriptionSuspendedIntegrationEvent
-            {
-                TenantId = subscription.TenantId,
-                SubscribedTenantId = subscription.TenantId,
-                Reason = "GraceExpired",
-            });
             await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(subscription.TenantId), ct);
             count++;
         }

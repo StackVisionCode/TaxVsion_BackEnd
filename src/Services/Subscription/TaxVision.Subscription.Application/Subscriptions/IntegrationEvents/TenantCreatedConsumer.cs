@@ -6,7 +6,6 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Subscription.Application.Abstractions;
-using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Settings;
@@ -17,9 +16,10 @@ namespace TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 
 /// <summary>
 /// Alta de tenant ⇒ se crea la suscripción base en trial con el plan por defecto y su
-/// configuración de políticas por defecto, y se publica el evento de activación para que
-/// Auth proyecte los límites. Idempotente: si ya existe una suscripción para el tenant,
-/// no hace nada.
+/// configuración de políticas por defecto. RecalculateEntitlementsCommand publica
+/// TenantEntitlementsChangedIntegrationEvent, que es lo que Auth/CloudStorage/etc.
+/// consumen para proyectar los límites — no hay un evento de activación aparte.
+/// Idempotente: si ya existe una suscripción para el tenant, no hace nada.
 /// </summary>
 public static class TenantCreatedConsumer
 {
@@ -55,8 +55,6 @@ public static class TenantCreatedConsumer
             await subscriptions.AddAsync(subscription, ct);
 
             await EnsureDefaultSettingsAsync(evt.NewTenantId, settingsRepository, ct);
-
-            await bus.PublishAsync(SubscriptionEventFactory.Activated(subscription, plan, planVersion, correlationId));
             await unitOfWork.SaveChangesAsync(ct);
 
             await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(evt.NewTenantId), ct);

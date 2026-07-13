@@ -1,5 +1,3 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -24,7 +22,6 @@ public static class PurchaseSeatsHandler
         ISubscriptionTenantSettingsRepository settingsRepository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
-        ICorrelationContext correlation,
         ILogger<SubscriptionSeat> logger,
         CancellationToken ct
     )
@@ -39,16 +36,6 @@ public static class PurchaseSeatsHandler
         foreach (var seat in newSeats)
             await seats.AddAsync(seat, ct);
 
-        var effectiveSeatCount = await CountNonTerminalSeatsAsync(seats, command.TenantId, ct) + newSeats.Count;
-
-        await bus.PublishAsync(new SeatsPurchasedIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            PurchasingTenantId = command.TenantId,
-            NewMaxUsers = effectiveSeatCount,
-            SeatIds = newSeats.ConvertAll(seat => seat.Id).ToArray(),
-            CorrelationId = correlation.CorrelationId,
-        });
         await unitOfWork.SaveChangesAsync(ct);
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);

@@ -1,5 +1,4 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -35,15 +34,6 @@ public static class CancelSubscriptionHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(
-            new SubscriptionSuspendedIntegrationEvent
-            {
-                TenantId = subscription.TenantId,
-                SubscribedTenantId = subscription.TenantId,
-                Reason = command.Reason,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(

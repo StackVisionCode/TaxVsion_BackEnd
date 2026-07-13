@@ -48,6 +48,9 @@ public static class RecalculateEntitlementsHandler
             ChangedKeys = changedKeys,
             PlanCode = snapshot.PlanCode,
             SubscriptionStatus = snapshot.SubscriptionStatus,
+            SeatCount = snapshot.SeatCount,
+            AvailableSeatCount = snapshot.AvailableSeatCount,
+            EntitlementValues = BuildEntitlementValues(snapshot),
             CorrelationId = correlation.CorrelationId,
         });
         await unitOfWork.SaveChangesAsync(ct);
@@ -57,6 +60,15 @@ public static class RecalculateEntitlementsHandler
             command.TenantId, snapshot.RevisionNumber, changedKeys.Length
         );
         return Result.Success();
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildEntitlementValues(TenantEntitlementSnapshot snapshot)
+    {
+        var values = new Dictionary<string, string>();
+        foreach (var entry in snapshot.Entries)
+            values[entry.Key.Value] = entry.Value;
+
+        return values;
     }
 
     private static string[] ComputeChangedKeys(TenantEntitlementSnapshot? previous, TenantEntitlementSnapshot current)

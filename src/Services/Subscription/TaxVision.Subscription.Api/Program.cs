@@ -86,16 +86,15 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, SubscriptionDbContext>();
     options.Policies.AutoApplyTransactions();
 
-    // Eventos publicados hacia Auth (límites) y demás servicios.
-    options.PublishMessage<SubscriptionActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SubscriptionPlanChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SubscriptionSuspendedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SeatsPurchasedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Eventos publicados hacia Auth (límites), CloudStorage, Communication y demás
+    // servicios. TenantEntitlementsChangedIntegrationEvent es el único evento de "algo
+    // cambió en la suscripción" — reemplaza a los antiguos Activated/PlanChanged/
+    // Suspended/SeatsPurchased (retirados en la fase de cleanup).
+    options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatAssignedToUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatReleasedFromUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");

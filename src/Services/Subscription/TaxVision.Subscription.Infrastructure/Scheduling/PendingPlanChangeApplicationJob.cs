@@ -1,9 +1,7 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
-using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Subscriptions;
 using BuildingBlocks.Results;
@@ -30,7 +28,6 @@ public sealed class PendingPlanChangeApplicationJob(
         var plans = services.GetRequiredService<IPlanRepository>();
         var bus = services.GetRequiredService<IMessageBus>();
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
-        var correlation = services.GetRequiredService<ICorrelationContext>();
         var logger = services.GetRequiredService<ILogger<PendingPlanChangeApplicationJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -63,7 +60,6 @@ public sealed class PendingPlanChangeApplicationJob(
                 continue;
             }
 
-            await bus.PublishAsync(SubscriptionEventFactory.PlanChanged(subscription, toPlan, toPlanVersion, correlation.CorrelationId));
             await unitOfWork.SaveChangesAsync(ct);
 
             await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(subscription.TenantId), ct);

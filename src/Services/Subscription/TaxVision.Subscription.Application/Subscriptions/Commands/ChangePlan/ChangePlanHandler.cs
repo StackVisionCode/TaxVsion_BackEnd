@@ -54,7 +54,6 @@ public static class ChangePlanHandler
 
         if (mode == PlanChangeEffectiveMode.Immediate)
         {
-            await bus.PublishAsync(SubscriptionEventFactory.PlanChanged(subscription, plan, planVersion, correlation.CorrelationId));
             await unitOfWork.SaveChangesAsync(ct);
 
             await AuditEntryFactory.AppendAsync(

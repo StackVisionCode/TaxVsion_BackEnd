@@ -45,7 +45,6 @@ public static class ReactivateSubscriptionHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(SubscriptionEventFactory.Activated(subscription, plan, planVersion, correlation.CorrelationId));
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(

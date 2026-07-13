@@ -3985,19 +3985,47 @@ scope de DI por iteracion), para que dos replicas nunca procesen el mismo lote:
 
 ## 32.6 Eventos de integracion
 
-Publicados en `taxvision-events` (RabbitMQ), consumidos por `Auth` en
-`SubscriptionEventsConsumer` para mantener su proyeccion local de limites/estado:
+Publicados en `taxvision-events` (RabbitMQ):
 
-`SubscriptionActivatedIntegrationEvent`, `SubscriptionPlanChangedIntegrationEvent`,
-`SubscriptionSuspendedIntegrationEvent`, `SubscriptionRenewalDueIntegrationEvent`,
-`SubscriptionRenewalUpcomingIntegrationEvent`, `SeatsPurchasedIntegrationEvent`,
+`TenantEntitlementsChangedIntegrationEvent`, `SubscriptionRenewalDueIntegrationEvent`,
+`SubscriptionRenewalUpcomingIntegrationEvent`,
 `SeatAssignedToUserIntegrationEvent`, `SeatReleasedFromUserIntegrationEvent`,
 `SeatRenewalDueIntegrationEvent`, `SeatRenewalUpcomingIntegrationEvent`,
 `AddOnActivatedIntegrationEvent`, `AddOnCancelledIntegrationEvent`,
-`AddOnRenewalDueIntegrationEvent`, `TenantEntitlementsChangedIntegrationEvent`.
+`AddOnRenewalDueIntegrationEvent`.
 
 Subscription tambien consume `TenantCreatedIntegrationEvent` (Tenant) via
 `TenantCreatedConsumer` para abrir la suscripcion en trial al crear un tenant.
+
+**`TenantEntitlementsChangedIntegrationEvent` es el evento canonico de "algo cambio
+en la suscripcion"**: se publica una sola vez, al final de cada recalculo de
+entitlements (alta, cambio de plan, compra/renovacion de seats o add-ons, suspension,
+reactivacion, expiracion). Ademas de `RevisionNumber`/`ChangedKeys`/`PlanCode`/
+`SubscriptionStatus` trae el snapshot resuelto completo en `EntitlementValues`
+(`EntitlementKey -> valor stringificado`, ej. `"storage.max_bytes" -> "107374182400"`)
+y `SeatCount`/`AvailableSeatCount` — el mismo contenido que expondria
+`GET /entitlements/summary` en el instante del recalculo, para que los consumidores
+no necesiten una llamada HTTP adicional a Subscription. Lo consumen:
+
+- **Auth** (`TenantEntitlementsChangedConsumer`) — proyecta `TenantPlanLimits`.
+  `MaxUsers` sale de `SeatCount` (no de un entitlement "seats.max": los seats son
+  entidades independientes compradas por el tenant, ver §32.2), y los modulos
+  habilitados de las claves `module.*` con valor `"True"`.
+- **CloudStorage** (`TenantEntitlementsChangedQuotaConsumer`) — proyecta
+  `TenantStorageLimit` desde `storage.max_bytes`.
+- **Communication** (TS, `bindSubscriptionConsumers`) — proyecta
+  `TenantCommunicationLimits` desde claves `communication.*`. Ningun plan define
+  todavia esas claves en el catalogo (§32.2 solo siembra `module.*` y limites core),
+  asi que hoy cae siempre a los defaults conservadores (4 participantes, 60 min,
+  etc.) hasta que ese catalogo se extienda.
+
+Retirados en la fase de cleanup del rediseno (2026-07): `SubscriptionActivatedIntegrationEvent`,
+`SubscriptionPlanChangedIntegrationEvent`, `SubscriptionSuspendedIntegrationEvent`,
+`SeatsPurchasedIntegrationEvent`. Cada uno era una traduccion redundante del mismo
+snapshot que `TenantEntitlementsChangedIntegrationEvent` ya publicaba en el mismo
+handler — se retiraron junto con `SubscriptionEventFactory` y los tres consumers
+equivalentes en Auth/CloudStorage/Communication, sin periodo de coexistencia porque
+ningun tenant productivo dependia todavia de ellos.
 
 ## 32.7 Persistencia y migraciones
 
@@ -4076,3 +4104,8 @@ resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
   se necesita cobrar la diferencia de un cambio de plan a mitad de periodo.
 - `/internal/users/{userId}/access` no se expone via Gateway — solo Auth lo llama
   en la red interna con un JWT de servicio (`actor_type=Service`).
+- **Entitlements `communication.*` (Fase 9)**: el catalogo de planes no define
+  todavia claves para Communication (max participantes, minutos, grabacion, etc.).
+  `TenantEntitlementsChangedQuotaConsumer`/`bindSubscriptionConsumers` ya leen esas
+  claves si existen; falta sembrarlas en `SubscriptionPlanCatalogSeeder` cuando se
+  defina el catalogo real por plan/tier.
