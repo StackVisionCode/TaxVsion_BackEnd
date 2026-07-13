@@ -1093,7 +1093,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId")
                         .IsUnique()
                         .HasDatabaseName("UX_TenantSubscriptions_TenantId_Active")
-                        .HasFilter("[Status] NOT IN ('Cancelled', 'Expired')");
+                        .HasFilter("[Status] <> 'Cancelled' AND [Status] <> 'Expired'");
 
                     b.ToTable("TenantSubscriptions", (string)null);
                 });

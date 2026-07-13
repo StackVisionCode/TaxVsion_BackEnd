@@ -23,7 +23,7 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
 
         builder.HasIndex(subscription => subscription.TenantId)
             .IsUnique()
-            .HasFilter("[Status] NOT IN ('Cancelled', 'Expired')")
+            .HasFilter("[Status] <> 'Cancelled' AND [Status] <> 'Expired'")
             .HasDatabaseName("UX_TenantSubscriptions_TenantId_Active");
 
         builder.HasIndex(subscription => subscription.NextRenewalAtUtc)

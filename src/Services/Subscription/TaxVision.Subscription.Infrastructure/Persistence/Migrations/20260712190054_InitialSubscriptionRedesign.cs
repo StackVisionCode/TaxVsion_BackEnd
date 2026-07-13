@@ -310,7 +310,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 table: "TenantSubscriptions",
                 column: "TenantId",
                 unique: true,
-                filter: "[Status] NOT IN ('Cancelled', 'Expired')");
+                filter: "[Status] <> 'Cancelled' AND [Status] <> 'Expired'");
         }
 
         /// <inheritdoc />
