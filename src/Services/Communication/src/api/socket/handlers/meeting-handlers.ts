@@ -127,6 +127,8 @@ function wireMeetingSocket(
         user: { userId, displayName: selfDisplayName },
         ...(parsed.data.passcode !== undefined ? { passcode: parsed.data.passcode } : {}),
         ...(parsed.data.invitationToken !== undefined ? { invitationToken: parsed.data.invitationToken } : {}),
+        ...(parsed.data.audioDefault !== undefined ? { audioDefault: parsed.data.audioDefault } : {}),
+        ...(parsed.data.videoDefault !== undefined ? { videoDefault: parsed.data.videoDefault } : {}),
       },
       container,
     );

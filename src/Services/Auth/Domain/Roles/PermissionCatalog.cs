@@ -21,8 +21,9 @@ public static class PermissionCatalog
     public const string SubscriptionManage = "subscription.manage";
 
     // Módulos operativos
-    public const string CustomersView = "customers.view";
-    public const string CustomersManage = "customers.manage";
+    public const string CustomersView = CustomersPermissions.View;
+    public const string CustomersManage = CustomersPermissions.Manage;
+    public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string SignaturesRequest = "signatures.request";
     public const string DocumentsView = "documents.view";
     public const string DocumentsManage = "documents.manage";
@@ -343,6 +344,20 @@ public static class PermissionCatalog
             SignatureCertificateVerify,
             "signature",
             "Verificar certificados de firma (endpoint público)",
+            false
+        ),
+        new(
+            // OJO: "...045" a "...062" ya estan ocupados en la BD real por los 18
+            // permisos de Communication (communication.chat.start etc.) sembrados
+            // via migracion propia SIN pasar por este catalogo — PermissionCatalog
+            // esta desincronizado de la BD para ese rango. Confirmado por consulta
+            // directa a Permissions antes de elegir este GUID. Pendiente: reconciliar
+            // agregando las entradas de Communication a este catalogo (fuera de
+            // alcance de este cambio).
+            new Guid("a1000000-0000-0000-0000-000000000063"),
+            CustomersFiscalProfileReveal,
+            "customers",
+            "Revelar el SSN/ITIN/EIN completo de un customer",
             false
         ),
     ];

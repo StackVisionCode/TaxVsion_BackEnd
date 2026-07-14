@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Domain.Addresses;
+using TaxVision.Customer.Domain.Audit;
 using TaxVision.Customer.Domain.Catalogs;
 using TaxVision.Customer.Domain.ContactPoints;
 using TaxVision.Customer.Domain.FiscalProfiles;
@@ -53,6 +54,9 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
 
     /// <summary>Filas individuales procesadas dentro de cada importación de clientes.</summary>
     public DbSet<CustomerImportRow> CustomerImportRows => Set<CustomerImportRow>();
+
+    /// <summary>Rastro de auditoría de acciones sensibles sobre clientes (ej. revelar el tax identifier).</summary>
+    public DbSet<CustomerAuditLog> CustomerAuditLogs => Set<CustomerAuditLog>();
 
     /// <summary>
     /// Construye el modelo de EF Core aplicando las configuraciones de entidades declaradas

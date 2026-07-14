@@ -15,6 +15,7 @@ import { registerNotificationRoutes } from '../../api/http/routes/notifications.
 import { registerSupportRoutes } from '../../api/http/routes/support.route.js';
 import { registerSettingsRoutes } from '../../api/http/routes/settings.route.js';
 import { registerAnalyticsRoutes } from '../../api/http/routes/analytics.route.js';
+import { registerUploadRoutes } from '../../api/http/routes/uploads.route.js';
 import type { AppContainer } from '../container.js';
 
 /**
@@ -30,6 +31,13 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
     genReqId: (req) => normalizeCorrelationId(req.headers[CORRELATION_HEADER] as string | undefined),
     requestIdHeader: CORRELATION_HEADER,
     requestIdLogLabel: 'correlationId',
+    // Default de Fastify es 1 MiB — insuficiente para el upload de
+    // grabaciones (uploads.route.ts). Al superarlo, Fastify corta la
+    // conexion a mitad de stream en vez de responder 413 prolijo, y el
+    // gateway (YARP) lo ve como conexion rota -> 502 Bad Gateway. 220MB da
+    // margen sobre el limite de 200MB que aplica @fastify/multipart al
+    // tamaño del archivo en si.
+    bodyLimit: 220 * 1024 * 1024,
   });
 
   await app.register(sensible);
@@ -62,6 +70,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await registerSupportRoutes(app, container);
   await registerSettingsRoutes(app, container);
   await registerAnalyticsRoutes(app, container);
+  await registerUploadRoutes(app);
 
   return app;
 }

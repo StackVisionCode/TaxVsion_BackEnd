@@ -70,7 +70,15 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
             new GetObjectArgs()
                 .WithBucket(bucket)
                 .WithObject(objectKey)
-                .WithCallbackStream(async source => await source.CopyToAsync(destination, ct)),
+                // OJO: WithCallbackStream tiene 2 overloads — Action<Stream> (sincrono) y
+                // Func<Stream, CancellationToken, Task> (async de verdad). Un lambda de UN
+                // solo parametro (`source => ...`) matchea el overload Action<Stream>, y el
+                // compilador lo compila como `async void`: el SDK lo trata como sincrono, no
+                // lo espera, y dispone el stream de la respuesta HTTP antes de que la
+                // continuacion async termine de copiar -> ObjectDisposedException en un hilo
+                // aparte que ningun try/catch del caller puede atrapar. Pasando el callback de
+                // 2 parametros forzamos el overload Task-returning, que el SDK SI espera.
+                .WithCallbackStream(async (source, innerCt) => await source.CopyToAsync(destination, innerCt)),
             ct
         );
 

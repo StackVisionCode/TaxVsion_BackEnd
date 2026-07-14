@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
@@ -276,6 +277,7 @@ public static class ScanFileHandler
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ILogger<ScanFileCommand> logger,
         CancellationToken ct
     )
     {
@@ -525,6 +527,34 @@ public static class ScanFileHandler
             }
 
             await unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Este handler corre en background via Wolverine — sin ningun
+            // middleware HTTP que atrape la excepcion, un fallo transitorio
+            // (I/O de red, race del SDK de MinIO al copiar el stream
+            // descargado, etc.) tumbaba el proceso ENTERO de CloudStorage en
+            // vez de fallar solo este archivo. Se marca ScanFailed (no es
+            // terminal — ver el guard de redelivery arriba, un redelivery
+            // reintenta el scan) y se libera la reserva de cuota con
+            // CancellationToken.None por si `ct` ya esta cancelado.
+            logger.LogError(
+                ex,
+                "Unexpected error scanning file {FileId} for tenant {TenantId}.",
+                file.Id,
+                command.TenantId
+            );
+            try
+            {
+                var limit = await limits.GetAsync(command.TenantId, CancellationToken.None);
+                limit?.Release(file.SizeBytes);
+                file.MarkScanFailed($"Unexpected error: {ex.GetType().Name}: {ex.Message}", clock.UtcNow);
+                await unitOfWork.SaveChangesAsync(CancellationToken.None);
+            }
+            catch (Exception recoveryEx)
+            {
+                logger.LogError(recoveryEx, "Failed to mark file {FileId} as ScanFailed after scan error.", file.Id);
+            }
         }
         finally
         {

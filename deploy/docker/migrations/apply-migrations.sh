@@ -52,4 +52,10 @@ apply_migration \
   "src/Services/CloudStorage/TaxVision.CloudStorage.Api/TaxVision.CloudStorage.Api.csproj" \
   "$CLOUDSTORAGE_DB_CONNECTION"
 
+apply_migration \
+  "Signature" \
+  "src/Services/Signature/TaxVision.Signature.Infrastructure/TaxVision.Signature.Infrastructure.csproj" \
+  "src/Services/Signature/TaxVision.Signature.Api/TaxVision.Signature.Api.csproj" \
+  "$SIGNATURE_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

@@ -1287,6 +1287,37 @@
 					"response": []
 				},
 				{
+					"name": "RevealTaxIdentifier",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/customers/{{customerId}}/fiscal-profile/tax-identifier",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}",
+								"fiscal-profile",
+								"tax-identifier"
+							]
+						},
+						"description": "Revela el SSN/ITIN/EIN en claro (ej. \"123-45-6789\" o \"12-3456789\" segun subjectKind). Requiere el permiso customers.fiscalprofile.reveal (TenantAdmin lo tiene siempre; un TenantEmployee necesita que se lo otorguen puntualmente). Rate-limited a 5 req/min por usuario. Cada llamada, exitosa o no, queda en el audit trail de Customer (CustomerAuditLogs)."
+					},
+					"response": []
+				},
+				{
 					"name": "SetRelationFiscalProfile",
 					"request": {
 						"auth": {
