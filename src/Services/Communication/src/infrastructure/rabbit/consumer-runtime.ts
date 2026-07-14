@@ -55,15 +55,11 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'signature.request.sealed.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationChallengeIssuedIntegrationEvent':
     'signature.signer.verification.challenge_issued.v1',
-  // Subscription
-  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionActivatedIntegrationEvent':
-    'subscription.activated.v1',
-  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionPlanChangedIntegrationEvent':
-    'subscription.plan_changed.v1',
-  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SeatsPurchasedIntegrationEvent':
-    'subscription.seats_purchased.v1',
-  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionSuspendedIntegrationEvent':
-    'subscription.suspended.v1',
+  // Subscription — evento unico de "algo cambio en la suscripcion" (reemplaza a los
+  // antiguos activated/plan_changed/seats_purchased/suspended, retirados en la fase de
+  // cleanup del rediseno de Subscription, 2026-07).
+  'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantEntitlementsChangedIntegrationEvent':
+    'subscription.entitlements_changed.v1',
   // CloudStorage
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileAvailableIntegrationEvent':
     'cloudstorage.file.available.v1',

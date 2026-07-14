@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
@@ -9,9 +10,10 @@ using BuildingBlocks.Security;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
-using TaxVision.Subscription.Application.Subscriptions.Commands;
+using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
 using TaxVision.Subscription.Infrastructure.Persistence;
+using TaxVision.Subscription.Infrastructure.Scheduling;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
@@ -35,15 +37,39 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "subscription-service");
+builder.Services.AddRedisCache(builder.Configuration);
+
+// Jobs de renovacion/expiracion/grace (Fase 4). Cada uno es independiente: renovar la
+// suscripcion base no renueva seats ni add-ons, y viceversa (ver diseno §34).
+builder.Services.AddHostedService<TenantSubscriptionRenewalJob>();
+builder.Services.AddHostedService<SeatRenewalJob>();
+builder.Services.AddHostedService<AddOnRenewalJob>();
+builder.Services.AddHostedService<TrialExpirationJob>();
+builder.Services.AddHostedService<GracePeriodExpirationJob>();
+builder.Services.AddHostedService<SubscriptionExpirationJob>();
+builder.Services.AddHostedService<SeatExpirationJob>();
+builder.Services.AddHostedService<AddOnExpirationJob>();
+builder.Services.AddHostedService<RenewalNotificationJob>();
+
+// Aplica cambios de plan diferidos (EndOfPeriod) cuya EffectiveAtUtc ya llegó (Fase 6).
+builder.Services.AddHostedService<PendingPlanChangeApplicationJob>();
+
+// Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
+// esta policy. No se expone vía gateway público.
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
 );
 
+var redisEndpoint = (builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379").Split(':');
+
 builder
     .Services.AddHealthChecks()
     .AddDbContextCheck<SubscriptionDbContext>("sql-server", tags: ["ready"])
-    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"]);
+    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"])
+    .AddCheck("redis", new TcpEndpointHealthCheck(redisEndpoint[0], int.Parse(redisEndpoint[1])), tags: ["ready"]);
 
 builder.Host.UseWolverine(options =>
 {
@@ -60,11 +86,20 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, SubscriptionDbContext>();
     options.Policies.AutoApplyTransactions();
 
-    // Eventos publicados hacia Auth (límites) y demás servicios.
-    options.PublishMessage<SubscriptionActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SubscriptionPlanChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SubscriptionSuspendedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SeatsPurchasedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Eventos publicados hacia Auth (límites), CloudStorage, Communication y demás
+    // servicios. TenantEntitlementsChangedIntegrationEvent es el único evento de "algo
+    // cambió en la suscripción" — reemplaza a los antiguos Activated/PlanChanged/
+    // Suspended/SeatsPurchased (retirados en la fase de cleanup).
+    options.PublishMessage<TenantEntitlementsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatAssignedToUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatReleasedFromUserIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AddOnRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SeatRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated (alta de suscripción trial).
     options
@@ -83,6 +118,12 @@ builder.Host.UseWolverine(options =>
 });
 
 var app = builder.Build();
+
+await using (var seedScope = app.Services.CreateAsyncScope())
+{
+    var seedDb = seedScope.ServiceProvider.GetRequiredService<SubscriptionDbContext>();
+    await SubscriptionPlanCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
+}
 
 if (app.Environment.IsDevelopment())
 {

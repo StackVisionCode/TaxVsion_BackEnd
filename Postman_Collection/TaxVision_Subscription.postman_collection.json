@@ -2,242 +2,629 @@
 	"info": {
 		"_postman_id": "5655905e-59ee-49c4-8c18-ab7b22b5307a",
 		"name": "TaxVision - Subscription",
-		"description": "Colección de pruebas del microservicio Subscription de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047).",
+		"description": "Colección de pruebas del microservicio Subscription de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047). La mayoría de mutaciones requieren rol TenantAdmin; los endpoints bajo Admin requieren PlatformAdmin.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
 		{
-			"name": "GetPlans",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{UrlBase}}/plans",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"plans"
-					]
-				},
-				"description": "Catalogo publico de planes para la landing."
-			},
-			"response": [],
-			"event": [
+			"name": "Plans",
+			"item": [
 				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"const plans = pm.response.json();\r",
-							"if (Array.isArray(plans) && plans.length > 0) {\r",
-							"    pm.environment.set('firstPlanCode', plans[0].code);\r",
-							"    pm.environment.set('secondPlanCode', plans[1]?.code || plans[0].code);\r",
-							"    console.log('Plans loaded:', plans.map(p => p.code).join(', '));\r",
-							"}\r"
-						],
-						"type": "text/javascript",
-						"packages": {},
-						"requests": {}
-					}
+					"name": "GetPlans",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/plans",
+							"host": ["{{UrlBase}}"],
+							"path": ["plans"]
+						},
+						"description": "Catalogo publico de planes para la landing. Anonimo."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const plans = pm.response.json();\r",
+									"if (Array.isArray(plans) && plans.length > 0) {\r",
+									"    pm.environment.set('firstPlanCode', plans[0].code);\r",
+									"    pm.environment.set('secondPlanCode', plans[1]?.code || plans[0].code);\r",
+									"    console.log('Plans loaded:', plans.map(p => p.code).join(', '));\r",
+									"}\r"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					]
 				}
 			]
 		},
 		{
-			"name": "GetMySubscription",
-			"request": {
-				"method": "GET",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/subscriptions/me",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"subscriptions",
-						"me"
+			"name": "Subscriptions",
+			"item": [
+				{
+					"name": "GetMySubscription",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/me",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "me"]
+						},
+						"description": "Suscripcion del tenant: plan, limites, renovacion, estado."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const s = pm.response.json();\r",
+									"if (s && s.planCode) {\r",
+									"    pm.environment.set('currentPlanCode', s.planCode);\r",
+									"    pm.environment.set('subscriptionStatus', s.status);\r",
+									"    console.log('Subscription:', s.planCode, s.status);\r",
+									"}\r"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
 					]
 				},
-				"description": "Suscripcion del tenant: plan, limites, renovacion, estado."
-			},
-			"response": [],
-			"event": [
 				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"const s = pm.response.json();\r",
-							"if (s && s.id) {\r",
-							"    pm.environment.set('subscriptionId', s.id);\r",
-							"    pm.environment.set('currentPlanCode', s.planCode);\r",
-							"    pm.environment.set('currentSeats', s.seats);\r",
-							"    pm.environment.set('subscriptionStatus', s.status);\r",
-							"    console.log('Subscription:', s.id, s.planCode, s.status);\r",
-							"}\r"
+					"name": "ChangePlan",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
 						],
-						"type": "text/javascript",
-						"packages": {},
-						"requests": {}
-					}
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/change-plan",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "change-plan"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"planCode\": \"pro\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Upgrade/downgrade de plan (TenantAdmin). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange."
+					},
+					"response": []
+				},
+				{
+					"name": "GetPendingPlanChange",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/plan-change",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "plan-change"]
+						},
+						"description": "Cambio de plan pendiente (diferido a fin de periodo), si existe alguno. 200 con body null si no hay ninguno pendiente."
+					},
+					"response": []
+				},
+				{
+					"name": "CancelPendingPlanChange",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/plan-change/cancel",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "plan-change", "cancel"]
+						},
+						"description": "Cancela el cambio de plan diferido pendiente (TenantAdmin)."
+					},
+					"response": []
+				},
+				{
+					"name": "CancelSubscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/cancel",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "cancel"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"tenant requested\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Cancelacion inmediata (TenantAdmin)."
+					},
+					"response": []
+				},
+				{
+					"name": "SuspendSubscription",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/suspend",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "{{tenantId}}", "suspend"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"payment_failed\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Solo PlatformAdmin."
+					},
+					"response": []
+				},
+				{
+					"name": "ReactivateSubscription",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/reactivate",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "{{tenantId}}", "reactivate"]
+						},
+						"description": "Solo PlatformAdmin."
+					},
+					"response": []
+				},
+				{
+					"name": "RenewSubscription",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/renew",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "{{tenantId}}", "renew"]
+						},
+						"description": "Renovacion manual mientras no exista Billing. Solo PlatformAdmin."
+					},
+					"response": []
 				}
 			]
 		},
 		{
-			"name": "ChangePlan",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/subscriptions/change-plan",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"subscriptions",
-						"change-plan"
+			"name": "Seats",
+			"item": [
+				{
+					"name": "GetSeats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/seats?page=1&pageSize=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["seats"],
+							"query": [
+								{ "key": "status", "value": "", "disabled": true },
+								{ "key": "type", "value": "", "disabled": true },
+								{ "key": "userId", "value": "", "disabled": true },
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "20" }
+							]
+						},
+						"description": "Lista paginada de seats del tenant autenticado. Filtros opcionales: status, type, userId."
+					},
+					"response": []
+				},
+				{
+					"name": "GetSeatById",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/seats/{{seatId}}",
+							"host": ["{{UrlBase}}"],
+							"path": ["seats", "{{seatId}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PurchaseSeats",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/seats/purchase",
+							"host": ["{{UrlBase}}"],
+							"path": ["seats", "purchase"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"seatType\": \"Standard\",\n  \"quantity\": 5,\n  \"autoRenew\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Compra seats adicionales (TenantAdmin). Devuelve los ids creados."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {\r",
+									"    const ids = pm.response.json();\r",
+									"    if (Array.isArray(ids) && ids.length > 0) {\r",
+									"        pm.environment.set('seatId', ids[0]);\r",
+									"        console.log('Seats purchased:', ids.join(', '));\r",
+									"    }\r",
+									"}\r"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
 					]
 				},
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"planCode\": \"pro\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+				{
+					"name": "AssignSeat",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/seats/{{seatId}}/assign",
+							"host": ["{{UrlBase}}"],
+							"path": ["seats", "{{seatId}}", "assign"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"{{targetUserId}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Asigna un seat comprado a un usuario del tenant (TenantAdmin)."
+					},
+					"response": []
 				},
-				"description": "Upgrade/downgrade de plan (TenantAdmin)."
-			},
-			"response": []
-		},
-		{
-			"name": "PurchaseSeats",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/subscriptions/seats",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"subscriptions",
-						"seats"
-					]
+				{
+					"name": "ReleaseSeat",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/seats/{{seatId}}/release",
+							"host": ["{{UrlBase}}"],
+							"path": ["seats", "{{seatId}}", "release"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"employee offboarded\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Libera un seat de su usuario actual (TenantAdmin)."
+					},
+					"response": []
 				},
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"additionalSeats\": 5\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+				{
+					"name": "ReassignSeat",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/seats/{{seatId}}/reassign",
+							"host": ["{{UrlBase}}"],
+							"path": ["seats", "{{seatId}}", "reassign"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"toUserId\": \"{{targetUserId}}\",\n  \"reason\": \"team change\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Reasigna un seat directamente de un usuario a otro (TenantAdmin), sujeto a AllowSeatReassignment/cooldown."
+					},
+					"response": []
+				},
+				{
+					"name": "RenewSeat",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/seats/{{seatId}}/renew",
+							"host": ["{{UrlBase}}"],
+							"path": ["seats", "{{seatId}}", "renew"]
+						},
+						"description": "Renovacion manual de un seat mientras no exista Billing (TenantAdmin)."
+					},
+					"response": []
 				}
-			},
-			"response": []
+			]
 		},
 		{
-			"name": "CancelSubscription",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/subscriptions/cancel",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"subscriptions",
-						"cancel"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "SuspendSubscription",
-			"request": {
-				"method": "PATCH",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/suspend",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"subscriptions",
-						"{{tenantId}}",
-						"suspend"
-					]
-				},
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"reason\": \"payment_failed\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
+			"name": "AddOns",
+			"item": [
+				{
+					"name": "GetAddOnCatalog",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/addons",
+							"host": ["{{UrlBase}}"],
+							"path": ["addons"]
+						},
+						"description": "Catalogo publico de add-ons. Anonimo."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const addOns = pm.response.json();\r",
+									"if (Array.isArray(addOns) && addOns.length > 0) {\r",
+									"    pm.environment.set('firstAddOnCode', addOns[0].code);\r",
+									"    console.log('AddOns loaded:', addOns.map(a => a.code).join(', '));\r",
+									"}\r"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
 						}
-					}
-				},
-				"description": "Solo PlatformAdmin."
-			},
-			"response": []
-		},
-		{
-			"name": "ReactivateSubscription",
-			"request": {
-				"method": "PATCH",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/reactivate",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"subscriptions",
-						"{{tenantId}}",
-						"reactivate"
 					]
 				},
-				"description": "Solo PlatformAdmin."
-			},
-			"response": []
+				{
+					"name": "GetTenantAddOns",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/addons/tenant",
+							"host": ["{{UrlBase}}"],
+							"path": ["addons", "tenant"]
+						},
+						"description": "Add-ons vigentes del tenant autenticado."
+					},
+					"response": []
+				},
+				{
+					"name": "PurchaseAddOn",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/addons",
+							"host": ["{{UrlBase}}"],
+							"path": ["addons"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"addOnCode\": \"{{firstAddOnCode}}\",\n  \"quantity\": 1,\n  \"autoRenew\": true\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Compra un add-on para el tenant (TenantAdmin)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {\r",
+									"    const id = pm.response.json();\r",
+									"    pm.environment.set('addOnId', id);\r",
+									"    console.log('AddOn purchased:', id);\r",
+									"}\r"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					]
+				},
+				{
+					"name": "CancelAddOn",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/addons/{{addOnId}}/cancel",
+							"host": ["{{UrlBase}}"],
+							"path": ["addons", "{{addOnId}}", "cancel"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"tenant requested\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Cancela un add-on del tenant (TenantAdmin)."
+					},
+					"response": []
+				},
+				{
+					"name": "RenewAddOn",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/addons/{{addOnId}}/renew",
+							"host": ["{{UrlBase}}"],
+							"path": ["addons", "{{addOnId}}", "renew"]
+						},
+						"description": "Renovacion manual de un add-on mientras no exista Billing (TenantAdmin)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Entitlements",
+			"item": [
+				{
+					"name": "GetEntitlementSummary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/entitlements/summary",
+							"host": ["{{UrlBase}}"],
+							"path": ["entitlements", "summary"]
+						},
+						"description": "Snapshot completo de entitlements del tenant (plan + seats + add-ons combinados)."
+					},
+					"response": []
+				},
+				{
+					"name": "GetEntitlementByKey",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/entitlements/seats.max",
+							"host": ["{{UrlBase}}"],
+							"path": ["entitlements", "seats.max"]
+						},
+						"description": "Valor de un entitlement puntual por su key (ej. seats.max, storage.max_bytes)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Audit",
+			"item": [
+				{
+					"name": "SearchAuditLog",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/audit?page=1&pageSize=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["audit"],
+							"query": [
+								{ "key": "aggregateType", "value": "TenantSubscription", "disabled": true },
+								{ "key": "aggregateId", "value": "", "disabled": true },
+								{ "key": "from", "value": "", "disabled": true },
+								{ "key": "to", "value": "", "disabled": true },
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "20" }
+							]
+						},
+						"description": "Historial de auditoria del tenant (TenantAdmin o PlatformAdmin). Filtros opcionales por tipo/id de agregado y rango de fechas."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "GetUpcomingRenewals",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/admin/subscription/upcoming-renewals?daysAhead=7",
+							"host": ["{{UrlBase}}"],
+							"path": ["admin", "subscription", "upcoming-renewals"],
+							"query": [{ "key": "daysAhead", "value": "7" }]
+						},
+						"description": "Suscripciones que renuevan en los proximos N dias, cross-tenant. Solo PlatformAdmin."
+					},
+					"response": []
+				},
+				{
+					"name": "GetExpiredSeats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/admin/subscription/expired-seats?page=1&pageSize=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["admin", "subscription", "expired-seats"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "20" }
+							]
+						},
+						"description": "Seats expirados, cross-tenant. Solo PlatformAdmin."
+					},
+					"response": []
+				},
+				{
+					"name": "GetPastDueSubscriptions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/admin/subscription/past-due-subscriptions?page=1&pageSize=20",
+							"host": ["{{UrlBase}}"],
+							"path": ["admin", "subscription", "past-due-subscriptions"],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "pageSize", "value": "20" }
+							]
+						},
+						"description": "Suscripciones en PastDue, cross-tenant. Solo PlatformAdmin."
+					},
+					"response": []
+				}
+			]
 		}
 	]
 }

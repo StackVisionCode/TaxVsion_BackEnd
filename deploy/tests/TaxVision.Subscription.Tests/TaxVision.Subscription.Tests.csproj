@@ -16,5 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Subscription\TaxVision.Subscription.Domain\TaxVision.Subscription.Domain.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Subscription\TaxVision.Subscription.Application\TaxVision.Subscription.Application.csproj" />
   </ItemGroup>
 </Project>

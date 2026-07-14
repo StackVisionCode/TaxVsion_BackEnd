@@ -3,7 +3,12 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Audit;
+using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.Seats;
+using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Infrastructure.Persistence;
@@ -12,8 +17,14 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     : DbContext(options),
         IUnitOfWork
 {
-    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<SubscriptionPlan> Plans => Set<SubscriptionPlan>();
     public DbSet<TenantSubscription> Subscriptions => Set<TenantSubscription>();
+    public DbSet<SubscriptionSeat> Seats => Set<SubscriptionSeat>();
+    public DbSet<SubscriptionTenantSettings> TenantSettings => Set<SubscriptionTenantSettings>();
+    public DbSet<AddOnDefinition> AddOnDefinitions => Set<AddOnDefinition>();
+    public DbSet<TenantAddOn> TenantAddOns => Set<TenantAddOn>();
+    public DbSet<TenantEntitlementSnapshot> EntitlementSnapshots => Set<TenantEntitlementSnapshot>();
+    public DbSet<SubscriptionAuditLog> AuditLogs => Set<SubscriptionAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
