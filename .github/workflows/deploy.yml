@@ -15,7 +15,10 @@ jobs:
     timeout-minutes: 45
     env:
       COMPOSE_FILE: deploy/docker/docker-compose.yml
-      SECRETS_DIR: /opt/taxvision/secrets
+      # Mismo nombre que docker-compose.yml usa vía ${TAXVISION_SECRETS_DIR:-...}
+      # (antes se llamaba SECRETS_DIR acá y coincidía con el default del compose
+      # solo por casualidad de valor — ahora el nombre es el mismo en los dos lados).
+      TAXVISION_SECRETS_DIR: /opt/taxvision/secrets
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +49,12 @@ jobs:
           MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
           MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
           MINIO_PUBLIC_ENDPOINT=${{ secrets.MINIO_PUBLIC_ENDPOINT }}
+
+          # ---------- Cuentas de servicio scoped de MinIO (ver servicio "minio-provision") ----------
+          SIGNATURE_MINIO_SECRET=${{ secrets.SIGNATURE_MINIO_SECRET }}
+          NOTIFICATION_MINIO_SECRET=${{ secrets.NOTIFICATION_MINIO_SECRET }}
+          TRANSCRIPT_WORKER_MINIO_SECRET=${{ secrets.TRANSCRIPT_WORKER_MINIO_SECRET }}
+          CUSTOMER_MINIO_SECRET=${{ secrets.CUSTOMER_MINIO_SECRET }}
           GRAFANA_ADMIN_USER=${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
@@ -72,8 +81,8 @@ jobs:
           NOTIFICATION_SERVICE_CLIENT_SECRET=${{ secrets.NOTIFICATION_SERVICE_CLIENT_SECRET }}
           SIGNATURE_SERVICE_CLIENT_ID=${{ secrets.SIGNATURE_SERVICE_CLIENT_ID }}
           SIGNATURE_SERVICE_CLIENT_SECRET=${{ secrets.SIGNATURE_SERVICE_CLIENT_SECRET }}
-          COMMUNICATION_SERVICE_AUTH_CLIENT_ID=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_ID }}
-          COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET }}
+          CUSTOMER_SERVICE_CLIENT_ID=${{ secrets.CUSTOMER_SERVICE_CLIENT_ID }}
+          CUSTOMER_SERVICE_CLIENT_SECRET=${{ secrets.CUSTOMER_SERVICE_CLIENT_SECRET }}
           COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID=${{ secrets.COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID }}
           COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET=${{ secrets.COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET }}
 
@@ -89,8 +98,15 @@ jobs:
           COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=${{ secrets.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP }}
 
           # ---------- Bootstrap / dominio ----------
+          # PLATFORM_BOOTSTRAP_ENABLED se deja apagado salvo que el secret exista y sea "true"
+          # explicitamente — ver PlatformBootstrap__Enabled en docker-compose.yml.
+          PLATFORM_BOOTSTRAP_ENABLED=${{ secrets.PLATFORM_BOOTSTRAP_ENABLED }}
+          PLATFORM_BOOTSTRAP_EMAIL=${{ secrets.PLATFORM_BOOTSTRAP_EMAIL }}
           PLATFORM_BOOTSTRAP_INVITATION_TOKEN=${{ secrets.PLATFORM_BOOTSTRAP_INVITATION_TOKEN }}
           TAXVISION_DOMAIN=${{ secrets.TAXVISION_DOMAIN }}
+
+          # ---------- Rutas de secretos montados (ver step "Write JWT keys...") ----------
+          TAXVISION_SECRETS_DIR=${{ env.TAXVISION_SECRETS_DIR }}
           EOF
           chmod 600 .env
 
@@ -101,15 +117,26 @@ jobs:
       # ---------------------------------------------------------------------
       - name: Write JWT keys and signing certificate
         run: |
-          mkdir -p "$SECRETS_DIR"
-          chmod 700 "$SECRETS_DIR"
-          echo "${{ secrets.JWT_PRIVATE_KEY_PEM_B64 }}" | base64 -d > "$SECRETS_DIR/jwt-private.pem"
-          echo "${{ secrets.JWT_PUBLIC_KEY_PEM_B64 }}" | base64 -d > "$SECRETS_DIR/jwt-public.pem"
-          echo "${{ secrets.SIGNATURE_SEALING_PFX_B64 }}" | base64 -d > "$SECRETS_DIR/signature-sealing.pfx"
-          chmod 600 "$SECRETS_DIR"/jwt-private.pem "$SECRETS_DIR"/jwt-public.pem "$SECRETS_DIR"/signature-sealing.pfx
+          mkdir -p "$TAXVISION_SECRETS_DIR"
+          chmod 700 "$TAXVISION_SECRETS_DIR"
+          echo "${{ secrets.JWT_PRIVATE_KEY_PEM_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/jwt-private.pem"
+          echo "${{ secrets.JWT_PUBLIC_KEY_PEM_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/jwt-public.pem"
+          echo "${{ secrets.SIGNATURE_SEALING_PFX_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/signature-sealing.pfx"
+          chmod 600 "$TAXVISION_SECRETS_DIR"/jwt-private.pem "$TAXVISION_SECRETS_DIR"/jwt-public.pem "$TAXVISION_SECRETS_DIR"/signature-sealing.pfx
 
       - name: Build images
         run: docker compose -f "$COMPOSE_FILE" --env-file .env build
+
+      # ---------------------------------------------------------------------
+      # Crea/actualiza las cuentas de servicio scoped de MinIO (Signature/
+      # Notification/CommunicationTranscriptWorker) ANTES de levantar esos
+      # servicios — si no existen todavia, sus uploads a MinIO fallan con
+      # error de autenticacion. Idempotente, seguro de correr en cada deploy.
+      # `docker compose run` trae arriba `minio` solo (su dependencia) sin
+      # tocar el resto de los servicios.
+      # ---------------------------------------------------------------------
+      - name: Provision scoped MinIO service accounts
+        run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
       - name: Apply .NET EF Core migrations (7 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations

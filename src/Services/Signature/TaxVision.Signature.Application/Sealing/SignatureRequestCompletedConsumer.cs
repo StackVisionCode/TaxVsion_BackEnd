@@ -237,7 +237,8 @@ public static class SignatureRequestCompletedConsumer
             OwnerType: "Signature",
             OwnerId: request.Id,
             FolderType: "Signatures",
-            TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year
+            TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
+            ActorId: request.CreatedByUserId
         );
 
     // ============== Fase 3b: certificate opcional ==============
@@ -263,7 +264,8 @@ public static class SignatureRequestCompletedConsumer
             OwnerType: "Signature",
             OwnerId: request.Id,
             FolderType: "Signatures",
-            TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year
+            TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
+            ActorId: request.CreatedByUserId
         );
         var uploadResult = await storage.UploadAsync(request.TenantId, upload, ct);
         if (uploadResult.IsFailure)

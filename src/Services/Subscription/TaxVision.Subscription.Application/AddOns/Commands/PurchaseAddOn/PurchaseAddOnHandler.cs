@@ -16,7 +16,11 @@ namespace TaxVision.Subscription.Application.AddOns.Commands.PurchaseAddOn;
 public static class PurchaseAddOnHandler
 {
     private static readonly SubscriptionStatus[] PurchasableStatuses =
-        [SubscriptionStatus.Trialing, SubscriptionStatus.Active, SubscriptionStatus.GracePeriod];
+    [
+        SubscriptionStatus.Trialing,
+        SubscriptionStatus.Active,
+        SubscriptionStatus.GracePeriod,
+    ];
 
     public static async Task<Result<Guid>> Handle(
         PurchaseAddOnCommand command,
@@ -42,37 +46,62 @@ public static class PurchaseAddOnHandler
         // Precio real pendiente de integración con Billing (fuera del bounded context de
         // Subscription); se persiste en 0 hasta que exista un catálogo de precios (Fase 5+).
         var addOnResult = TenantAddOn.Purchase(
-            command.TenantId, definition, command.Quantity, Money.Zero("USD"), BillingCycle.Monthly, command.AutoRenew,
-            command.RequestedByUserId, nowUtc);
+            command.TenantId,
+            definition,
+            command.Quantity,
+            Money.Zero("USD"),
+            BillingCycle.Monthly,
+            command.AutoRenew,
+            command.RequestedByUserId,
+            nowUtc
+        );
         if (addOnResult.IsFailure)
             return Result.Failure<Guid>(addOnResult.Error);
 
         var addOn = addOnResult.Value;
         await tenantAddOns.AddAsync(addOn, ct);
 
-        await bus.PublishAsync(new AddOnActivatedIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            TenantAddOnId = addOn.Id,
-            AddOnCode = addOn.AddOnCode,
-            Quantity = addOn.Quantity,
-            CurrentPeriodEndUtc = addOn.CurrentPeriodEndUtc,
-            CorrelationId = correlation.CorrelationId,
-        });
+        await bus.PublishAsync(
+            new AddOnActivatedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                TenantAddOnId = addOn.Id,
+                AddOnCode = addOn.AddOnCode,
+                Quantity = addOn.Quantity,
+                CurrentPeriodEndUtc = addOn.CurrentPeriodEndUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantAddOn", addOn.Id, "AddOn.Purchased",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantAddOn",
+            addOn.Id,
+            "AddOn.Purchased",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { addOn.AddOnCode, addOn.Quantity, Status = addOn.Status.ToString() },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                addOn.AddOnCode,
+                addOn.Quantity,
+                Status = addOn.Status.ToString(),
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
         logger.LogInformation(
             "Tenant {TenantId} purchased add-on {AddOnCode} x{Quantity} (requested by {UserId}).",
-            command.TenantId, addOn.AddOnCode, addOn.Quantity, command.RequestedByUserId
+            command.TenantId,
+            addOn.AddOnCode,
+            addOn.Quantity,
+            command.RequestedByUserId
         );
 
         return Result.Success(addOn.Id);
@@ -83,7 +112,8 @@ public static class PurchaseAddOnHandler
         ISubscriptionRepository subscriptions,
         IAddOnDefinitionRepository addOnDefinitions,
         ISubscriptionTenantSettingsRepository settingsRepository,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (command.Quantity < 1)
             return Result.Failure<AddOnDefinition>(new Error("AddOn.InvalidQuantity", "Quantity must be at least 1."));
@@ -95,14 +125,23 @@ public static class PurchaseAddOnHandler
         if (Array.IndexOf(PurchasableStatuses, subscription.Status) < 0)
         {
             return Result.Failure<AddOnDefinition>(
-                new Error("Subscription.CannotPurchaseAddOns", $"Cannot purchase add-ons while subscription is {subscription.Status}."));
+                new Error(
+                    "Subscription.CannotPurchaseAddOns",
+                    $"Cannot purchase add-ons while subscription is {subscription.Status}."
+                )
+            );
         }
 
         var settings = await settingsRepository.GetByTenantIdAsync(command.TenantId, ct);
         if (settings is not null && !settings.AllowAddons)
-            return Result.Failure<AddOnDefinition>(new Error("AddOn.NotAllowed", "This tenant does not allow add-on purchases."));
+            return Result.Failure<AddOnDefinition>(
+                new Error("AddOn.NotAllowed", "This tenant does not allow add-on purchases.")
+            );
 
-        var definition = await addOnDefinitions.GetByCodeAsync(command.AddOnCode?.Trim().ToLowerInvariant() ?? string.Empty, ct);
+        var definition = await addOnDefinitions.GetByCodeAsync(
+            command.AddOnCode?.Trim().ToLowerInvariant() ?? string.Empty,
+            ct
+        );
         if (definition is null || definition.Status != AddOnDefinitionStatus.Published)
             return Result.Failure<AddOnDefinition>(new Error("AddOnDefinition.NotFound", "Add-on does not exist."));
 

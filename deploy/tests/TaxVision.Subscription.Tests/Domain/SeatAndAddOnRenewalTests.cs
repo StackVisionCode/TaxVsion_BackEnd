@@ -55,7 +55,15 @@ public sealed class SeatAndAddOnRenewalTests
         addOn.BeginRenewal("addon-key-1", Guid.Empty, DateTime.UtcNow);
         var renewalId = addOn.Renewals.First().Id;
 
-        var result = addOn.FailRenewal(renewalId, "card_declined", "Card declined", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
+        var result = addOn.FailRenewal(
+            renewalId,
+            "card_declined",
+            "Card declined",
+            willRetry: false,
+            null,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(AddOnStatus.PastDue, addOn.Status);
@@ -64,7 +72,17 @@ public sealed class SeatAndAddOnRenewalTests
     private static SubscriptionSeat CreateActiveSeat()
     {
         var seat = SubscriptionSeat
-            .Purchase(Guid.NewGuid(), SeatType.Standard, SeatSourceType.Plan, null, Money.Zero("USD"), BillingCycle.Monthly, true, Guid.Empty, DateTime.UtcNow)
+            .Purchase(
+                Guid.NewGuid(),
+                SeatType.Standard,
+                SeatSourceType.Plan,
+                null,
+                Money.Zero("USD"),
+                BillingCycle.Monthly,
+                true,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
             .Value;
         var nowUtc = DateTime.UtcNow;
         seat.Activate(nowUtc, nowUtc.AddMonths(1), Guid.Empty, nowUtc);
@@ -74,10 +92,28 @@ public sealed class SeatAndAddOnRenewalTests
     private static TenantAddOn CreateActiveAddOn()
     {
         var definition = AddOnDefinition
-            .Create(AddOnCode.Create("storage.extra_100gb").Value, "Extra storage", "desc", "storage", true, [BillingCycle.Monthly], Guid.Empty, DateTime.UtcNow)
+            .Create(
+                AddOnCode.Create("storage.extra_100gb").Value,
+                "Extra storage",
+                "desc",
+                "storage",
+                true,
+                [BillingCycle.Monthly],
+                Guid.Empty,
+                DateTime.UtcNow
+            )
             .Value;
         return TenantAddOn
-            .Purchase(Guid.NewGuid(), definition, 1, Money.Zero("USD"), BillingCycle.Monthly, true, Guid.Empty, DateTime.UtcNow)
+            .Purchase(
+                Guid.NewGuid(),
+                definition,
+                1,
+                Money.Zero("USD"),
+                BillingCycle.Monthly,
+                true,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
             .Value;
     }
 }

@@ -192,6 +192,127 @@
 			"response": []
 		},
 		{
+			"name": "ServiceToken",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"clientId\": \"notification-worker\",\n  \"clientSecret\": \"{{serviceClientSecret}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{UrlBase}}/auth/service-token",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						"service-token"
+					]
+				},
+				"description": "Grant client-credentials (M2M): emite un token de servicio para un tenant, usado por workers de otros servicios (p. ej. Notification -> CloudStorage) sin contexto de usuario. clientId/clientSecret deben existir en ServiceAuth:Clients."
+			},
+			"response": []
+		},
+		{
+			"name": "Revoke",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{UrlBase}}/auth/revoke",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"auth",
+						"revoke"
+					]
+				},
+				"description": "Revoca un refresh token (logout selectivo de una familia de tokens) sin cerrar la sesion completa."
+			},
+			"response": []
+		},
+		{
+			"name": "Terms",
+			"item": [
+				{
+					"name": "GetTermsStatus",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant/terms/status",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant",
+								"terms",
+								"status"
+							]
+						},
+						"description": "Estado de aceptacion del ToS/AUP vigente para el tenant del usuario autenticado."
+					},
+					"response": []
+				},
+				{
+					"name": "AcceptTerms",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant/terms/accept",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant",
+								"terms",
+								"accept"
+							]
+						},
+						"description": "Acepta el ToS/AUP vigente. Cualquier usuario autenticado del tenant puede aceptar, sin permiso especifico (evita bloqueo de arranque si el admin no esta disponible). Sin body."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "MFA",
 			"item": [
 				{
@@ -308,6 +429,33 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "RevokeTrustedDevice",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/mfa/trusted-devices/{{deviceId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"mfa",
+								"trusted-devices",
+								"{{deviceId}}"
+							]
+						},
+						"description": "Revoca un dispositivo marcado como 'recordar por N dias' (rememberDevice en VerifyMfaChallenge)."
+					},
+					"response": []
 				},
 				{
 					"name": "MfaStatus",
@@ -723,6 +871,33 @@
 							]
 						},
 						"description": "Sesiones activas del usuario autenticado."
+					},
+					"response": []
+				},
+				{
+					"name": "UserSessions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/sessions/users/{{targetUserId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"sessions",
+								"users",
+								"{{targetUserId}}"
+							]
+						},
+						"description": "Sesiones activas de otro usuario del tenant (requiere users.manage)."
 					},
 					"response": []
 				},
@@ -1321,6 +1496,312 @@
 								"{{roleId}}"
 							]
 						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Subdomains",
+			"item": [
+				{
+					"name": "CheckAvailability",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/subdomains/check-availability?slug=oficina1",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"subdomains",
+								"check-availability"
+							],
+							"query": [
+								{
+									"key": "slug",
+									"value": "oficina1"
+								}
+							]
+						},
+						"description": "Publico, sin auth. Nunca falla: formato invalido/reservado/tomado son resultados validos { available, reason }."
+					},
+					"response": []
+				},
+				{
+					"name": "ReserveSubdomain",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"slug\": \"oficina1\",\n  \"email\": \"jturbi@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/subdomains/reserve",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"subdomains",
+								"reserve"
+							]
+						},
+						"description": "Publico, sin auth. Bloquea el slug para ese email por un TTL corto (15 min por defecto) mientras se completa el alta de la oficina."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "TenantResolution",
+			"item": [
+				{
+					"name": "ByHost",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-resolution/by-host",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-resolution",
+								"by-host"
+							]
+						},
+						"description": "Publico. El Host de la request ya lo resolvio TenantHostResolutionMiddleware; 404 si no resuelve a un tenant activo (ej. llamado directo al Gateway sin subdominio real)."
+					},
+					"response": []
+				},
+				{
+					"name": "ByEmail",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"jturbi@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-resolution/by-email",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-resolution",
+								"by-email"
+							]
+						},
+						"description": "\"Encuentra tu oficina\": siempre 202, envia por correo los subdominios donde ese email tiene cuenta (anti-enumeracion)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "TenantDomains",
+			"item": [
+				{
+					"name": "GetAll",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-domains",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-domains"
+							]
+						},
+						"description": "Requiere tenant-domains.manage. Lista subdominios y custom hostnames del tenant."
+					},
+					"response": []
+				},
+				{
+					"name": "CreateCustomHostname",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"hostname\": \"archivos.suoficina.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-domains",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-domains"
+							]
+						},
+						"description": "Requiere tenant-domains.manage. Solo dominios propios (custom hostname) - los subdominios *.taxprocore.com se crean solos al nacer el tenant. Arranca el provisioning en Cloudflare."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r=pm.response.json(); if(r.domain){pm.environment.set('domainId', r.domain.id);}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "VerifyCustomHostname",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/verify",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-domains",
+								"{{domainId}}",
+								"verify"
+							]
+						},
+						"description": "Requiere tenant-domains.manage. Consulta (sin mutar) el estado DNS/TLS reportado por Cloudflare mientras el tenant configura sus registros."
+					},
+					"response": []
+				},
+				{
+					"name": "ActivateCustomHostname",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/activate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-domains",
+								"{{domainId}}",
+								"activate"
+							]
+						},
+						"description": "Requiere tenant-domains.manage. Confirma con Cloudflare que el hostname esta status=active y ssl.status=active, y lo pasa a Active en Auth. Un poller de fondo tambien lo hace automaticamente."
+					},
+					"response": []
+				},
+				{
+					"name": "DisableDomain",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/disable",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-domains",
+								"{{domainId}}",
+								"disable"
+							]
+						},
+						"description": "Requiere tenant-domains.manage. El dominio primario no se puede deshabilitar (usar ChangeSubdomain). Si es custom hostname, primero se borra en Cloudflare (anti subdomain-takeover)."
+					},
+					"response": []
+				},
+				{
+					"name": "ChangeSubdomain",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newSlug\": \"oficina2\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/subdomain",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"tenant-domains",
+								"{{domainId}}",
+								"subdomain"
+							]
+						},
+						"description": "Requiere tenant-domains.manage. Renombra el subdominio primario ya activo (ej. oficina1.taxprocore.com -> oficina2.taxprocore.com). No aplica a custom hostnames."
 					},
 					"response": []
 				}

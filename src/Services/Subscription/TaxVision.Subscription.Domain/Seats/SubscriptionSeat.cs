@@ -54,7 +54,8 @@ public sealed class SubscriptionSeat : TenantEntity
         BillingCycle billingCycle,
         bool autoRenew,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<SubscriptionSeat>(new Error("Seat.InvalidTenant", "TenantId is required."));
@@ -90,10 +91,17 @@ public sealed class SubscriptionSeat : TenantEntity
         if (reassignmentCooldownDays > 0)
         {
             var mostRecentRelease = FindMostRecentReleaseUtc();
-            if (mostRecentRelease is not null && (nowUtc - mostRecentRelease.Value).TotalDays < reassignmentCooldownDays)
+            if (
+                mostRecentRelease is not null
+                && (nowUtc - mostRecentRelease.Value).TotalDays < reassignmentCooldownDays
+            )
             {
-                return Result.Failure(new Error(
-                    "Seat.ReassignmentCooldown", $"Wait {reassignmentCooldownDays} day(s) after release before reassigning."));
+                return Result.Failure(
+                    new Error(
+                        "Seat.ReassignmentCooldown",
+                        $"Wait {reassignmentCooldownDays} day(s) after release before reassigning."
+                    )
+                );
             }
         }
 
@@ -135,7 +143,13 @@ public sealed class SubscriptionSeat : TenantEntity
 
     /// <summary>Reasigna el seat a otro usuario: libera la asignación vigente y crea una
     /// nueva en la misma operación, aplicando el cooldown de reasignación.</summary>
-    public Result ReassignSeat(Guid toUserId, Guid actorUserId, DateTime nowUtc, string? releaseReason, int reassignmentCooldownDays)
+    public Result ReassignSeat(
+        Guid toUserId,
+        Guid actorUserId,
+        DateTime nowUtc,
+        string? releaseReason,
+        int reassignmentCooldownDays
+    )
     {
         var releaseResult = ReleaseCurrentAssignment(actorUserId, nowUtc, releaseReason);
         if (releaseResult.IsFailure)
@@ -223,7 +237,16 @@ public sealed class SubscriptionSeat : TenantEntity
 
     public Result SuspendForPolicyViolation(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SeatStatus.Available, SeatStatus.Assigned, SeatStatus.Active, SeatStatus.PastDue, SeatStatus.GracePeriod))
+        if (
+            !IsOneOf(
+                Status,
+                SeatStatus.Available,
+                SeatStatus.Assigned,
+                SeatStatus.Active,
+                SeatStatus.PastDue,
+                SeatStatus.GracePeriod
+            )
+        )
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot suspend from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -236,7 +259,12 @@ public sealed class SubscriptionSeat : TenantEntity
         return Result.Success();
     }
 
-    public Result ReactivateAfterAdminReview(DateTime periodStartUtc, DateTime periodEndUtc, Guid actorUserId, DateTime nowUtc)
+    public Result ReactivateAfterAdminReview(
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (Status != SeatStatus.Suspended)
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot reactivate from {Status}."));
@@ -317,7 +345,14 @@ public sealed class SubscriptionSeat : TenantEntity
             return Result.Success();
 
         var newPeriodEndUtc = BillingCycle.CalculateNext(CurrentPeriodEndUtc!.Value);
-        var renewalResult = SubscriptionSeatRenewal.Schedule(Id, TenantId, idempotencyKey, CurrentPeriodEndUtc.Value, newPeriodEndUtc, nowUtc);
+        var renewalResult = SubscriptionSeatRenewal.Schedule(
+            Id,
+            TenantId,
+            idempotencyKey,
+            CurrentPeriodEndUtc.Value,
+            newPeriodEndUtc,
+            nowUtc
+        );
         if (renewalResult.IsFailure)
             return Result.Failure(renewalResult.Error);
 
@@ -352,37 +387,63 @@ public sealed class SubscriptionSeat : TenantEntity
     /// es false agota los reintentos y transiciona el seat a PastDue (solo afecta a este
     /// seat, no a la suscripción base ni a otros seats).</summary>
     public Result FailRenewal(
-        Guid renewalId, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, Guid actorUserId, DateTime nowUtc)
+        Guid renewalId,
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         var renewal = FindRenewalById(renewalId);
         if (renewal is null)
             return Result.Failure(new Error("Seat.RenewalNotFound", "Renewal does not exist."));
 
-        var markResult = MarkRenewalAttemptFailed(renewal, failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);
+        var markResult = MarkRenewalAttemptFailed(
+            renewal,
+            failureCode,
+            failureReason,
+            willRetry,
+            nextRetryAtUtc,
+            nowUtc
+        );
         if (markResult.IsFailure)
             return markResult;
 
         return willRetry ? Result.Success() : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
     }
 
-    private static Result CompleteRenewalAttempt(SubscriptionSeatRenewal renewal, string? externalPaymentReference, DateTime nowUtc)
+    private static Result CompleteRenewalAttempt(
+        SubscriptionSeatRenewal renewal,
+        string? externalPaymentReference,
+        DateTime nowUtc
+    )
     {
         if (renewal.Status != RenewalStatus.Processing)
         {
             var processing = renewal.MarkProcessing(nowUtc);
-            if (processing.IsFailure) return processing;
+            if (processing.IsFailure)
+                return processing;
         }
 
         return renewal.MarkSucceeded(externalPaymentReference, nowUtc);
     }
 
     private static Result MarkRenewalAttemptFailed(
-        SubscriptionSeatRenewal renewal, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, DateTime nowUtc)
+        SubscriptionSeatRenewal renewal,
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        DateTime nowUtc
+    )
     {
         if (renewal.Status != RenewalStatus.Processing)
         {
             var processing = renewal.MarkProcessing(nowUtc);
-            if (processing.IsFailure) return processing;
+            if (processing.IsFailure)
+                return processing;
         }
 
         return renewal.MarkFailed(failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);

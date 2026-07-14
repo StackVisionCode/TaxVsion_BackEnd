@@ -7,7 +7,10 @@ namespace TaxVision.Subscription.Application.Admin.Queries;
 public static class GetExpiredSeatsHandler
 {
     public static async Task<Result<PagedResult<AdminSeatResponse>>> Handle(
-        GetExpiredSeatsQuery query, ISubscriptionSeatRepository seats, CancellationToken ct)
+        GetExpiredSeatsQuery query,
+        ISubscriptionSeatRepository seats,
+        CancellationToken ct
+    )
     {
         var page = query.Page < 1 ? 1 : query.Page;
         var pageSize = query.PageSize is < 1 or > 100 ? 20 : query.PageSize;

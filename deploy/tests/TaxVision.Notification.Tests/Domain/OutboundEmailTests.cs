@@ -8,9 +8,17 @@ public sealed class OutboundEmailTests
     public void Message_requires_a_to_recipient()
     {
         var result = OutboundEmailMessage.Create(
-            Guid.NewGuid(), "Subject", "<p>Hi</p>", "Hi", EmailPriority.Normal,
+            Guid.NewGuid(),
+            "Subject",
+            "<p>Hi</p>",
+            "Hi",
+            EmailPriority.Normal,
             [("cc@example.com", EmailRecipientKind.Cc, null)],
-            "[]", null, null, null, null
+            "[]",
+            null,
+            null,
+            null,
+            null
         );
 
         Assert.True(result.IsFailure);
@@ -21,9 +29,17 @@ public sealed class OutboundEmailTests
     public void Invalid_recipient_address_is_rejected()
     {
         var result = OutboundEmailMessage.Create(
-            Guid.NewGuid(), "Subject", "<p>Hi</p>", "Hi", EmailPriority.Normal,
+            Guid.NewGuid(),
+            "Subject",
+            "<p>Hi</p>",
+            "Hi",
+            EmailPriority.Normal,
             [("not-an-email", EmailRecipientKind.To, null)],
-            "[]", null, null, null, null
+            "[]",
+            null,
+            null,
+            null,
+            null
         );
 
         Assert.True(result.IsFailure);
@@ -77,9 +93,19 @@ public sealed class OutboundEmailTests
     }
 
     private static OutboundEmailMessage CreateMessage() =>
-        OutboundEmailMessage.Create(
-            Guid.NewGuid(), "Subject", "<p>Hi</p>", "Hi", EmailPriority.Normal,
-            [("to@example.com", EmailRecipientKind.To, "To")],
-            "[]", null, null, null, "correlation"
-        ).Value;
+        OutboundEmailMessage
+            .Create(
+                Guid.NewGuid(),
+                "Subject",
+                "<p>Hi</p>",
+                "Hi",
+                EmailPriority.Normal,
+                [("to@example.com", EmailRecipientKind.To, "To")],
+                "[]",
+                null,
+                null,
+                null,
+                "correlation"
+            )
+            .Value;
 }

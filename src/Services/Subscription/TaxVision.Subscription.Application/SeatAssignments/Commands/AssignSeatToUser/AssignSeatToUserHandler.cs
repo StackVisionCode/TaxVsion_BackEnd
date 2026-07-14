@@ -29,36 +29,52 @@ public static class AssignSeatToUserHandler
         if (seat is null)
             return Result.Failure(new Error("Seat.NotFound", "Seat does not exist."));
 
-        var cooldownDays = (await settingsRepository.GetByTenantIdAsync(command.TenantId, ct))?.SeatReassignmentCooldownDays ?? 0;
+        var cooldownDays =
+            (await settingsRepository.GetByTenantIdAsync(command.TenantId, ct))?.SeatReassignmentCooldownDays ?? 0;
         var nowUtc = DateTime.UtcNow;
 
         var result = seat.AssignTo(command.UserId, command.ActorUserId, nowUtc, cooldownDays);
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(new SeatAssignedToUserIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            SeatId = seat.Id,
-            UserId = command.UserId,
-            AssignedByUserId = command.ActorUserId,
-            SeatType = seat.Type.ToString(),
-            AssignedAtUtc = nowUtc,
-            SeatExpiresAtUtc = seat.CurrentPeriodEndUtc,
-            CorrelationId = correlation.CorrelationId,
-        });
+        await bus.PublishAsync(
+            new SeatAssignedToUserIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                SeatId = seat.Id,
+                UserId = command.UserId,
+                AssignedByUserId = command.ActorUserId,
+                SeatType = seat.Type.ToString(),
+                AssignedAtUtc = nowUtc,
+                SeatExpiresAtUtc = seat.CurrentPeriodEndUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "SubscriptionSeat", seat.Id, "Seat.Assigned",
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "SubscriptionSeat",
+            seat.Id,
+            "Seat.Assigned",
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: new { CurrentUserId = (Guid?)null },
             after: new { CurrentUserId = seat.CurrentUserId },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
-        logger.LogInformation("Seat {SeatId} assigned to user {UserId} for tenant {TenantId}.", seat.Id, command.UserId, command.TenantId);
+        logger.LogInformation(
+            "Seat {SeatId} assigned to user {UserId} for tenant {TenantId}.",
+            seat.Id,
+            command.UserId,
+            command.TenantId
+        );
         return Result.Success();
     }
 }

@@ -29,7 +29,31 @@ const rawEnv = z
     TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_ID: z.string().default('communication-transcript-worker'),
     TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_SECRET: z.string().min(1),
 
+    // Fase D2 — DownloadAsync (bajar la grabacion original) sigue via HTTP+M2M
+    // contra CloudStorage, igual que Signature dejo su DownloadAsync intacto en la
+    // Fase D1: leer de cualquier FolderType requeriria un IAM de MinIO mucho mas
+    // amplio que el write scoped de abajo, y no estaba en el scope acordado.
     TRANSCRIPT_WORKER_CLOUDSTORAGE_BASE_URL: z.string().url(),
+
+    // Fase D2 — subida del .txt del transcript directo a MinIO (reemplaza el
+    // HTTP initiate/PUT/complete a CloudStorage). Credenciales propias, IAM scoped
+    // a taxvision-temp/transcript/* (ver deploy/docker/minio/policies/transcript-source.json).
+    TRANSCRIPT_WORKER_MINIO_ENDPOINT: z.string().min(1),
+    TRANSCRIPT_WORKER_MINIO_PORT: z.coerce.number().int().default(9000),
+    TRANSCRIPT_WORKER_MINIO_USE_SSL: z.coerce.boolean().default(false),
+    TRANSCRIPT_WORKER_MINIO_ACCESS_KEY: z.string().min(1),
+    TRANSCRIPT_WORKER_MINIO_SECRET_KEY: z.string().min(1),
+    TRANSCRIPT_WORKER_MINIO_TEMP_BUCKET: z.string().default('taxvision-temp'),
+    TRANSCRIPT_WORKER_MINIO_SOURCE_PREFIX: z.string().default('transcript'),
+
+    // Cola dedicada (no el exchange fanout taxvision-events) donde CloudStorage
+    // escucha SaveFileRequestedIntegrationEvent de productores externos (no
+    // Wolverine) — ver Program.cs de CloudStorage, ListenToRabbitQueue(...)
+    // .DefaultIncomingMessage<SaveFileRequestedIntegrationEvent>(). Publicar esto
+    // al fanout compartido forzaria a CloudStorage a intentar deserializar CADA
+    // evento de CADA servicio como este tipo — por eso una cola propia, ruteada
+    // por nombre via el exchange default de RabbitMQ (routingKey = nombre de cola).
+    TRANSCRIPT_WORKER_CLOUDSTORAGE_EXTERNAL_QUEUE: z.string().default('cloudstorage-external-uploads'),
 
     // whisper.cpp: ruta al binario compilado y al modelo ggml. Ambos se
     // generan en el Dockerfile (build de whisper.cpp + descarga del modelo),
@@ -77,6 +101,17 @@ export const config = {
 
   cloudStorage: {
     baseUrl: rawEnv.TRANSCRIPT_WORKER_CLOUDSTORAGE_BASE_URL,
+    externalUploadsQueue: rawEnv.TRANSCRIPT_WORKER_CLOUDSTORAGE_EXTERNAL_QUEUE,
+  },
+
+  minio: {
+    endpoint: rawEnv.TRANSCRIPT_WORKER_MINIO_ENDPOINT,
+    port: rawEnv.TRANSCRIPT_WORKER_MINIO_PORT,
+    useSSL: rawEnv.TRANSCRIPT_WORKER_MINIO_USE_SSL,
+    accessKey: rawEnv.TRANSCRIPT_WORKER_MINIO_ACCESS_KEY,
+    secretKey: rawEnv.TRANSCRIPT_WORKER_MINIO_SECRET_KEY,
+    tempBucket: rawEnv.TRANSCRIPT_WORKER_MINIO_TEMP_BUCKET,
+    sourcePrefix: rawEnv.TRANSCRIPT_WORKER_MINIO_SOURCE_PREFIX,
   },
 
   whisper: {

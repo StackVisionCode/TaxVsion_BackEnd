@@ -18,27 +18,36 @@ public sealed class AddOnEntitlementDefinition : BaseEntity
     private AddOnEntitlementDefinition() { }
 
     public static Result<AddOnEntitlementDefinition> Create(
-        Guid addOnDefinitionId, EntitlementKey key, EntitlementValueType valueType, string value, AddOnMergeStrategy mergeStrategy)
+        Guid addOnDefinitionId,
+        EntitlementKey key,
+        EntitlementValueType valueType,
+        string value,
+        AddOnMergeStrategy mergeStrategy
+    )
     {
         if (addOnDefinitionId == Guid.Empty)
         {
             return Result.Failure<AddOnEntitlementDefinition>(
-                new Error("AddOnEntitlementDefinition.InvalidDefinition", "AddOnDefinitionId is required."));
+                new Error("AddOnEntitlementDefinition.InvalidDefinition", "AddOnDefinitionId is required.")
+            );
         }
 
         if (value is null)
         {
             return Result.Failure<AddOnEntitlementDefinition>(
-                new Error("AddOnEntitlementDefinition.InvalidValue", "Value is required."));
+                new Error("AddOnEntitlementDefinition.InvalidValue", "Value is required.")
+            );
         }
 
-        return Result.Success(new AddOnEntitlementDefinition
-        {
-            AddOnDefinitionId = addOnDefinitionId,
-            Key = key,
-            ValueType = valueType,
-            Value = value,
-            MergeStrategy = mergeStrategy,
-        });
+        return Result.Success(
+            new AddOnEntitlementDefinition
+            {
+                AddOnDefinitionId = addOnDefinitionId,
+                Key = key,
+                ValueType = valueType,
+                Value = value,
+                MergeStrategy = mergeStrategy,
+            }
+        );
     }
 }

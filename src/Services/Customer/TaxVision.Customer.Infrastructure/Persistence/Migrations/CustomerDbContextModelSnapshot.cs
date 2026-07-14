@@ -7942,24 +7942,6 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerRelationFiscalProfiles", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Customer.Infrastructure.Imports.CustomerImportFile", b =>
-                {
-                    b.Property<Guid>("ImportAttemptId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<byte[]>("Content")
-                        .IsRequired()
-                        .HasColumnType("varbinary(max)");
-
-                    b.Property<DateTime>("UploadedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("ImportAttemptId");
-
-                    b.ToTable("CustomerImportFiles", (string)null);
-                });
-
             modelBuilder.Entity("TaxVision.Customer.Domain.Addresses.CustomerAddress", b =>
                 {
                     b.HasOne("TaxVision.Customer.Domain.Customers.Customer", null)

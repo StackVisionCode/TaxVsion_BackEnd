@@ -81,4 +81,31 @@ public static class FileErrors
         "File.UnsupportedType",
         "The file type is not allowed or does not match its content."
     );
+    public static readonly Error LegalHold = new("File.LegalHold", "The file is under legal hold.");
+    public static readonly Error AlreadyLegalHeld = new(
+        "File.AlreadyLegalHeld",
+        "The file is already under legal hold."
+    );
+    public static readonly Error NotLegalHeld = new("File.NotLegalHeld", "The file is not under legal hold.");
+
+    /// <summary>Fase B2 — ZIP download excede el cap duro de cantidad de archivos.</summary>
+    public static readonly Error TooManyItems = new("File.TooManyItems", "Too many files requested for a single ZIP.");
+
+    /// <summary>Fase B2 — ZIP download excede el cap duro de tamano agregado.</summary>
+    public static readonly Error ZipTooLarge = new(
+        "File.ZipTooLarge",
+        "The combined size of the requested files exceeds the ZIP download limit."
+    );
+
+    /// <summary>Fase B2 — el body no trajo ningun fileId.</summary>
+    public static readonly Error NoFilesRequested = new(
+        "File.NoFilesRequested",
+        "At least one file must be requested."
+    );
+
+    /// <summary>Fase U — el ensamblado final del multipart upload en el storage fallo (ETags invalidos, parte faltante, etc).</summary>
+    public static readonly Error MultipartCompleteFailed = new(
+        "File.MultipartCompleteFailed",
+        "The multipart upload could not be completed."
+    );
 }

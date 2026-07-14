@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
@@ -101,6 +102,18 @@ builder.Host.UseWolverine(options =>
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
 
+    // Consume File* de CloudStorage (resultado del escaneo del archivo de import subido
+    // directo a MinIO, ver ImportFileScanResultConsumer — Fase D para Customer).
+    options
+        .ListenToRabbitQueue(
+            "customer-events",
+            queue =>
+            {
+                queue.BindExchange("taxvision-events", string.Empty);
+            }
+        )
+        .UseDurableInbox();
+
     options.PublishMessage<CustomerArchivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -109,6 +122,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CustomerReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Fase D — reemplaza la tabla CustomerImportFiles: el import sube directo a MinIO y
+    // publica esto para que CloudStorage lo registre/escanee de forma asincrona.
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 });
 
 var app = builder.Build();

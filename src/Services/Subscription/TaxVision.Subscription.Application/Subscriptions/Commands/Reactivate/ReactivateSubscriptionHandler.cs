@@ -48,11 +48,19 @@ public static class ReactivateSubscriptionHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.Reactivated",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.Reactivated",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { Status = previousStatus.ToString() },
             after: new { Status = subscription.Status.ToString() },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 

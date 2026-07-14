@@ -8,8 +8,19 @@ public sealed class SubscriptionAuditLogTests
     public void Create_succeeds_with_valid_fields()
     {
         var result = SubscriptionAuditLog.Create(
-            Guid.NewGuid(), "SubscriptionSeat", Guid.NewGuid(), "Seat.Assigned", Guid.NewGuid(), "User",
-            DateTime.UtcNow, "corr-1", null, "{\"before\":true}", "{\"after\":true}", "manual test");
+            Guid.NewGuid(),
+            "SubscriptionSeat",
+            Guid.NewGuid(),
+            "Seat.Assigned",
+            Guid.NewGuid(),
+            "User",
+            DateTime.UtcNow,
+            "corr-1",
+            null,
+            "{\"before\":true}",
+            "{\"after\":true}",
+            "manual test"
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Seat.Assigned", result.Value.Action);
@@ -19,8 +30,19 @@ public sealed class SubscriptionAuditLogTests
     public void Create_rejects_an_empty_tenant_id()
     {
         var result = SubscriptionAuditLog.Create(
-            Guid.Empty, "SubscriptionSeat", Guid.NewGuid(), "Seat.Assigned", Guid.NewGuid(), "User",
-            DateTime.UtcNow, null, null, null, null, null);
+            Guid.Empty,
+            "SubscriptionSeat",
+            Guid.NewGuid(),
+            "Seat.Assigned",
+            Guid.NewGuid(),
+            "User",
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("AuditLog.InvalidTenant", result.Error.Code);
@@ -32,8 +54,19 @@ public sealed class SubscriptionAuditLogTests
         var longReason = new string('x', 600);
 
         var result = SubscriptionAuditLog.Create(
-            Guid.NewGuid(), "SubscriptionSeat", Guid.NewGuid(), "Seat.Assigned", Guid.NewGuid(), "User",
-            DateTime.UtcNow, null, null, null, null, longReason);
+            Guid.NewGuid(),
+            "SubscriptionSeat",
+            Guid.NewGuid(),
+            "Seat.Assigned",
+            Guid.NewGuid(),
+            "User",
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null,
+            longReason
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(500, result.Value.Reason!.Length);

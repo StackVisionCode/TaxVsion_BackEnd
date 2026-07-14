@@ -14,7 +14,8 @@ public sealed class SubscriptionAuditLogRepository(SubscriptionDbContext db) : I
         DateTime? toUtc,
         int page,
         int pageSize,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         var query = db.AuditLogs.AsNoTracking().Where(entry => entry.TenantId == tenantId);
 

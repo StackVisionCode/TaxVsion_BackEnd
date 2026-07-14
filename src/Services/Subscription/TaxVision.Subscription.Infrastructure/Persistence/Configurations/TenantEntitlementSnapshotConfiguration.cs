@@ -33,31 +33,46 @@ public sealed class TenantEntitlementSnapshotConfiguration : IEntityTypeConfigur
         // snapshot entero se reemplaza en cada recálculo, nunca se editan entries sueltas.
         var entriesConverter = new ValueConverter<List<EntitlementEntry>, string>(
             entries => Serialize(entries),
-            json => Deserialize(json));
+            json => Deserialize(json)
+        );
         var entriesComparer = new ValueComparer<List<EntitlementEntry>>(
             (a, b) => (a ?? new()).SequenceEqual(b ?? new()),
             list => list.Aggregate(0, (hash, entry) => HashCode.Combine(hash, entry.Key.Value, entry.Value)),
-            list => list.ToList());
+            list => list.ToList()
+        );
 
-        builder.Property<List<EntitlementEntry>>("_entries")
+        builder
+            .Property<List<EntitlementEntry>>("_entries")
             .HasColumnName("EntriesJson")
             .HasColumnType("nvarchar(max)")
             .HasConversion(entriesConverter)
             .Metadata.SetValueComparer(entriesComparer);
     }
 
-    private sealed record EntryDto(string Key, string ValueType, string Value, string Status, string Source, DateTime? ExpiresAtUtc);
+    private sealed record EntryDto(
+        string Key,
+        string ValueType,
+        string Value,
+        string Status,
+        string Source,
+        DateTime? ExpiresAtUtc
+    );
 
     private static string Serialize(List<EntitlementEntry> entries) =>
         JsonSerializer.Serialize(entries.Select(ToDto).ToList());
 
     private static List<EntitlementEntry> Deserialize(string json) =>
-        string.IsNullOrEmpty(json)
-            ? []
-            : JsonSerializer.Deserialize<List<EntryDto>>(json)!.Select(FromDto).ToList();
+        string.IsNullOrEmpty(json) ? [] : JsonSerializer.Deserialize<List<EntryDto>>(json)!.Select(FromDto).ToList();
 
     private static EntryDto ToDto(EntitlementEntry entry) =>
-        new(entry.Key.Value, entry.ValueType.ToString(), entry.Value, entry.Status.ToString(), entry.Source.ToString(), entry.ExpiresAtUtc);
+        new(
+            entry.Key.Value,
+            entry.ValueType.ToString(),
+            entry.Value,
+            entry.Status.ToString(),
+            entry.Source.ToString(),
+            entry.ExpiresAtUtc
+        );
 
     private static EntitlementEntry FromDto(EntryDto dto) =>
         new(
@@ -66,5 +81,6 @@ public sealed class TenantEntitlementSnapshotConfiguration : IEntityTypeConfigur
             dto.Value,
             Enum.Parse<EntitlementStatus>(dto.Status),
             Enum.Parse<EntitlementSource>(dto.Source),
-            dto.ExpiresAtUtc);
+            dto.ExpiresAtUtc
+        );
 }

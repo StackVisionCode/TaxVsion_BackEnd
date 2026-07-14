@@ -172,9 +172,21 @@ public sealed class PreparerAndFrameworkTests
         var request = NewInProgressWithFieldAndPhone();
         var signer = request.Signers.Single();
         var now = DateTime.UtcNow;
-        request.IssueVerificationChallenge(signer.Id, SignerVerificationMethod.SmsOtp, "hash-old", now, TimeSpan.FromMinutes(10));
+        request.IssueVerificationChallenge(
+            signer.Id,
+            SignerVerificationMethod.SmsOtp,
+            "hash-old",
+            now,
+            TimeSpan.FromMinutes(10)
+        );
 
-        request.IssueVerificationChallenge(signer.Id, SignerVerificationMethod.SmsOtp, "hash-new", now.AddSeconds(30), TimeSpan.FromMinutes(10));
+        request.IssueVerificationChallenge(
+            signer.Id,
+            SignerVerificationMethod.SmsOtp,
+            "hash-new",
+            now.AddSeconds(30),
+            TimeSpan.FromMinutes(10)
+        );
 
         var activeCount = signer.Challenges.Count(c => c.IsActiveAt(now.AddMinutes(1)));
         Assert.Equal(1, activeCount);
@@ -185,13 +197,15 @@ public sealed class PreparerAndFrameworkTests
     {
         var request = NewInProgressWithFieldAndPhone();
         var signer = request.Signers.Single();
-        var issued = request.IssueVerificationChallenge(
-            signer.Id,
-            SignerVerificationMethod.SmsOtp,
-            "hash-x",
-            DateTime.UtcNow,
-            TimeSpan.FromMinutes(10)
-        ).Value;
+        var issued = request
+            .IssueVerificationChallenge(
+                signer.Id,
+                SignerVerificationMethod.SmsOtp,
+                "hash-x",
+                DateTime.UtcNow,
+                TimeSpan.FromMinutes(10)
+            )
+            .Value;
 
         var result = request.VerifyVerificationChallenge(
             signer.Id,
@@ -248,27 +262,27 @@ public sealed class PreparerAndFrameworkTests
     // ================== helpers ==================
 
     private static SignatureRequest NewDraft() =>
-        SignatureRequest.CreateDraft(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "Test Preparer/Framework",
-            null,
-            SignatureCategory.Fiscal,
-            Guid.NewGuid(),
-            tokenExpirationHours: 72,
-            requiresSequentialSigning: false,
-            requiresConsent: false,
-            generateCertificate: false
-        ).Value;
+        SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Test Preparer/Framework",
+                null,
+                SignatureCategory.Fiscal,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: false,
+                requiresConsent: false,
+                generateCertificate: false
+            )
+            .Value;
 
     private static SignatureRequest NewInProgressWithField()
     {
         var draft = NewDraft();
-        var signer = draft.AddSigner(
-            SignerEmail.Create("s@example.com").Value,
-            SignerFullName.Create("Signer One").Value,
-            null
-        ).Value;
+        var signer = draft
+            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
@@ -279,12 +293,14 @@ public sealed class PreparerAndFrameworkTests
     private static SignatureRequest NewInProgressWithFieldAndPhone()
     {
         var draft = NewDraft();
-        var signer = draft.AddSigner(
-            SignerEmail.Create("s@example.com").Value,
-            SignerFullName.Create("Signer One").Value,
-            null,
-            SignerPhoneNumber.Create("+17865550123").Value
-        ).Value;
+        var signer = draft
+            .AddSigner(
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("Signer One").Value,
+                null,
+                SignerPhoneNumber.Create("+17865550123").Value
+            )
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
@@ -295,11 +311,9 @@ public sealed class PreparerAndFrameworkTests
     private static SignatureRequest NewInProgressWithFieldAndPreparer()
     {
         var draft = NewDraft();
-        var signer = draft.AddSigner(
-            SignerEmail.Create("s@example.com").Value,
-            SignerFullName.Create("Signer One").Value,
-            null
-        ).Value;
+        var signer = draft
+            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer One").Value, null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.SetPreparer(PreparerInfo.Create("P12345678", "Jane Doe, EA", "Enrolled Agent").Value);

@@ -1660,7 +1660,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{platform_admin_token}}"
+                "value": "Bearer {{platformAdminToken}}"
               }
             ],
             "body": {
@@ -1673,14 +1673,14 @@
               }
             },
             "url": {
-              "raw": "{{base_url}}/admin/tenants/{{tenant_id}}/signature-constraints",
+              "raw": "{{UrlBase}}/admin/tenants/{{tenantId}}/signature-constraints",
               "host": [
-                "{{base_url}}"
+                "{{UrlBase}}"
               ],
               "path": [
                 "admin",
                 "tenants",
-                "{{tenant_id}}",
+                "{{tenantId}}",
                 "signature-constraints"
               ]
             },

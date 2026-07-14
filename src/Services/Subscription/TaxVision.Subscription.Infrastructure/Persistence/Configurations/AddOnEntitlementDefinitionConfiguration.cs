@@ -19,14 +19,19 @@ public sealed class AddOnEntitlementDefinitionConfiguration : IEntityTypeConfigu
 
         builder.Property(entitlement => entitlement.AddOnDefinitionId).IsRequired();
 
-        builder.Property(entitlement => entitlement.Key)
+        builder
+            .Property(entitlement => entitlement.Key)
             .HasConversion(key => key.Value, value => EntitlementKey.Create(value).Value)
             .HasMaxLength(100)
             .IsRequired();
 
         builder.Property(entitlement => entitlement.ValueType).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(entitlement => entitlement.Value).HasMaxLength(200).IsRequired();
-        builder.Property(entitlement => entitlement.MergeStrategy).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder
+            .Property(entitlement => entitlement.MergeStrategy)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
 
         builder.HasIndex(entitlement => new { entitlement.AddOnDefinitionId, entitlement.Key }).IsUnique();
     }

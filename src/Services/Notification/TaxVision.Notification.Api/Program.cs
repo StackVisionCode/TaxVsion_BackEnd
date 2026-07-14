@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
@@ -117,6 +118,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<EmailIncrementalSyncRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailSyncCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailSyncFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Fase D3 — reemplaza el HttpClient a CloudStorage para subir adjuntos IMAP entrantes.
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options

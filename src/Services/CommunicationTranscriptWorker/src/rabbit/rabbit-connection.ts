@@ -37,6 +37,12 @@ async function tryConnect(): Promise<RabbitContext> {
   });
   await channel.bindQueue(config.rabbitmq.queue, config.rabbitmq.exchange, '');
 
+  // Fase D2 — cola dedicada de CloudStorage para SaveFileRequestedIntegrationEvent
+  // (ver save-file-requested-publisher.ts). Se declara aca tambien (idempotente,
+  // mismas propiedades que declara CloudStorage con AutoProvision) para no depender
+  // del orden de arranque entre los dos servicios.
+  await channel.assertQueue(config.cloudStorage.externalUploadsQueue, { durable: true });
+
   const emitter = connection as unknown as EventEmitter;
   emitter.on('error', (err: Error) => logger.error({ err: err.message }, 'RabbitMQ connection error'));
   emitter.on('close', () => {

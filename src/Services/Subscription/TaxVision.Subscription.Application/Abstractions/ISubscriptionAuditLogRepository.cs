@@ -12,5 +12,6 @@ public interface ISubscriptionAuditLogRepository
         DateTime? toUtc,
         int page,
         int pageSize,
-        CancellationToken ct = default);
+        CancellationToken ct = default
+    );
 }

@@ -31,7 +31,11 @@ public static class RenewAddOnHandler
         await unitOfWork.SaveChangesAsync(ct);
         await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
 
-        logger.LogInformation("Add-on {TenantAddOnId} manually renewed (requested by {UserId}).", addOn.Id, command.RequestedByUserId);
+        logger.LogInformation(
+            "Add-on {TenantAddOnId} manually renewed (requested by {UserId}).",
+            addOn.Id,
+            command.RequestedByUserId
+        );
         return Result.Success();
     }
 

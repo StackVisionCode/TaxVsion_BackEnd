@@ -54,7 +54,15 @@ public sealed class TenantSubscriptionRenewalTests
         subscription.BeginRenewal("key-1", Guid.Empty, DateTime.UtcNow);
         var renewalId = subscription.Renewals.First().Id;
 
-        var result = subscription.FailRenewal(renewalId, "card_declined", "Card declined", willRetry: false, null, Guid.Empty, DateTime.UtcNow);
+        var result = subscription.FailRenewal(
+            renewalId,
+            "card_declined",
+            "Card declined",
+            willRetry: false,
+            null,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SubscriptionStatus.PastDue, subscription.Status);
@@ -69,7 +77,15 @@ public sealed class TenantSubscriptionRenewalTests
         var renewalId = subscription.Renewals.First().Id;
         var nextRetry = DateTime.UtcNow.AddHours(6);
 
-        var result = subscription.FailRenewal(renewalId, "temporary_failure", "Try again later", willRetry: true, nextRetry, Guid.Empty, DateTime.UtcNow);
+        var result = subscription.FailRenewal(
+            renewalId,
+            "temporary_failure",
+            "Try again later",
+            willRetry: true,
+            nextRetry,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SubscriptionStatus.Active, subscription.Status);
@@ -90,14 +106,25 @@ public sealed class TenantSubscriptionRenewalTests
 
     private static TenantSubscription CreateActiveSubscription()
     {
-        var plan = SubscriptionPlan.Create(PlanCode.Create("starter").Value, "Starter", "desc", PlanTier.Standard, Guid.Empty, DateTime.UtcNow).Value;
+        var plan = SubscriptionPlan
+            .Create(PlanCode.Create("starter").Value, "Starter", "desc", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
 
         var nowUtc = DateTime.UtcNow;
         return TenantSubscription
-            .ActivateImmediately(Guid.NewGuid(), plan, version, BillingCycle.Monthly, nowUtc, nowUtc.AddMonths(1), Guid.Empty, nowUtc)
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                plan,
+                version,
+                BillingCycle.Monthly,
+                nowUtc,
+                nowUtc.AddMonths(1),
+                Guid.Empty,
+                nowUtc
+            )
             .Value;
     }
 }

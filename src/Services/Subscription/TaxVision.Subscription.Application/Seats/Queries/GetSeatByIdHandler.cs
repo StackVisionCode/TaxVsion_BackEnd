@@ -5,7 +5,11 @@ namespace TaxVision.Subscription.Application.Seats.Queries;
 
 public static class GetSeatByIdHandler
 {
-    public static async Task<Result<SeatResponse>> Handle(GetSeatByIdQuery query, ISubscriptionSeatRepository seats, CancellationToken ct)
+    public static async Task<Result<SeatResponse>> Handle(
+        GetSeatByIdQuery query,
+        ISubscriptionSeatRepository seats,
+        CancellationToken ct
+    )
     {
         var seat = await seats.GetByIdAsync(query.SeatId, query.TenantId, ct);
         return seat is null

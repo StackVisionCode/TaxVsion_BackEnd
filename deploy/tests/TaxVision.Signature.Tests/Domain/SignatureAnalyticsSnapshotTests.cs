@@ -8,7 +8,11 @@ public sealed class SignatureAnalyticsSnapshotTests
     [Fact]
     public void CreateEmpty_initializes_all_counters_to_zero()
     {
-        var s = SignatureAnalyticsSnapshot.CreateEmpty(Guid.NewGuid(), new DateOnly(2026, 4, 15), SignatureCategory.Fiscal);
+        var s = SignatureAnalyticsSnapshot.CreateEmpty(
+            Guid.NewGuid(),
+            new DateOnly(2026, 4, 15),
+            SignatureCategory.Fiscal
+        );
 
         Assert.Equal(0, s.RequestsCreated);
         Assert.Equal(0, s.RequestsSent);
@@ -21,7 +25,11 @@ public sealed class SignatureAnalyticsSnapshotTests
     [Fact]
     public void Increment_updates_the_matching_counter_and_updated_timestamp()
     {
-        var s = SignatureAnalyticsSnapshot.CreateEmpty(Guid.NewGuid(), new DateOnly(2026, 4, 15), SignatureCategory.Fiscal);
+        var s = SignatureAnalyticsSnapshot.CreateEmpty(
+            Guid.NewGuid(),
+            new DateOnly(2026, 4, 15),
+            SignatureCategory.Fiscal
+        );
         var before = s.UpdatedAtUtc;
 
         Thread.Sleep(5);

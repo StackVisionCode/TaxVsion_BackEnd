@@ -26,7 +26,9 @@ public static class CancelPendingPlanChangeHandler
 
         var pending = subscription.PlanChangeRequests.FirstOrDefault(r => r.Status == PlanChangeRequestStatus.Pending);
         if (pending is null)
-            return Result.Failure(new Error("PlanChangeRequest.NotFound", "There is no pending plan change to cancel."));
+            return Result.Failure(
+                new Error("PlanChangeRequest.NotFound", "There is no pending plan change to cancel.")
+            );
 
         var nowUtc = DateTime.UtcNow;
         var result = subscription.CancelPendingPlanChange(pending.Id, command.RequestedByUserId, nowUtc);
@@ -36,11 +38,19 @@ public static class CancelPendingPlanChangeHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanChangeCancelled",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.PlanChangeCancelled",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { PendingPlanCode = pending.ToPlanCode },
             after: new { PendingPlanCode = (string?)null },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         logger.LogInformation(
             "Tenant {TenantId} cancelled its pending plan change to {PlanCode} (requested by {UserId}).",

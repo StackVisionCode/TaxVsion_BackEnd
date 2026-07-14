@@ -13,8 +13,10 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 /// que un admin reactive, o cuya cancelación ya pasó el fin del período pagado.
 /// </summary>
 public sealed class SubscriptionExpirationJob(
-    IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<SubscriptionExpirationJob> logger)
-    : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(6), TimeSpan.FromMinutes(30))
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<SubscriptionExpirationJob> logger
+) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(6), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
     private static readonly TimeSpan SuspensionTimeout = TimeSpan.FromDays(30);
@@ -33,17 +35,35 @@ public sealed class SubscriptionExpirationJob(
 
         var suspendedTimedOut = await subscriptions.GetSuspendedBeforeAsync(nowUtc - SuspensionTimeout, BatchSize, ct);
         foreach (var subscription in suspendedTimedOut)
-            expiredCount += await TryExpireAsync(subscription.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc), subscription.TenantId, unitOfWork, bus, ct);
+            expiredCount += await TryExpireAsync(
+                subscription.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc),
+                subscription.TenantId,
+                unitOfWork,
+                bus,
+                ct
+            );
 
         var cancelledPastPeriod = await subscriptions.GetCancelledPastPeriodEndAsync(nowUtc, BatchSize, ct);
         foreach (var subscription in cancelledPastPeriod)
-            expiredCount += await TryExpireAsync(subscription.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc), subscription.TenantId, unitOfWork, bus, ct);
+            expiredCount += await TryExpireAsync(
+                subscription.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc),
+                subscription.TenantId,
+                unitOfWork,
+                bus,
+                ct
+            );
 
         if (expiredCount > 0)
             logger.LogInformation("SubscriptionExpirationJob expired {Count} subscription(s).", expiredCount);
     }
 
-    private static async Task<int> TryExpireAsync(Result result, Guid tenantId, IUnitOfWork unitOfWork, IMessageBus bus, CancellationToken ct)
+    private static async Task<int> TryExpireAsync(
+        Result result,
+        Guid tenantId,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
     {
         if (result.IsFailure)
             return 0;

@@ -55,6 +55,7 @@ export async function processRecordingReady(
       contentType: 'text/plain',
       sizeBytes: Buffer.byteLength(text, 'utf-8'),
       ownerId: event.targetId,
+      correlationId: event.correlationId,
     });
 
     publishTranscriptReady({

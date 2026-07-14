@@ -28,29 +28,40 @@ public sealed class SubscriptionPlan : BaseEntity
     private SubscriptionPlan() { }
 
     public static Result<SubscriptionPlan> Create(
-        PlanCode code, string name, string description, PlanTier tier, Guid actorUserId, DateTime nowUtc)
+        PlanCode code,
+        string name,
+        string description,
+        PlanTier tier,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
-            return Result.Failure<SubscriptionPlan>(new Error("Plan.InvalidName", "Name is required and must be 200 characters or fewer."));
+            return Result.Failure<SubscriptionPlan>(
+                new Error("Plan.InvalidName", "Name is required and must be 200 characters or fewer.")
+            );
 
         if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
         {
             return Result.Failure<SubscriptionPlan>(
-                new Error("Plan.InvalidDescription", "Description is required and must be 2000 characters or fewer."));
+                new Error("Plan.InvalidDescription", "Description is required and must be 2000 characters or fewer.")
+            );
         }
 
-        return Result.Success(new SubscriptionPlan
-        {
-            Code = code,
-            Name = name,
-            Description = description,
-            Tier = tier,
-            Status = PlanStatus.Draft,
-            CreatedAtUtc = nowUtc,
-            UpdatedAtUtc = nowUtc,
-            CreatedBy = actorUserId,
-            UpdatedBy = actorUserId,
-        });
+        return Result.Success(
+            new SubscriptionPlan
+            {
+                Code = code,
+                Name = name,
+                Description = description,
+                Tier = tier,
+                Status = PlanStatus.Draft,
+                CreatedAtUtc = nowUtc,
+                UpdatedAtUtc = nowUtc,
+                CreatedBy = actorUserId,
+                UpdatedBy = actorUserId,
+            }
+        );
     }
 
     /// <summary>
@@ -59,10 +70,17 @@ public sealed class SubscriptionPlan : BaseEntity
     /// fija un Id determinista para que el catálogo sea estable entre entornos.
     /// </summary>
     public static Result<SubscriptionPlan> Seed(
-        Guid id, PlanCode code, string name, string description, PlanTier tier, DateTime nowUtc)
+        Guid id,
+        PlanCode code,
+        string name,
+        string description,
+        PlanTier tier,
+        DateTime nowUtc
+    )
     {
         var created = Create(code, name, description, tier, actorUserId: Guid.Empty, nowUtc);
-        if (created.IsFailure) return created;
+        if (created.IsFailure)
+            return created;
 
         created.Value.Id = id;
         return created;
@@ -88,11 +106,13 @@ public sealed class SubscriptionPlan : BaseEntity
         if (currentlyPublished is not null)
         {
             var supersedeResult = currentlyPublished.Supersede(nowUtc);
-            if (supersedeResult.IsFailure) return supersedeResult;
+            if (supersedeResult.IsFailure)
+                return supersedeResult;
         }
 
         var publishResult = target.Publish(effectiveFromUtc);
-        if (publishResult.IsFailure) return publishResult;
+        if (publishResult.IsFailure)
+            return publishResult;
 
         if (Status == PlanStatus.Draft)
             Status = PlanStatus.Published;

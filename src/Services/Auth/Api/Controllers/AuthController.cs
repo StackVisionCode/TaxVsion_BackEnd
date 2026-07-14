@@ -2,10 +2,12 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.ServiceTokens.Commands;
 using TaxVision.Auth.Application.Sessions.Commands;
+using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Application.Users.Queries;
 using Wolverine;
@@ -16,12 +18,46 @@ namespace TaxVision.Auth.Api.Controllers;
 [Route("auth")]
 public sealed class AuthController(IMessageBus bus) : ControllerBase
 {
+    /// <summary>
+    /// TenantId es opcional a propósito: solo se usa en Development sin subdominios
+    /// reales configurados (ver EffectiveLoginTenantResolver). En cualquier entorno con
+    /// EnforceHostResolution=true se ignora siempre — el TenantId autoritativo sale del
+    /// Host ya resuelto por TenantHostResolutionMiddleware, nunca del cliente.
+    /// </summary>
+    public sealed record LoginRequest(
+        string Email,
+        string Password,
+        string? DeviceName = null,
+        string? DeviceToken = null,
+        Guid? TenantId = null
+    );
+
     [HttpPost("login")]
     [AllowAnonymous]
     [ProducesResponseType<LoginResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Login(LoginCommand command, CancellationToken ct)
+    public async Task<IActionResult> Login(
+        LoginRequest request,
+        [FromServices] IResolvedTenantContext tenantContext,
+        [FromServices] IOptions<TenantDomainOptions> tenantDomainOptions,
+        CancellationToken ct
+    )
     {
+        var tenantResult = EffectiveLoginTenantResolver.Resolve(
+            tenantDomainOptions.Value.EnforceHostResolution,
+            tenantContext.ResolvedTenantId,
+            request.TenantId
+        );
+        if (tenantResult.IsFailure)
+            return StatusCode(tenantResult.Error.ToHttpStatusCode(), tenantResult.Error);
+
+        var command = new LoginCommand(
+            tenantResult.Value,
+            request.Email,
+            request.Password,
+            request.DeviceName,
+            request.DeviceToken
+        );
         var result = await bus.InvokeAsync<Result<LoginResponse>>(command, ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

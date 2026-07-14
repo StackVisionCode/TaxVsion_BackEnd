@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
+using Minio.DataModel.ILM;
 using Minio.Exceptions;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
@@ -91,6 +92,21 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
             ct
         );
 
+    public Task CopyAsync(
+        string sourceBucket,
+        string sourceObjectKey,
+        string destinationBucket,
+        string destinationObjectKey,
+        CancellationToken ct
+    ) =>
+        client.CopyObjectAsync(
+            new CopyObjectArgs()
+                .WithBucket(destinationBucket)
+                .WithObject(destinationObjectKey)
+                .WithCopyObjectSource(new CopySourceObjectArgs().WithBucket(sourceBucket).WithObject(sourceObjectKey)),
+            ct
+        );
+
     public Task DeleteAsync(string bucket, string objectKey, CancellationToken ct) =>
         client.RemoveObjectAsync(new RemoveObjectArgs().WithBucket(bucket).WithObject(objectKey), ct);
 }
@@ -110,6 +126,27 @@ public sealed class MinioBucketBootstrapper(IMinioClient client, IOptions<CloudS
 
         await client.SetVersioningAsync(
             new SetVersioningArgs().WithBucket(options.MainBucket).WithVersioningEnabled(),
+            cancellationToken
+        );
+
+        // Fase D0 — defensa en profundidad: SaveFileFromSourceHandler borra el objeto
+        // fuente tras copiarlo, pero si ese borrado falla (o un servicio llamador nunca
+        // llega a publicar el evento tras el PUT) esta regla lo limpia sola a las 24h en
+        // vez de dejar basura indefinida bajo el prefijo de cada servicio.
+        var lifecycle = new LifecycleConfiguration([
+            new LifecycleRule(
+                abortIncompleteMultipartUpload: null,
+                id: "taxvision-temp-24h-ttl",
+                expiration: new Expiration { Days = 1 },
+                transition: null,
+                filter: null,
+                noncurrentVersionExpiration: null,
+                noncurrentVersionTransition: null,
+                status: LifecycleRule.LifecycleRuleStatusEnabled
+            ),
+        ]);
+        await client.SetBucketLifecycleAsync(
+            new SetBucketLifecycleArgs().WithBucket(options.TempBucket).WithLifecycleConfiguration(lifecycle),
             cancellationToken
         );
     }

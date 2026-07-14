@@ -42,19 +42,28 @@ public sealed class AddOnDefinition : BaseEntity
         bool allowMultipleInstances,
         IReadOnlyCollection<BillingCycle> supportedBillingCycles,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
-            return Result.Failure<AddOnDefinition>(new Error("AddOnDefinition.InvalidName", "Name is required and must be 200 characters or fewer."));
+            return Result.Failure<AddOnDefinition>(
+                new Error("AddOnDefinition.InvalidName", "Name is required and must be 200 characters or fewer.")
+            );
 
         if (string.IsNullOrWhiteSpace(description) || description.Length > 2000)
         {
             return Result.Failure<AddOnDefinition>(
-                new Error("AddOnDefinition.InvalidDescription", "Description is required and must be 2000 characters or fewer."));
+                new Error(
+                    "AddOnDefinition.InvalidDescription",
+                    "Description is required and must be 2000 characters or fewer."
+                )
+            );
         }
 
         if (supportedBillingCycles.Count == 0)
-            return Result.Failure<AddOnDefinition>(new Error("AddOnDefinition.NoBillingCycles", "At least one billing cycle is required."));
+            return Result.Failure<AddOnDefinition>(
+                new Error("AddOnDefinition.NoBillingCycles", "At least one billing cycle is required.")
+            );
 
         var definition = new AddOnDefinition
         {
@@ -76,7 +85,8 @@ public sealed class AddOnDefinition : BaseEntity
     public Result AddFeature(AddOnFeature feature)
     {
         var guard = EnsureDraft();
-        if (guard.IsFailure) return guard;
+        if (guard.IsFailure)
+            return guard;
 
         _features.Add(feature);
         return Result.Success();
@@ -85,7 +95,8 @@ public sealed class AddOnDefinition : BaseEntity
     public Result AddEntitlementDefinition(AddOnEntitlementDefinition entitlement)
     {
         var guard = EnsureDraft();
-        if (guard.IsFailure) return guard;
+        if (guard.IsFailure)
+            return guard;
 
         _entitlements.Add(entitlement);
         return Result.Success();
@@ -94,7 +105,8 @@ public sealed class AddOnDefinition : BaseEntity
     public Result AddPriceTier(AddOnPriceTier tier)
     {
         var guard = EnsureDraft();
-        if (guard.IsFailure) return guard;
+        if (guard.IsFailure)
+            return guard;
 
         _priceTiers.Add(tier);
         return Result.Success();
@@ -123,7 +135,9 @@ public sealed class AddOnDefinition : BaseEntity
     public Result Archive(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != AddOnDefinitionStatus.Deprecated)
-            return Result.Failure(new Error("AddOnDefinition.NotDeprecated", "Only a deprecated add-on can be archived."));
+            return Result.Failure(
+                new Error("AddOnDefinition.NotDeprecated", "Only a deprecated add-on can be archived.")
+            );
 
         Status = AddOnDefinitionStatus.Archived;
         Touch(actorUserId, nowUtc);
@@ -133,7 +147,9 @@ public sealed class AddOnDefinition : BaseEntity
     private Result EnsureDraft() =>
         Status == AddOnDefinitionStatus.Draft
             ? Result.Success()
-            : Result.Failure(new Error("AddOnDefinition.NotDraft", "Cannot modify a published, deprecated or archived add-on."));
+            : Result.Failure(
+                new Error("AddOnDefinition.NotDraft", "Cannot modify a published, deprecated or archived add-on.")
+            );
 
     private void Touch(Guid actorUserId, DateTime nowUtc)
     {

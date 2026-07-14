@@ -30,7 +30,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     FailureReason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     RetryCount = table.Column<int>(type: "int", nullable: false),
                     NextRetryAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    ExternalPaymentReference = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true)
+                    ExternalPaymentReference = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
@@ -40,8 +44,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.SeatId,
                         principalTable: "SubscriptionSeats",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TenantAddOnRenewals",
@@ -62,7 +68,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     FailureReason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     RetryCount = table.Column<int>(type: "int", nullable: false),
                     NextRetryAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    ExternalPaymentReference = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true)
+                    ExternalPaymentReference = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
@@ -72,8 +82,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.TenantAddOnId,
                         principalTable: "TenantAddOns",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TenantSubscriptionRenewals",
@@ -94,7 +106,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     FailureReason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     RetryCount = table.Column<int>(type: "int", nullable: false),
                     NextRetryAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    ExternalPaymentReference = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true)
+                    ExternalPaymentReference = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
@@ -104,69 +120,77 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.TenantSubscriptionId,
                         principalTable: "TenantSubscriptions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionSeatRenewals_SeatId",
                 table: "SubscriptionSeatRenewals",
-                column: "SeatId");
+                column: "SeatId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionSeatRenewals_Status_NextRetry",
                 table: "SubscriptionSeatRenewals",
-                columns: new[] { "Status", "NextRetryAtUtc" });
+                columns: new[] { "Status", "NextRetryAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_SubscriptionSeatRenewals_IdempotencyKey",
                 table: "SubscriptionSeatRenewals",
                 column: "IdempotencyKey",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantAddOnRenewals_Status_NextRetry",
                 table: "TenantAddOnRenewals",
-                columns: new[] { "Status", "NextRetryAtUtc" });
+                columns: new[] { "Status", "NextRetryAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantAddOnRenewals_TenantAddOnId",
                 table: "TenantAddOnRenewals",
-                column: "TenantAddOnId");
+                column: "TenantAddOnId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_TenantAddOnRenewals_IdempotencyKey",
                 table: "TenantAddOnRenewals",
                 column: "IdempotencyKey",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantSubscriptionRenewals_Status_NextRetry",
                 table: "TenantSubscriptionRenewals",
-                columns: new[] { "Status", "NextRetryAtUtc" });
+                columns: new[] { "Status", "NextRetryAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantSubscriptionRenewals_TenantSubscriptionId",
                 table: "TenantSubscriptionRenewals",
-                column: "TenantSubscriptionId");
+                column: "TenantSubscriptionId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_TenantSubscriptionRenewals_IdempotencyKey",
                 table: "TenantSubscriptionRenewals",
                 column: "IdempotencyKey",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "SubscriptionSeatRenewals");
+            migrationBuilder.DropTable(name: "SubscriptionSeatRenewals");
 
-            migrationBuilder.DropTable(
-                name: "TenantAddOnRenewals");
+            migrationBuilder.DropTable(name: "TenantAddOnRenewals");
 
-            migrationBuilder.DropTable(
-                name: "TenantSubscriptionRenewals");
+            migrationBuilder.DropTable(name: "TenantSubscriptionRenewals");
         }
     }
 }

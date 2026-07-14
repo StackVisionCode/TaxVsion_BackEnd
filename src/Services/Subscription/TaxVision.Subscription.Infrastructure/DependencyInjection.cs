@@ -37,7 +37,8 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379"));
+            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
+        );
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
 
         return services;

@@ -24,11 +24,13 @@ public sealed class TenantAddOnRenewalConfiguration : IEntityTypeConfiguration<T
         builder.Property(renewal => renewal.FailureReason).HasMaxLength(1000);
         builder.Property(renewal => renewal.ExternalPaymentReference).HasMaxLength(200);
 
-        builder.HasIndex(renewal => renewal.IdempotencyKey)
+        builder
+            .HasIndex(renewal => renewal.IdempotencyKey)
             .IsUnique()
             .HasDatabaseName("UX_TenantAddOnRenewals_IdempotencyKey");
 
-        builder.HasIndex(renewal => new { renewal.Status, renewal.NextRetryAtUtc })
+        builder
+            .HasIndex(renewal => new { renewal.Status, renewal.NextRetryAtUtc })
             .HasDatabaseName("IX_TenantAddOnRenewals_Status_NextRetry");
     }
 }

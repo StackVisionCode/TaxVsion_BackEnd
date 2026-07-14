@@ -36,7 +36,9 @@ public static class TenantCreatedConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -45,13 +47,27 @@ public static class TenantCreatedConsumer
 
             if (await subscriptions.GetByTenantIdAsync(evt.NewTenantId, ct) is not null)
             {
-                logger.LogInformation("Subscription already exists for tenant {TenantId}; ignoring event.", evt.NewTenantId);
+                logger.LogInformation(
+                    "Subscription already exists for tenant {TenantId}; ignoring event.",
+                    evt.NewTenantId
+                );
                 return;
             }
 
-            var (plan, planVersion) = await LoadDefaultPlanOrThrow(plans, options.Value.DefaultPlanCode, evt.NewTenantId, logger, ct);
+            var (plan, planVersion) = await LoadDefaultPlanOrThrow(
+                plans,
+                options.Value.DefaultPlanCode,
+                evt.NewTenantId,
+                logger,
+                ct
+            );
 
-            var subscription = CreateTrialSubscriptionOrThrow(evt.NewTenantId, plan, planVersion, options.Value.TrialDays);
+            var subscription = CreateTrialSubscriptionOrThrow(
+                evt.NewTenantId,
+                plan,
+                planVersion,
+                options.Value.TrialDays
+            );
             await subscriptions.AddAsync(subscription, ct);
 
             await EnsureDefaultSettingsAsync(evt.NewTenantId, settingsRepository, ct);
@@ -72,7 +88,12 @@ public static class TenantCreatedConsumer
         Enum.TryParse<TenantKind>(kind, ignoreCase: true, out var parsed) && parsed == TenantKind.Platform;
 
     private static async Task<(SubscriptionPlan Plan, SubscriptionPlanVersion Version)> LoadDefaultPlanOrThrow(
-        IPlanRepository plans, string defaultPlanCode, Guid tenantId, ILogger logger, CancellationToken ct)
+        IPlanRepository plans,
+        string defaultPlanCode,
+        Guid tenantId,
+        ILogger logger,
+        CancellationToken ct
+    )
     {
         var plan = await plans.GetByCodeAsync(defaultPlanCode, ct);
         var version = plan?.GetPublishedVersion();
@@ -90,9 +111,20 @@ public static class TenantCreatedConsumer
     }
 
     private static TenantSubscription CreateTrialSubscriptionOrThrow(
-        Guid tenantId, SubscriptionPlan plan, SubscriptionPlanVersion planVersion, int trialDays)
+        Guid tenantId,
+        SubscriptionPlan plan,
+        SubscriptionPlanVersion planVersion,
+        int trialDays
+    )
     {
-        var result = TenantSubscription.StartTrial(tenantId, plan, planVersion, trialDays, actorUserId: Guid.Empty, DateTime.UtcNow);
+        var result = TenantSubscription.StartTrial(
+            tenantId,
+            plan,
+            planVersion,
+            trialDays,
+            actorUserId: Guid.Empty,
+            DateTime.UtcNow
+        );
         if (result.IsFailure)
             throw new InvalidOperationException(result.Error.Message);
 
@@ -100,7 +132,10 @@ public static class TenantCreatedConsumer
     }
 
     private static async Task EnsureDefaultSettingsAsync(
-        Guid tenantId, ISubscriptionTenantSettingsRepository settingsRepository, CancellationToken ct)
+        Guid tenantId,
+        ISubscriptionTenantSettingsRepository settingsRepository,
+        CancellationToken ct
+    )
     {
         if (await settingsRepository.GetByTenantIdAsync(tenantId, ct) is not null)
             return;

@@ -526,8 +526,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<bool>("IsAssignableByTenant")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsCustomerPortal")
                         .HasColumnType("bit");
+
+                    b.Property<int>("MinPlanTier")
+                        .HasColumnType("int");
 
                     b.Property<string>("Module")
                         .IsRequired()
@@ -547,7 +553,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000001"),
                             Code = "users.view",
                             Description = "Ver usuarios del tenant",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "users"
                         },
                         new
@@ -555,7 +563,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000002"),
                             Code = "users.invite",
                             Description = "Invitar usuarios",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "users"
                         },
                         new
@@ -563,7 +573,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000003"),
                             Code = "users.manage",
                             Description = "Activar, desactivar y editar usuarios",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "users"
                         },
                         new
@@ -571,7 +583,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000004"),
                             Code = "roles.manage",
                             Description = "Gestionar roles y permisos",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "users"
                         },
                         new
@@ -579,7 +593,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000005"),
                             Code = "audit.view",
                             Description = "Consultar auditoría",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "audit"
                         },
                         new
@@ -587,7 +603,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000006"),
                             Code = "settings.manage",
                             Description = "Gestionar configuración del tenant",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "settings"
                         },
                         new
@@ -595,7 +613,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000007"),
                             Code = "billing.view",
                             Description = "Ver facturación y suscripción",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "billing"
                         },
                         new
@@ -603,7 +623,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000008"),
                             Code = "billing.manage",
                             Description = "Gestionar métodos de pago y facturación",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "billing"
                         },
                         new
@@ -611,7 +633,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000009"),
                             Code = "subscription.manage",
                             Description = "Cambiar plan y gestionar suscripción",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "billing"
                         },
                         new
@@ -619,7 +643,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000010"),
                             Code = "customers.view",
                             Description = "Ver clientes",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "customers"
                         },
                         new
@@ -627,7 +653,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000011"),
                             Code = "customers.manage",
                             Description = "Crear y editar clientes",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "customers"
                         },
                         new
@@ -635,7 +663,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000012"),
                             Code = "signatures.request",
                             Description = "Solicitar firmas",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signatures"
                         },
                         new
@@ -643,7 +673,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000013"),
                             Code = "documents.view",
                             Description = "Ver documentos",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "documents"
                         },
                         new
@@ -651,7 +683,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000014"),
                             Code = "documents.manage",
                             Description = "Gestionar documentos",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "documents"
                         },
                         new
@@ -659,7 +693,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000015"),
                             Code = "email.use",
                             Description = "Usar el módulo de correo",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 1,
                             Module = "email"
                         },
                         new
@@ -667,7 +703,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000016"),
                             Code = "comms.calls",
                             Description = "Realizar llamadas y meetings",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 1,
                             Module = "comms"
                         },
                         new
@@ -675,7 +713,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000017"),
                             Code = "campaigns.manage",
                             Description = "Gestionar campañas",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 1,
                             Module = "campaigns"
                         },
                         new
@@ -683,7 +723,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000018"),
                             Code = "reports.view",
                             Description = "Ver dashboard y reportes",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 1,
                             Module = "reports"
                         },
                         new
@@ -691,7 +733,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000019"),
                             Code = "portal.calls.use",
                             Description = "El cliente puede realizar llamadas",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            MinPlanTier = 0,
                             Module = "portal"
                         },
                         new
@@ -699,7 +743,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000020"),
                             Code = "portal.miles.use",
                             Description = "El cliente puede usar el módulo de millas",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            MinPlanTier = 0,
                             Module = "portal"
                         },
                         new
@@ -707,7 +753,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000021"),
                             Code = "portal.folders.view",
                             Description = "El cliente puede ver folders de su perfil",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            MinPlanTier = 0,
                             Module = "portal"
                         },
                         new
@@ -715,7 +763,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000022"),
                             Code = "portal.signatures.sign",
                             Description = "El cliente puede firmar documentos",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            MinPlanTier = 0,
                             Module = "portal"
                         },
                         new
@@ -723,7 +773,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000023"),
                             Code = "cloudstorage.file.view",
                             Description = "Ver metadatos de archivos",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "cloudstorage"
                         },
                         new
@@ -731,7 +783,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000024"),
                             Code = "cloudstorage.file.upload",
                             Description = "Subir archivos mediante el gateway seguro",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "cloudstorage"
                         },
                         new
@@ -739,7 +793,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000025"),
                             Code = "cloudstorage.file.download",
                             Description = "Descargar archivos disponibles",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "cloudstorage"
                         },
                         new
@@ -747,7 +803,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000026"),
                             Code = "cloudstorage.file.delete",
                             Description = "Eliminar archivos",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "cloudstorage"
                         },
                         new
@@ -755,7 +813,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000027"),
                             Code = "cloudstorage.settings.manage",
                             Description = "Gestionar políticas de almacenamiento",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "cloudstorage"
                         },
                         new
@@ -763,7 +823,79 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000028"),
                             Code = "cloudstorage.audit.view",
                             Description = "Consultar auditoría de archivos",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000065"),
+                            Code = "cloudstorage.recyclebin.manage",
+                            Description = "Restaurar y purgar archivos de la papelera",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000066"),
+                            Code = "cloudstorage.folder.manage",
+                            Description = "Crear, renombrar y mover carpetas de archivos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000067"),
+                            Code = "cloudstorage.share.create",
+                            Description = "Crear links para compartir archivos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000068"),
+                            Code = "cloudstorage.share.revoke",
+                            Description = "Revocar links de compartir existentes",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000069"),
+                            Code = "cloudstorage.share.manage",
+                            Description = "Otorgar permisos elevados en links y gestionar su expiracion",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000070"),
+                            Code = "cloudstorage.legal.manage",
+                            Description = "Gestionar legal hold y takedowns DMCA",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "cloudstorage"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000071"),
+                            Code = "cloudstorage.file.dmca_counternotice",
+                            Description = "Presentar contranotificacion DMCA sobre un archivo propio",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "cloudstorage"
                         },
                         new
@@ -771,7 +903,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000029"),
                             Code = "signature.request.create",
                             Description = "Crear solicitudes de firma electrónica",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -779,7 +913,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000030"),
                             Code = "signature.request.read",
                             Description = "Consultar solicitudes de firma",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -787,7 +923,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000031"),
                             Code = "signature.request.cancel",
                             Description = "Cancelar solicitudes de firma",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -795,7 +933,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000032"),
                             Code = "signature.request.resend",
                             Description = "Reenviar invitaciones a firmantes",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -803,7 +943,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000033"),
                             Code = "signature.request.expire",
                             Description = "Extender el vencimiento de solicitudes",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -811,7 +953,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000034"),
                             Code = "signature.document.prepare",
                             Description = "Validar y preparar documentos para firma",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -819,7 +963,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000035"),
                             Code = "signature.document.sign",
                             Description = "Aplicar firma del preparador al documento",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -827,7 +973,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000036"),
                             Code = "signature.document.view",
                             Description = "Ver documentos firmados y sus metadatos",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -835,7 +983,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000037"),
                             Code = "signature.document.download",
                             Description = "Descargar sellado, original o certificado",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -843,7 +993,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000038"),
                             Code = "signature.document.audit.read",
                             Description = "Consultar el audit trail de una firma",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -851,7 +1003,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000039"),
                             Code = "signature.template.create",
                             Description = "Crear plantillas de firma reutilizables",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -859,7 +1013,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000040"),
                             Code = "signature.template.update",
                             Description = "Modificar plantillas de firma",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -867,7 +1023,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000041"),
                             Code = "signature.template.delete",
                             Description = "Eliminar plantillas de firma",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -875,7 +1033,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000042"),
                             Code = "signature.settings.manage",
                             Description = "Gestionar la configuración de firma del tenant",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -883,7 +1043,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000043"),
                             Code = "signature.preparer.manage",
                             Description = "Gestionar firmas persistentes del preparador",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -891,7 +1053,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000044"),
                             Code = "signature.certificate.verify",
                             Description = "Verificar certificados de firma (endpoint público)",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "signature"
                         },
                         new
@@ -899,8 +1063,200 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Id = new Guid("a1000000-0000-0000-0000-000000000063"),
                             Code = "customers.fiscalprofile.reveal",
                             Description = "Revelar el SSN/ITIN/EIN completo de un customer",
+                            IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            MinPlanTier = 0,
                             Module = "customers"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000064"),
+                            Code = "tenant.domains.manage",
+                            Description = "Gestionar dominios propios del tenant (custom hostnames)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "domains"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000045"),
+                            Code = "communication.chat.start",
+                            Description = "Iniciar conversaciones de chat",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000046"),
+                            Code = "communication.chat.reply",
+                            Description = "Responder en conversaciones de chat",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000047"),
+                            Code = "communication.chat.moderate",
+                            Description = "Moderar mensajes en conversaciones del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000048"),
+                            Code = "communication.support.open",
+                            Description = "Abrir chat de soporte hacia el PlatformTenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000049"),
+                            Code = "communication.support.agent",
+                            Description = "Atender chats de soporte como agente (PlatformTenant)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000050"),
+                            Code = "communication.call.start",
+                            Description = "Iniciar llamadas de audio 1:1",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000051"),
+                            Code = "communication.videocall.start",
+                            Description = "Iniciar llamadas de video 1:1",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000052"),
+                            Code = "communication.call.record",
+                            Description = "Grabar llamadas 1:1 (con banner de disclosure)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000053"),
+                            Code = "communication.meeting.create",
+                            Description = "Crear reuniones multi-party",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000054"),
+                            Code = "communication.meeting.join",
+                            Description = "Unirse a reuniones (previa invitación válida)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000055"),
+                            Code = "communication.meeting.host",
+                            Description = "Actuar como host de reuniones (waiting room, mute all, transfer)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000056"),
+                            Code = "communication.meeting.record",
+                            Description = "Grabar reuniones (con banner de disclosure)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000057"),
+                            Code = "communication.screenshot.create",
+                            Description = "Adjuntar screenshots/voice/video en chat",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000058"),
+                            Code = "communication.group.create",
+                            Description = "Crear grupos internos por tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000059"),
+                            Code = "communication.group.manage_members",
+                            Description = "Gestionar miembros de grupos internos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000060"),
+                            Code = "communication.notification.read",
+                            Description = "Consultar notificaciones in-app propias",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000061"),
+                            Code = "communication.settings.manage",
+                            Description = "Gestionar la configuración de Communication del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000062"),
+                            Code = "communication.analytics.read",
+                            Description = "Consultar analytics de Communication del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 1,
+                            Module = "communication"
                         });
                 });
 
@@ -1021,6 +1377,102 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.ToTable("UserSessions", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.TenantDomains.TenantDomain", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CloudflareCustomHostnameId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DomainType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("SubdomainSlug")
+                        .HasMaxLength(63)
+                        .HasColumnType("nvarchar(63)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("VerificationMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Host")
+                        .IsUnique();
+
+                    b.HasIndex("SubdomainSlug")
+                        .IsUnique()
+                        .HasFilter("[SubdomainSlug] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "IsPrimary");
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.ToTable("TenantDomains", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.TenantDomains.TenantSubdomainReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReservedByEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SubdomainSlug")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("nvarchar(63)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubdomainSlug", "ConsumedAtUtc", "ExpiresAtUtc");
+
+                    b.ToTable("TenantSubdomainReservations", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Tenants.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1106,6 +1558,42 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TenantPlanLimits", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Terms.TenantTermsAcceptance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AcceptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("AcceptedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TermsVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AcceptedAtUtc")
+                        .IsDescending(false, true);
+
+                    b.ToTable("TenantTermsAcceptances", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.Users.User", b =>

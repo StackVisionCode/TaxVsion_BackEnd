@@ -30,10 +30,12 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.RequestedAtUtc).IsRequired();
         builder.Property(request => request.EffectiveAtUtc).IsRequired();
 
-        builder.HasIndex(request => new { request.TenantSubscriptionId, request.Status })
+        builder
+            .HasIndex(request => new { request.TenantSubscriptionId, request.Status })
             .HasDatabaseName("IX_PlanChangeRequests_TenantSubscriptionId_Status");
 
-        builder.HasIndex(request => request.EffectiveAtUtc)
+        builder
+            .HasIndex(request => request.EffectiveAtUtc)
             .HasFilter("[Status] = 'Pending'")
             .HasDatabaseName("IX_PlanChangeRequests_EffectiveAtUtc_Pending");
     }

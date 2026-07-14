@@ -11,7 +11,8 @@ public sealed record StorageUsageResponse(
     long MaxBytes,
     long AvailableBytes,
     long MaxFileSizeBytes,
-    bool IsSuspended
+    bool IsSuspended,
+    bool AllowPublicShareLinks
 );
 
 public sealed record GetStorageUsageQuery(Guid TenantId);
@@ -35,7 +36,8 @@ public static class GetStorageUsageHandler
                 limit.MaxBytes,
                 Math.Max(0, limit.MaxBytes - limit.UsedBytes - limit.ReservedBytes),
                 limit.MaxFileSizeBytes,
-                limit.IsSuspended
+                limit.IsSuspended,
+                limit.AllowPublicShareLinks
             )
         );
     }

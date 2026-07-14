@@ -19,25 +19,42 @@ public sealed class AdminController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<IReadOnlyList<UpcomingRenewalResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUpcomingRenewals([FromQuery] int daysAhead, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<UpcomingRenewalResponse>>>(new GetUpcomingRenewalsQuery(daysAhead), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<UpcomingRenewalResponse>>>(
+            new GetUpcomingRenewalsQuery(daysAhead),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet("expired-seats")]
     [ProducesResponseType<PagedResult<AdminSeatResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetExpiredSeats([FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct)
+    public async Task<IActionResult> GetExpiredSeats(
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    )
     {
-        var result = await bus.InvokeAsync<Result<PagedResult<AdminSeatResponse>>>(new GetExpiredSeatsQuery(page, pageSize), ct);
+        var result = await bus.InvokeAsync<Result<PagedResult<AdminSeatResponse>>>(
+            new GetExpiredSeatsQuery(page, pageSize),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet("past-due-subscriptions")]
     [ProducesResponseType<PagedResult<AdminSubscriptionResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetPastDueSubscriptions([FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct)
+    public async Task<IActionResult> GetPastDueSubscriptions(
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    )
     {
-        var result = await bus.InvokeAsync<Result<PagedResult<AdminSubscriptionResponse>>>(new GetPastDueSubscriptionsQuery(page, pageSize), ct);
+        var result = await bus.InvokeAsync<Result<PagedResult<AdminSubscriptionResponse>>>(
+            new GetPastDueSubscriptionsQuery(page, pageSize),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

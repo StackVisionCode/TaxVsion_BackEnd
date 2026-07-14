@@ -19,29 +19,36 @@ public sealed class SubscriptionSeatConfiguration : IEntityTypeConfiguration<Sub
         builder.Property(seat => seat.CancellationReason).HasMaxLength(500);
         builder.Property(seat => seat.SuspensionReason).HasMaxLength(500);
 
-        builder.OwnsOne(seat => seat.UnitPrice, money =>
-        {
-            money.Property(m => m.Amount).HasColumnName("UnitPriceAmount").HasPrecision(18, 4).IsRequired();
-            money.Property(m => m.Currency).HasColumnName("UnitPriceCurrency").HasMaxLength(3).IsRequired();
-        });
+        builder.OwnsOne(
+            seat => seat.UnitPrice,
+            money =>
+            {
+                money.Property(m => m.Amount).HasColumnName("UnitPriceAmount").HasPrecision(18, 4).IsRequired();
+                money.Property(m => m.Currency).HasColumnName("UnitPriceCurrency").HasMaxLength(3).IsRequired();
+            }
+        );
 
         builder.HasIndex(seat => new { seat.TenantId, seat.Status });
 
-        builder.HasIndex(seat => seat.CurrentUserId)
+        builder
+            .HasIndex(seat => seat.CurrentUserId)
             .HasFilter("[CurrentUserId] IS NOT NULL")
             .HasDatabaseName("IX_SubscriptionSeats_CurrentUserId");
 
-        builder.HasIndex(seat => seat.NextRenewalAtUtc)
+        builder
+            .HasIndex(seat => seat.NextRenewalAtUtc)
             .HasFilter("[Status] IN ('Active','PastDue') AND [AutoRenew] = 1")
             .HasDatabaseName("IX_SubscriptionSeats_NextRenewalAtUtc");
 
-        builder.HasMany(seat => seat.Assignments)
+        builder
+            .HasMany(seat => seat.Assignments)
             .WithOne()
             .HasForeignKey(assignment => assignment.SeatId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(seat => seat.Assignments).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasMany(seat => seat.Renewals)
+        builder
+            .HasMany(seat => seat.Renewals)
             .WithOne()
             .HasForeignKey(renewal => renewal.SeatId)
             .OnDelete(DeleteBehavior.Cascade);

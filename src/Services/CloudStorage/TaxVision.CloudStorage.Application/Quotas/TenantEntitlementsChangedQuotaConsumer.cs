@@ -26,7 +26,16 @@ public static class TenantEntitlementsChangedQuotaConsumer
         var storageQuotaBytes = GetLong(message.EntitlementValues, "storage.max_bytes", fallback: 0);
         var isSuspended = message.SubscriptionStatus == "Suspended";
 
-        await ApplyAsync(message.TenantId, message.PlanCode, storageQuotaBytes, isSuspended, repository, options.Value, unitOfWork, ct);
+        await ApplyAsync(
+            message.TenantId,
+            message.PlanCode,
+            storageQuotaBytes,
+            isSuspended,
+            repository,
+            options.Value,
+            unitOfWork,
+            ct
+        );
     }
 
     private static async Task ApplyAsync(

@@ -26,9 +26,22 @@ public sealed class EmailConfigurationTests
     public void Smtp_configuration_requires_host()
     {
         var result = EmailProviderConfiguration.Create(
-            ProviderScope.System, null, EmailProviderType.Smtp, "Global", "from@taxvision.com", null,
-            host: null, port: 587, username: null, passwordCipher: null, useSsl: true,
-            apiKeyCipher: null, clientId: null, clientSecretCipher: null, tenantProviderId: null, isDefault: false
+            ProviderScope.System,
+            null,
+            EmailProviderType.Smtp,
+            "Global",
+            "from@taxvision.com",
+            null,
+            host: null,
+            port: 587,
+            username: null,
+            passwordCipher: null,
+            useSsl: true,
+            apiKeyCipher: null,
+            clientId: null,
+            clientSecretCipher: null,
+            tenantProviderId: null,
+            isDefault: false
         );
 
         Assert.True(result.IsFailure);
@@ -41,9 +54,18 @@ public sealed class EmailConfigurationTests
         var config = Create(ProviderScope.System, null, passwordCipher: "cipher-1").Value;
 
         var result = config.Update(
-            "Global", "from@taxvision.com", null, "smtp.taxvision.com", 587, "user",
-            passwordCipher: null, useSsl: true, apiKeyCipher: null, clientId: null,
-            clientSecretCipher: null, tenantProviderId: null
+            "Global",
+            "from@taxvision.com",
+            null,
+            "smtp.taxvision.com",
+            587,
+            "user",
+            passwordCipher: null,
+            useSsl: true,
+            apiKeyCipher: null,
+            clientId: null,
+            clientSecretCipher: null,
+            tenantProviderId: null
         );
 
         Assert.True(result.IsSuccess);
@@ -68,8 +90,21 @@ public sealed class EmailConfigurationTests
         bool isDefault = false
     ) =>
         EmailProviderConfiguration.Create(
-            scope, tenantId, EmailProviderType.Smtp, "Config", "from@taxvision.com", "TaxVision",
-            host: "smtp.taxvision.com", port: 587, username: "user", passwordCipher: passwordCipher, useSsl: true,
-            apiKeyCipher: null, clientId: null, clientSecretCipher: null, tenantProviderId: null, isDefault: isDefault
+            scope,
+            tenantId,
+            EmailProviderType.Smtp,
+            "Config",
+            "from@taxvision.com",
+            "TaxVision",
+            host: "smtp.taxvision.com",
+            port: 587,
+            username: "user",
+            passwordCipher: passwordCipher,
+            useSsl: true,
+            apiKeyCipher: null,
+            clientId: null,
+            clientSecretCipher: null,
+            tenantProviderId: null,
+            isDefault: isDefault
         );
 }

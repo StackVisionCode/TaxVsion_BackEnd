@@ -19,7 +19,8 @@ public sealed class PlanEntitlementDefinitionConfiguration : IEntityTypeConfigur
 
         builder.Property(entitlement => entitlement.PlanVersionId).IsRequired();
 
-        builder.Property(entitlement => entitlement.Key)
+        builder
+            .Property(entitlement => entitlement.Key)
             .HasConversion(key => key.Value, value => EntitlementKey.Create(value).Value)
             .HasMaxLength(100)
             .IsRequired();

@@ -3,6 +3,8 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Minio;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Email.Accounts;
@@ -60,6 +62,20 @@ public static class DependencyInjection
         services.AddSingleton<ITemplateRenderer, FluidTemplateRenderer>();
         services.AddScoped<ITemplateStorageService, TemplateStorageService>();
         services.AddScoped<ILayoutStorageService, LayoutStorageService>();
+
+        // Fase D3 — cliente MinIO propio para adjuntos IMAP entrantes, credenciales
+        // scoped (IAM notification-source, ver deploy/docker/minio/policies/
+        // notification-source.json). Nunca las root de CloudStorage.
+        services.Configure<NotificationMinioOptions>(configuration.GetSection(NotificationMinioOptions.SectionName));
+        services.AddSingleton<IMinioClient>(sp =>
+        {
+            var opt = sp.GetRequiredService<IOptions<NotificationMinioOptions>>().Value;
+            var builder = new MinioClient().WithEndpoint(opt.Endpoint).WithCredentials(opt.AccessKey, opt.SecretKey);
+            if (opt.UseTls)
+                builder = builder.WithSSL();
+            return builder.Build();
+        });
+        services.AddScoped<IInboundAttachmentStorageWriter, InboundAttachmentStorageWriter>();
 
         // Módulo de envío (correos salientes, entrega asíncrona).
         services.AddScoped<IOutboundEmailRepository, OutboundEmailRepository>();

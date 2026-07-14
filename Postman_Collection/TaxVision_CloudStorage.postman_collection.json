@@ -58,9 +58,107 @@
 								"uploads"
 							]
 						},
-						"description": "Inicia una subida. Devuelve fileId + uploadUrl presignada y FormData. Requiere permiso storage.file.upload. ownerType: Tenant|Customer|User|Signature|Invoice|Communication. folderType: Documents|Receipts|Invoices|EmailIncoming|EmailOutgoing|Tasks|Signatures."
+						"description": "Inicia una subida. Devuelve fileId + uploadUrl presignada y FormData. Requiere permiso storage.file.upload. ownerType: Tenant|Customer|User|Signature|Invoice|Communication. folderType: Documents|Receipts|Invoices|EmailIncoming|EmailOutgoing|Tasks|Signatures|Avatars|Imports|Recordings|Backups|Other."
 					},
 					"response": []
+				},
+				{
+					"name": "InitiateMultipartUpload",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"pm.test(\"devuelve fileId y uploadId\", () => { pm.expect(r).to.have.property(\"fileId\"); pm.expect(r).to.have.property(\"uploadId\"); });",
+									"if (r.fileId) { pm.environment.set('fileId', r.fileId); }",
+									"if (r.uploadId) { pm.environment.set('uploadId', r.uploadId); console.log('uploadId guardado. Sube cada parte a su uploadUrl y luego CompleteMultipartUpload con los ETags.'); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"originalName\": \"declaracion-2025.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 52428800,\n  \"ownerType\": \"Customer\",\n  \"ownerId\": \"{{customerId}}\",\n  \"folderType\": \"Documents\",\n  \"taxYear\": 2025\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/uploads/initiate-multipart",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"uploads",
+								"initiate-multipart"
+							]
+						},
+						"description": "Fase U — arranca un upload multiparte: el browser sube cada parte directo a MinIO con las URLs devueltas (parts[].uploadUrl), sin pasar por CloudStorage. Requiere storage.file.upload."
+					},
+					"response": []
+				},
+				{
+					"name": "CompleteMultipartUpload",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"uploadId\": \"{{uploadId}}\",\n  \"parts\": [\n    { \"partNumber\": 1, \"eTag\": \"\\\"etag-parte-1\\\"\" },\n    { \"partNumber\": 2, \"eTag\": \"\\\"etag-parte-2\\\"\" }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/complete-multipart",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"complete-multipart"
+							]
+						},
+						"description": "Fase U — ensambla las partes ya subidas y sigue el mismo pipeline que CompleteUpload (verificar tamano, disparar escaneo). Requiere storage.file.upload."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
 				},
 				{
 					"name": "CompleteUpload",
@@ -262,6 +360,941 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "DownloadZip",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fileIds\": [\n    \"{{fileId}}\"\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/zip",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"zip"
+							]
+						},
+						"description": "Fase B2 — descarga varios archivos como un unico .zip, streameado directo al Response.Body (Content-Type application/zip). Requiere storage.file.download. Rate-limited por la politica \"zip-download\"."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"content-type application/zip\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/zip\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "MoveFileToFolder",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"folderId\": \"{{folderId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/folder",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"folder"
+							]
+						},
+						"description": "Fase C2 — mueve el archivo a otra carpeta navegable, o a la raiz con folderId=null. No toca MinIO. Requiere storage.folder.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SetLegalHold",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"DMCA takedown pendiente de revision legal.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/legal-hold",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"legal-hold"
+							]
+						},
+						"description": "Fase L1.2 — bloquea purge/hard-delete/soft-delete del archivo. Solo plataforma (storage.legal.manage)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "LiftLegalHold",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Contranotificacion aceptada, se levanta el hold.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/legal-hold",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"legal-hold"
+							]
+						},
+						"description": "Levanta un legal hold previamente establecido. Solo plataforma (storage.legal.manage)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Folders",
+			"item": [
+				{
+					"name": "GetFolderContents",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders?parentFolderId={{folderId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders"
+							],
+							"query": [
+								{
+									"key": "parentFolderId",
+									"value": "{{folderId}}",
+									"description": "Omitir (o dejar vacio) para listar la raiz"
+								}
+							]
+						},
+						"description": "Fase C2 — arbol navegable: subcarpetas + archivos directos de parentFolderId (null = raiz). Requiere storage.file.view."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"incluye subfolders y files\", () => { const r = pm.response.json(); pm.expect(r).to.have.property(\"subfolders\"); pm.expect(r).to.have.property(\"files\"); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "CreateFolder",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r.id) { pm.environment.set('folderId', r.id); console.log('folderId guardado: ' + r.id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"parentFolderId\": null,\n  \"name\": \"Declaraciones 2025\",\n  \"ownerType\": \"Customer\",\n  \"ownerId\": \"{{customerId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders"
+							]
+						},
+						"description": "Fase C2 — crea una carpeta navegable. ownerType: Tenant|Customer|User|Signature|Invoice|Communication. Requiere storage.folder.manage."
+					},
+					"response": []
+				},
+				{
+					"name": "RenameFolder",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newName\": \"Declaraciones 2025 - Revisadas\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders/{{folderId}}/rename",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders",
+								"{{folderId}}",
+								"rename"
+							]
+						},
+						"description": "Requiere storage.folder.manage."
+					},
+					"response": []
+				},
+				{
+					"name": "MoveFolder",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newParentFolderId\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders/{{folderId}}/move",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders",
+								"{{folderId}}",
+								"move"
+							]
+						},
+						"description": "Mueve la carpeta a otro padre (null = raiz). Requiere storage.folder.manage."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Sharing",
+			"item": [
+				{
+					"name": "CreateShareLinkForFile",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"pm.test(\"devuelve link y plainToken\", () => { pm.expect(r).to.have.property(\"link\"); pm.expect(r).to.have.property(\"plainToken\"); });",
+									"if (r.link && r.link.id) { pm.environment.set('shareLinkId', r.link.id); }",
+									"if (r.plainToken) { pm.environment.set('shareToken', r.plainToken); console.log('plainToken guardado (solo se emite una vez).'); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"visibility\": \"TenantOnly\",\n  \"permission\": \"View\",\n  \"password\": null,\n  \"expiresAtUtc\": null,\n  \"maxAccessCount\": null,\n  \"recipientUserIds\": [],\n  \"recipientCustomerIds\": [],\n  \"recipientEmails\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/shares",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"shares"
+							]
+						},
+						"description": "Fase C3 — crea un link de acceso sobre un archivo. visibility: Public|TenantOnly|SpecificUsers|TenantCustomers|ExternalRecipients (Public requiere que el tenant tenga AllowPublicShareLinks habilitado, ver StorageAdministration/SetPublicSharingPolicy). permission: View|Preview|Download|Upload|EditMetadata (Upload/EditMetadata solo asignables con storage.share.manage). Requiere storage.share.create."
+					},
+					"response": []
+				},
+				{
+					"name": "ListShareLinksForFile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/{{fileId}}/shares",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"{{fileId}}",
+								"shares"
+							]
+						},
+						"description": "Requiere storage.file.view."
+					},
+					"response": []
+				},
+				{
+					"name": "CreateShareLinkForFolder",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const r = pm.response.json();",
+									"if (r.link && r.link.id) { pm.environment.set('shareLinkId', r.link.id); }",
+									"if (r.plainToken) { pm.environment.set('shareToken', r.plainToken); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"visibility\": \"TenantOnly\",\n  \"permission\": \"View\",\n  \"password\": null,\n  \"expiresAtUtc\": null,\n  \"maxAccessCount\": null,\n  \"isRecursive\": true,\n  \"appliesToFutureItems\": true,\n  \"recipientUserIds\": [],\n  \"recipientCustomerIds\": [],\n  \"recipientEmails\": []\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders/{{folderId}}/shares",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders",
+								"{{folderId}}",
+								"shares"
+							]
+						},
+						"description": "Fase C4 — crea un link de acceso sobre una carpeta. isRecursive/appliesToFutureItems solo tienen efecto aca (ver FolderShareCoverage). Requiere storage.share.create."
+					},
+					"response": []
+				},
+				{
+					"name": "ListShareLinksForFolder",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders/{{folderId}}/shares",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders",
+								"{{folderId}}",
+								"shares"
+							]
+						},
+						"description": "Requiere storage.file.view."
+					},
+					"response": []
+				},
+				{
+					"name": "SharedWithMe",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/shares/shared-with-me?skip=0&take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"shares",
+								"shared-with-me"
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Links de tipo SpecificUsers/TenantCustomers cuyo destinatario es el actor autenticado. Requiere storage.file.view."
+					},
+					"response": []
+				},
+				{
+					"name": "RevokeShareLink",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/shares/{{shareLinkId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"shares",
+								"{{shareLinkId}}"
+							]
+						},
+						"description": "Requiere storage.share.revoke."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "UpdateShareExpiration",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newExpiresAtUtc\": \"2026-12-31T23:59:59.000Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/shares/{{shareLinkId}}/expiration",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"shares",
+								"{{shareLinkId}}",
+								"expiration"
+							]
+						},
+						"description": "Requiere storage.share.manage."
+					},
+					"response": []
+				},
+				{
+					"name": "ResolvePublicShare",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/cloud-storage/public/{{shareToken}}?password=&email=&fileId={{fileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"cloud-storage",
+								"public",
+								"{{shareToken}}"
+							],
+							"query": [
+								{
+									"key": "password",
+									"value": "",
+									"description": "Requerido si el link tiene password"
+								},
+								{
+									"key": "email",
+									"value": "",
+									"description": "Requerido si visibility=ExternalRecipients"
+								},
+								{
+									"key": "fileId",
+									"value": "{{fileId}}",
+									"description": "Obligatorio si el token es de un link de tipo Folder (ver FolderShareCoverage)"
+								}
+							]
+						},
+						"description": "Publico (AllowAnonymous), sin base storage/ (usa cloud-storage/). 302 a la URL presignada si es valido, 401 { requiresPassword: true } si falta password, 404 en cualquier otro caso (revocado/expirado/agotado/inexistente — anti-enumeracion). Rate-limited por la politica \"share-public\"."
+					},
+					"response": []
+				},
+				{
+					"name": "ResolvePrivateShare",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/cloud-storage/private/{{shareToken}}?fileId={{fileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"cloud-storage",
+								"private",
+								"{{shareToken}}"
+							],
+							"query": [
+								{
+									"key": "fileId",
+									"value": "{{fileId}}",
+									"description": "Obligatorio si el token es de un link de tipo Folder"
+								}
+							]
+						},
+						"description": "Requiere autenticacion; el token solo no alcanza. Fail-closed: el tenant del JWT debe coincidir con el tenant del link aunque el token sea valido. 302 a la URL presignada si es valido, 404 en cualquier otro caso."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Recycle Bin",
+			"item": [
+				{
+					"name": "GetRecycleBin",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/recycle-bin?skip=0&take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"recycle-bin"
+							],
+							"query": [
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Fase C1 — archivos SoftDeleted del tenant. Requiere storage.recyclebin.manage (no asignable a roles de portal del cliente)."
+					},
+					"response": []
+				},
+				{
+					"name": "RestoreFile",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/recycle-bin/restore/{{fileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"recycle-bin",
+								"restore",
+								"{{fileId}}"
+							]
+						},
+						"description": "Requiere storage.recyclebin.manage."
+					},
+					"response": []
+				},
+				{
+					"name": "EmptyRecycleBin",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/recycle-bin/empty",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"recycle-bin",
+								"empty"
+							]
+						},
+						"description": "Purga definitivamente todos los archivos SoftDeleted del tenant (respeta legal hold). Devuelve { purgedCount }. Requiere storage.recyclebin.manage."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Legal / DMCA",
+			"item": [
+				{
+					"name": "RegisterDmcaTakedown",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"claimantName\": \"Editorial Fiscal S.A.\",\n  \"claimantEmail\": \"legal@editorialfiscal.example.com\",\n  \"copyrightedWorkDescription\": \"Guia de declaracion 1040 (edicion 2025)\",\n  \"infringingMaterialDescription\": \"Copia identica subida como declaracion-2025.pdf\",\n  \"swornStatementAccepted\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/legal/dmca-notices",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"legal",
+								"dmca-notices"
+							]
+						},
+						"description": "Fase L1.3 — registra un takedown DMCA (17 U.S.C. Section 512): bloquea el archivo y lo pone bajo legal hold. Solo equipo legal de la plataforma (storage.legal.manage)."
+					},
+					"response": []
+				},
+				{
+					"name": "SubmitDmcaCounterNotice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"counterNoticeText\": \"El archivo es de nuestra autoria original, no infringe derechos de terceros.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/legal/dmca-notices/{{dmcaNoticeId}}/counter-notice",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"legal",
+								"dmca-notices",
+								"{{dmcaNoticeId}}",
+								"counter-notice"
+							]
+						},
+						"description": "El tenant/uploader disputa un takedown recibido sobre un archivo propio. Requiere storage.file.dmca_counternotice."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ReinstateDmcaFile",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resolutionNotes\": \"Contranotificacion valida, no hubo demanda dentro del plazo legal.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/legal/dmca-notices/{{dmcaNoticeId}}/reinstate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"legal",
+								"dmca-notices",
+								"{{dmcaNoticeId}}",
+								"reinstate"
+							]
+						},
+						"description": "Equipo legal de la plataforma cierra el expediente reinstalando el archivo. Requiere storage.legal.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
 				}
 			]
 		},
@@ -347,6 +1380,52 @@
 								"exec": [
 									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
 									"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "SetPublicSharingPolicy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"allow\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/settings/public-sharing",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"settings",
+								"public-sharing"
+							]
+						},
+						"description": "Fase C3 — habilita/deshabilita links Visibility.Public para el tenant. Deshabilitado por defecto (datos fiscales). Requiere storage.settings.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
 								]
 							}
 						}

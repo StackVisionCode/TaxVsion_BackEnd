@@ -57,6 +57,32 @@ public sealed class FileSecurityTests
     }
 
     [Fact]
+    public async Task Inspector_detects_tiff_by_the_little_endian_magic_number()
+    {
+        var inspector = new FileContentInspector();
+        byte[] header = [0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00];
+        await using var stream = new MemoryStream(header);
+
+        var result = await inspector.InspectAsync(stream, "scan.tiff", CancellationToken.None);
+
+        Assert.Equal("image/tiff", result.ContentType);
+        Assert.True(result.IsSafe);
+    }
+
+    [Fact]
+    public async Task Inspector_detects_mp4_by_the_ftyp_box()
+    {
+        var inspector = new FileContentInspector();
+        byte[] header = [0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6F, 0x6D];
+        await using var stream = new MemoryStream(header);
+
+        var result = await inspector.InspectAsync(stream, "recording.mp4", CancellationToken.None);
+
+        Assert.Equal("video/mp4", result.ContentType);
+        Assert.True(result.IsSafe);
+    }
+
+    [Fact]
     public async Task Inspector_rejects_archive_with_zip_bomb_compression_ratio()
     {
         await using var archiveStream = new MemoryStream();

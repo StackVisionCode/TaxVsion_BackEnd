@@ -13,7 +13,11 @@ namespace TaxVision.Subscription.Application.Seats.Commands.PurchaseSeats;
 public static class PurchaseSeatsHandler
 {
     private static readonly SubscriptionStatus[] PurchasableStatuses =
-        [SubscriptionStatus.Trialing, SubscriptionStatus.Active, SubscriptionStatus.GracePeriod];
+    [
+        SubscriptionStatus.Trialing,
+        SubscriptionStatus.Active,
+        SubscriptionStatus.GracePeriod,
+    ];
 
     public static async Task<Result<IReadOnlyList<Guid>>> Handle(
         PurchaseSeatsCommand command,
@@ -42,7 +46,10 @@ public static class PurchaseSeatsHandler
 
         logger.LogInformation(
             "Tenant {TenantId} purchased {Quantity} {SeatType} seat(s) (requested by {UserId}).",
-            command.TenantId, command.Quantity, command.SeatType, command.RequestedByUserId
+            command.TenantId,
+            command.Quantity,
+            command.SeatType,
+            command.RequestedByUserId
         );
 
         return Result.Success<IReadOnlyList<Guid>>(newSeats.ConvertAll(seat => seat.Id));
@@ -53,12 +60,14 @@ public static class PurchaseSeatsHandler
         ISubscriptionRepository subscriptions,
         ISubscriptionSeatRepository seats,
         ISubscriptionTenantSettingsRepository settingsRepository,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (command.Quantity is < 1 or > 500)
         {
             return Result.Failure<(TenantSubscription, SeatType)>(
-                new Error("Seat.InvalidQuantity", "Quantity must be between 1 and 500."));
+                new Error("Seat.InvalidQuantity", "Quantity must be between 1 and 500.")
+            );
         }
 
         if (!Enum.TryParse<SeatType>(command.SeatType, ignoreCase: true, out var seatType))
@@ -66,12 +75,18 @@ public static class PurchaseSeatsHandler
 
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
-            return Result.Failure<(TenantSubscription, SeatType)>(new Error("Subscription.NotFound", "Subscription does not exist."));
+            return Result.Failure<(TenantSubscription, SeatType)>(
+                new Error("Subscription.NotFound", "Subscription does not exist.")
+            );
 
         if (Array.IndexOf(PurchasableStatuses, subscription.Status) < 0)
         {
             return Result.Failure<(TenantSubscription, SeatType)>(
-                new Error("Subscription.CannotPurchaseSeats", $"Cannot purchase seats while subscription is {subscription.Status}."));
+                new Error(
+                    "Subscription.CannotPurchaseSeats",
+                    $"Cannot purchase seats while subscription is {subscription.Status}."
+                )
+            );
         }
 
         var settings = await settingsRepository.GetByTenantIdAsync(command.TenantId, ct);
@@ -81,14 +96,22 @@ public static class PurchaseSeatsHandler
             if (currentSeatCount + command.Quantity > maxSeats)
             {
                 return Result.Failure<(TenantSubscription, SeatType)>(
-                    new Error("Seat.MaxSeatsExceeded", $"Purchasing {command.Quantity} seat(s) would exceed the tenant's limit of {maxSeats}."));
+                    new Error(
+                        "Seat.MaxSeatsExceeded",
+                        $"Purchasing {command.Quantity} seat(s) would exceed the tenant's limit of {maxSeats}."
+                    )
+                );
             }
         }
 
         return Result.Success((subscription, seatType));
     }
 
-    private static List<SubscriptionSeat> BuildSeats(PurchaseSeatsCommand command, TenantSubscription subscription, SeatType seatType)
+    private static List<SubscriptionSeat> BuildSeats(
+        PurchaseSeatsCommand command,
+        TenantSubscription subscription,
+        SeatType seatType
+    )
     {
         var nowUtc = DateTime.UtcNow;
         var newSeats = new List<SubscriptionSeat>(command.Quantity);
@@ -108,7 +131,8 @@ public static class PurchaseSeatsHandler
                     subscription.BillingCycle,
                     command.AutoRenew,
                     command.RequestedByUserId,
-                    nowUtc)
+                    nowUtc
+                )
                 .Value;
             newSeats.Add(seat);
         }
@@ -116,7 +140,11 @@ public static class PurchaseSeatsHandler
         return newSeats;
     }
 
-    private static async Task<int> CountNonTerminalSeatsAsync(ISubscriptionSeatRepository seats, Guid tenantId, CancellationToken ct)
+    private static async Task<int> CountNonTerminalSeatsAsync(
+        ISubscriptionSeatRepository seats,
+        Guid tenantId,
+        CancellationToken ct
+    )
     {
         var tenantSeats = await seats.GetByTenantIdAsync(tenantId, ct);
 

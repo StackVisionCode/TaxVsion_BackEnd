@@ -28,6 +28,7 @@ public static class EmailTemplates
     public const string EmailChangeKey = "auth.email_change";
     public const string SecurityAlertKey = "auth.security_alert";
     public const string WelcomeKey = "auth.welcome";
+    public const string TenantRecoveryKey = "auth.tenant_recovery";
 
     public static RenderedEmail Invitation(
         PortalOptions portal,
@@ -153,6 +154,37 @@ public static class EmailTemplates
             <p>Alerta de seguridad: {description}{ip}</p>
             <p style="color:#718096;">Si reconoces esta actividad puedes ignorar este correo.
                Si no fuiste tú, cambia tu contraseña de inmediato y contacta al administrador.</p>
+            """
+        );
+        return new RenderedEmail(subject, html, text);
+    }
+
+    /// <summary>"Encuentra tu oficina" (Fase A4) — un enlace por subdominio donde el email tiene cuenta activa.</summary>
+    public static RenderedEmail TenantRecovery(
+        PortalOptions portal,
+        IReadOnlyList<(string TenantName, string Host)> offices
+    )
+    {
+        var subject = $"Tus oficinas en {portal.ProductName}";
+        var links = offices.Select(office => (Name: Encode(office.TenantName), Url: $"https://{office.Host}")).ToList();
+
+        var text =
+            "Encontramos las siguientes oficinas asociadas a tu email:\n"
+            + string.Join('\n', links.Select(link => $"- {link.Name}: {link.Url}"))
+            + "\n\nSi no reconoces esta solicitud, ignora este correo.";
+
+        var listHtml = string.Join(
+            "",
+            links.Select(link =>
+                $"""<p style="margin:8px 0;"><a href="{link.Url}">{link.Name}</a> — <span style="color:#718096;">{link.Url}</span></p>"""
+            )
+        );
+        var html = Layout(
+            subject,
+            $"""
+            <p>Encontramos las siguientes oficinas asociadas a tu email:</p>
+            {listHtml}
+            <p style="color:#718096;">Si no reconoces esta solicitud, ignora este correo.</p>
             """
         );
         return new RenderedEmail(subject, html, text);

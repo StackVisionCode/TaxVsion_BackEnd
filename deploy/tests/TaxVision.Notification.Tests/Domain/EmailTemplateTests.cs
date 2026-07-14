@@ -8,7 +8,16 @@ public sealed class EmailTemplateTests
     [Fact]
     public void System_template_must_not_carry_tenant()
     {
-        var result = EmailTemplate.Create(EmailScope.System, Guid.NewGuid(), "welcome", "Subject", null, null, "[]", null);
+        var result = EmailTemplate.Create(
+            EmailScope.System,
+            Guid.NewGuid(),
+            "welcome",
+            "Subject",
+            null,
+            null,
+            "[]",
+            null
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("EmailTemplate.Scope", result.Error.Code);
@@ -59,5 +68,16 @@ public sealed class EmailTemplateTests
     }
 
     private static EmailTemplate CreateTemplate() =>
-        EmailTemplate.Create(EmailScope.Tenant, Guid.NewGuid(), "welcome", "Hi {{ customer_name }}", null, null, "[\"customer_name\"]", null).Value;
+        EmailTemplate
+            .Create(
+                EmailScope.Tenant,
+                Guid.NewGuid(),
+                "welcome",
+                "Hi {{ customer_name }}",
+                null,
+                null,
+                "[\"customer_name\"]",
+                null
+            )
+            .Value;
 }

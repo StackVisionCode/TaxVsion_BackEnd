@@ -49,7 +49,8 @@ public sealed class TenantAddOn : TenantEntity
         BillingCycle billingCycle,
         bool autoRenew,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<TenantAddOn>(new Error("AddOn.InvalidTenant", "TenantId is required."));
@@ -58,7 +59,9 @@ public sealed class TenantAddOn : TenantEntity
             return Result.Failure<TenantAddOn>(new Error("AddOn.InvalidQuantity", "Quantity must be at least 1."));
 
         if (quantity > 1 && !definition.AllowMultipleInstances)
-            return Result.Failure<TenantAddOn>(new Error("AddOn.MultipleInstancesNotAllowed", "This add-on does not allow more than one instance."));
+            return Result.Failure<TenantAddOn>(
+                new Error("AddOn.MultipleInstancesNotAllowed", "This add-on does not allow more than one instance.")
+            );
 
         var periodEndUtc = billingCycle.CalculateNext(nowUtc);
         var addOn = new TenantAddOn
@@ -132,7 +135,12 @@ public sealed class TenantAddOn : TenantEntity
         return Result.Success();
     }
 
-    public Result ReactivateAfterAdminReview(DateTime periodStartUtc, DateTime periodEndUtc, Guid actorUserId, DateTime nowUtc)
+    public Result ReactivateAfterAdminReview(
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (Status != AddOnStatus.Suspended)
             return Result.Failure(new Error("AddOn.InvalidTransition", $"Cannot reactivate from {Status}."));
@@ -198,7 +206,14 @@ public sealed class TenantAddOn : TenantEntity
             return Result.Success();
 
         var newPeriodEndUtc = BillingCycle.CalculateNext(CurrentPeriodEndUtc);
-        var renewalResult = TenantAddOnRenewal.Schedule(Id, TenantId, idempotencyKey, CurrentPeriodEndUtc, newPeriodEndUtc, nowUtc);
+        var renewalResult = TenantAddOnRenewal.Schedule(
+            Id,
+            TenantId,
+            idempotencyKey,
+            CurrentPeriodEndUtc,
+            newPeriodEndUtc,
+            nowUtc
+        );
         if (renewalResult.IsFailure)
             return Result.Failure(renewalResult.Error);
 
@@ -232,37 +247,63 @@ public sealed class TenantAddOn : TenantEntity
     /// <summary>Registra el fallo de una renovación de add-on. Si <paramref name="willRetry"/>
     /// es false agota los reintentos y transiciona el add-on a PastDue.</summary>
     public Result FailRenewal(
-        Guid renewalId, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, Guid actorUserId, DateTime nowUtc)
+        Guid renewalId,
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         var renewal = FindRenewalById(renewalId);
         if (renewal is null)
             return Result.Failure(new Error("AddOn.RenewalNotFound", "Renewal does not exist."));
 
-        var markResult = MarkRenewalAttemptFailed(renewal, failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);
+        var markResult = MarkRenewalAttemptFailed(
+            renewal,
+            failureCode,
+            failureReason,
+            willRetry,
+            nextRetryAtUtc,
+            nowUtc
+        );
         if (markResult.IsFailure)
             return markResult;
 
         return willRetry ? Result.Success() : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
     }
 
-    private static Result CompleteRenewalAttempt(TenantAddOnRenewal renewal, string? externalPaymentReference, DateTime nowUtc)
+    private static Result CompleteRenewalAttempt(
+        TenantAddOnRenewal renewal,
+        string? externalPaymentReference,
+        DateTime nowUtc
+    )
     {
         if (renewal.Status != RenewalStatus.Processing)
         {
             var processing = renewal.MarkProcessing(nowUtc);
-            if (processing.IsFailure) return processing;
+            if (processing.IsFailure)
+                return processing;
         }
 
         return renewal.MarkSucceeded(externalPaymentReference, nowUtc);
     }
 
     private static Result MarkRenewalAttemptFailed(
-        TenantAddOnRenewal renewal, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, DateTime nowUtc)
+        TenantAddOnRenewal renewal,
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        DateTime nowUtc
+    )
     {
         if (renewal.Status != RenewalStatus.Processing)
         {
             var processing = renewal.MarkProcessing(nowUtc);
-            if (processing.IsFailure) return processing;
+            if (processing.IsFailure)
+                return processing;
         }
 
         return renewal.MarkFailed(failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);
