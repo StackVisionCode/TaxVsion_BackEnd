@@ -39,6 +39,34 @@ public sealed record FileResponse(
 
 public sealed record DownloadUrlResponse(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 
+/// <summary>Fase B2 — body de POST storage/files/zip.</summary>
+public sealed record ZipDownloadRequest(IReadOnlyList<Guid> FileIds);
+
+/// <summary>Fase U — body de POST storage/files/uploads/initiate-multipart.</summary>
+public sealed record InitiateMultipartUploadRequest(
+    string OriginalName,
+    string ContentType,
+    long SizeBytes,
+    OwnerType OwnerType,
+    Guid? OwnerId,
+    FolderType FolderType,
+    int? TaxYear
+);
+
+public sealed record MultipartPartUploadUrlResponse(int PartNumber, Uri UploadUrl);
+
+public sealed record InitiatedMultipartUploadResponse(
+    Guid FileId,
+    string UploadId,
+    IReadOnlyList<MultipartPartUploadUrlResponse> Parts,
+    DateTime ExpiresAtUtc
+);
+
+/// <summary>Fase U — body de POST storage/files/{fileId}/complete-multipart.</summary>
+public sealed record CompleteMultipartUploadRequest(string UploadId, IReadOnlyList<MultipartPartCompletion> Parts);
+
+public sealed record MultipartPartCompletion(int PartNumber, string ETag);
+
 internal static class FileResponseMapper
 {
     public static FileResponse Map(FileObject file) =>
@@ -87,8 +115,11 @@ internal static class FileTypeCompatibility
             ".json" => detectedContentType == "application/json",
             // El HTML es texto plano sin magic bytes fuertes: los detectores suelen devolver text/plain.
             ".html" => detectedContentType is "text/html" or "text/plain",
+            // Scans profesionales (Fase L1.1 — whitelist granular por FolderType).
+            ".tif" or ".tiff" => detectedContentType == "image/tiff",
             // Grabaciones de meetings/calls (MediaRecorder del navegador via meeting.recording.attach).
             ".webm" => detectedContentType == "video/webm",
+            ".mp4" => detectedContentType == "video/mp4",
             _ => false,
         };
     }

@@ -51,13 +51,17 @@ public sealed class TenantSubscription : TenantEntity
         SubscriptionPlanVersion planVersion,
         int trialDays,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         var tenantGuard = EnsureTenant(tenantId);
-        if (tenantGuard.IsFailure) return Result.Failure<TenantSubscription>(tenantGuard.Error);
+        if (tenantGuard.IsFailure)
+            return Result.Failure<TenantSubscription>(tenantGuard.Error);
 
         if (trialDays is < 1 or > 90)
-            return Result.Failure<TenantSubscription>(new Error("Subscription.InvalidTrialDays", "Trial days must be between 1 and 90."));
+            return Result.Failure<TenantSubscription>(
+                new Error("Subscription.InvalidTrialDays", "Trial days must be between 1 and 90.")
+            );
 
         var subscription = new TenantSubscription
         {
@@ -87,15 +91,18 @@ public sealed class TenantSubscription : TenantEntity
         DateTime periodStartUtc,
         DateTime periodEndUtc,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         var tenantGuard = EnsureTenant(tenantId);
-        if (tenantGuard.IsFailure) return Result.Failure<TenantSubscription>(tenantGuard.Error);
+        if (tenantGuard.IsFailure)
+            return Result.Failure<TenantSubscription>(tenantGuard.Error);
 
         if (periodEndUtc <= periodStartUtc)
         {
             return Result.Failure<TenantSubscription>(
-                new Error("Subscription.InvalidPeriod", "Period end must be after period start."));
+                new Error("Subscription.InvalidPeriod", "Period end must be after period start.")
+            );
         }
 
         var subscription = new TenantSubscription
@@ -117,7 +124,12 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success(subscription);
     }
 
-    public Result ConvertTrialToActive(DateTime periodStartUtc, DateTime periodEndUtc, Guid actorUserId, DateTime nowUtc)
+    public Result ConvertTrialToActive(
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (Status != SubscriptionStatus.Trialing)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot convert trial from {Status}."));
@@ -145,7 +157,12 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
-    public Result ChangePlan(SubscriptionPlan newPlan, SubscriptionPlanVersion newPlanVersion, Guid actorUserId, DateTime nowUtc)
+    public Result ChangePlan(
+        SubscriptionPlan newPlan,
+        SubscriptionPlanVersion newPlanVersion,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot change plan from {Status}."));
@@ -169,7 +186,12 @@ public sealed class TenantSubscription : TenantEntity
     /// pendiente anterior (la más reciente gana).
     /// </summary>
     public Result RequestPlanChange(
-        SubscriptionPlan newPlan, SubscriptionPlanVersion newPlanVersion, PlanChangeEffectiveMode mode, Guid actorUserId, DateTime nowUtc)
+        SubscriptionPlan newPlan,
+        SubscriptionPlanVersion newPlanVersion,
+        PlanChangeEffectiveMode mode,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot change plan from {Status}."));
@@ -183,8 +205,19 @@ public sealed class TenantSubscription : TenantEntity
 
         var effectiveAtUtc = mode == PlanChangeEffectiveMode.Immediate ? nowUtc : CurrentPeriodEndUtc;
         var requestResult = PlanChangeRequest.Create(
-            Id, TenantId, PlanId, PlanVersionId, PlanCode, newPlan.Id, newPlanVersion.Id, newPlan.Code.Value,
-            mode, actorUserId, effectiveAtUtc, nowUtc);
+            Id,
+            TenantId,
+            PlanId,
+            PlanVersionId,
+            PlanCode,
+            newPlan.Id,
+            newPlanVersion.Id,
+            newPlan.Code.Value,
+            mode,
+            actorUserId,
+            effectiveAtUtc,
+            nowUtc
+        );
         if (requestResult.IsFailure)
             return Result.Failure(requestResult.Error);
 
@@ -203,14 +236,22 @@ public sealed class TenantSubscription : TenantEntity
 
     /// <summary>Aplica una solicitud de cambio de plan diferida cuyo período ya terminó.
     /// La llama el job de renovación, no un caller directo — nunca se dispara sola.</summary>
-    public Result ApplyPendingPlanChange(Guid requestId, SubscriptionPlan toPlan, SubscriptionPlanVersion toPlanVersion, Guid actorUserId, DateTime nowUtc)
+    public Result ApplyPendingPlanChange(
+        Guid requestId,
+        SubscriptionPlan toPlan,
+        SubscriptionPlanVersion toPlanVersion,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         var request = FindPlanChangeRequestById(requestId);
         if (request is null)
             return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
 
         if (request.Status != PlanChangeRequestStatus.Pending)
-            return Result.Failure(new Error("PlanChangeRequest.InvalidTransition", $"Cannot apply from {request.Status}."));
+            return Result.Failure(
+                new Error("PlanChangeRequest.InvalidTransition", $"Cannot apply from {request.Status}.")
+            );
 
         var switchResult = ChangePlan(toPlan, toPlanVersion, actorUserId, nowUtc);
         if (switchResult.IsFailure)
@@ -288,10 +329,14 @@ public sealed class TenantSubscription : TenantEntity
     public Result EnterGracePeriodAfterRetriesExhausted(DateTime graceEndsAtUtc, Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SubscriptionStatus.PastDue)
-            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot enter grace period from {Status}."));
+            return Result.Failure(
+                new Error("Subscription.InvalidTransition", $"Cannot enter grace period from {Status}.")
+            );
 
         if (graceEndsAtUtc <= nowUtc)
-            return Result.Failure(new Error("Subscription.InvalidGracePeriod", "GraceEndsAtUtc must be in the future."));
+            return Result.Failure(
+                new Error("Subscription.InvalidGracePeriod", "GraceEndsAtUtc must be in the future.")
+            );
 
         Status = SubscriptionStatus.GracePeriod;
         GracePeriodEndsAtUtc = graceEndsAtUtc;
@@ -324,7 +369,15 @@ public sealed class TenantSubscription : TenantEntity
 
     public Result SuspendForPolicyViolation(string reason, Guid actorUserId, DateTime nowUtc)
     {
-        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active, SubscriptionStatus.PastDue, SubscriptionStatus.GracePeriod))
+        if (
+            !IsOneOf(
+                Status,
+                SubscriptionStatus.Trialing,
+                SubscriptionStatus.Active,
+                SubscriptionStatus.PastDue,
+                SubscriptionStatus.GracePeriod
+            )
+        )
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot suspend from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -337,7 +390,12 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
-    public Result ReactivateAfterAdminReview(DateTime periodStartUtc, DateTime periodEndUtc, Guid actorUserId, DateTime nowUtc)
+    public Result ReactivateAfterAdminReview(
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (Status != SubscriptionStatus.Suspended)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot reactivate from {Status}."));
@@ -404,7 +462,14 @@ public sealed class TenantSubscription : TenantEntity
             return Result.Success();
 
         var newPeriodEndUtc = BillingCycle.CalculateNext(CurrentPeriodEndUtc);
-        var renewalResult = TenantSubscriptionRenewal.Schedule(Id, TenantId, idempotencyKey, CurrentPeriodEndUtc, newPeriodEndUtc, nowUtc);
+        var renewalResult = TenantSubscriptionRenewal.Schedule(
+            Id,
+            TenantId,
+            idempotencyKey,
+            CurrentPeriodEndUtc,
+            newPeriodEndUtc,
+            nowUtc
+        );
         if (renewalResult.IsFailure)
             return Result.Failure(renewalResult.Error);
 
@@ -438,37 +503,63 @@ public sealed class TenantSubscription : TenantEntity
     /// <summary>Registra el fallo de una renovación. Si <paramref name="willRetry"/> es
     /// false agota los reintentos y transiciona la suscripción a PastDue.</summary>
     public Result FailRenewal(
-        Guid renewalId, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, Guid actorUserId, DateTime nowUtc)
+        Guid renewalId,
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         var renewal = FindRenewalById(renewalId);
         if (renewal is null)
             return Result.Failure(new Error("Subscription.RenewalNotFound", "Renewal does not exist."));
 
-        var markResult = MarkRenewalAttemptFailed(renewal, failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);
+        var markResult = MarkRenewalAttemptFailed(
+            renewal,
+            failureCode,
+            failureReason,
+            willRetry,
+            nextRetryAtUtc,
+            nowUtc
+        );
         if (markResult.IsFailure)
             return markResult;
 
         return willRetry ? Result.Success() : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
     }
 
-    private static Result CompleteRenewalAttempt(TenantSubscriptionRenewal renewal, string? externalPaymentReference, DateTime nowUtc)
+    private static Result CompleteRenewalAttempt(
+        TenantSubscriptionRenewal renewal,
+        string? externalPaymentReference,
+        DateTime nowUtc
+    )
     {
         if (renewal.Status != RenewalStatus.Processing)
         {
             var processing = renewal.MarkProcessing(nowUtc);
-            if (processing.IsFailure) return processing;
+            if (processing.IsFailure)
+                return processing;
         }
 
         return renewal.MarkSucceeded(externalPaymentReference, nowUtc);
     }
 
     private static Result MarkRenewalAttemptFailed(
-        TenantSubscriptionRenewal renewal, string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, DateTime nowUtc)
+        TenantSubscriptionRenewal renewal,
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        DateTime nowUtc
+    )
     {
         if (renewal.Status != RenewalStatus.Processing)
         {
             var processing = renewal.MarkProcessing(nowUtc);
-            if (processing.IsFailure) return processing;
+            if (processing.IsFailure)
+                return processing;
         }
 
         return renewal.MarkFailed(failureCode, failureReason, willRetry, nextRetryAtUtc, nowUtc);

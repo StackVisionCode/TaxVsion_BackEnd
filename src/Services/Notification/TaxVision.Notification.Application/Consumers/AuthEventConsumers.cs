@@ -74,6 +74,39 @@ public static class PasswordResetRequestedConsumer
 }
 
 // ---------------------------------------------------------------------------
+// "Encuentra tu oficina" (Fase A4) — recuperación de subdominio por email
+// ---------------------------------------------------------------------------
+
+public static class TenantRecoveryRequestedConsumer
+{
+    public static async Task Handle(
+        TenantRecoveryRequestedIntegrationEvent evt,
+        NotificationDispatcher dispatcher,
+        IOptions<PortalOptions> portal,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
+        {
+            var email = EmailTemplates.TenantRecovery(
+                portal.Value,
+                evt.Matches.Select(match => (match.TenantName, match.Host)).ToList()
+            );
+            await dispatcher.SendEmailAsync(
+                evt.TenantId,
+                evt.Email,
+                email,
+                EmailTemplates.TenantRecoveryKey,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // OTP (login MFA, verificación de teléfono) por email o SMS
 // ---------------------------------------------------------------------------
 

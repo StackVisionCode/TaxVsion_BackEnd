@@ -30,17 +30,23 @@ public static class RenewTenantSubscriptionHandler
             return completeResult;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
-            "Subscription manually renewed for tenant {TenantId} (requested by {UserId}).", command.TenantId, command.RequestedByUserId);
+            "Subscription manually renewed for tenant {TenantId} (requested by {UserId}).",
+            command.TenantId,
+            command.RequestedByUserId
+        );
         return Result.Success();
     }
 
     private static Result BeginAndCompleteRenewal(TenantSubscription subscription, Guid actorUserId)
     {
         var nowUtc = DateTime.UtcNow;
-        var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewal(subscription.Id, subscription.CurrentPeriodEndUtc);
+        var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewal(
+            subscription.Id,
+            subscription.CurrentPeriodEndUtc
+        );
 
         var beginResult = subscription.BeginRenewal(idempotencyKey, actorUserId, nowUtc);
         if (beginResult.IsFailure)
@@ -50,7 +56,12 @@ public static class RenewTenantSubscriptionHandler
         if (renewal is null)
             return Result.Failure(new Error("Subscription.RenewalNotFound", "Renewal was not scheduled."));
 
-        return subscription.CompleteRenewal(renewal.Id, externalPaymentReference: "manual-admin-renewal", actorUserId, nowUtc);
+        return subscription.CompleteRenewal(
+            renewal.Id,
+            externalPaymentReference: "manual-admin-renewal",
+            actorUserId,
+            nowUtc
+        );
     }
 
     private static TenantSubscriptionRenewal? FindRenewalByKey(TenantSubscription subscription, string idempotencyKey)

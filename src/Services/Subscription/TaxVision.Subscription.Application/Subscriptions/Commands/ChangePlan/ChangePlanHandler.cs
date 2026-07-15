@@ -57,13 +57,21 @@ public static class ChangePlanHandler
             await unitOfWork.SaveChangesAsync(ct);
 
             await AuditEntryFactory.AppendAsync(
-                audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanChanged",
-                command.RequestedByUserId, correlation.CorrelationId,
+                audit,
+                command.TenantId,
+                "TenantSubscription",
+                subscription.Id,
+                "TenantSubscription.PlanChanged",
+                command.RequestedByUserId,
+                correlation.CorrelationId,
                 before: new { PlanCode = previousPlanCode },
                 after: new { PlanCode = subscription.PlanCode },
-                reason: null, nowUtc, ct);
+                reason: null,
+                nowUtc,
+                ct
+            );
 
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
             logger.LogInformation(
                 "Tenant {TenantId} changed plan to {PlanCode} immediately (requested by {UserId}).",
@@ -77,11 +85,24 @@ public static class ChangePlanHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanChangeRequested",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.PlanChangeRequested",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { PlanCode = previousPlanCode },
-            after: new { PlanCode = previousPlanCode, PendingPlanCode = plan.Code.Value, EffectiveAtUtc = subscription.CurrentPeriodEndUtc },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                PlanCode = previousPlanCode,
+                PendingPlanCode = plan.Code.Value,
+                EffectiveAtUtc = subscription.CurrentPeriodEndUtc,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         logger.LogInformation(
             "Tenant {TenantId} queued plan change to {PlanCode}, effective at end of period (requested by {UserId}).",

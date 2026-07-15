@@ -1,10 +1,10 @@
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Subscriptions;
-using BuildingBlocks.Results;
 using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -15,8 +15,10 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 /// se cobra con normalidad en la próxima renovación.
 /// </summary>
 public sealed class PendingPlanChangeApplicationJob(
-    IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<PendingPlanChangeApplicationJob> logger)
-    : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<PendingPlanChangeApplicationJob> logger
+) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
 
@@ -36,8 +38,9 @@ public sealed class PendingPlanChangeApplicationJob(
         var appliedCount = 0;
         foreach (var subscription in due)
         {
-            var request = subscription.PlanChangeRequests.FirstOrDefault(
-                r => r.Status == PlanChangeRequestStatus.Pending && r.EffectiveAtUtc <= nowUtc);
+            var request = subscription.PlanChangeRequests.FirstOrDefault(r =>
+                r.Status == PlanChangeRequestStatus.Pending && r.EffectiveAtUtc <= nowUtc
+            );
             if (request is null)
                 continue;
 
@@ -47,26 +50,40 @@ public sealed class PendingPlanChangeApplicationJob(
             {
                 logger.LogWarning(
                     "Could not apply pending plan change {RequestId} for subscription {SubscriptionId}: target plan/version no longer exists.",
-                    request.Id, subscription.Id);
+                    request.Id,
+                    subscription.Id
+                );
                 continue;
             }
 
-            var result = subscription.ApplyPendingPlanChange(request.Id, toPlan, toPlanVersion, actorUserId: Guid.Empty, nowUtc);
+            var result = subscription.ApplyPendingPlanChange(
+                request.Id,
+                toPlan,
+                toPlanVersion,
+                actorUserId: Guid.Empty,
+                nowUtc
+            );
             if (result.IsFailure)
             {
                 logger.LogWarning(
                     "Could not apply pending plan change {RequestId} for subscription {SubscriptionId}: {Code}.",
-                    request.Id, subscription.Id, result.Error.Code);
+                    request.Id,
+                    subscription.Id,
+                    result.Error.Code
+                );
                 continue;
             }
 
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(subscription.TenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
             appliedCount++;
         }
 
         if (appliedCount > 0)
-            logger.LogInformation("PendingPlanChangeApplicationJob applied {Count} deferred plan change(s).", appliedCount);
+            logger.LogInformation(
+                "PendingPlanChangeApplicationJob applied {Count} deferred plan change(s).",
+                appliedCount
+            );
     }
 }

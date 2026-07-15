@@ -21,7 +21,31 @@ public static class ErrorHttpMapping
             or "EmailLayout.NotFound"
             or "Campaign.NotFound"
             or "EmailAccount.NotFound"
-            or "EmailMessage.NotFound" => StatusCodes.Status404NotFound,
+            or "EmailMessage.NotFound"
+            or "TenantDomain.NotFound"
+            or "ShareLink.NotFound" => StatusCodes.Status404NotFound,
+            "TenantDomain.SlugLength"
+            or "TenantDomain.SlugInvalid"
+            or "TenantDomain.SlugReserved"
+            or "TenantDomain.Tenant"
+            or "TenantDomain.BaseDomain"
+            or "TenantDomain.HostInvalid"
+            or "TenantDomain.NotCustomHostname"
+            or "TenantDomain.NotSubdomain"
+            or "TenantDomain.SlugUnchanged"
+            or "TenantDomain.InvalidTransition"
+            or "TenantDomain.ReservationEmail"
+            or "TenantDomain.ReservationTtl"
+            or "Auth.TenantIdRequired" => StatusCodes.Status400BadRequest,
+            "TenantDomain.ReservationConsumed"
+            or "TenantDomain.ReservationExpired"
+            or "TenantDomain.HostTaken"
+            or "TenantDomain.SlugTaken"
+            or "TenantDomain.SlugReservedTemporarily"
+            or "TenantDomain.NotReadyForActivation" => StatusCodes.Status409Conflict,
+            "TenantDomain.Disabled"
+            or "TenantDomain.PrimaryCannotBeDisabled" => StatusCodes.Status403Forbidden,
+            "TenantDomain.CloudflareHttp" or "TenantDomain.CloudflareRejected" => StatusCodes.Status502BadGateway,
             "Auth.Invalid"
             or "Auth.InvalidInvitation"
             or "Auth.InvalidRefreshToken"
@@ -45,7 +69,12 @@ public static class ErrorHttpMapping
             or "EmailTemplate.Forbidden"
             or "EmailLayout.Forbidden"
             or "Campaign.Forbidden"
-            or "EmailAccount.Forbidden" => StatusCodes.Status403Forbidden,
+            or "EmailAccount.Forbidden"
+            or "Role.PermissionNotAssignable"
+            or "Role.NotAssignableToCustomerPortal"
+            or "ShareLink.Forbidden"
+            or "ShareLink.PublicSharingDisabled"
+            or "ShareLink.ElevatedPermissionRequiresManage" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -57,8 +86,11 @@ public static class ErrorHttpMapping
             or "EmailConfiguration.Conflict"
             or "EmailTemplate.KeyConflict"
             or "EmailLayout.NameConflict"
-            or "EmailAccount.Conflict" => StatusCodes.Status409Conflict,
+            or "EmailAccount.Conflict"
+            or "ShareLink.AlreadyRevoked" => StatusCodes.Status409Conflict,
             "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit" => StatusCodes.Status429TooManyRequests,
+            "File.TooManyItems" or "File.ZipTooLarge" => StatusCodes.Status413PayloadTooLarge,
+            "File.MultipartCompleteFailed" => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest,
         };
 }

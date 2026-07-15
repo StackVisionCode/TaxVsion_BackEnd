@@ -178,6 +178,40 @@
           }
         },
         {
+          "name": "[Stub 501] Buscar mensajes en una conversación",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/communication/conversations/{{conversation_id}}/messages/search?q=texto",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "communication",
+                "conversations",
+                "{{conversation_id}}",
+                "messages",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "texto"
+                }
+              ]
+            },
+            "description": "Ruta reservada pero NO implementada todavia: siempre devuelve 501 { code: 'Chat.Search.NotImplemented' }. El full-text search de mensajes llega en una fase posterior."
+          },
+          "response": [
+            {
+              "name": "501 — Not implemented",
+              "status": "Not Implemented",
+              "code": 501,
+              "body": "{\n  \"code\": \"Chat.Search.NotImplemented\",\n  \"message\": \"Full-text message search arrives in a later phase.\"\n}"
+            }
+          ]
+        },
+        {
           "name": "Marcar mensajes como leídos",
           "request": {
             "method": "POST",
@@ -443,7 +477,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"allowGuestLinks\": true\n}"
+              "raw": "{\n  \"title\": \"Revisión documentos 1040\",\n  \"description\": \"Revisión de documentos para la declaración 1040\",\n  \"maxParticipants\": 10,\n  \"scheduledForUtc\": \"2026-07-15T18:00:00.000Z\",\n  \"passcode\": \"abc123\",\n  \"requireWaitingRoom\": false,\n  \"recordingRequested\": false\n}"
             },
             "url": {
               "raw": "{{base_url}}/communication/meetings",
@@ -462,7 +496,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/communication/meetings?page=1&limit=20",
+              "raw": "{{base_url}}/communication/meetings?page=1&size=20",
               "host": [
                 "{{base_url}}"
               ],
@@ -476,7 +510,7 @@
                   "value": "1"
                 },
                 {
-                  "key": "limit",
+                  "key": "size",
                   "value": "20"
                 }
               ]
@@ -699,7 +733,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/communication/notifications?page=1&limit=20",
+              "raw": "{{base_url}}/communication/notifications?page=1&size=20",
               "host": [
                 "{{base_url}}"
               ],
@@ -713,7 +747,7 @@
                   "value": "1"
                 },
                 {
-                  "key": "limit",
+                  "key": "size",
                   "value": "20"
                 }
               ]
@@ -741,7 +775,7 @@
               "name": "200 — Unread count",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"unreadCount\": 5\n}"
+              "body": "{\n  \"count\": 5\n}"
             }
           ]
         },
@@ -759,23 +793,6 @@
                 "notifications",
                 "{{notification_id}}",
                 "read"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Marcar todas como leídas",
-          "request": {
-            "method": "POST",
-            "url": {
-              "raw": "{{base_url}}/communication/notifications/read-all",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "communication",
-                "notifications",
-                "read-all"
               ]
             }
           }
@@ -1046,14 +1063,14 @@
               "name": "200 — Settings",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"tenantId\": \"{{tenant_id}}\",\n  \"maxMeetingParticipants\": 25,\n  \"maxGroupConversationMembers\": 50,\n  \"recordingEnabled\": true,\n  \"supportEnabled\": false,\n  \"retentionDays\": 365\n}"
+              "body": "{\n  \"settings\": {\n    \"tenantId\": \"{{tenant_id}}\",\n    \"chatEnabled\": true,\n    \"callsEnabled\": true,\n    \"videoCallsEnabled\": true,\n    \"meetingsEnabled\": true,\n    \"supportEnabled\": false,\n    \"screenshotsEnabled\": true,\n    \"internalGroupsEnabled\": false,\n    \"employeeToEmployeeChatEnabled\": true,\n    \"defaultCameraOff\": false,\n    \"defaultMicrophoneOff\": false,\n    \"persistChatOnEnd\": true,\n    \"messageRetentionDays\": 365,\n    \"recordingRetentionDays\": 90,\n    \"purgeEnabled\": false\n  },\n  \"limits\": {\n    \"maxMeetingParticipants\": 25,\n    \"maxGroupConversationMembers\": 50\n  }\n}"
             }
           ]
         },
         {
           "name": "Actualizar settings (admin)",
           "request": {
-            "method": "PATCH",
+            "method": "PUT",
             "header": [
               {
                 "key": "Content-Type",
@@ -1062,7 +1079,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"maxMeetingParticipants\": 50,\n  \"recordingEnabled\": true,\n  \"retentionDays\": 730\n}"
+              "raw": "{\n  \"meetingsEnabled\": true,\n  \"messageRetentionDays\": 730,\n  \"recordingRetentionDays\": 365,\n  \"purgeEnabled\": false\n}"
             },
             "url": {
               "raw": "{{base_url}}/communication/settings",
@@ -1073,7 +1090,8 @@
                 "communication",
                 "settings"
               ]
-            }
+            },
+            "description": "Requiere communication.settings.manage. Todos los campos del body son opcionales (patch parcial): chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, internalGroupsEnabled, employeeToEmployeeChatEnabled, defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled."
           }
         }
       ]
@@ -1082,44 +1100,48 @@
       "name": "07 · Analytics",
       "item": [
         {
-          "name": "Snapshot diario (hoy)",
+          "name": "Resumen de analytics (summary)",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/communication/analytics/snapshot",
+              "raw": "{{base_url}}/communication/analytics/summary?from=2026-06-10&to=2026-07-10",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "communication",
                 "analytics",
-                "snapshot"
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-06-10",
+                  "description": "YYYY-MM-DD, opcional"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-07-10",
+                  "description": "YYYY-MM-DD, opcional"
+                }
               ]
-            }
-          },
-          "response": [
-            {
-              "name": "200 — Daily snapshot",
-              "status": "OK",
-              "code": 200,
-              "body": "{\n  \"tenantId\": \"{{tenant_id}}\",\n  \"snapshotDateUtc\": \"2026-07-10\",\n  \"chat\": {\n    \"activeConversations\": 12,\n    \"messagesSent\": 148,\n    \"messagesEdited\": 3,\n    \"messagesDeleted\": 1,\n    \"attachmentsSent\": 7\n  },\n  \"calls\": {\n    \"totalCalls\": 5,\n    \"acceptedCalls\": 4,\n    \"missedCalls\": 1,\n    \"totalDurationSeconds\": 3600,\n    \"avgRingTimeMs\": 4200,\n    \"screenShareDurationSeconds\": 900\n  },\n  \"meetings\": {\n    \"totalMeetings\": 3,\n    \"totalParticipantMinutes\": 210,\n    \"avgParticipantsPerMeeting\": 4.3,\n    \"recordingsCreated\": 1\n  },\n  \"support\": {\n    \"ticketsOpened\": 2,\n    \"ticketsResolved\": 1,\n    \"avgFirstResponseSeconds\": 1200\n  }\n}"
-            }
-          ]
+            },
+            "description": "Requiere communication.analytics.read. Sin from/to, agrega los ultimos 30 dias."
+          }
         },
         {
-          "name": "Snapshot por rango de fechas",
+          "name": "Timeline de analytics por rango",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/communication/analytics/snapshot/range?from=2026-07-01&to=2026-07-10",
+              "raw": "{{base_url}}/communication/analytics/timeline?from=2026-07-01&to=2026-07-10",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "communication",
                 "analytics",
-                "snapshot",
-                "range"
+                "timeline"
               ],
               "query": [
                 {
@@ -1131,7 +1153,8 @@
                   "value": "2026-07-10"
                 }
               ]
-            }
+            },
+            "description": "Requiere communication.analytics.read. Serie diaria entre from y to (YYYY-MM-DD)."
           }
         }
       ]

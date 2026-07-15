@@ -14,7 +14,8 @@ public sealed partial record EntitlementKey
         if (string.IsNullOrWhiteSpace(value) || !ValidPattern().IsMatch(value))
         {
             return Result.Failure<EntitlementKey>(
-                new Error("EntitlementKey.Invalid", "Entitlement key must match ^[a-z][a-z0-9._]{2,99}$."));
+                new Error("EntitlementKey.Invalid", "Entitlement key must match ^[a-z][a-z0-9._]{2,99}$.")
+            );
         }
 
         return Result.Success(new EntitlementKey(value));

@@ -34,15 +34,19 @@ public sealed class TenantEntitlementSnapshot
         int seatCount,
         int availableSeatCount,
         IReadOnlyCollection<EntitlementEntry> entries,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<TenantEntitlementSnapshot>(new Error("EntitlementSnapshot.InvalidTenant", "TenantId is required."));
+            return Result.Failure<TenantEntitlementSnapshot>(
+                new Error("EntitlementSnapshot.InvalidTenant", "TenantId is required.")
+            );
 
         if (seatCount < 0 || availableSeatCount < 0)
         {
             return Result.Failure<TenantEntitlementSnapshot>(
-                new Error("EntitlementSnapshot.InvalidSeatCount", "Seat counts cannot be negative."));
+                new Error("EntitlementSnapshot.InvalidSeatCount", "Seat counts cannot be negative.")
+            );
         }
 
         var snapshot = new TenantEntitlementSnapshot

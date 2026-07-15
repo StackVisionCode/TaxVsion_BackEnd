@@ -41,7 +41,8 @@ public static class SubscriptionPlanCatalogSeeder
             maxPendingInvitations: 5,
             storageQuotaBytes: 10L * 1024 * 1024 * 1024,
             modules: ["customers", "signatures", "documents", "planner"],
-            nowUtc: nowUtc);
+            nowUtc: nowUtc
+        );
 
     private static SubscriptionPlan BuildProPlan(DateTime nowUtc) =>
         BuildPlan(
@@ -56,7 +57,8 @@ public static class SubscriptionPlanCatalogSeeder
             maxPendingInvitations: 15,
             storageQuotaBytes: 50L * 1024 * 1024 * 1024,
             modules: ["customers", "signatures", "documents", "planner", "email", "comms", "campaigns", "reports"],
-            nowUtc: nowUtc);
+            nowUtc: nowUtc
+        );
 
     private static SubscriptionPlan BuildEnterprisePlan(DateTime nowUtc) =>
         BuildPlan(
@@ -72,10 +74,21 @@ public static class SubscriptionPlanCatalogSeeder
             storageQuotaBytes: 200L * 1024 * 1024 * 1024,
             modules:
             [
-                "customers", "signatures", "documents", "planner", "email", "comms",
-                "campaigns", "reports", "marketing", "builder", "irs", "miles",
+                "customers",
+                "signatures",
+                "documents",
+                "planner",
+                "email",
+                "comms",
+                "campaigns",
+                "reports",
+                "marketing",
+                "builder",
+                "irs",
+                "miles",
             ],
-            nowUtc: nowUtc);
+            nowUtc: nowUtc
+        );
 
     private static SubscriptionPlan BuildPlan(
         Guid planId,
@@ -89,12 +102,19 @@ public static class SubscriptionPlanCatalogSeeder
         int maxPendingInvitations,
         long storageQuotaBytes,
         IReadOnlyCollection<string> modules,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         var plan = SubscriptionPlan.Seed(planId, PlanCode.Create(code).Value, name, description, tier, nowUtc).Value;
 
         var version = SubscriptionPlanVersion
-            .Seed(versionId, planId, versionNumber: 1, trialDaysDefault: 14, supportedBillingCycles: [BillingCycle.Monthly])
+            .Seed(
+                versionId,
+                planId,
+                versionNumber: 1,
+                trialDaysDefault: 14,
+                supportedBillingCycles: [BillingCycle.Monthly]
+            )
             .Value;
 
         AddEntitlement(version, "seats.max", EntitlementValueType.Int, seatsMax.ToString());
@@ -105,7 +125,13 @@ public static class SubscriptionPlanCatalogSeeder
             AddFeature(version, $"module.{module}");
 
         var priceTier = PlanPriceTier
-            .Create(versionId, BillingCycle.Monthly, minQuantity: 1, maxQuantity: null, Money.Create(monthlyPriceUsd, "USD").Value)
+            .Create(
+                versionId,
+                BillingCycle.Monthly,
+                minQuantity: 1,
+                maxQuantity: null,
+                Money.Create(monthlyPriceUsd, "USD").Value
+            )
             .Value;
         version.AddPriceTier(priceTier);
 
@@ -115,7 +141,12 @@ public static class SubscriptionPlanCatalogSeeder
         return plan;
     }
 
-    private static void AddEntitlement(SubscriptionPlanVersion version, string key, EntitlementValueType valueType, string defaultValue)
+    private static void AddEntitlement(
+        SubscriptionPlanVersion version,
+        string key,
+        EntitlementValueType valueType,
+        string defaultValue
+    )
     {
         var entitlement = PlanEntitlementDefinition
             .Create(version.Id, EntitlementKey.Create(key).Value, valueType, defaultValue, description: key)
@@ -125,7 +156,9 @@ public static class SubscriptionPlanCatalogSeeder
 
     private static void AddFeature(SubscriptionPlanVersion version, string key)
     {
-        var feature = PlanFeature.Create(version.Id, EntitlementKey.Create(key).Value, defaultEnabled: true, description: key).Value;
+        var feature = PlanFeature
+            .Create(version.Id, EntitlementKey.Create(key).Value, defaultEnabled: true, description: key)
+            .Value;
         version.AddFeature(feature);
     }
 }

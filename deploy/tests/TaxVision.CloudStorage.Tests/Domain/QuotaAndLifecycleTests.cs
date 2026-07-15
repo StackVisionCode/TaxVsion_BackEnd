@@ -111,6 +111,37 @@ public sealed class QuotaAndLifecycleTests
     }
 
     [Fact]
+    public void Multipart_upload_id_can_only_be_attached_while_pending_upload()
+    {
+        var tenantId = Guid.NewGuid();
+        var key = ObjectKey.Create($"tenants/{tenantId:N}/tenant/documents/2025/{Guid.NewGuid():N}.pdf").Value;
+        var file = FileObject
+            .Register(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Tenant,
+                null,
+                FolderType.Documents,
+                2025,
+                key,
+                "report.pdf",
+                "application/pdf",
+                10,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddHours(24)
+            )
+            .Value;
+
+        Assert.True(file.AttachMultipartUpload("upload-abc").IsSuccess);
+        Assert.Equal("upload-abc", file.MultipartUploadId);
+
+        file.MarkPendingScan();
+        Assert.True(file.AttachMultipartUpload("upload-def").IsFailure);
+        Assert.Equal("upload-abc", file.MultipartUploadId); // no lo piso con el intento fallido
+    }
+
+    [Fact]
     public void Customer_portal_scope_only_accepts_its_own_customer_owner()
     {
         var customerId = Guid.NewGuid();

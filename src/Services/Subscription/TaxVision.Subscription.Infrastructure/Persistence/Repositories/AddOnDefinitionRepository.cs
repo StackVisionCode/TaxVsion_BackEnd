@@ -19,11 +19,13 @@ public sealed class AddOnDefinitionRepository(SubscriptionDbContext db) : IAddOn
             return Task.FromResult<AddOnDefinition?>(null);
 
         var addOnCode = addOnCodeResult.Value;
-        return WithChildren(db.AddOnDefinitions.AsNoTracking()).FirstOrDefaultAsync(definition => definition.Code == addOnCode, ct);
+        return WithChildren(db.AddOnDefinitions.AsNoTracking())
+            .FirstOrDefaultAsync(definition => definition.Code == addOnCode, ct);
     }
 
     public Task<AddOnDefinition?> GetByIdAsync(Guid addOnDefinitionId, CancellationToken ct = default) =>
-        WithChildren(db.AddOnDefinitions.AsNoTracking()).FirstOrDefaultAsync(definition => definition.Id == addOnDefinitionId, ct);
+        WithChildren(db.AddOnDefinitions.AsNoTracking())
+            .FirstOrDefaultAsync(definition => definition.Id == addOnDefinitionId, ct);
 
     private static IQueryable<AddOnDefinition> WithChildren(IQueryable<AddOnDefinition> query) =>
         query

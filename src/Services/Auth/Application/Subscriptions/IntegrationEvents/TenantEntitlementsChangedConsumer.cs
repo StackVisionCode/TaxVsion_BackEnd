@@ -35,14 +35,23 @@ public static class TenantEntitlementsChangedConsumer
     }
 
     private static async Task<TenantPlanLimits> LoadOrCreateAsync(
-        TenantEntitlementsChangedIntegrationEvent evt, ITenantPlanLimitsStore planLimits, CancellationToken ct)
+        TenantEntitlementsChangedIntegrationEvent evt,
+        ITenantPlanLimitsStore planLimits,
+        CancellationToken ct
+    )
     {
         var existing = await planLimits.GetAsync(evt.TenantId, ct);
         if (existing is not null)
             return existing;
 
         var created = TenantPlanLimits.Create(
-            evt.TenantId, evt.PlanCode, maxUsers: 0, maxPendingInvitations: 0, storageQuotaBytes: 0, "[]");
+            evt.TenantId,
+            evt.PlanCode,
+            maxUsers: 0,
+            maxPendingInvitations: 0,
+            storageQuotaBytes: 0,
+            "[]"
+        );
         await planLimits.AddAsync(created, ct);
         return created;
     }
@@ -56,7 +65,8 @@ public static class TenantEntitlementsChangedConsumer
             maxUsers: evt.SeatCount,
             maxPendingInvitations: GetInt(evt.EntitlementValues, "invitations.max_pending", fallback: 0),
             storageQuotaBytes: GetLong(evt.EntitlementValues, "storage.max_bytes", fallback: 0),
-            modulesJson);
+            modulesJson
+        );
 
         limits.SetSuspendedForBilling(evt.SubscriptionStatus == "Suspended");
     }
@@ -66,7 +76,11 @@ public static class TenantEntitlementsChangedConsumer
         var modules = new List<string>();
         foreach (var (key, value) in entitlementValues)
         {
-            if (key.StartsWith(ModuleFeaturePrefix, StringComparison.Ordinal) && bool.TryParse(value, out var enabled) && enabled)
+            if (
+                key.StartsWith(ModuleFeaturePrefix, StringComparison.Ordinal)
+                && bool.TryParse(value, out var enabled)
+                && enabled
+            )
                 modules.Add(key[ModuleFeaturePrefix.Length..]);
         }
 

@@ -31,6 +31,7 @@ public sealed class ExpiredUploadCleanupService(
             var limits = scope.ServiceProvider.GetRequiredService<IStorageLimitRepository>();
             var audit = scope.ServiceProvider.GetRequiredService<IStorageAuditRepository>();
             var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
+            var multipartStorage = scope.ServiceProvider.GetRequiredService<IMultipartUploadStorage>();
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
             var clock = scope.ServiceProvider.GetRequiredService<ISystemClock>();
             var options = scope.ServiceProvider.GetRequiredService<IOptions<CloudStorageOptions>>().Value;
@@ -42,7 +43,14 @@ public sealed class ExpiredUploadCleanupService(
                     continue;
 
                 (await limits.GetAsync(file.TenantId, ct))?.Release(file.SizeBytes);
-                await storage.DeleteAsync(options.TempBucket, file.ObjectKey, ct);
+                // Fase U — un upload multiparte nunca ensamblado no existe como objeto
+                // todavia: DeleteAsync sobre esa key es un no-op silencioso y las partes
+                // ya subidas quedan huerfanas en MinIO para siempre. Hay que abortar la
+                // sesion multiparte especificamente para liberarlas.
+                if (file.MultipartUploadId is { } uploadId)
+                    await multipartStorage.AbortAsync(options.TempBucket, file.ObjectKey, uploadId, ct);
+                else
+                    await storage.DeleteAsync(options.TempBucket, file.ObjectKey, ct);
                 audit.Add(
                     StorageAccessLog.Create(
                         file.TenantId,

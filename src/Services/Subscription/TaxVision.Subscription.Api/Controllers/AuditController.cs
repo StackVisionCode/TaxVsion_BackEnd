@@ -16,15 +16,22 @@ public sealed class AuditController(IMessageBus bus) : ControllerBase
     [HttpGet]
     [ProducesResponseType<PagedResult<AuditLogEntryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
-        [FromQuery] string? aggregateType, [FromQuery] Guid? aggregateId,
-        [FromQuery] DateTime? from, [FromQuery] DateTime? to,
-        [FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct)
+        [FromQuery] string? aggregateType,
+        [FromQuery] Guid? aggregateId,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    )
     {
         if (!Guid.TryParse(User.FindFirst("tenant_id")?.Value, out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<AuditLogEntryResponse>>>(
-            new GetAuditLogsQuery(tenantId, aggregateType, aggregateId, from, to, page, pageSize), ct);
+            new GetAuditLogsQuery(tenantId, aggregateType, aggregateId, from, to, page, pageSize),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

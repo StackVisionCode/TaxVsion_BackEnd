@@ -34,11 +34,6 @@ const rawEnv = z
     COMMUNICATION_JWKS_URI: z.string().url(),
     COMMUNICATION_JWKS_CACHE_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(300),
 
-    COMMUNICATION_SERVICE_AUTH_CLIENT_ID: z.string().default('communication-worker'),
-    COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: z.string().optional(),
-    COMMUNICATION_AUTH_BASE_URL: z.string().url().optional(),
-    COMMUNICATION_CLOUDSTORAGE_BASE_URL: z.string().url().optional(),
-
     COMMUNICATION_TURN_URL: z.string().optional(),
     COMMUNICATION_TURN_STATIC_AUTH_SECRET: z.string().optional(),
     COMMUNICATION_TURN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
@@ -110,13 +105,6 @@ export const config = {
     audience: rawEnv.COMMUNICATION_JWT_AUDIENCE,
     jwksUri: rawEnv.COMMUNICATION_JWKS_URI,
     jwksCacheMaxAgeSeconds: rawEnv.COMMUNICATION_JWKS_CACHE_MAX_AGE_SECONDS,
-  },
-
-  serviceAuth: {
-    clientId: rawEnv.COMMUNICATION_SERVICE_AUTH_CLIENT_ID,
-    clientSecret: rawEnv.COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET,
-    authBaseUrl: rawEnv.COMMUNICATION_AUTH_BASE_URL,
-    cloudStorageBaseUrl: rawEnv.COMMUNICATION_CLOUDSTORAGE_BASE_URL,
   },
 
   turn: {

@@ -63,7 +63,13 @@ public sealed class SubscriptionSeatAssignmentTests
         var secondUser = Guid.NewGuid();
         seat.AssignTo(firstUser, Guid.Empty, DateTime.UtcNow, 0);
 
-        var result = seat.ReassignSeat(secondUser, Guid.Empty, DateTime.UtcNow, "reassigned", reassignmentCooldownDays: 0);
+        var result = seat.ReassignSeat(
+            secondUser,
+            Guid.Empty,
+            DateTime.UtcNow,
+            "reassigned",
+            reassignmentCooldownDays: 0
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(secondUser, seat.CurrentUserId);
@@ -95,6 +101,7 @@ public sealed class SubscriptionSeatAssignmentTests
                 BillingCycle.Monthly,
                 autoRenew: true,
                 Guid.Empty,
-                DateTime.UtcNow)
+                DateTime.UtcNow
+            )
             .Value;
 }

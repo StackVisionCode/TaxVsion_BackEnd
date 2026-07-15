@@ -37,13 +37,21 @@ public static class SuspendSubscriptionHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.Suspended",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.Suspended",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { Status = previousStatus.ToString() },
             after: new { Status = subscription.Status.ToString() },
-            reason: command.Reason, nowUtc, ct);
+            reason: command.Reason,
+            nowUtc,
+            ct
+        );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogWarning("Subscription suspended for tenant {TenantId}: {Reason}.", command.TenantId, command.Reason);
         return Result.Success();

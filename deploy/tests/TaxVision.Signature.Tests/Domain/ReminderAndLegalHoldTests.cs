@@ -80,27 +80,27 @@ public sealed class ReminderAndLegalHoldTests
     // ================== helpers ==================
 
     private static SignatureRequest NewDraft() =>
-        SignatureRequest.CreateDraft(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "Test",
-            null,
-            SignatureCategory.Fiscal,
-            Guid.NewGuid(),
-            tokenExpirationHours: 72,
-            requiresSequentialSigning: false,
-            requiresConsent: false,
-            generateCertificate: false
-        ).Value;
+        SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Test",
+                null,
+                SignatureCategory.Fiscal,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: false,
+                requiresConsent: false,
+                generateCertificate: false
+            )
+            .Value;
 
     private static SignatureRequest NewInProgress()
     {
         var draft = NewDraft();
-        var signer = draft.AddSigner(
-            SignerEmail.Create("s@example.com").Value,
-            SignerFullName.Create("Signer").Value,
-            null
-        ).Value;
+        var signer = draft
+            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Signer").Value, null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);

@@ -35,26 +35,41 @@ public static class CancelAddOnHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(new AddOnCancelledIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            TenantAddOnId = addOn.Id,
-            AddOnCode = addOn.AddOnCode,
-            Reason = command.Reason,
-            CorrelationId = correlation.CorrelationId,
-        });
+        await bus.PublishAsync(
+            new AddOnCancelledIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                TenantAddOnId = addOn.Id,
+                AddOnCode = addOn.AddOnCode,
+                Reason = command.Reason,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantAddOn", addOn.Id, "AddOn.Cancelled",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantAddOn",
+            addOn.Id,
+            "AddOn.Cancelled",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { Status = previousStatus.ToString() },
             after: new { Status = addOn.Status.ToString() },
-            reason: command.Reason, nowUtc, ct);
+            reason: command.Reason,
+            nowUtc,
+            ct
+        );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
-        logger.LogInformation("Add-on {AddOnCode} cancelled for tenant {TenantId}: {Reason}.", addOn.AddOnCode, command.TenantId, command.Reason);
+        logger.LogInformation(
+            "Add-on {AddOnCode} cancelled for tenant {TenantId}: {Reason}.",
+            addOn.AddOnCode,
+            command.TenantId,
+            command.Reason
+        );
         return Result.Success();
     }
 }

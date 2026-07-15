@@ -21,8 +21,14 @@ public sealed class GapAggregatesTests
         var sha = new string('a', 64);
 
         var result = DocumentValidationRecord.RecordAccepted(
-            tenantId, userId, sha, "form-8879.pdf", "application/pdf",
-            sizeBytes: 12345, pageCount: 4, hasExistingSignatures: false
+            tenantId,
+            userId,
+            sha,
+            "form-8879.pdf",
+            "application/pdf",
+            sizeBytes: 12345,
+            pageCount: 4,
+            hasExistingSignatures: false
         );
 
         Assert.True(result.IsSuccess);
@@ -36,9 +42,16 @@ public sealed class GapAggregatesTests
     public void DocumentValidationRecord_rejected_requires_code()
     {
         var result = DocumentValidationRecord.RecordRejected(
-            Guid.NewGuid(), Guid.NewGuid(), new string('a', 64), "x.pdf", "application/pdf",
-            sizeBytes: 1, pageCount: 1, hasExistingSignatures: true,
-            rejectionCode: "", rejectionReason: "already signed"
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new string('a', 64),
+            "x.pdf",
+            "application/pdf",
+            sizeBytes: 1,
+            pageCount: 1,
+            hasExistingSignatures: true,
+            rejectionCode: "",
+            rejectionReason: "already signed"
         );
 
         Assert.True(result.IsFailure);
@@ -49,8 +62,14 @@ public sealed class GapAggregatesTests
     public void DocumentValidationRecord_hash_validated()
     {
         var result = DocumentValidationRecord.RecordAccepted(
-            Guid.NewGuid(), Guid.NewGuid(), "not-a-sha", "x.pdf", "application/pdf",
-            1, 1, false
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "not-a-sha",
+            "x.pdf",
+            "application/pdf",
+            1,
+            1,
+            false
         );
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.DocumentValidation.Hash", result.Error.Code);
@@ -66,7 +85,9 @@ public sealed class GapAggregatesTests
         var signerId = Guid.NewGuid();
 
         var result = ConsentEvent.RecordAcceptance(
-            tenant, reqId, signerId,
+            tenant,
+            reqId,
+            signerId,
             textVersion: "consent.disclose.v1.en",
             textLanguage: "En",
             textSnapshot: "I authorize disclosure under §7216.",
@@ -90,8 +111,15 @@ public sealed class GapAggregatesTests
     public void ConsentEvent_language_short_codes_valid(string language)
     {
         var result = ConsentEvent.RecordAcceptance(
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-            "v1", language, "text", new string('b', 64), null, null
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "v1",
+            language,
+            "text",
+            new string('b', 64),
+            null,
+            null
         );
         Assert.True(result.IsSuccess);
     }
@@ -100,8 +128,15 @@ public sealed class GapAggregatesTests
     public void ConsentEvent_rejects_long_language()
     {
         var result = ConsentEvent.RecordAcceptance(
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-            "v1", "English", "text", new string('b', 64), null, null
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "v1",
+            "English",
+            "text",
+            new string('b', 64),
+            null,
+            null
         );
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Consent.TextLanguage", result.Error.Code);
@@ -113,7 +148,8 @@ public sealed class GapAggregatesTests
     public void SignatureAuditEvent_first_event_uses_genesis()
     {
         var result = SignatureAuditEvent.Create(
-            Guid.NewGuid(), Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
             sequence: 1,
             kind: SignatureAuditEventKind.RequestCreated,
             occurredAtUtc: DateTime.UtcNow,
@@ -130,9 +166,14 @@ public sealed class GapAggregatesTests
     public void SignatureAuditEvent_rejects_short_hash()
     {
         var result = SignatureAuditEvent.Create(
-            Guid.NewGuid(), Guid.NewGuid(),
-            1, SignatureAuditEventKind.RequestCreated, DateTime.UtcNow,
-            "{}", SignatureAuditEvent.GenesisMarker, "short"
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1,
+            SignatureAuditEventKind.RequestCreated,
+            DateTime.UtcNow,
+            "{}",
+            SignatureAuditEvent.GenesisMarker,
+            "short"
         );
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Audit.ChainHash", result.Error.Code);
@@ -142,9 +183,14 @@ public sealed class GapAggregatesTests
     public void SignatureAuditEvent_rejects_zero_sequence()
     {
         var result = SignatureAuditEvent.Create(
-            Guid.NewGuid(), Guid.NewGuid(),
-            0, SignatureAuditEventKind.RequestCreated, DateTime.UtcNow,
-            "{}", SignatureAuditEvent.GenesisMarker, new string('c', 64)
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            0,
+            SignatureAuditEventKind.RequestCreated,
+            DateTime.UtcNow,
+            "{}",
+            SignatureAuditEvent.GenesisMarker,
+            new string('c', 64)
         );
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Audit.Sequence", result.Error.Code);
@@ -155,9 +201,14 @@ public sealed class GapAggregatesTests
     {
         var big = new string('x', SignatureAuditEvent.MaxPayloadJsonLength + 1);
         var result = SignatureAuditEvent.Create(
-            Guid.NewGuid(), Guid.NewGuid(),
-            1, SignatureAuditEventKind.RequestCreated, DateTime.UtcNow,
-            big, SignatureAuditEvent.GenesisMarker, new string('c', 64)
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1,
+            SignatureAuditEventKind.RequestCreated,
+            DateTime.UtcNow,
+            big,
+            SignatureAuditEvent.GenesisMarker,
+            new string('c', 64)
         );
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Audit.PayloadSize", result.Error.Code);

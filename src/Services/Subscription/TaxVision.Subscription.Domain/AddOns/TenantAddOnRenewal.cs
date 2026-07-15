@@ -30,27 +30,41 @@ public sealed class TenantAddOnRenewal : BaseEntity
     private TenantAddOnRenewal() { }
 
     public static Result<TenantAddOnRenewal> Schedule(
-        Guid tenantAddOnId, Guid tenantId, string idempotencyKey, DateTime periodStartUtc, DateTime periodEndUtc, DateTime nowUtc)
+        Guid tenantAddOnId,
+        Guid tenantId,
+        string idempotencyKey,
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        DateTime nowUtc
+    )
     {
         if (tenantAddOnId == Guid.Empty)
-            return Result.Failure<TenantAddOnRenewal>(new Error("AddOnRenewal.InvalidParent", "TenantAddOnId is required."));
+            return Result.Failure<TenantAddOnRenewal>(
+                new Error("AddOnRenewal.InvalidParent", "TenantAddOnId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(idempotencyKey))
-            return Result.Failure<TenantAddOnRenewal>(new Error("AddOnRenewal.InvalidIdempotencyKey", "IdempotencyKey is required."));
+            return Result.Failure<TenantAddOnRenewal>(
+                new Error("AddOnRenewal.InvalidIdempotencyKey", "IdempotencyKey is required.")
+            );
 
         if (periodEndUtc <= periodStartUtc)
-            return Result.Failure<TenantAddOnRenewal>(new Error("AddOnRenewal.InvalidPeriod", "Period end must be after period start."));
+            return Result.Failure<TenantAddOnRenewal>(
+                new Error("AddOnRenewal.InvalidPeriod", "Period end must be after period start.")
+            );
 
-        return Result.Success(new TenantAddOnRenewal
-        {
-            TenantAddOnId = tenantAddOnId,
-            TenantId = tenantId,
-            IdempotencyKey = idempotencyKey,
-            Status = RenewalStatus.Scheduled,
-            PeriodStartUtc = periodStartUtc,
-            PeriodEndUtc = periodEndUtc,
-            ScheduledAtUtc = nowUtc,
-        });
+        return Result.Success(
+            new TenantAddOnRenewal
+            {
+                TenantAddOnId = tenantAddOnId,
+                TenantId = tenantId,
+                IdempotencyKey = idempotencyKey,
+                Status = RenewalStatus.Scheduled,
+                PeriodStartUtc = periodStartUtc,
+                PeriodEndUtc = periodEndUtc,
+                ScheduledAtUtc = nowUtc,
+            }
+        );
     }
 
     public Result MarkProcessing(DateTime nowUtc)
@@ -74,7 +88,13 @@ public sealed class TenantAddOnRenewal : BaseEntity
         return Result.Success();
     }
 
-    public Result MarkFailed(string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, DateTime nowUtc)
+    public Result MarkFailed(
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        DateTime nowUtc
+    )
     {
         if (Status != RenewalStatus.Processing)
             return Result.Failure(new Error("AddOnRenewal.InvalidTransition", $"Cannot fail from {Status}."));

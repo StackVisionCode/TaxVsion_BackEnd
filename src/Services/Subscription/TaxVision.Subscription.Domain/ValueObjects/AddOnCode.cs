@@ -14,7 +14,8 @@ public sealed partial record AddOnCode
         if (string.IsNullOrWhiteSpace(value) || !ValidPattern().IsMatch(value))
         {
             return Result.Failure<AddOnCode>(
-                new Error("AddOnCode.Invalid", "Add-on code must match ^[a-z][a-z0-9._-]{2,49}$."));
+                new Error("AddOnCode.Invalid", "Add-on code must match ^[a-z][a-z0-9._-]{2,49}$.")
+            );
         }
 
         return Result.Success(new AddOnCode(value));

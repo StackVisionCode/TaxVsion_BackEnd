@@ -7,7 +7,14 @@ public sealed class EmailCampaignTests
     [Fact]
     public void Campaign_requires_recipients()
     {
-        var result = EmailCampaign.Create(Guid.NewGuid(), "Newsletter", CampaignType.Newsletter, Guid.NewGuid(), [], null);
+        var result = EmailCampaign.Create(
+            Guid.NewGuid(),
+            "Newsletter",
+            CampaignType.Newsletter,
+            Guid.NewGuid(),
+            [],
+            null
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Campaign.Recipients", result.Error.Code);
@@ -51,9 +58,14 @@ public sealed class EmailCampaignTests
     }
 
     private static EmailCampaign CreateCampaign() =>
-        EmailCampaign.Create(
-            Guid.NewGuid(), "Newsletter", CampaignType.Newsletter, Guid.NewGuid(),
-            [("a@example.com", "A", null), ("b@example.com", "B", null)],
-            null
-        ).Value;
+        EmailCampaign
+            .Create(
+                Guid.NewGuid(),
+                "Newsletter",
+                CampaignType.Newsletter,
+                Guid.NewGuid(),
+                [("a@example.com", "A", null), ("b@example.com", "B", null)],
+                null
+            )
+            .Value;
 }

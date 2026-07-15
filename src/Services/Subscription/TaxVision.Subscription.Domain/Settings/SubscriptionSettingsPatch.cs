@@ -29,4 +29,5 @@ public sealed record SubscriptionSettingsPatch(
     int? NotifyAfterFailedRenewalDays = null,
     AutoRenewCascadeMode? AutoRenewCascadeMode = null,
     bool? PauseSeatRenewalsWhenBaseSuspended = null,
-    PlanChangeEffectiveMode? PlanChangeEffective = null);
+    PlanChangeEffectiveMode? PlanChangeEffective = null
+);

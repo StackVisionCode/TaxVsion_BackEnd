@@ -14,7 +14,8 @@ public sealed partial record PlanCode
         if (string.IsNullOrWhiteSpace(value) || !ValidPattern().IsMatch(value))
         {
             return Result.Failure<PlanCode>(
-                new Error("PlanCode.Invalid", "Plan code must match ^[a-z][a-z0-9_-]{2,49}$."));
+                new Error("PlanCode.Invalid", "Plan code must match ^[a-z][a-z0-9_-]{2,49}$.")
+            );
         }
 
         return Result.Success(new PlanCode(value));

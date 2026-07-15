@@ -103,6 +103,12 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<DateTime?>("FolderAssignedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("FolderType")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -110,6 +116,10 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsLegalHeld")
                         .HasColumnType("bit");
+
+                    b.Property<string>("MultipartUploadId")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<string>("ObjectKey")
                         .IsRequired()
@@ -161,6 +171,10 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Status", "SoftDeleteExpiresAtUtc");
+
+                    b.HasIndex("TenantId", "FolderId");
+
                     b.HasIndex("TenantId", "Id");
 
                     b.HasIndex("TenantId", "ObjectKey")
@@ -171,11 +185,131 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.ToTable("Files", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Folders.Folder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OwnerType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("ParentFolderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RelativePath");
+
+                    b.HasIndex("TenantId", "ParentFolderId", "Name");
+
+                    b.ToTable("Folders", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Legal.DmcaNotice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ClaimantEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("ClaimantName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("CopyrightedWorkDescription")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime?>("CounterNoticeSubmittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CounterNoticeSubmittedByActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CounterNoticeText")
+                        .HasMaxLength(4096)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("InfringingMaterialDescription")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime>("RegisteredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RegisteredByActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResolutionNotes")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ResolvedByActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Id");
+
+                    b.HasIndex("TenantId", "FileId", "Status");
+
+                    b.ToTable("CloudStorageDmcaNotices", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Quotas.TenantStorageLimit", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowPublicShareLinks")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsSuspended")
                         .HasColumnType("bit");
@@ -212,6 +346,138 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("TenantStorageLimits", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Sharing.ShareLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AccessCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AppliesToFutureItems")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsRecursive")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("MaxAccessCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PasswordHash")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Permission")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<string>("TokenLast4")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("nvarchar(4)");
+
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ResourceId", "ResourceType");
+
+                    b.ToTable("ShareLinks", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Sharing.ShareRecipient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid?>("RecipientCustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RecipientEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid?>("RecipientUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ShareLinkId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShareLinkId", "RecipientCustomerId");
+
+                    b.HasIndex("ShareLinkId", "RecipientUserId");
+
+                    b.ToTable("ShareRecipients", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Sharing.ShareRecipient", b =>
+                {
+                    b.HasOne("TaxVision.CloudStorage.Domain.Sharing.ShareLink", null)
+                        .WithMany("Recipients")
+                        .HasForeignKey("ShareLinkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Sharing.ShareLink", b =>
+                {
+                    b.Navigation("Recipients");
                 });
 #pragma warning restore 612, 618
         }

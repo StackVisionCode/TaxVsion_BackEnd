@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
@@ -129,6 +130,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<PreparerSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Fase D1 — reemplaza el HttpClient a CloudStorage para subir el sellado/certificate.
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureSettingsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignaturePlanConstraintsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 

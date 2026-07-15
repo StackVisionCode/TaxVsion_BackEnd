@@ -28,7 +28,10 @@ public sealed class PlanRepository(SubscriptionDbContext db) : IPlanRepository
 
     private static IQueryable<SubscriptionPlan> WithVersions(IQueryable<SubscriptionPlan> query) =>
         query
-            .Include(plan => plan.Versions).ThenInclude(version => version.Features)
-            .Include(plan => plan.Versions).ThenInclude(version => version.Entitlements)
-            .Include(plan => plan.Versions).ThenInclude(version => version.PriceTiers);
+            .Include(plan => plan.Versions)
+                .ThenInclude(version => version.Features)
+            .Include(plan => plan.Versions)
+                .ThenInclude(version => version.Entitlements)
+            .Include(plan => plan.Versions)
+                .ThenInclude(version => version.PriceTiers);
 }

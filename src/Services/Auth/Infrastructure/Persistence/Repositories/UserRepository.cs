@@ -15,6 +15,16 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
     public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
         db.Users.AnyAsync(user => user.TenantId == tenantId && user.Email == email, ct);
 
+    public async Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
+        string email,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Users.Where(user => user.Email == email && user.IsActive)
+            .Select(user => user.TenantId)
+            .Distinct()
+            .ToListAsync(ct);
+
     public async Task AddAsync(User user, CancellationToken ct = default) => await db.Users.AddAsync(user, ct);
 
     public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>

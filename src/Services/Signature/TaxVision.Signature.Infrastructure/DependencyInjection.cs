@@ -3,6 +3,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Minio;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
@@ -140,6 +141,7 @@ public static class DependencyInjection
         services
             .AddOptions<CloudStorageClientOptions>()
             .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
+        services.AddOptions<SignatureMinioOptions>().Bind(configuration.GetSection(SignatureMinioOptions.SectionName));
 
         services.AddHttpClient<ISignatureServiceTokenAcquirer, SignatureServiceTokenAcquirer>(
             (sp, http) =>
@@ -149,6 +151,21 @@ public static class DependencyInjection
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
             }
         );
+
+        // Fase D1 — cliente MinIO propio de Signature, credenciales scoped (IAM
+        // signature-source, ver deploy/docker/minio/policies/signature-source.json),
+        // nunca las root de CloudStorage. Solo para el UploadAsync del sellado; el
+        // DownloadAsync del original sigue via el HttpClient de abajo.
+        services.AddSingleton<Minio.IMinioClient>(sp =>
+        {
+            var opt = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SignatureMinioOptions>>().Value;
+            var builder = new Minio.MinioClient()
+                .WithEndpoint(opt.Endpoint)
+                .WithCredentials(opt.AccessKey, opt.SecretKey);
+            if (opt.UseTls)
+                builder = builder.WithSSL();
+            return builder.Build();
+        });
 
         services.AddHttpClient<ISignatureCloudStorageClient, SignatureCloudStorageClient>(
             (sp, http) =>

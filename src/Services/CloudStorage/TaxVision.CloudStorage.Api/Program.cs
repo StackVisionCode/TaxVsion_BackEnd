@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
@@ -9,6 +10,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Infrastructure;
@@ -45,9 +47,65 @@ builder.Services.AddAuthorization(options =>
             CloudStoragePermissions.FileDelete,
             CloudStoragePermissions.SettingsManage,
             CloudStoragePermissions.AuditView,
+            CloudStoragePermissions.RecycleBinManage,
+            CloudStoragePermissions.FolderManage,
+            CloudStoragePermissions.ShareCreate,
+            CloudStoragePermissions.ShareRevoke,
+            CloudStoragePermissions.ShareManage,
+            CloudStoragePermissions.LegalManage,
+            CloudStoragePermissions.DmcaCounterNotice,
         }
     )
         options.AddPolicy(permission, policy => policy.RequireClaim("perm", permission));
+});
+
+// Fase C3 — 20 req/min por IP+ruta en el endpoint publico de resolucion de
+// tokens: desanima enumeracion por fuerza bruta sin bloquear un uso legitimo
+// (varios accesos al mismo link compartido desde la misma red).
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(
+        "share-public",
+        context =>
+        {
+            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"{client}:{path}",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
+    // Fase B2 — 5 req/min por usuario: un ZIP puede agregar hasta 500 archivos/500MB
+    // (ver CloudStorageOptions), asi que el costo por request es mucho mayor que un
+    // download de un solo archivo — el limite es deliberadamente mas estricto.
+    options.AddPolicy(
+        "zip-download",
+        context =>
+        {
+            var actorId =
+                context.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value
+                ?? context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown";
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: $"zip:{actorId}",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            );
+        }
+    );
 });
 
 var rabbitUri = new Uri(
@@ -85,9 +143,17 @@ builder.Host.UseWolverine(options =>
 
     options.PublishMessage<FileAvailableIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileInfectedDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileBlockedByPolicyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FilePendingReviewIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileBlockedByDmcaTakedownIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileReinstatedFromTakedownIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileDeletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileRestoredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<StorageLimitExceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileAccessAuditedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ShareLinkCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ShareLinkRevokedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ShareLinkFolderItemAddedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options
         .ListenToRabbitQueue(
@@ -98,6 +164,18 @@ builder.Host.UseWolverine(options =>
             }
         )
         .UseDurableInbox();
+
+    // Fase D2/D3 — cola dedicada para SaveFileRequestedIntegrationEvent publicado por
+    // servicios NO-Wolverine (Node: CommunicationTranscriptWorker, luego Notification).
+    // Deliberadamente separada del fanout "taxvision-events" de arriba: DefaultIncomingMessage
+    // fuerza a deserializar TODO lo que llega a este listener como ese unico tipo — mezclarlo
+    // con el fanout compartido rompería cada otro evento que tambien pasa por ahi. Los
+    // productores Node publican directo a esta cola via el exchange default de RabbitMQ
+    // (routingKey = nombre de cola), sin declarar ningun exchange propio.
+    options
+        .ListenToRabbitQueue("cloudstorage-external-uploads")
+        .UseDurableInbox()
+        .DefaultIncomingMessage<SaveFileRequestedIntegrationEvent>();
 
     options
         .Policies.OnException<Exception>()
@@ -120,6 +198,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseMiddleware<TenantResolutionMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });

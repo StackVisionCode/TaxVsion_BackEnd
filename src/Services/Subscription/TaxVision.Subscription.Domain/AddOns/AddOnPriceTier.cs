@@ -17,24 +17,37 @@ public sealed class AddOnPriceTier : BaseEntity
     private AddOnPriceTier() { }
 
     public static Result<AddOnPriceTier> Create(
-        Guid addOnDefinitionId, BillingCycle billingCycle, int minQuantity, int? maxQuantity, Money unitAmount)
+        Guid addOnDefinitionId,
+        BillingCycle billingCycle,
+        int minQuantity,
+        int? maxQuantity,
+        Money unitAmount
+    )
     {
         if (addOnDefinitionId == Guid.Empty)
-            return Result.Failure<AddOnPriceTier>(new Error("AddOnPriceTier.InvalidDefinition", "AddOnDefinitionId is required."));
+            return Result.Failure<AddOnPriceTier>(
+                new Error("AddOnPriceTier.InvalidDefinition", "AddOnDefinitionId is required.")
+            );
 
         if (minQuantity < 0)
-            return Result.Failure<AddOnPriceTier>(new Error("AddOnPriceTier.InvalidMinQuantity", "MinQuantity cannot be negative."));
+            return Result.Failure<AddOnPriceTier>(
+                new Error("AddOnPriceTier.InvalidMinQuantity", "MinQuantity cannot be negative.")
+            );
 
         if (maxQuantity is not null && maxQuantity < minQuantity)
-            return Result.Failure<AddOnPriceTier>(new Error("AddOnPriceTier.InvalidRange", "MaxQuantity cannot be less than MinQuantity."));
+            return Result.Failure<AddOnPriceTier>(
+                new Error("AddOnPriceTier.InvalidRange", "MaxQuantity cannot be less than MinQuantity.")
+            );
 
-        return Result.Success(new AddOnPriceTier
-        {
-            AddOnDefinitionId = addOnDefinitionId,
-            BillingCycle = billingCycle,
-            MinQuantity = minQuantity,
-            MaxQuantity = maxQuantity,
-            UnitAmount = unitAmount,
-        });
+        return Result.Success(
+            new AddOnPriceTier
+            {
+                AddOnDefinitionId = addOnDefinitionId,
+                BillingCycle = billingCycle,
+                MinQuantity = minQuantity,
+                MaxQuantity = maxQuantity,
+                UnitAmount = unitAmount,
+            }
+        );
     }
 }

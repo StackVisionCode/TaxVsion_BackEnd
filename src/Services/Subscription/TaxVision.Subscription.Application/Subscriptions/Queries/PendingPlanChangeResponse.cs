@@ -6,4 +6,5 @@ public sealed record PendingPlanChangeResponse(
     string ToPlanCode,
     string EffectiveMode,
     DateTime EffectiveAtUtc,
-    DateTime RequestedAtUtc);
+    DateTime RequestedAtUtc
+);

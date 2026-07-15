@@ -34,7 +34,8 @@ public sealed class SubscriptionPlanVersion : BaseEntity
         Guid planId,
         int versionNumber,
         int trialDaysDefault,
-        IReadOnlyCollection<BillingCycle> supportedBillingCycles)
+        IReadOnlyCollection<BillingCycle> supportedBillingCycles
+    )
     {
         if (planId == Guid.Empty)
             return Result.Failure<SubscriptionPlanVersion>(new Error("PlanVersion.InvalidPlan", "PlanId is required."));
@@ -42,19 +43,22 @@ public sealed class SubscriptionPlanVersion : BaseEntity
         if (versionNumber < 1)
         {
             return Result.Failure<SubscriptionPlanVersion>(
-                new Error("PlanVersion.InvalidVersionNumber", "VersionNumber must be a positive integer."));
+                new Error("PlanVersion.InvalidVersionNumber", "VersionNumber must be a positive integer.")
+            );
         }
 
         if (trialDaysDefault is < 0 or > 90)
         {
             return Result.Failure<SubscriptionPlanVersion>(
-                new Error("PlanVersion.InvalidTrialDays", "TrialDaysDefault must be between 0 and 90."));
+                new Error("PlanVersion.InvalidTrialDays", "TrialDaysDefault must be between 0 and 90.")
+            );
         }
 
         if (supportedBillingCycles.Count == 0)
         {
             return Result.Failure<SubscriptionPlanVersion>(
-                new Error("PlanVersion.NoBillingCycles", "At least one billing cycle is required."));
+                new Error("PlanVersion.NoBillingCycles", "At least one billing cycle is required.")
+            );
         }
 
         var version = new SubscriptionPlanVersion
@@ -78,10 +82,12 @@ public sealed class SubscriptionPlanVersion : BaseEntity
         Guid planId,
         int versionNumber,
         int trialDaysDefault,
-        IReadOnlyCollection<BillingCycle> supportedBillingCycles)
+        IReadOnlyCollection<BillingCycle> supportedBillingCycles
+    )
     {
         var created = Create(planId, versionNumber, trialDaysDefault, supportedBillingCycles);
-        if (created.IsFailure) return created;
+        if (created.IsFailure)
+            return created;
 
         created.Value.Id = id;
         return created;
@@ -90,7 +96,8 @@ public sealed class SubscriptionPlanVersion : BaseEntity
     public Result AddFeature(PlanFeature feature)
     {
         var guard = EnsureDraft();
-        if (guard.IsFailure) return guard;
+        if (guard.IsFailure)
+            return guard;
 
         _features.Add(feature);
         return Result.Success();
@@ -99,7 +106,8 @@ public sealed class SubscriptionPlanVersion : BaseEntity
     public Result AddEntitlementDefinition(PlanEntitlementDefinition entitlement)
     {
         var guard = EnsureDraft();
-        if (guard.IsFailure) return guard;
+        if (guard.IsFailure)
+            return guard;
 
         _entitlements.Add(entitlement);
         return Result.Success();
@@ -108,7 +116,8 @@ public sealed class SubscriptionPlanVersion : BaseEntity
     public Result AddPriceTier(PlanPriceTier tier)
     {
         var guard = EnsureDraft();
-        if (guard.IsFailure) return guard;
+        if (guard.IsFailure)
+            return guard;
 
         _priceTiers.Add(tier);
         return Result.Success();
@@ -117,7 +126,9 @@ public sealed class SubscriptionPlanVersion : BaseEntity
     public Result Publish(DateTime effectiveFromUtc)
     {
         if (Status != PlanVersionStatus.Draft)
-            return Result.Failure(new Error("PlanVersion.InvalidTransition", $"Cannot publish a version from {Status}."));
+            return Result.Failure(
+                new Error("PlanVersion.InvalidTransition", $"Cannot publish a version from {Status}.")
+            );
 
         Status = PlanVersionStatus.Published;
         EffectiveFromUtc = effectiveFromUtc;
@@ -127,7 +138,9 @@ public sealed class SubscriptionPlanVersion : BaseEntity
     public Result Supersede(DateTime nowUtc)
     {
         if (Status != PlanVersionStatus.Published)
-            return Result.Failure(new Error("PlanVersion.InvalidTransition", $"Cannot supersede a version from {Status}."));
+            return Result.Failure(
+                new Error("PlanVersion.InvalidTransition", $"Cannot supersede a version from {Status}.")
+            );
 
         Status = PlanVersionStatus.Superseded;
         EffectiveUntilUtc = nowUtc;

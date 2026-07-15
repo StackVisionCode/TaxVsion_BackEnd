@@ -8,7 +8,6 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
-using TaxVision.CloudStorage.Domain.Quotas;
 using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Files.Commands;
@@ -38,87 +37,36 @@ public static class InitiateUploadHandler
     )
     {
         var request = command.Request;
-        if (!command.Scope.CanCreate(request.OwnerType, request.OwnerId))
-            return Result.Failure<InitiatedUploadResponse>(FileErrors.Forbidden);
-
-        var extension = Path.GetExtension(request.OriginalName).ToLowerInvariant();
         var config = options.Value;
 
-        var limit = await limits.GetAsync(command.TenantId, ct);
-        if (limit is null)
-            return Result.Failure<InitiatedUploadResponse>(QuotaErrors.NotProvisioned);
-
-        var policy = config.ResolvePlanPolicy(limit.PlanCode);
-        if (
-            string.IsNullOrWhiteSpace(request.OriginalName)
-            || request.OriginalName.Length > 255
-            || !policy.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
-            || !policy.AllowedContentTypes.Contains(request.ContentType, StringComparer.OrdinalIgnoreCase)
-        )
-            return Result.Failure<InitiatedUploadResponse>(FileErrors.UnsupportedType);
-
-        var reserve = limit.Reserve(request.SizeBytes);
-        if (reserve.IsFailure)
-        {
-            if (reserve.Error == QuotaErrors.Exceeded)
-            {
-                await bus.PublishAsync(
-                    new StorageLimitExceededIntegrationEvent
-                    {
-                        TenantId = command.TenantId,
-                        AttemptedFileSizeBytes = request.SizeBytes,
-                        UsedBytes = limit.UsedBytes,
-                        ReservedBytes = limit.ReservedBytes,
-                        MaxBytes = limit.MaxBytes,
-                        CorrelationId = command.Audit.CorrelationId,
-                    }
-                );
-            }
-            return Result.Failure<InitiatedUploadResponse>(reserve.Error);
-        }
-
-        var fileId = Guid.NewGuid();
-        var key = keyBuilder.Build(
-            fileId,
+        var registered = await UploadRegistration.ReserveAndRegisterAsync(
             command.TenantId,
+            command.ActorId,
+            command.Scope,
             request.OwnerType,
             request.OwnerId,
             request.FolderType,
             request.TaxYear,
-            request.OriginalName
-        );
-        if (key.IsFailure)
-        {
-            limit.Release(request.SizeBytes);
-            return Result.Failure<InitiatedUploadResponse>(key.Error);
-        }
-
-        var registered = FileObject.Register(
-            fileId,
-            command.TenantId,
-            request.OwnerType,
-            request.OwnerId,
-            request.FolderType,
-            request.TaxYear,
-            key.Value,
-            Path.GetFileName(request.OriginalName),
+            request.OriginalName,
             request.ContentType,
             request.SizeBytes,
-            command.ActorId,
-            clock.UtcNow,
-            clock.UtcNow.AddHours(Math.Clamp(config.UploadReservationHours, 1, 168))
+            command.Audit.CorrelationId,
+            limits,
+            keyBuilder,
+            config,
+            clock,
+            bus,
+            ct
         );
         if (registered.IsFailure)
-        {
-            limit.Release(request.SizeBytes);
             return Result.Failure<InitiatedUploadResponse>(registered.Error);
-        }
 
-        files.Add(registered.Value);
+        var file = registered.Value;
+        files.Add(file);
         audit.Add(
             StorageAccessLog.Create(
                 command.TenantId,
-                fileId,
+                file.Id,
                 command.ActorId,
                 "upload.initiated",
                 "success",
@@ -133,7 +81,7 @@ public static class InitiateUploadHandler
         var lifetime = TimeSpan.FromMinutes(Math.Clamp(config.PresignedUrlMinutes, 1, 60));
         var upload = await storage.CreateUploadPolicyAsync(
             config.TempBucket,
-            key.Value.Value,
+            file.ObjectKey,
             request.ContentType,
             request.SizeBytes,
             lifetime,
@@ -143,7 +91,7 @@ public static class InitiateUploadHandler
             new FileAccessAuditedIntegrationEvent
             {
                 TenantId = command.TenantId,
-                FileId = fileId,
+                FileId = file.Id,
                 ActorId = command.ActorId,
                 Action = "upload.initiated",
                 Outcome = "success",
@@ -154,13 +102,7 @@ public static class InitiateUploadHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(
-            new InitiatedUploadResponse(
-                fileId,
-                upload.Url,
-                upload.FormData,
-                clock.UtcNow.Add(lifetime),
-                registered.Value.Status
-            )
+            new InitiatedUploadResponse(file.Id, upload.Url, upload.FormData, clock.UtcNow.Add(lifetime), file.Status)
         );
     }
 }
@@ -342,11 +284,11 @@ public static class ScanFileHandler
             var limit =
                 await limits.GetAsync(command.TenantId, ct)
                 ?? throw new InvalidOperationException("Tenant quota projection is missing.");
-            var planPolicy = options.Value.ResolvePlanPolicy(limit.PlanCode);
+            var uploadPolicy = options.Value.ResolveUploadPolicy(limit.PlanCode, file.FolderType);
             if (
                 !inspected.IsSafe
                 || !FileTypeCompatibility.Matches(file.OriginalName, inspected.ContentType)
-                || !planPolicy.AllowedContentTypes.Contains(inspected.ContentType, StringComparer.OrdinalIgnoreCase)
+                || !uploadPolicy.AllowedContentTypes.Contains(inspected.ContentType, StringComparer.OrdinalIgnoreCase)
             )
             {
                 file.MarkScanFailed(inspected.RejectionReason ?? "Detected content type is not allowed.", clock.UtcNow);
@@ -578,6 +520,7 @@ public static class DeleteFileHandler
         DeleteFileCommand command,
         IFileObjectRepository files,
         IStorageAuditRepository audit,
+        IOptions<CloudStorageOptions> options,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -590,7 +533,8 @@ public static class DeleteFileHandler
         if (!command.Scope.CanAccess(file))
             return Result.Failure(FileErrors.NotFound);
 
-        var result = file.SoftDelete(clock.UtcNow, TimeSpan.FromDays(30));
+        var retentionDays = options.Value.RecycleBinRetentionDays;
+        var result = file.SoftDelete(clock.UtcNow, TimeSpan.FromDays(retentionDays));
         if (result.IsFailure)
             return result;
 
@@ -604,7 +548,7 @@ public static class DeleteFileHandler
                 command.Audit.IpAddress,
                 command.Audit.UserAgent,
                 command.Audit.CorrelationId,
-                "retention-days=30",
+                $"retention-days={retentionDays}",
                 clock.UtcNow
             )
         );

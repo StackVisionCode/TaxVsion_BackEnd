@@ -23,14 +23,21 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpGet]
     [ProducesResponseType<PagedResult<SeatResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSeats(
-        [FromQuery] string? status, [FromQuery] string? type, [FromQuery] Guid? userId,
-        [FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct)
+        [FromQuery] string? status,
+        [FromQuery] string? type,
+        [FromQuery] Guid? userId,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    )
     {
         if (!TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<SeatResponse>>>(
-            new GetTenantSeatsQuery(tenantId, status, type, userId, page, pageSize), ct);
+            new GetTenantSeatsQuery(tenantId, status, type, userId, page, pageSize),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -58,9 +65,13 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<IReadOnlyList<Guid>>>(
-            new PurchaseSeatsCommand(tenantId, request.SeatType, request.Quantity, request.AutoRenew, userId), ct);
+            new PurchaseSeatsCommand(tenantId, request.SeatType, request.Quantity, request.AutoRenew, userId),
+            ct
+        );
 
-        return result.IsSuccess ? StatusCode(StatusCodes.Status201Created, result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess
+            ? StatusCode(StatusCodes.Status201Created, result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record AssignSeatRequest(Guid UserId);
@@ -73,7 +84,10 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new AssignSeatToUserCommand(tenantId, id, request.UserId, userId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new AssignSeatToUserCommand(tenantId, id, request.UserId, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -88,7 +102,10 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new ReleaseSeatFromUserCommand(tenantId, id, request.Reason, userId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new ReleaseSeatFromUserCommand(tenantId, id, request.Reason, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -104,7 +121,9 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new ReassignSeatCommand(tenantId, id, request.ToUserId, request.Reason, userId), ct);
+            new ReassignSeatCommand(tenantId, id, request.ToUserId, request.Reason, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

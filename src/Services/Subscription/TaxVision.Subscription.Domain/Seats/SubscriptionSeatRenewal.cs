@@ -30,27 +30,41 @@ public sealed class SubscriptionSeatRenewal : BaseEntity
     private SubscriptionSeatRenewal() { }
 
     public static Result<SubscriptionSeatRenewal> Schedule(
-        Guid seatId, Guid tenantId, string idempotencyKey, DateTime periodStartUtc, DateTime periodEndUtc, DateTime nowUtc)
+        Guid seatId,
+        Guid tenantId,
+        string idempotencyKey,
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        DateTime nowUtc
+    )
     {
         if (seatId == Guid.Empty)
-            return Result.Failure<SubscriptionSeatRenewal>(new Error("SeatRenewal.InvalidParent", "SeatId is required."));
+            return Result.Failure<SubscriptionSeatRenewal>(
+                new Error("SeatRenewal.InvalidParent", "SeatId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(idempotencyKey))
-            return Result.Failure<SubscriptionSeatRenewal>(new Error("SeatRenewal.InvalidIdempotencyKey", "IdempotencyKey is required."));
+            return Result.Failure<SubscriptionSeatRenewal>(
+                new Error("SeatRenewal.InvalidIdempotencyKey", "IdempotencyKey is required.")
+            );
 
         if (periodEndUtc <= periodStartUtc)
-            return Result.Failure<SubscriptionSeatRenewal>(new Error("SeatRenewal.InvalidPeriod", "Period end must be after period start."));
+            return Result.Failure<SubscriptionSeatRenewal>(
+                new Error("SeatRenewal.InvalidPeriod", "Period end must be after period start.")
+            );
 
-        return Result.Success(new SubscriptionSeatRenewal
-        {
-            SeatId = seatId,
-            TenantId = tenantId,
-            IdempotencyKey = idempotencyKey,
-            Status = RenewalStatus.Scheduled,
-            PeriodStartUtc = periodStartUtc,
-            PeriodEndUtc = periodEndUtc,
-            ScheduledAtUtc = nowUtc,
-        });
+        return Result.Success(
+            new SubscriptionSeatRenewal
+            {
+                SeatId = seatId,
+                TenantId = tenantId,
+                IdempotencyKey = idempotencyKey,
+                Status = RenewalStatus.Scheduled,
+                PeriodStartUtc = periodStartUtc,
+                PeriodEndUtc = periodEndUtc,
+                ScheduledAtUtc = nowUtc,
+            }
+        );
     }
 
     public Result MarkProcessing(DateTime nowUtc)
@@ -74,7 +88,13 @@ public sealed class SubscriptionSeatRenewal : BaseEntity
         return Result.Success();
     }
 
-    public Result MarkFailed(string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, DateTime nowUtc)
+    public Result MarkFailed(
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        DateTime nowUtc
+    )
     {
         if (Status != RenewalStatus.Processing)
             return Result.Failure(new Error("SeatRenewal.InvalidTransition", $"Cannot fail from {Status}."));

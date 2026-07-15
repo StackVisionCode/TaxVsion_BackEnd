@@ -25,33 +25,39 @@ public sealed class PlanEntitlementDefinition : BaseEntity
         EntitlementKey key,
         EntitlementValueType valueType,
         string defaultValue,
-        string description)
+        string description
+    )
     {
         if (planVersionId == Guid.Empty)
         {
             return Result.Failure<PlanEntitlementDefinition>(
-                new Error("PlanEntitlementDefinition.InvalidVersion", "PlanVersionId is required."));
+                new Error("PlanEntitlementDefinition.InvalidVersion", "PlanVersionId is required.")
+            );
         }
 
         if (defaultValue is null)
         {
             return Result.Failure<PlanEntitlementDefinition>(
-                new Error("PlanEntitlementDefinition.InvalidDefaultValue", "DefaultValue is required."));
+                new Error("PlanEntitlementDefinition.InvalidDefaultValue", "DefaultValue is required.")
+            );
         }
 
         if (string.IsNullOrWhiteSpace(description))
         {
             return Result.Failure<PlanEntitlementDefinition>(
-                new Error("PlanEntitlementDefinition.InvalidDescription", "Description is required."));
+                new Error("PlanEntitlementDefinition.InvalidDescription", "Description is required.")
+            );
         }
 
-        return Result.Success(new PlanEntitlementDefinition
-        {
-            PlanVersionId = planVersionId,
-            Key = key,
-            ValueType = valueType,
-            DefaultValue = defaultValue,
-            Description = description,
-        });
+        return Result.Success(
+            new PlanEntitlementDefinition
+            {
+                PlanVersionId = planVersionId,
+                Key = key,
+                ValueType = valueType,
+                DefaultValue = defaultValue,
+                Description = description,
+            }
+        );
     }
 }

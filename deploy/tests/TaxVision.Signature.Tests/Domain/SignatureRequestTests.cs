@@ -105,7 +105,13 @@ public sealed class SignatureRequestTests
         var signer = request.AddSigner(NewEmail("s@example.com"), NewName("Sam"), null).Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
 
-        var placement = request.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, label: null, isRequired: false);
+        var placement = request.PlaceField(
+            signer.Id,
+            SignatureFieldKind.Signature,
+            pos,
+            label: null,
+            isRequired: false
+        );
 
         Assert.True(placement.IsSuccess);
         Assert.True(placement.Value.IsRequired);

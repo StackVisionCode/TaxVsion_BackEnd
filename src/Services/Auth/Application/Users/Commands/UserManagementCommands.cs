@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Users.Commands;
@@ -240,6 +241,16 @@ public static class AssignUserRolesHandler
 
         if (tenantRoles.Any(role => !role.IsActive))
             return Result.Failure(new Error("Role.Inactive", "One or more roles are inactive."));
+
+        // Fase A1: un Tenant Customer nunca debe terminar con un permiso interno colado
+        // por un rol mal asignado (ver CustomerPortalRoleGuard).
+        if (target.ActorType == UserActorType.CustomerPortal)
+        {
+            var catalog = await roles.GetPermissionsCatalogAsync(ct);
+            var portalGuard = CustomerPortalRoleGuard.ValidateRolesForCustomerPortal(tenantRoles, catalog);
+            if (portalGuard.IsFailure)
+                return portalGuard;
+        }
 
         await roles.ReplaceUserRolesAsync(target.Id, requestedIds, command.AssignedByUserId, ct);
         target.BumpPermissionsVersion();

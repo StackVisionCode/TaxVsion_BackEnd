@@ -56,7 +56,8 @@ builder.Services.AddHostedService<PendingPlanChangeApplicationJob>();
 
 // Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
 // esta policy. No se expone vía gateway público.
-builder.Services.AddAuthorizationBuilder()
+builder
+    .Services.AddAuthorizationBuilder()
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
 var rabbitUri = new Uri(

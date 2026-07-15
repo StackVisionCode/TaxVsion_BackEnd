@@ -97,24 +97,24 @@ public sealed class MarkSealedTests
 
     private static SignatureRequest NewInProgressWithField()
     {
-        var draft = SignatureRequest.CreateDraft(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "Test Sealed",
-            null,
-            SignatureCategory.Fiscal,
-            Guid.NewGuid(),
-            tokenExpirationHours: 72,
-            requiresSequentialSigning: false,
-            requiresConsent: false,
-            generateCertificate: false
-        ).Value;
+        var draft = SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Test Sealed",
+                null,
+                SignatureCategory.Fiscal,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: false,
+                requiresConsent: false,
+                generateCertificate: false
+            )
+            .Value;
 
-        var signer = draft.AddSigner(
-            SignerEmail.Create("s@example.com").Value,
-            SignerFullName.Create("Some Name").Value,
-            null
-        ).Value;
+        var signer = draft
+            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("Some Name").Value, null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         var hash = DocumentHash.Create(new string('a', 64)).Value;

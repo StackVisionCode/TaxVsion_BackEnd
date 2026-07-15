@@ -58,6 +58,7 @@ public sealed class AddOnDefinitionTests
                 allowMultipleInstances: true,
                 [BillingCycle.Monthly],
                 Guid.Empty,
-                DateTime.UtcNow)
+                DateTime.UtcNow
+            )
             .Value;
 }

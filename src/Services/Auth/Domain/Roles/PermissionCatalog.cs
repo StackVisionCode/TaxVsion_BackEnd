@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Domain.Roles;
@@ -19,6 +20,7 @@ public static class PermissionCatalog
     public const string BillingView = "billing.view";
     public const string BillingManage = "billing.manage";
     public const string SubscriptionManage = "subscription.manage";
+    public const string TenantDomainsManage = "tenant.domains.manage";
 
     // Módulos operativos
     public const string CustomersView = CustomersPermissions.View;
@@ -39,6 +41,13 @@ public static class PermissionCatalog
     public const string CloudStorageFileDelete = CloudStoragePermissions.FileDelete;
     public const string CloudStorageSettingsManage = CloudStoragePermissions.SettingsManage;
     public const string CloudStorageAuditView = CloudStoragePermissions.AuditView;
+    public const string CloudStorageRecycleBinManage = CloudStoragePermissions.RecycleBinManage;
+    public const string CloudStorageFolderManage = CloudStoragePermissions.FolderManage;
+    public const string CloudStorageShareCreate = CloudStoragePermissions.ShareCreate;
+    public const string CloudStorageShareRevoke = CloudStoragePermissions.ShareRevoke;
+    public const string CloudStorageShareManage = CloudStoragePermissions.ShareManage;
+    public const string CloudStorageLegalManage = CloudStoragePermissions.LegalManage;
+    public const string CloudStorageDmcaCounterNotice = CloudStoragePermissions.DmcaCounterNotice;
 
     // Signature — firma electrónica (bounded context propio, ver microservicio Signature)
     public const string SignatureRequestCreate = SignaturePermissions.RequestCreate;
@@ -64,12 +73,39 @@ public static class PermissionCatalog
     public const string PortalFoldersView = "portal.folders.view";
     public const string PortalSignaturesSign = "portal.signatures.sign";
 
+    // Communication — chat, llamadas, meetings (bounded context propio, ver microservicio
+    // Communication). Los 18 GUID/Code de abajo YA existen como filas reales en la tabla
+    // Permissions (sembradas por SQL directo en la migración AddCommunicationPermissions,
+    // 2026-07-10) — nunca habían pasado por este catálogo (desfase documentado desde
+    // entonces). Se reconcilian aquí con los MISMOS GUID exactos; la migración que agrega
+    // MinPlanTier/IsAssignableByTenant debe usar UpdateData (no InsertData) para estas 18 filas.
+    public const string CommunicationChatStart = CommunicationPermissions.ChatStart;
+    public const string CommunicationChatReply = CommunicationPermissions.ChatReply;
+    public const string CommunicationChatModerate = CommunicationPermissions.ChatModerate;
+    public const string CommunicationSupportOpen = CommunicationPermissions.SupportOpen;
+    public const string CommunicationSupportAgent = CommunicationPermissions.SupportAgent;
+    public const string CommunicationCallStart = CommunicationPermissions.CallStart;
+    public const string CommunicationVideoCallStart = CommunicationPermissions.VideoCallStart;
+    public const string CommunicationCallRecord = CommunicationPermissions.CallRecord;
+    public const string CommunicationMeetingCreate = CommunicationPermissions.MeetingCreate;
+    public const string CommunicationMeetingJoin = CommunicationPermissions.MeetingJoin;
+    public const string CommunicationMeetingHost = CommunicationPermissions.MeetingHost;
+    public const string CommunicationMeetingRecord = CommunicationPermissions.MeetingRecord;
+    public const string CommunicationScreenshotCreate = CommunicationPermissions.ScreenshotCreate;
+    public const string CommunicationGroupCreate = CommunicationPermissions.GroupCreate;
+    public const string CommunicationGroupManageMembers = CommunicationPermissions.GroupManageMembers;
+    public const string CommunicationNotificationRead = CommunicationPermissions.NotificationRead;
+    public const string CommunicationSettingsManage = CommunicationPermissions.SettingsManage;
+    public const string CommunicationAnalyticsRead = CommunicationPermissions.AnalyticsRead;
+
     public sealed record PermissionDefinition(
         Guid Id,
         string Code,
         string Module,
         string Description,
-        bool IsCustomerPortal
+        bool IsCustomerPortal,
+        int MinPlanTier = (int)PlanTier.Starter,
+        bool IsAssignableByTenant = true
     );
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
@@ -84,11 +120,16 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Reservado: quien controla roles.manage puede asignar CUALQUIER rol (incluido
+            // Tenant Admin) a cualquier usuario — es el vector de escalada de privilegios más
+            // directo. Nunca asignable a un rol custom, solo lo tienen los roles de sistema.
             new Guid("a1000000-0000-0000-0000-000000000004"),
             RolesManage,
             "users",
             "Gestionar roles y permisos",
-            false
+            false,
+            MinPlanTier: (int)PlanTier.Starter,
+            IsAssignableByTenant: false
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000005"), AuditView, "audit", "Consultar auditoría", false),
         new(
@@ -99,25 +140,34 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Reservado: facturación/billing es responsabilidad exclusiva del Tenant Admin —
+            // ver Subscription (fuera de alcance de este cambio, solo se marca el guardarraíl).
             new Guid("a1000000-0000-0000-0000-000000000007"),
             BillingView,
             "billing",
             "Ver facturación y suscripción",
-            false
+            false,
+            MinPlanTier: (int)PlanTier.Starter,
+            IsAssignableByTenant: false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000008"),
             BillingManage,
             "billing",
             "Gestionar métodos de pago y facturación",
-            false
+            false,
+            MinPlanTier: (int)PlanTier.Starter,
+            IsAssignableByTenant: false
         ),
         new(
+            // Reservado: incluye compra/baja de asientos — impacta directamente la facturación.
             new Guid("a1000000-0000-0000-0000-000000000009"),
             SubscriptionManage,
             "billing",
             "Cambiar plan y gestionar suscripción",
-            false
+            false,
+            MinPlanTier: (int)PlanTier.Starter,
+            IsAssignableByTenant: false
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
         new(
@@ -142,27 +192,41 @@ public static class PermissionCatalog
             "Gestionar documentos",
             false
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000015"), EmailUse, "email", "Usar el módulo de correo", false),
         new(
+            // Módulo "email" solo disponible desde el plan Pro (ver SubscriptionPlanCatalogSeeder).
+            new Guid("a1000000-0000-0000-0000-000000000015"),
+            EmailUse,
+            "email",
+            "Usar el módulo de correo",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            // Módulo "comms" solo disponible desde el plan Pro.
             new Guid("a1000000-0000-0000-0000-000000000016"),
             CommsCalls,
             "comms",
             "Realizar llamadas y meetings",
-            false
+            false,
+            MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Módulo "campaigns" solo disponible desde el plan Pro.
             new Guid("a1000000-0000-0000-0000-000000000017"),
             CampaignsManage,
             "campaigns",
             "Gestionar campañas",
-            false
+            false,
+            MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Módulo "reports" solo disponible desde el plan Pro.
             new Guid("a1000000-0000-0000-0000-000000000018"),
             ReportsView,
             "reports",
             "Ver dashboard y reportes",
-            false
+            false,
+            MinPlanTier: (int)PlanTier.Pro
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000019"),
@@ -232,6 +296,65 @@ public static class PermissionCatalog
             CloudStorageAuditView,
             "cloudstorage",
             "Consultar auditoría de archivos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000065"),
+            CloudStorageRecycleBinManage,
+            "cloudstorage",
+            "Restaurar y purgar archivos de la papelera",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000066"),
+            CloudStorageFolderManage,
+            "cloudstorage",
+            "Crear, renombrar y mover carpetas de archivos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000067"),
+            CloudStorageShareCreate,
+            "cloudstorage",
+            "Crear links para compartir archivos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000068"),
+            CloudStorageShareRevoke,
+            "cloudstorage",
+            "Revocar links de compartir existentes",
+            false
+        ),
+        new(
+            // Reservado: habilita otorgar permisos de Upload/EditMetadata en un
+            // link publico y cambiar la expiracion de cualquier link del tenant —
+            // ambos con impacto directo en la exposicion de datos fiscales.
+            new Guid("a1000000-0000-0000-0000-000000000069"),
+            CloudStorageShareManage,
+            "cloudstorage",
+            "Otorgar permisos elevados en links y gestionar su expiracion",
+            false,
+            IsAssignableByTenant: false
+        ),
+        new(
+            // Reservado: legal hold + DMCA (takedown/reinstate) es
+            // exclusivo del equipo legal de la plataforma, nunca de un tenant.
+            new Guid("a1000000-0000-0000-0000-000000000070"),
+            CloudStorageLegalManage,
+            "cloudstorage",
+            "Gestionar legal hold y takedowns DMCA",
+            false,
+            IsAssignableByTenant: false
+        ),
+        new(
+            // A diferencia de LegalManage, esto lo ejerce el propio tenant sobre
+            // sus archivos (responder a un takedown recibido) — mismo nivel de
+            // TenantAdmin-only que CloudStorageFileDelete, no de plataforma.
+            new Guid("a1000000-0000-0000-0000-000000000071"),
+            CloudStorageDmcaCounterNotice,
+            "cloudstorage",
+            "Presentar contranotificacion DMCA sobre un archivo propio",
             false
         ),
         new(
@@ -347,18 +470,168 @@ public static class PermissionCatalog
             false
         ),
         new(
-            // OJO: "...045" a "...062" ya estan ocupados en la BD real por los 18
-            // permisos de Communication (communication.chat.start etc.) sembrados
-            // via migracion propia SIN pasar por este catalogo — PermissionCatalog
-            // esta desincronizado de la BD para ese rango. Confirmado por consulta
-            // directa a Permissions antes de elegir este GUID. Pendiente: reconciliar
-            // agregando las entradas de Communication a este catalogo (fuera de
-            // alcance de este cambio).
             new Guid("a1000000-0000-0000-0000-000000000063"),
             CustomersFiscalProfileReveal,
             "customers",
             "Revelar el SSN/ITIN/EIN completo de un customer",
             false
+        ),
+        new(
+            // Reservado: quien agrega/deshabilita dominios controla qué Host puede
+            // autenticar como este tenant (Fase A5) — riesgo equivalente a
+            // RolesManage/BillingManage. Nunca asignable a un rol custom.
+            new Guid("a1000000-0000-0000-0000-000000000064"),
+            TenantDomainsManage,
+            "domains",
+            "Gestionar dominios propios del tenant (custom hostnames)",
+            false,
+            MinPlanTier: (int)PlanTier.Starter,
+            IsAssignableByTenant: false
+        ),
+        // --- Communication (reconciliado, ver comentario arriba) ---
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000045"),
+            CommunicationChatStart,
+            "communication",
+            "Iniciar conversaciones de chat",
+            true,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000046"),
+            CommunicationChatReply,
+            "communication",
+            "Responder en conversaciones de chat",
+            true,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000047"),
+            CommunicationChatModerate,
+            "communication",
+            "Moderar mensajes en conversaciones del tenant",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000048"),
+            CommunicationSupportOpen,
+            "communication",
+            "Abrir chat de soporte hacia el PlatformTenant",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000049"),
+            CommunicationSupportAgent,
+            "communication",
+            "Atender chats de soporte como agente (PlatformTenant)",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000050"),
+            CommunicationCallStart,
+            "communication",
+            "Iniciar llamadas de audio 1:1",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000051"),
+            CommunicationVideoCallStart,
+            "communication",
+            "Iniciar llamadas de video 1:1",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000052"),
+            CommunicationCallRecord,
+            "communication",
+            "Grabar llamadas 1:1 (con banner de disclosure)",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000053"),
+            CommunicationMeetingCreate,
+            "communication",
+            "Crear reuniones multi-party",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000054"),
+            CommunicationMeetingJoin,
+            "communication",
+            "Unirse a reuniones (previa invitación válida)",
+            true,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000055"),
+            CommunicationMeetingHost,
+            "communication",
+            "Actuar como host de reuniones (waiting room, mute all, transfer)",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000056"),
+            CommunicationMeetingRecord,
+            "communication",
+            "Grabar reuniones (con banner de disclosure)",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000057"),
+            CommunicationScreenshotCreate,
+            "communication",
+            "Adjuntar screenshots/voice/video en chat",
+            true,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000058"),
+            CommunicationGroupCreate,
+            "communication",
+            "Crear grupos internos por tenant",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000059"),
+            CommunicationGroupManageMembers,
+            "communication",
+            "Gestionar miembros de grupos internos",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000060"),
+            CommunicationNotificationRead,
+            "communication",
+            "Consultar notificaciones in-app propias",
+            true,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000061"),
+            CommunicationSettingsManage,
+            "communication",
+            "Gestionar la configuración de Communication del tenant",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000062"),
+            CommunicationAnalyticsRead,
+            "communication",
+            "Consultar analytics de Communication del tenant",
+            false,
+            MinPlanTier: (int)PlanTier.Pro
         ),
     ];
 
@@ -389,6 +662,14 @@ public static class PermissionCatalog
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,
+                // Organizar archivos en carpetas es trabajo operativo diario, no
+                // administrativo — a diferencia de recyclebin.manage/settings/audit.
+                CloudStorageFolderManage,
+                // Compartir/revocar un archivo puntual es trabajo operativo; otorgar
+                // Upload/EditMetadata en un link o tocar su expiracion queda en
+                // share.manage, reservado a TenantAdmin (ver PermissionDefinition).
+                CloudStorageShareCreate,
+                CloudStorageShareRevoke,
                 // Signature: el empleado prepara solicitudes y consulta resultados.
                 // No incluye cancel/expire/settings (reservados a TenantAdmin).
                 SignatureRequestCreate,
@@ -398,6 +679,18 @@ public static class PermissionCatalog
                 SignatureDocumentSign,
                 SignatureDocumentView,
                 SignatureDocumentDownload,
+                // Communication: mismo set que sembró la migración AddCommunicationPermissions
+                // para el rol "Employee" — nunca host de settings/analytics/moderate/record.
+                CommunicationChatStart,
+                CommunicationChatReply,
+                CommunicationSupportOpen,
+                CommunicationCallStart,
+                CommunicationVideoCallStart,
+                CommunicationMeetingCreate,
+                CommunicationMeetingJoin,
+                CommunicationMeetingHost,
+                CommunicationScreenshotCreate,
+                CommunicationNotificationRead,
             ],
             Role.SystemCustomerPortal =>
             [
@@ -406,6 +699,14 @@ public static class PermissionCatalog
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,
+                // Communication: mismo set que sembró la migración AddCommunicationPermissions
+                // para el rol "Customer Portal" — nunca moderate/host/record/settings.
+                CommunicationChatStart,
+                CommunicationChatReply,
+                CommunicationSupportOpen,
+                CommunicationMeetingJoin,
+                CommunicationScreenshotCreate,
+                CommunicationNotificationRead,
             ],
             _ => [],
         };

@@ -50,7 +50,7 @@ public static class RunCustomerImportHandler
             if (startInfo is null)
                 return;
 
-            var allRows = await ReadRowsAsync(scopeFactory, attemptId, startInfo.SourceKind, ct);
+            var allRows = await ReadRowsAsync(scopeFactory, startInfo.TenantId, attemptId, startInfo.SourceKind, ct);
             var maxRows = ResolveMaxRows(scopeFactory);
             if (!await ValidateRowCountAsync(scopeFactory, attemptId, allRows.Count, maxRows, ct))
                 return;
@@ -125,6 +125,7 @@ public static class RunCustomerImportHandler
 
     private static async Task<List<ImportCustomerRow>> ReadRowsAsync(
         IServiceScopeFactory sf,
+        Guid tenantId,
         Guid attemptId,
         ImportSourceKind sourceKind,
         CancellationToken ct
@@ -132,12 +133,18 @@ public static class RunCustomerImportHandler
     {
         await using var scope = sf.CreateAsyncScope();
         var sp = scope.ServiceProvider;
-        var fileStore = sp.GetRequiredService<IImportFileStore>();
+        var cloudStorage = sp.GetRequiredService<ICustomerImportCloudStorageClient>();
         var readerFactory = sp.GetRequiredService<ICustomerImportReaderFactory>();
         var reader = readerFactory.Resolve(sourceKind);
 
+        var downloadResult = await cloudStorage.DownloadAsync(tenantId, attemptId, ct);
+        if (downloadResult.IsFailure)
+            throw new InvalidOperationException(
+                $"Could not download the import file from CloudStorage: {downloadResult.Error.Message}"
+            );
+
         var rows = new List<ImportCustomerRow>();
-        await using var fileStream = await fileStore.OpenReadAsync(attemptId, ct);
+        using var fileStream = new MemoryStream(downloadResult.Value);
         await foreach (var row in reader.ReadAsync(fileStream, ct))
         {
             rows.Add(row);
@@ -270,7 +277,7 @@ public static class RunCustomerImportHandler
         var uow = sp.GetRequiredService<IUnitOfWork>();
         var bus = sp.GetRequiredService<IMessageBus>();
         var correlation = sp.GetRequiredService<ICorrelationContext>();
-        var fileStore = sp.GetRequiredService<IImportFileStore>();
+        var cloudStorage = sp.GetRequiredService<ICustomerImportCloudStorageClient>();
 
         var attempt = await repo.GetByIdAsync(attemptId, ct);
         if (attempt is null)
@@ -285,8 +292,16 @@ public static class RunCustomerImportHandler
 
         await uow.SaveChangesAsync(ct);
 
-        // Borrar el binario del archivo: el reporte por fila queda en CustomerImportRows
-        await fileStore.DeleteAsync(attemptId, ct);
+        // Borrar el archivo en CloudStorage: el reporte por fila queda en CustomerImportRows.
+        // Best-effort: si falla (red, CloudStorage caido), el import ya quedo terminal para el
+        // usuario; CustomerImportCleanupHostedService reintenta el borrado remoto mas tarde.
+        var deleteResult = await cloudStorage.DeleteAsync(info.TenantId, attemptId, ct);
+        if (deleteResult.IsFailure)
+            logger.LogWarning(
+                "Could not delete CloudStorage file for import {AttemptId}: {Error}",
+                attemptId,
+                deleteResult.Error.Message
+            );
 
         await bus.PublishAsync(
             new CustomersBulkImportedIntegrationEvent

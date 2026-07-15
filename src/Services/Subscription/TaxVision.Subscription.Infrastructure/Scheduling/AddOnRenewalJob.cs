@@ -11,8 +11,11 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
 /// <summary>Publica el intent de cobro por cada add-on que llega a su NextRenewalAtUtc.
 /// Independiente de la suscripción base y de los seats.</summary>
-public sealed class AddOnRenewalJob(IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<AddOnRenewalJob> logger)
-    : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
+public sealed class AddOnRenewalJob(
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<AddOnRenewalJob> logger
+) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
 
@@ -34,21 +37,27 @@ public sealed class AddOnRenewalJob(IServiceScopeFactory scopeFactory, IDistribu
             var result = addOn.BeginRenewal(idempotencyKey, actorUserId: Guid.Empty, nowUtc);
             if (result.IsFailure)
             {
-                logger.LogWarning("Could not begin renewal for add-on {TenantAddOnId}: {Code}.", addOn.Id, result.Error.Code);
+                logger.LogWarning(
+                    "Could not begin renewal for add-on {TenantAddOnId}: {Code}.",
+                    addOn.Id,
+                    result.Error.Code
+                );
                 continue;
             }
 
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.PublishAsync(new AddOnRenewalDueIntegrationEvent
-            {
-                TenantId = addOn.TenantId,
-                TenantAddOnId = addOn.Id,
-                AddOnCode = addOn.AddOnCode,
-                PeriodStartUtc = addOn.CurrentPeriodEndUtc,
-                PeriodEndUtc = addOn.BillingCycle.CalculateNext(addOn.CurrentPeriodEndUtc),
-                IdempotencyKey = idempotencyKey,
-            });
+            await bus.PublishAsync(
+                new AddOnRenewalDueIntegrationEvent
+                {
+                    TenantId = addOn.TenantId,
+                    TenantAddOnId = addOn.Id,
+                    AddOnCode = addOn.AddOnCode,
+                    PeriodStartUtc = addOn.CurrentPeriodEndUtc,
+                    PeriodEndUtc = addOn.BillingCycle.CalculateNext(addOn.CurrentPeriodEndUtc),
+                    IdempotencyKey = idempotencyKey,
+                }
+            );
         }
 
         if (due.Count > 0)

@@ -21,12 +21,22 @@ public sealed class PlanPriceTierConfiguration : IEntityTypeConfiguration<PlanPr
         builder.Property(tier => tier.MinQuantity).IsRequired();
         builder.Property(tier => tier.MaxQuantity);
 
-        builder.OwnsOne(tier => tier.UnitAmount, money =>
-        {
-            money.Property(m => m.Amount).HasColumnName("UnitAmount").HasPrecision(18, 4).IsRequired();
-            money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
-        });
+        builder.OwnsOne(
+            tier => tier.UnitAmount,
+            money =>
+            {
+                money.Property(m => m.Amount).HasColumnName("UnitAmount").HasPrecision(18, 4).IsRequired();
+                money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
+            }
+        );
 
-        builder.HasIndex(tier => new { tier.PlanVersionId, tier.BillingCycle, tier.MinQuantity }).IsUnique();
+        builder
+            .HasIndex(tier => new
+            {
+                tier.PlanVersionId,
+                tier.BillingCycle,
+                tier.MinQuantity,
+            })
+            .IsUnique();
     }
 }

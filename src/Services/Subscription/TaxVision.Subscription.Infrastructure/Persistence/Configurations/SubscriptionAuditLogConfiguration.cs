@@ -23,10 +23,12 @@ public sealed class SubscriptionAuditLogConfiguration : IEntityTypeConfiguration
         builder.Property(entry => entry.AfterPayload).HasColumnType("nvarchar(max)");
         builder.Property(entry => entry.Reason).HasMaxLength(500);
 
-        builder.HasIndex(entry => new { entry.TenantId, entry.OccurredAtUtc })
+        builder
+            .HasIndex(entry => new { entry.TenantId, entry.OccurredAtUtc })
             .HasDatabaseName("IX_SubscriptionAuditLogs_TenantId_OccurredAtUtc");
 
-        builder.HasIndex(entry => new { entry.AggregateType, entry.AggregateId })
+        builder
+            .HasIndex(entry => new { entry.AggregateType, entry.AggregateId })
             .HasDatabaseName("IX_SubscriptionAuditLogs_AggregateType_AggregateId");
     }
 }

@@ -46,7 +46,9 @@ public sealed class SubscriptionTenantSettings : TenantEntity
     public static Result<SubscriptionTenantSettings> Default(Guid tenantId, Guid actorUserId, DateTime nowUtc)
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<SubscriptionTenantSettings>(new Error("SubscriptionSettings.InvalidTenant", "TenantId is required."));
+            return Result.Failure<SubscriptionTenantSettings>(
+                new Error("SubscriptionSettings.InvalidTenant", "TenantId is required.")
+            );
 
         var gracePeriodResult = GracePeriod.Create(7);
         var trialDaysResult = TrialDays.Create(14);
@@ -68,7 +70,8 @@ public sealed class SubscriptionTenantSettings : TenantEntity
     public Result ApplyPatch(SubscriptionSettingsPatch patch, Guid actorUserId, DateTime nowUtc)
     {
         var validation = ValidatePatch(patch);
-        if (validation.IsFailure) return validation;
+        if (validation.IsFailure)
+            return validation;
 
         Apply(patch);
         Touch(actorUserId, nowUtc);
@@ -79,27 +82,54 @@ public sealed class SubscriptionTenantSettings : TenantEntity
     {
         var effectiveMinSeats = patch.MinSeatsRequired ?? MinSeatsRequired;
         if (effectiveMinSeats < 0)
-            return Result.Failure(new Error("SubscriptionSettings.InvalidMinSeats", "MinSeatsRequired cannot be negative."));
+            return Result.Failure(
+                new Error("SubscriptionSettings.InvalidMinSeats", "MinSeatsRequired cannot be negative.")
+            );
 
         var effectiveMaxSeats = patch.ClearMaxSeatsAllowed ? null : patch.MaxSeatsAllowed ?? MaxSeatsAllowed;
         if (effectiveMaxSeats is not null && effectiveMaxSeats < effectiveMinSeats)
-            return Result.Failure(new Error("SubscriptionSettings.InvalidMaxSeats", "MaxSeatsAllowed cannot be less than MinSeatsRequired."));
+            return Result.Failure(
+                new Error(
+                    "SubscriptionSettings.InvalidMaxSeats",
+                    "MaxSeatsAllowed cannot be less than MinSeatsRequired."
+                )
+            );
 
         if (patch.DefaultSeatRenewalDays is < 1 or > 366)
-            return Result.Failure(new Error("SubscriptionSettings.InvalidSeatRenewalDays", "DefaultSeatRenewalDays must be between 1 and 366."));
+            return Result.Failure(
+                new Error(
+                    "SubscriptionSettings.InvalidSeatRenewalDays",
+                    "DefaultSeatRenewalDays must be between 1 and 366."
+                )
+            );
 
         if (patch.SeatReassignmentCooldownDays is < 0 or > 90)
-            return Result.Failure(new Error("SubscriptionSettings.InvalidCooldown", "SeatReassignmentCooldownDays must be between 0 and 90."));
+            return Result.Failure(
+                new Error(
+                    "SubscriptionSettings.InvalidCooldown",
+                    "SeatReassignmentCooldownDays must be between 0 and 90."
+                )
+            );
 
         if (patch.NotifyAfterFailedRenewalDays is < 0 or > 30)
-            return Result.Failure(new Error("SubscriptionSettings.InvalidNotifyAfterFailed", "NotifyAfterFailedRenewalDays must be between 0 and 30."));
+            return Result.Failure(
+                new Error(
+                    "SubscriptionSettings.InvalidNotifyAfterFailed",
+                    "NotifyAfterFailedRenewalDays must be between 0 and 30."
+                )
+            );
 
         if (patch.NotifyBeforeRenewalDays is not null)
         {
             foreach (var day in patch.NotifyBeforeRenewalDays)
             {
                 if (day is < 0 or > 90)
-                    return Result.Failure(new Error("SubscriptionSettings.InvalidNotifyBefore", "Each NotifyBeforeRenewalDays entry must be between 0 and 90."));
+                    return Result.Failure(
+                        new Error(
+                            "SubscriptionSettings.InvalidNotifyBefore",
+                            "Each NotifyBeforeRenewalDays entry must be between 0 and 90."
+                        )
+                    );
             }
         }
 
