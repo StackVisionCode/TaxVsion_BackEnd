@@ -154,14 +154,24 @@ public static class SaveFileFromSourceHandler
             }
 
             var file = registered.Value;
-            await storage.CopyAsync(
-                evt.SourceBucket,
-                evt.SourceObjectKey,
-                options.Value.TempBucket,
-                key.Value.Value,
-                ct
-            );
-            await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
+
+            // Idempotencia ante redelivery: Copy/Delete en MinIO no son transaccionales con el
+            // SaveChanges de abajo. Si un intento anterior copio el objeto pero el SaveChanges
+            // fallo despues (p.ej. DbUpdateConcurrencyException en TenantStorageLimits por otro
+            // mensaje concurrente del mismo tenant), el retry de Wolverine reenvia el mismo
+            // evento — y sin este chequeo, intentaria copiar de nuevo desde SourceObjectKey, que
+            // el intento anterior ya borro, tirando ObjectNotFoundException para siempre.
+            if (!await storage.ExistsAsync(options.Value.TempBucket, key.Value.Value, ct))
+            {
+                await storage.CopyAsync(
+                    evt.SourceBucket,
+                    evt.SourceObjectKey,
+                    options.Value.TempBucket,
+                    key.Value.Value,
+                    ct
+                );
+                await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
+            }
 
             file.MarkPendingScan();
             files.Add(file);

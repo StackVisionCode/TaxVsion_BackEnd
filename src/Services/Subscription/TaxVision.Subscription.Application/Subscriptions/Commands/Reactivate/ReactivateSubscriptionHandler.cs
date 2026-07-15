@@ -62,7 +62,7 @@ public static class ReactivateSubscriptionHandler
             ct
         );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation("Subscription reactivated for tenant {TenantId}.", command.TenantId);
         return Result.Success();

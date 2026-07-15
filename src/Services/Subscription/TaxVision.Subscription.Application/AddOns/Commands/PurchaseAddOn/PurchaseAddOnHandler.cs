@@ -94,7 +94,7 @@ public static class PurchaseAddOnHandler
             ct
         );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Tenant {TenantId} purchased add-on {AddOnCode} x{Quantity} (requested by {UserId}).",

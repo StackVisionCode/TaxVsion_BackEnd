@@ -992,12 +992,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{UrlBase}}/cloud-storage/public/{{shareToken}}?password=&email=&fileId={{fileId}}",
+							"raw": "{{UrlBase}}/storage/public/{{shareToken}}?password=&email=&fileId={{fileId}}",
 							"host": [
 								"{{UrlBase}}"
 							],
 							"path": [
-								"cloud-storage",
+								"storage",
 								"public",
 								"{{shareToken}}"
 							],
@@ -1019,7 +1019,7 @@
 								}
 							]
 						},
-						"description": "Publico (AllowAnonymous), sin base storage/ (usa cloud-storage/). 302 a la URL presignada si es valido, 401 { requiresPassword: true } si falta password, 404 en cualquier otro caso (revocado/expirado/agotado/inexistente — anti-enumeracion). Rate-limited por la politica \"share-public\"."
+						"description": "Publico (AllowAnonymous). 302 a la URL presignada si es valido, 401 { requiresPassword: true } si falta password, 404 en cualquier otro caso (revocado/expirado/agotado/inexistente — anti-enumeracion). Rate-limited por la politica \"share-public\"."
 					},
 					"response": []
 				},
@@ -1035,12 +1035,12 @@
 							}
 						],
 						"url": {
-							"raw": "{{UrlBase}}/cloud-storage/private/{{shareToken}}?fileId={{fileId}}",
+							"raw": "{{UrlBase}}/storage/private/{{shareToken}}?fileId={{fileId}}",
 							"host": [
 								"{{UrlBase}}"
 							],
 							"path": [
-								"cloud-storage",
+								"storage",
 								"private",
 								"{{shareToken}}"
 							],

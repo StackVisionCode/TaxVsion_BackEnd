@@ -35,7 +35,14 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
         policy.SetContentRange(exactSizeBytes, checked(exactSizeBytes + multipartOverheadBytes));
 
         var (url, formData) = await client.PresignedPostPolicyAsync(policy);
-        return new PresignedUpload(url, new Dictionary<string, string>(formData, StringComparer.Ordinal));
+
+        // El SDK de MinIO agrega la condicion Content-Type al policy firmado (SetContentType
+        // arriba) pero NO devuelve ese campo en formData — solo los campos de firma
+        // (bucket/key/policy/x-amz-*). Sin esto, ningun caller (Postman, un frontend) puede
+        // satisfacer su propio policy: el POST a MinIO siempre rechaza con
+        // AccessDenied "Policy Condition failed" por falta del campo Content-Type.
+        var result = new Dictionary<string, string>(formData, StringComparer.Ordinal) { ["Content-Type"] = contentType };
+        return new PresignedUpload(url, result);
     }
 
     public async Task<Uri> PresignGetAsync(string bucket, string objectKey, TimeSpan lifetime, CancellationToken ct)

@@ -43,6 +43,7 @@ public sealed class AddOnExpirationJob(
                 addOn.TenantId,
                 unitOfWork,
                 bus,
+                logger,
                 ct
             );
 
@@ -53,6 +54,7 @@ public sealed class AddOnExpirationJob(
                 addOn.TenantId,
                 unitOfWork,
                 bus,
+                logger,
                 ct
             );
 
@@ -65,6 +67,7 @@ public sealed class AddOnExpirationJob(
         Guid tenantId,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -72,7 +75,7 @@ public sealed class AddOnExpirationJob(
             return 0;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(tenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(tenantId, logger, ct);
         return 1;
     }
 }

@@ -12,7 +12,7 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 /// el tenant del link (ver ResolvePrivateShareHandler) aunque el token sea valido.
 /// </summary>
 [ApiController]
-[Route("cloud-storage")]
+[Route("storage")]
 [Authorize]
 public sealed class PrivateShareController(IMessageBus bus) : ControllerBase
 {

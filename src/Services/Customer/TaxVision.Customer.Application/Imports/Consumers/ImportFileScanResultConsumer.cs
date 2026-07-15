@@ -17,19 +17,36 @@ namespace TaxVision.Customer.Application.Imports.Consumers;
 /// evento fluyen por el mismo fanout "taxvision-events" que consumen otros servicios (ej.
 /// CloudStorage, Notification) para SUS PROPIOS archivos; un FileId que no matchea ningun
 /// attempt de este tenant simplemente no es nuestro y se ignora.
+///
+/// Un usuario puede cancelar el import mientras el archivo todavia esta en escaneo (Status pasa
+/// a Canceling antes de que el worker arranque). Solo el worker llama ConfirmCanceled(), asi que
+/// los 3 handlers de abajo deben resolver ese caso ellos mismos o el attempt queda en Canceling
+/// para siempre (y Canceling cuenta como "activo" para el indice unico por tenant).
 /// </summary>
 public static class ImportFileScanResultConsumer
 {
     public static async Task Handle(
         FileAvailableIntegrationEvent msg,
         ICustomerImportRepository repository,
+        IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger<CustomerImportAttempt> logger,
         CancellationToken ct
     )
     {
         var attempt = await repository.GetByIdAsync(msg.FileId, ct);
-        if (attempt is null || attempt.TenantId != msg.TenantId || attempt.Status != ImportStatus.Queued)
+        if (attempt is null || attempt.TenantId != msg.TenantId)
+            return;
+
+        if (attempt.Status == ImportStatus.Canceling)
+        {
+            logger.LogInformation("Import {AttemptId} was canceled before the scan finished; confirming cancel.", attempt.Id);
+            attempt.ConfirmCanceled();
+            await unitOfWork.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (attempt.Status != ImportStatus.Queued)
             return;
 
         logger.LogInformation("Import {AttemptId} file passed the scan; queuing worker.", attempt.Id);
@@ -48,6 +65,14 @@ public static class ImportFileScanResultConsumer
         if (attempt is null || attempt.TenantId != msg.TenantId || attempt.IsTerminal)
             return;
 
+        if (attempt.Status == ImportStatus.Canceling)
+        {
+            logger.LogInformation("Import {AttemptId} was canceled before the scan finished; confirming cancel.", attempt.Id);
+            attempt.ConfirmCanceled();
+            await unitOfWork.SaveChangesAsync(ct);
+            return;
+        }
+
         logger.LogWarning("Import {AttemptId} file failed the security scan; failing the attempt.", attempt.Id);
         attempt.Fail("Uploaded file failed the security scan.");
         await unitOfWork.SaveChangesAsync(ct);
@@ -64,6 +89,14 @@ public static class ImportFileScanResultConsumer
         var attempt = await repository.GetByIdAsync(msg.FileId, ct);
         if (attempt is null || attempt.TenantId != msg.TenantId || attempt.IsTerminal)
             return;
+
+        if (attempt.Status == ImportStatus.Canceling)
+        {
+            logger.LogInformation("Import {AttemptId} was canceled before the scan finished; confirming cancel.", attempt.Id);
+            attempt.ConfirmCanceled();
+            await unitOfWork.SaveChangesAsync(ct);
+            return;
+        }
 
         logger.LogWarning("Import {AttemptId} file was blocked by content policy; failing the attempt.", attempt.Id);
         attempt.Fail("Uploaded file was blocked by content policy.");

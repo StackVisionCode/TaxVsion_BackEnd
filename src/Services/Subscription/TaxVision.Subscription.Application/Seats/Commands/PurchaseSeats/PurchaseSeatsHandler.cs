@@ -42,7 +42,7 @@ public static class PurchaseSeatsHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Tenant {TenantId} purchased {Quantity} {SeatType} seat(s) (requested by {UserId}).",

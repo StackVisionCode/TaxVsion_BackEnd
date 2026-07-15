@@ -64,7 +64,7 @@ public static class ReleaseSeatFromUserHandler
             ct
         );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Seat {SeatId} released from user {UserId} for tenant {TenantId}.",

@@ -71,7 +71,7 @@ public static class ChangePlanHandler
                 ct
             );
 
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
             logger.LogInformation(
                 "Tenant {TenantId} changed plan to {PlanCode} immediately (requested by {UserId}).",

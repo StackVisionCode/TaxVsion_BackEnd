@@ -2674,8 +2674,8 @@ Sharing (ver sec 27.10):
 - `GET /storage/shares/shared-with-me`
 - `DELETE /storage/shares/{shareLinkId}`
 - `PUT /storage/shares/{shareLinkId}/expiration`
-- `GET /cloud-storage/public/{token}` (anonimo)
-- `GET /cloud-storage/private/{token}` (autenticado)
+- `GET /storage/public/{token}` (anonimo)
+- `GET /storage/private/{token}` (autenticado)
 
 Recycle bin (ver sec 27.11):
 
@@ -2838,9 +2838,9 @@ Tres controllers cubren el ciclo de vida completo de enlaces compartidos:
 
 - `ShareLinksController.cs` (`[Authorize]`): crear/listar para archivo o carpeta, listar "shared
   with me", revocar, actualizar expiracion.
-- `PublicShareController.cs` (`[AllowAnonymous]`, `GET cloud-storage/public/{token}`, rate limit
+- `PublicShareController.cs` (`[AllowAnonymous]`, `GET storage/public/{token}`, rate limit
   `share-public` 20 req/min por `{ip}:{path}`).
-- `PrivateShareController.cs` (`[Authorize]`, `GET cloud-storage/private/{token}`).
+- `PrivateShareController.cs` (`[Authorize]`, `GET storage/private/{token}`).
 
 `ShareVisibility` (`Domain/Sharing/ShareEnums.cs`): `Public`, `TenantOnly`, `SpecificUsers`,
 `TenantCustomers`, `ExternalRecipients`. `SharePermission`: `View`, `Preview`, `Download`,
@@ -4383,7 +4383,7 @@ para mutaciones del propio tenant, `PlatformAdmin` para operaciones cross-tenant
 | AddOns | `GET /addons` (publico), `GET /addons/tenant`, `POST /addons`, `POST /addons/{id}/cancel`, `POST /addons/{id}/renew` |
 | Entitlements | `GET /entitlements/summary`, `GET /entitlements/{key}` |
 | Audit | `GET /audit` (TenantAdmin o PlatformAdmin) |
-| Admin | `GET /admin/subscription/upcoming-renewals`, `/expired-seats`, `/past-due-subscriptions` (PlatformAdmin) |
+| Admin | `GET /admin/subscription/upcoming-renewals`, `/expired-seats`, `/past-due-subscriptions`, `POST /admin/subscription/tenants/{tenantId}/recalculate-entitlements` (PlatformAdmin) |
 | Interno | `GET /internal/users/{userId}/access` (policy `ServiceOnly`, solo Auth lo llama) |
 
 ## 32.5 Jobs en segundo plano
@@ -4436,6 +4436,20 @@ no necesiten una llamada HTTP adicional a Subscription. Lo consumen:
   todavia esas claves en el catalogo (§32.2 solo siembra `module.*` y limites core),
   asi que hoy cae siempre a los defaults conservadores (4 participantes, 60 min,
   etc.) hasta que ese catalogo se extienda.
+
+**Confiabilidad del recalculo (2026-07)**: las ~20 rutas que disparan
+`RecalculateEntitlementsCommand` (alta de tenant, cambio de plan, seats, add-ons,
+jobs de expiracion) lo hacen via `bus.RecalculateEntitlementsSafelyAsync(...)`
+(`Entitlements/Commands/RecalculateEntitlements/RecalculateEntitlementsExtensions.cs`),
+que loguea un `ERROR` con el `TenantId` si el comando falla — antes se ignoraba el
+`Result` devuelto y una falla transitoria (ej. Redis/DB no disponibles un instante)
+dejaba al tenant con `TenantSubscription` valida pero sin `TenantEntitlementSnapshot`,
+sin que nada lo notara ni lo reintentara. Ademas, `TenantCreatedConsumer` ya no corta
+en seco cuando la suscripcion del tenant ya existe: sigue recalculando entitlements en
+ese caso (es upsert), asi que reprocesar `TenantCreatedIntegrationEvent` autosana un
+tenant que quedo en ese estado. Para reconciliar un tenant ya atascado sin esperar un
+reintento automatico, `POST /admin/subscription/tenants/{tenantId}/recalculate-entitlements`
+(PlatformAdmin, §32.4) fuerza el recalculo y republica el evento a demanda.
 
 Retirados en la fase de cleanup del rediseno (2026-07): `SubscriptionActivatedIntegrationEvent`,
 `SubscriptionPlanChangedIntegrationEvent`, `SubscriptionSuspendedIntegrationEvent`,
@@ -4497,7 +4511,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d --build subscription-ap
 ```
 
 La coleccion Postman `Postman_Collection/TaxVision_Subscription.postman_collection.json`
-cubre los 21 endpoints agrupados por recurso (Plans, Subscriptions, Seats, AddOns,
+cubre los 28 endpoints agrupados por recurso (Plans, Subscriptions, Seats, AddOns,
 Entitlements, Audit, Admin). Usa el mismo environment `TaxVisionBackEnd` que el
 resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
 /auth/login`, `tenantId` del claim del JWT). Flujo minimo sugerido:
@@ -4511,6 +4525,10 @@ resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
 4. `PurchaseSeats` / `PurchaseAddOn` y sus variantes de asignar/cancelar/renovar.
 5. `GetEntitlementSummary` para ver el efecto combinado.
 6. `SearchAuditLog` para confirmar que cada mutacion anterior quedo registrada.
+7. `Admin - RecalculateEntitlements` (PlatformAdmin) si un tenant quedo con
+   suscripcion pero sin snapshot de entitlements (ver §32.6) — reintenta el
+   calculo y republica `TenantEntitlementsChangedIntegrationEvent` a demanda, sin
+   esperar a que algo lo dispare de nuevo automaticamente.
 
 ## 32.9 Pendientes documentados
 

@@ -29,7 +29,7 @@ public static class RenewSeatHandler
             return result;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Seat {SeatId} manually renewed (requested by {UserId}).",

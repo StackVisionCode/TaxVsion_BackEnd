@@ -51,7 +51,7 @@ public static class SuspendSubscriptionHandler
             ct
         );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogWarning("Subscription suspended for tenant {TenantId}: {Reason}.", command.TenantId, command.Reason);
         return Result.Success();

@@ -12,7 +12,7 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 /// "revocado/expirado/agotado" (anti-enumeracion, ver ResolvePublicShareHandler).
 /// </summary>
 [ApiController]
-[Route("cloud-storage")]
+[Route("storage")]
 [AllowAnonymous]
 [EnableRateLimiting("share-public")]
 public sealed class PublicShareController(IMessageBus bus) : ControllerBase

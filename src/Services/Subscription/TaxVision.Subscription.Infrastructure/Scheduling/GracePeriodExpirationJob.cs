@@ -28,9 +28,9 @@ public sealed class GracePeriodExpirationJob(
         var nowUtc = DateTime.UtcNow;
         var logger = services.GetRequiredService<ILogger<GracePeriodExpirationJob>>();
 
-        var subscriptionsSuspended = await SuspendExpiredSubscriptionsAsync(services, nowUtc, ct);
-        var seatsSuspended = await SuspendExpiredSeatsAsync(services, nowUtc, ct);
-        var addOnsSuspended = await SuspendExpiredAddOnsAsync(services, nowUtc, ct);
+        var subscriptionsSuspended = await SuspendExpiredSubscriptionsAsync(services, nowUtc, logger, ct);
+        var seatsSuspended = await SuspendExpiredSeatsAsync(services, nowUtc, logger, ct);
+        var addOnsSuspended = await SuspendExpiredAddOnsAsync(services, nowUtc, logger, ct);
 
         if (subscriptionsSuspended + seatsSuspended + addOnsSuspended > 0)
         {
@@ -46,6 +46,7 @@ public sealed class GracePeriodExpirationJob(
     private static async Task<int> SuspendExpiredSubscriptionsAsync(
         IServiceProvider services,
         DateTime nowUtc,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -62,7 +63,7 @@ public sealed class GracePeriodExpirationJob(
                 continue;
 
             await unitOfWork.SaveChangesAsync(ct);
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(subscription.TenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
             count++;
         }
 
@@ -72,6 +73,7 @@ public sealed class GracePeriodExpirationJob(
     private static async Task<int> SuspendExpiredSeatsAsync(
         IServiceProvider services,
         DateTime nowUtc,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -88,7 +90,7 @@ public sealed class GracePeriodExpirationJob(
                 continue;
 
             await unitOfWork.SaveChangesAsync(ct);
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(seat.TenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(seat.TenantId, logger, ct);
             count++;
         }
 
@@ -98,6 +100,7 @@ public sealed class GracePeriodExpirationJob(
     private static async Task<int> SuspendExpiredAddOnsAsync(
         IServiceProvider services,
         DateTime nowUtc,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -114,7 +117,7 @@ public sealed class GracePeriodExpirationJob(
                 continue;
 
             await unitOfWork.SaveChangesAsync(ct);
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(addOn.TenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(addOn.TenantId, logger, ct);
             count++;
         }
 

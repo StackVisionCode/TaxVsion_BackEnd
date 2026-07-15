@@ -84,7 +84,7 @@ public static class ReassignSeatHandler
             ct
         );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Seat {SeatId} reassigned from {PreviousUserId} to {NewUserId} for tenant {TenantId}.",

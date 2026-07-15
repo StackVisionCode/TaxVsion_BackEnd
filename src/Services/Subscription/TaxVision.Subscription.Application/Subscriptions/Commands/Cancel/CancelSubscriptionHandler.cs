@@ -51,7 +51,7 @@ public static class CancelSubscriptionHandler
             ct
         );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Tenant {TenantId} cancelled its subscription (requested by {UserId}): {Reason}.",

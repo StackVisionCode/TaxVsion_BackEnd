@@ -62,7 +62,7 @@ public static class CancelAddOnHandler
             ct
         );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Add-on {AddOnCode} cancelled for tenant {TenantId}: {Reason}.",

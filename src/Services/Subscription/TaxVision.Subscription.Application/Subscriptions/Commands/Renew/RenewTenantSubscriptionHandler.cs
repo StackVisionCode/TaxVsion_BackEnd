@@ -30,7 +30,7 @@ public static class RenewTenantSubscriptionHandler
             return completeResult;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Subscription manually renewed for tenant {TenantId} (requested by {UserId}).",
