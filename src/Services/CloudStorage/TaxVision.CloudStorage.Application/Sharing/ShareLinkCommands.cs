@@ -272,7 +272,7 @@ internal static class ShareLinkCreationCore
         );
     }
 
-    private static async Task<Result> ValidatePolicy(
+    internal static async Task<Result> ValidatePolicy(
         bool actorHasManagePermission,
         SharePermission permission,
         ShareVisibility visibility,
@@ -286,6 +286,17 @@ internal static class ShareLinkCreationCore
     {
         if (permission is SharePermission.Upload or SharePermission.EditMetadata && !actorHasManagePermission)
             return Result.Failure(ShareErrors.ElevatedPermissionRequiresManage);
+
+        // Fase C4 (completitud) — §20.4 del plan: "en un PublicLink, nunca Upload/
+        // Edit/ShareAgain". Antes solo se exigia cloudstorage.share.manage para
+        // otorgar Upload/EditMetadata, pero nada impedia que ese mismo actor los
+        // combinara con Visibility.Public (un link sin autenticacion con permiso
+        // de escritura).
+        if (
+            visibility == ShareVisibility.Public
+            && permission is SharePermission.Upload or SharePermission.EditMetadata
+        )
+            return Result.Failure(ShareErrors.ElevatedPermissionNotAllowedOnPublicLink);
 
         if (visibility == ShareVisibility.Public)
         {
@@ -376,6 +387,89 @@ public static class UpdateShareExpirationHandler
         if (updated.IsFailure)
             return Result.Failure<ShareLinkResponse>(updated.Error);
 
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success(ShareLinkResponseMapper.Map(link, clock.UtcNow));
+    }
+}
+
+/// <summary>
+/// Fase C4 (completitud) — cambia el Permission de un link ya creado. Reusa
+/// exactamente la misma validacion de politica que la creacion (§20.4 del plan):
+/// Upload/EditMetadata solo con cloudstorage.share.manage, y nunca junto con
+/// Visibility.Public.
+/// </summary>
+public sealed record ChangeSharePermissionCommand(
+    Guid TenantId,
+    Guid ActorId,
+    bool ActorHasManagePermission,
+    Guid ShareLinkId,
+    SharePermission NewPermission,
+    RequestAuditContext Audit
+);
+
+public static class ChangeSharePermissionHandler
+{
+    public static async Task<Result<ShareLinkResponse>> Handle(
+        ChangeSharePermissionCommand command,
+        IShareLinkRepository shares,
+        IStorageLimitRepository limits,
+        IStorageAuditRepository audit,
+        ISystemClock clock,
+        IMessageBus bus,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var link = await shares.GetAsync(command.TenantId, command.ShareLinkId, ct);
+        if (link is null)
+            return Result.Failure<ShareLinkResponse>(ShareErrors.NotFound);
+
+        var policyResult = await ShareLinkCreationCore.ValidatePolicy(
+            command.ActorHasManagePermission,
+            command.NewPermission,
+            link.Visibility,
+            command.TenantId,
+            recipientUserIds: [],
+            recipientCustomerIds: [],
+            recipientEmails: [],
+            limits,
+            ct
+        );
+        if (policyResult.IsFailure)
+            return Result.Failure<ShareLinkResponse>(policyResult.Error);
+
+        var oldPermission = link.ChangePermission(command.NewPermission);
+        if (oldPermission == command.NewPermission)
+        {
+            // No-op: no hace falta auditar ni publicar un evento por un cambio que no cambia nada.
+            return Result.Success(ShareLinkResponseMapper.Map(link, clock.UtcNow));
+        }
+
+        audit.Add(
+            StorageAccessLog.Create(
+                command.TenantId,
+                link.ResourceId,
+                command.ActorId,
+                "share.permission-changed",
+                "success",
+                command.Audit.IpAddress,
+                command.Audit.UserAgent,
+                command.Audit.CorrelationId,
+                $"oldPermission={oldPermission};newPermission={command.NewPermission}",
+                clock.UtcNow
+            )
+        );
+        await bus.PublishAsync(
+            new ShareLinkPermissionChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                ShareLinkId = link.Id,
+                ResourceId = link.ResourceId,
+                OldPermission = oldPermission.ToString(),
+                NewPermission = command.NewPermission.ToString(),
+                CorrelationId = command.Audit.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(ShareLinkResponseMapper.Map(link, clock.UtcNow));
     }

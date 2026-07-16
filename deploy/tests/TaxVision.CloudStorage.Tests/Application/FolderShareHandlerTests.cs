@@ -199,6 +199,7 @@ public sealed class FolderShareHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -252,6 +253,7 @@ public sealed class FolderShareHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -305,6 +307,7 @@ public sealed class FolderShareHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -356,6 +359,7 @@ public sealed class FolderShareHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now.AddMinutes(20)),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -407,6 +411,7 @@ public sealed class FolderShareHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now.AddMinutes(20)),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -459,6 +464,7 @@ public sealed class FolderShareHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );

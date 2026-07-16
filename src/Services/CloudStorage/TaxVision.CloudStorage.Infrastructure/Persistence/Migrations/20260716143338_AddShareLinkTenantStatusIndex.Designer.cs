@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.CloudStorage.Infrastructure.Persistence;
 namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CloudStorageDbContext))]
-    partial class CloudStorageDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716143338_AddShareLinkTenantStatusIndex")]
+    partial class AddShareLinkTenantStatusIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

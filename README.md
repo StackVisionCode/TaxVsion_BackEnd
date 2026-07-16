@@ -1229,24 +1229,41 @@ todo lo necesario para un despliegue de produccion real detras de un solo host:
 - `migrations` (perfil `tools`): contenedor que aplica las migraciones EF Core de los 7
   servicios .NET en una sola corrida.
 
-### Despliegue en produccion (Caddy + TLS automatico + RS256)
+### Despliegue en produccion (Caddy + TLS wildcard automatico + RS256)
 
 En produccion el `gateway` YARP **no publica puerto al host**: queda solo en la red interna
 `taxvision-network`, y `caddy` es el unico punto de entrada:
 
 ```text
-Internet :80/:443 -> caddy (TLS automatico via Let's Encrypt)
+Internet :80/:443 -> caddy (TLS WILDCARD automatico via Let's Encrypt, DNS-01/Cloudflare)
                        |-- /taxvision-storage/*, /taxvision-temp/*, /taxvision-quarantine/*
                        |     -> reverse_proxy minio:9000   (URLs presignadas de CloudStorage)
                        `-- todo lo demas -> reverse_proxy gateway:8080
+                             (incluye la resolucion de tenant por subdominio que hace Auth)
 ```
 
-El `Caddyfile` (`deploy/docker/caddy/Caddyfile`) usa un solo site block sobre
-`${TAXVISION_DOMAIN:-api.taxprocore.com}`; Caddy emite y renueva el certificado
-automaticamente (DNS del dominio debe apuntar al host antes del primer arranque). La regla de
-MinIO existe porque las URLs presignadas que CloudStorage entrega al cliente apuntan al mismo
-dominio publico, con el nombre del bucket como primer segmento — no colisiona con rutas del
-Gateway (`/auth`, `/customers`, `/storage`, etc.).
+**Fase X1 (completitud del plan de subdominios de tenant, ver `Auth_y_CloudStorage_Plan_
+Completitud_v2.md`)** — el `Caddyfile` (`deploy/docker/caddy/Caddyfile`) usa un site block
+**wildcard** sobre `{$TAXVISION_BASE_DOMAIN:taxprocore.com}, *.{$TAXVISION_BASE_DOMAIN}`, con
+`caddy` construido desde un `Dockerfile` propio (`deploy/docker/caddy/Dockerfile`, no la imagen
+`caddy:2-alpine` estandar) que agrega el plugin `caddy-dns/cloudflare`. Esto es necesario porque
+Let's Encrypt solo emite certificados wildcard via desafio **DNS-01** (crear un registro TXT de
+validacion) — el HTTP-01 automatico que usaba el `Caddyfile` anterior (single-domain) no puede
+emitir para un Host que Caddy no conoce de antemano, asi que nunca iba a poder cubrir subdominios
+de tenant dinamicos (`oficina1.taxprocore.com`, `oficina2.taxprocore.com`, ...). Requiere:
+
+- DNS wildcard (`CNAME *` o `A *`) apuntando a este server, ya configurado antes del primer arranque.
+- `CLOUDFLARE_DNS_API_TOKEN` en `.env` — token de Cloudflare con permiso **Zone:DNS:Edit** sobre
+  la zona, **distinto** del que ya usa Auth para provisionar custom hostnames (`Cloudflare__ApiToken`
+  en `auth-api`, con permisos Zone:DNS:Edit + Zone:SSL:Edit) — no reusar el mismo token entre los
+  dos usos aunque compartan la misma cuenta de Cloudflare.
+- `TAXVISION_DOMAIN` (el host que usan hoy `MINIO_PUBLIC_ENDPOINT`/el healthcheck del workflow de
+  deploy, ej. `api.taxprocore.com`) sigue funcionando sin cambios — como es un subdominio de
+  `TAXVISION_BASE_DOMAIN`, el mismo certificado wildcard ya lo cubre, no hace falta nada mas.
+
+La regla de MinIO existe porque las URLs presignadas que CloudStorage entrega al cliente apuntan
+al mismo dominio publico, con el nombre del bucket como primer segmento — no colisiona con rutas
+del Gateway (`/auth`, `/customers`, `/storage`, etc.).
 
 JWT en produccion usa **RS256 con las claves montadas como archivo**, no HS256 con secreto
 compartido: todos los servicios .NET montan
@@ -1274,7 +1291,8 @@ corre en runner `self-hosted` con timeout de 45 minutos. Pasos, en orden:
    strings, credenciales de RabbitMQ/MinIO/Grafana, secretos de cuentas MinIO por servicio,
    claves de cifrado, credenciales SMTP/OAuth (Gmail/Graph), clientes M2M `ServiceAuth`,
    password del PFX de Signature, variables TURN/CORS de Communication, token de bootstrap del
-   primer `PlatformAdmin` y `TAXVISION_DOMAIN`; `chmod 600`.
+   primer `PlatformAdmin`, `TAXVISION_DOMAIN` y (Fase X1) `TAXVISION_BASE_DOMAIN` +
+   `CLOUDFLARE_DNS_API_TOKEN` para el cert wildcard de Caddy; `chmod 600`.
 3. Decodifica `JWT_PRIVATE_KEY_PEM_B64`, `JWT_PUBLIC_KEY_PEM_B64` y
    `SIGNATURE_SEALING_PFX_B64` a `$TAXVISION_SECRETS_DIR` (`/opt/taxvision/secrets`,
    `chmod 700`/`600`).
@@ -1293,6 +1311,34 @@ corre en runner `self-hosted` con timeout de 45 minutos. Pasos, en orden:
     `https://${TAXVISION_DOMAIN}/health/ready`; falla el job si el Gateway nunca queda `ready`.
 
 No hay SBOM ni escaneo de secretos automatizado todavia (ver "Pendientes reales", sec 23).
+
+### Probar subdominios de tenant en local y staging (Fase X2 completitud)
+
+El middleware de resolucion de tenant (`TenantHostResolutionMiddleware` en Auth) es agnostico de
+Cloudflare — lee `HttpContext.Request.Host`, nada mas — asi que la logica multi-tenant se prueba
+sin tocar Cloudflare ni Caddy en ningun entorno:
+
+**Local (recomendado — sin instalar nada):** Chrome/Edge resuelven **cualquier** subdominio de
+`*.localhost` a `127.0.0.1` de forma nativa, sin tocar el archivo hosts. Corriendo Auth con
+`dotnet run` (`http://localhost:5124` por defecto, ver `launchSettings.json`), un tenant sembrado
+con `TenantDomain.Host = "oficina1.localhost:5124"` ya resuelve pegandole a
+`http://oficina1.localhost:5124/...` — no hace falta HTTPS ni certificados para probar la
+resolucion en si. Para otros navegadores (o si se necesita HTTPS local): agregar entradas al
+archivo hosts (`127.0.0.1 oficina1.taxprocore.test`, una por tenant de prueba) y generar un
+certificado wildcard local con **mkcert**:
+```
+mkcert -install
+mkcert "*.taxprocore.test" taxprocore.test localhost 127.0.0.1
+```
+y servirlo con Kestrel (`Kestrel:Certificates:Default:Path` en `appsettings.Development.json`) o
+con una segunda instancia local de Caddy apuntando al `.pfx` generado. Evitar el TLD `.dev`
+(Chrome lo fuerza a HSTS/HTTPS via preload list) y `.local` (reservado para mDNS).
+
+**Staging:** misma estrategia que produccion pero en una zona separada — `TAXVISION_BASE_DOMAIN=
+staging.taxprocore.com` (o el subdominio que se use como raiz de staging) con su propio wildcard
+DNS y su propio `CLOUDFLARE_DNS_API_TOKEN`/despliegue de `caddy`, para que un certificado o un
+tenant de prueba en staging nunca comparta nada con produccion. El codigo de resolucion de tenant
+no cambia entre entornos — solo la config (`TenantDomainOptions`/`TAXVISION_BASE_DOMAIN`).
 
 ## 21. Depuracion
 
@@ -2861,7 +2907,10 @@ nuevo (`RebasePath`), compartido por `RenameFolderHandler` y `MoveFolderHandler`
 Tres controllers cubren el ciclo de vida completo de enlaces compartidos:
 
 - `ShareLinksController.cs` (`[Authorize]`): crear/listar para archivo o carpeta, listar "shared
-  with me", revocar, actualizar expiracion.
+  with me", revocar, actualizar expiracion, y (Fase C4 completitud)
+  `PUT storage/shares/{shareLinkId}/permission` — cambiar el `Permission` de un link ya creado,
+  gateado por `cloudstorage.share.manage`, reusando la misma validacion de politica que la
+  creacion.
 - `PublicShareController.cs` (`[AllowAnonymous]`, `GET storage/public/{token}`, rate limit
   `share-public` 20 req/min por `{ip}:{path}`).
 - `PrivateShareController.cs` (`[Authorize]`, `GET storage/private/{token}`).
@@ -2869,13 +2918,22 @@ Tres controllers cubren el ciclo de vida completo de enlaces compartidos:
 `ShareVisibility` (`Domain/Sharing/ShareEnums.cs`): `Public`, `TenantOnly`, `SpecificUsers`,
 `TenantCustomers`, `ExternalRecipients`. `SharePermission`: `View`, `Preview`, `Download`,
 `Upload`, `EditMetadata` (estos dos ultimos solo asignables por un actor con
-`cloudstorage.share.manage`).
+`cloudstorage.share.manage`, **y nunca junto con `Visibility.Public`** —
+`ShareErrors.ElevatedPermissionNotAllowedOnPublicLink` si se intenta, en creacion o en el cambio
+de permiso). `View`/`Preview` fuerzan `Content-Disposition: inline` en la URL presignada
+(se renderiza en el browser); `Download` fuerza `attachment` (descarga forzada) —
+`IObjectStorage.PresignGetAsync` tiene un overload dedicado para esto. **Nota honesta**: `Upload`/
+`EditMetadata` estan validados y se pueden asignar a un link, pero hoy **ningun endpoint los
+consume realmente** — no existe un flujo de "subir un archivo nuevo via el token de un link
+compartido" ni de "editar metadata via el token"; construir esas dos capacidades es trabajo
+pendiente real, no solo documentacion.
 
 Compartir carpetas (`ShareLink.IsRecursive` + `ShareLink.AppliesToFutureItems`, ambos forzados a
 `false` para links de archivo — `ShareErrors.RecursiveOnlyForFolders` si no) permite que el link
 cubra el contenido actual y, opcionalmente, los items que se agreguen despues.
 
-Password protection: `Pbkdf2ShareLinkPasswordHasher` (mismo esquema PBKDF2/HMAC-SHA256 que Auth).
+Password protection: `Pbkdf2ShareLinkPasswordHasher` (PBKDF2-HMACSHA256, 100k iteraciones — mismo
+esquema que Auth; el plan original pedia Argon2id, ver "Pendientes reales" mas abajo).
 Expiracion: `ShareLink.ExpiresAtUtc` (default `CreatedAtUtc + 7 dias` si no se especifica).
 Limite de accesos: `MaxAccessCount` opcional; al alcanzarlo el link pasa a `Exhausted`.
 
@@ -2888,6 +2946,18 @@ el token sea estructuralmente valido. Ambos caminos colapsan cualquier fallo (no
 revocado, expirado, agotado, no autorizado) en la misma respuesta `Denied`, sin distinguir el
 motivo, para no facilitar enumeracion. El acceso concedido es una URL GET presignada de MinIO de 2
 minutos; CloudStorage nunca hace proxy del binario.
+
+**Eventos de integracion** (`BuildingBlocks/Messaging/CloudStorageIntegrationEvents/`):
+`ShareLinkCreated`, `ShareLinkRevoked`, `ShareLinkFolderItemAdded`, y (Fase C4 completitud)
+`ShareLinkAccessed`/`ShareLinkAccessDenied` (publicados en cada resolucion exitosa/denegada, con
+un campo `Reason` de texto libre para el caso denegado — pensados para que un consumidor externo
+tipo SIEM/alertas reaccione, no cambian la respuesta HTTP que sigue siendo el mismo `Denied`
+generico), `ShareLinkExpired` (subconjunto de `AccessDenied` cuando la razon puntual es
+expiracion — se sigue evaluando siempre en vivo contra `ExpiresAtUtc`, no hay un job de
+expiracion proactivo) y `ShareLinkPermissionChanged`. Deliberadamente **no** existe un evento
+`ShareLinkResolutionSucceeded` de alta frecuencia — el middleware/handler corre en cada request,
+publicar un evento por cada uno inundaria el bus sin aportar nada que `StorageAccessLog` (local)
+no cubra ya.
 
 ## 27.11 Recycle bin
 

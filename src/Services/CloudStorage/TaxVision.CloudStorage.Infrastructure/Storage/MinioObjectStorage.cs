@@ -41,7 +41,10 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
         // (bucket/key/policy/x-amz-*). Sin esto, ningun caller (Postman, un frontend) puede
         // satisfacer su propio policy: el POST a MinIO siempre rechaza con
         // AccessDenied "Policy Condition failed" por falta del campo Content-Type.
-        var result = new Dictionary<string, string>(formData, StringComparer.Ordinal) { ["Content-Type"] = contentType };
+        var result = new Dictionary<string, string>(formData, StringComparer.Ordinal)
+        {
+            ["Content-Type"] = contentType,
+        };
         return new PresignedUpload(url, result);
     }
 
@@ -50,6 +53,25 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
         ct.ThrowIfCancellationRequested();
         var url = await client.PresignedGetObjectAsync(
             new PresignedGetObjectArgs().WithBucket(bucket).WithObject(objectKey).WithExpiry((int)lifetime.TotalSeconds)
+        );
+        return new Uri(url);
+    }
+
+    public async Task<Uri> PresignGetAsync(
+        string bucket,
+        string objectKey,
+        TimeSpan lifetime,
+        string contentDisposition,
+        CancellationToken ct
+    )
+    {
+        ct.ThrowIfCancellationRequested();
+        var url = await client.PresignedGetObjectAsync(
+            new PresignedGetObjectArgs()
+                .WithBucket(bucket)
+                .WithObject(objectKey)
+                .WithExpiry((int)lifetime.TotalSeconds)
+                .WithHeaders(new Dictionary<string, string> { ["response-content-disposition"] = contentDisposition })
         );
         return new Uri(url);
     }

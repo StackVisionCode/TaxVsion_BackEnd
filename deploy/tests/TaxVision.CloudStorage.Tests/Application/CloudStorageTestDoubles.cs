@@ -290,6 +290,22 @@ internal sealed class FakeObjectStorage : IObjectStorage
     public Task<Uri> PresignGetAsync(string bucket, string objectKey, TimeSpan lifetime, CancellationToken ct) =>
         Task.FromResult(new Uri($"https://minio.local/{bucket}/{objectKey}"));
 
+    public List<(string Bucket, string ObjectKey, string ContentDisposition)> PresignedWithDisposition { get; } = [];
+
+    public Task<Uri> PresignGetAsync(
+        string bucket,
+        string objectKey,
+        TimeSpan lifetime,
+        string contentDisposition,
+        CancellationToken ct
+    )
+    {
+        PresignedWithDisposition.Add((bucket, objectKey, contentDisposition));
+        return Task.FromResult(
+            new Uri($"https://minio.local/{bucket}/{objectKey}?disposition={Uri.EscapeDataString(contentDisposition)}")
+        );
+    }
+
     /// <summary>Null (el default) = comportamiento previo, revienta si algun test la llama sin haberla seteado antes.</summary>
     public long? SizeToReturn { get; set; }
 

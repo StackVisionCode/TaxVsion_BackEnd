@@ -1,8 +1,11 @@
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.TenantDomains.Commands;
 
@@ -27,6 +30,7 @@ public static class ReserveSubdomainHandler
         ITenantSubdomainReservationRepository reservations,
         IOptions<TenantDomainOptions> options,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -58,6 +62,17 @@ public static class ReserveSubdomainHandler
 
         var reservation = reservationResult.Value;
         await reservations.AddAsync(reservation, ct);
+
+        await bus.PublishAsync(
+            new TenantDomainReservedIntegrationEvent
+            {
+                TenantId = PlatformTenant.Id,
+                Slug = reservation.SubdomainSlug,
+                ReservedByEmail = reservation.ReservedByEmail,
+                ExpiresAtUtc = reservation.ExpiresAtUtc,
+            }
+        );
+
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(

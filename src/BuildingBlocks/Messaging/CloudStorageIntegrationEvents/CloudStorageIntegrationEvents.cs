@@ -104,6 +104,52 @@ public sealed record ShareLinkFolderItemAddedIntegrationEvent : IntegrationEvent
     public required bool AutoCovered { get; init; }
 }
 
+/// <summary>Publicado cada vez que un link se resuelve exitosamente (publico o privado) y sirve una presigned URL.</summary>
+public sealed record ShareLinkAccessedIntegrationEvent : IntegrationEvent
+{
+    public required Guid ShareLinkId { get; init; }
+    public required Guid FileId { get; init; }
+    public required string Channel { get; init; }
+}
+
+/// <summary>
+/// Publicado en cualquier intento de resolucion denegado (token invalido, revocado,
+/// agotado, expirado, tenant/identidad no autorizados, etc). Deliberadamente NO
+/// distingue el motivo exacto en un campo estructurado mas alla de Reason (texto
+/// libre para logging/alertas) — el endpoint sigue devolviendo el mismo 404
+/// generico al cliente (anti-enumeracion, ver ShareAccessResult.Denied); esto es
+/// solo para que un consumidor externo (SIEM/alertas) pueda reaccionar.
+/// </summary>
+public sealed record ShareLinkAccessDeniedIntegrationEvent : IntegrationEvent
+{
+    public required string Channel { get; init; }
+    public required string Reason { get; init; }
+    public Guid? ShareLinkId { get; init; }
+}
+
+/// <summary>
+/// Publicado cuando una resolucion descubre que el link ya vencio (ExpiresAtUtc
+/// paso). Subconjunto de ShareLinkAccessDenied con semantica mas especifica — la
+/// expiracion se sigue evaluando siempre en vivo (ver ShareLink.IsExpired), no hay
+/// un job que la detecte proactivamente; este evento se dispara en el momento en
+/// que un acceso real la encuentra.
+/// </summary>
+public sealed record ShareLinkExpiredIntegrationEvent : IntegrationEvent
+{
+    public required Guid ShareLinkId { get; init; }
+    public required Guid ResourceId { get; init; }
+    public required DateTime ExpiresAtUtc { get; init; }
+}
+
+/// <summary>Fase C4 (completitud) — publicado al cambiar el Permission de un link ya creado.</summary>
+public sealed record ShareLinkPermissionChangedIntegrationEvent : IntegrationEvent
+{
+    public required Guid ShareLinkId { get; init; }
+    public required Guid ResourceId { get; init; }
+    public required string OldPermission { get; init; }
+    public required string NewPermission { get; init; }
+}
+
 /// <summary>
 /// Fase L1.3 — publicado cuando el equipo legal registra un takedown DMCA.
 /// A diferencia de FileBlockedByPolicyIntegrationEvent, el objeto NO se mueve a

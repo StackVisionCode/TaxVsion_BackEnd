@@ -145,6 +145,20 @@ public sealed class ShareLink : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>
+    /// Fase C4 (completitud) — cambia el Permission de un link ya creado. La
+    /// validacion de politica (elevar a Upload/EditMetadata requiere
+    /// cloudstorage.share.manage; nunca junto con Visibility.Public) vive en
+    /// ShareLinkCreationCore.ValidatePolicy, compartida con la creacion — este
+    /// metodo solo aplica el cambio ya validado.
+    /// </summary>
+    public SharePermission ChangePermission(SharePermission newPermission)
+    {
+        var old = Permission;
+        Permission = newPermission;
+        return old;
+    }
+
     public void AddUserRecipient(Guid userId) => _recipients.Add(ShareRecipient.ForUser(Id, userId));
 
     public void AddCustomerRecipient(Guid customerId) => _recipients.Add(ShareRecipient.ForCustomer(Id, customerId));
