@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
@@ -67,6 +68,7 @@ public sealed class ReserveSubdomainHandlerTests
             reservations,
             DefaultOptions(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -87,6 +89,7 @@ public sealed class ReserveSubdomainHandlerTests
             reservations,
             DefaultOptions(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -114,6 +117,7 @@ public sealed class ReserveSubdomainHandlerTests
             reservations,
             DefaultOptions(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -127,6 +131,7 @@ public sealed class ReserveSubdomainHandlerTests
     {
         var reservations = new FakeReservationRepository();
         var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
 
         var result = await ReserveSubdomainHandler.Handle(
             new ReserveSubdomainCommand("Oficina1", "Admin@Oficina1.com"),
@@ -134,6 +139,7 @@ public sealed class ReserveSubdomainHandlerTests
             reservations,
             DefaultOptions(),
             unitOfWork,
+            bus,
             CancellationToken.None
         );
 
@@ -142,5 +148,9 @@ public sealed class ReserveSubdomainHandlerTests
         Assert.Equal("admin@oficina1.com", result.Value.ReservedByEmail);
         Assert.NotNull(reservations.Added);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        Assert.Single(
+            bus.Published.OfType<TenantDomainReservedIntegrationEvent>(),
+            evt => evt.Slug == "oficina1" && evt.ReservedByEmail == "admin@oficina1.com"
+        );
     }
 }

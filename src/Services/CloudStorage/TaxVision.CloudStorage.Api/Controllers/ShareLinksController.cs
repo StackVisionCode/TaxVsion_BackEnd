@@ -202,6 +202,41 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record ChangePermissionRequest(SharePermission NewPermission);
+
+    /// <summary>
+    /// Fase C4 (completitud) — cambia el Permission de un link ya creado. Gateado
+    /// por ShareManage igual que UpdateExpiration: cualquiera que llegue hasta
+    /// aca ya puede otorgar Upload/EditMetadata, asi que ActorHasManagePermission
+    /// va siempre true (misma logica que Create, solo que ahi el endpoint acepta
+    /// el permiso mas bajo ShareCreate y valida la elevacion aparte).
+    /// </summary>
+    [HttpPut("shares/{shareLinkId:guid}/permission")]
+    [Authorize(Policy = CloudStoragePermissions.ShareManage)]
+    [ProducesResponseType<ShareLinkResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ChangePermission(
+        Guid shareLinkId,
+        ChangePermissionRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGet(out var tenantId, out var actorId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<ShareLinkResponse>>(
+            new ChangeSharePermissionCommand(
+                tenantId,
+                actorId,
+                ActorHasManagePermission: true,
+                shareLinkId,
+                request.NewPermission,
+                AuditContext()
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     private RequestAuditContext AuditContext() =>
         new(
             HttpContext.Connection.RemoteIpAddress?.ToString(),

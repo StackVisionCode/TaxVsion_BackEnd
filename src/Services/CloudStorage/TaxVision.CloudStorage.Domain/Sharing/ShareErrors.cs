@@ -34,4 +34,10 @@ public static class ShareErrors
         "ShareLink.Forbidden",
         "The actor cannot manage share links for this resource."
     );
+
+    /// <summary>Fase C4 (completitud) — un link Public nunca puede otorgar Upload/EditMetadata (§20.4 del plan).</summary>
+    public static readonly Error ElevatedPermissionNotAllowedOnPublicLink = new(
+        "ShareLink.ElevatedPermissionNotAllowedOnPublicLink",
+        "A Public share link can never grant Upload or EditMetadata."
+    );
 }

@@ -104,6 +104,11 @@ jobs:
           PLATFORM_BOOTSTRAP_EMAIL=${{ secrets.PLATFORM_BOOTSTRAP_EMAIL }}
           PLATFORM_BOOTSTRAP_INVITATION_TOKEN=${{ secrets.PLATFORM_BOOTSTRAP_INVITATION_TOKEN }}
           TAXVISION_DOMAIN=${{ secrets.TAXVISION_DOMAIN }}
+          # Fase X1 (completitud plan v2) — dominio raiz para el cert WILDCARD de Caddy
+          # (*.TAXVISION_BASE_DOMAIN) + token DNS-01 de Cloudflare, ver README sec 20.
+          # Token distinto del que usa Auth para custom hostnames — solo Zone:DNS:Edit.
+          TAXVISION_BASE_DOMAIN=${{ secrets.TAXVISION_BASE_DOMAIN }}
+          CLOUDFLARE_DNS_API_TOKEN=${{ secrets.CLOUDFLARE_DNS_API_TOKEN }}
 
           # ---------- Rutas de secretos montados (ver step "Write JWT keys...") ----------
           TAXVISION_SECRETS_DIR=${{ env.TAXVISION_SECRETS_DIR }}

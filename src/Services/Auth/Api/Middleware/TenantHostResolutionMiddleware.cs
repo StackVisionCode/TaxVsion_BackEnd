@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Options;
@@ -7,6 +8,7 @@ using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Domain.Audit;
+using Wolverine;
 
 namespace TaxVision.Auth.Api.Middleware;
 
@@ -48,7 +50,8 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
         IAuthAuditWriter audit,
         IUnitOfWork unitOfWork,
         IRequestContext request,
-        ICorrelationContext correlation
+        ICorrelationContext correlation,
+        IMessageBus bus
     )
     {
         if (ExemptPathPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix)))
@@ -73,6 +76,7 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
             unitOfWork,
             request,
             correlation,
+            bus,
             context.RequestAborted
         );
 
@@ -97,6 +101,7 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
         IUnitOfWork unitOfWork,
         IRequestContext request,
         ICorrelationContext correlation,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -114,6 +119,22 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
             ),
             ct
         );
+
+        // Ademas del audit log (detalle forense completo), se publica como integration
+        // event para que otros servicios (alertas/SIEM) puedan reaccionar sin tener que
+        // leer la tabla de auditoria de Auth — a proposito NO se publica un evento
+        // equivalente "Succeeded" (este middleware corre en CADA request, inundaria el
+        // bus sin aportar nada que el audit log local de accesos ya no cubra).
+        await bus.PublishAsync(
+            new TenantResolutionFailedIntegrationEvent
+            {
+                TenantId = PlatformTenant.Id,
+                Host = host,
+                Reason = reason?.ToString() ?? "Unknown",
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

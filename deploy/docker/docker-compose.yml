@@ -811,10 +811,22 @@ services:
       - taxvision-network
 
   caddy:
-    image: caddy:2-alpine
+    # Build custom (no la imagen caddy:2-alpine estandar) — agrega el plugin
+    # caddy-dns/cloudflare, necesario para el certificado WILDCARD via DNS-01
+    # (ver deploy/docker/caddy/Dockerfile y Caddyfile). Sin esto, Caddy solo
+    # puede emitir TLS para el Host exacto que ya conoce (HTTP-01), nunca para
+    # los subdominios de tenant dinamicos que TenantDomain resuelve en Auth.
+    build:
+      context: ./caddy
     container_name: taxvision-caddy
     environment:
-      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxprocore.com}
+      TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
+      # Zone:DNS:Edit sobre la zona — SOLO para el reto DNS-01 del certificado
+      # wildcard. Token distinto (y con permisos mas chicos) que el que usa
+      # Auth para provisionar custom hostnames (ver CloudflareOptions en
+      # TaxVision.Auth.Infrastructure/Cloudflare) — no reusar el mismo token
+      # entre los dos usos aunque compartan la misma cuenta de Cloudflare.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_DNS_API_TOKEN:?Set CLOUDFLARE_DNS_API_TOKEN in .env}
     ports:
       - "80:80"
       - "443:443"

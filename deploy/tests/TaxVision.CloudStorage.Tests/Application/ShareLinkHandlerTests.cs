@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
@@ -259,6 +260,49 @@ public sealed class ShareLinkHandlerTests
     }
 
     [Fact]
+    public async Task Create_rejects_Upload_permission_on_a_Public_link_even_with_the_manage_claim()
+    {
+        // Fase C4 (completitud) — §20.4 del plan: "en un PublicLink, nunca Upload/Edit/ShareAgain".
+        // Antes de este fix, tener cloudstorage.share.manage bastaba para combinar
+        // Visibility.Public con Permission.Upload/EditMetadata.
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var result = await CreateShareLinkHandler.Handle(
+            new CreateShareLinkCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                true, // ActorHasManagePermission — no alcanza, Public nunca admite Upload/EditMetadata
+                file.Id,
+                ShareVisibility.Public,
+                SharePermission.Upload,
+                null,
+                null,
+                null,
+                [],
+                [],
+                [],
+                Audit
+            ),
+            files,
+            new FakeShareLinkRepository(),
+            new FakeStorageLimitRepository(),
+            new FakeShareLinkPasswordHasher(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ShareErrors.ElevatedPermissionNotAllowedOnPublicLink, result.Error);
+    }
+
+    [Fact]
     public async Task Create_rejects_SpecificUsers_visibility_without_any_recipient()
     {
         var tenantId = Guid.NewGuid();
@@ -426,6 +470,87 @@ public sealed class ShareLinkHandlerTests
         Assert.Equal(ShareErrors.ExpirationInPast, result.Error);
     }
 
+    // ---------- ChangeSharePermissionHandler (Fase C4 completitud) ----------
+
+    [Fact]
+    public async Task ChangePermission_updates_the_permission_audits_and_publishes_an_event()
+    {
+        var tenantId = Guid.NewGuid();
+        var link = SeededLink(tenantId, ShareVisibility.TenantOnly);
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var audit = new FakeStorageAuditRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await ChangeSharePermissionHandler.Handle(
+            new ChangeSharePermissionCommand(tenantId, Guid.NewGuid(), true, link.Id, SharePermission.Download, Audit),
+            shares,
+            new FakeStorageLimitRepository(),
+            audit,
+            new FakeSystemClock(DateTime.UtcNow),
+            bus,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SharePermission.Download, link.Permission);
+        Assert.Single(audit.Logs, log => log.Action == "share.permission-changed");
+        var evt = Assert.Single(bus.Published.OfType<ShareLinkPermissionChangedIntegrationEvent>());
+        Assert.Equal("View", evt.OldPermission);
+        Assert.Equal("Download", evt.NewPermission);
+    }
+
+    [Fact]
+    public async Task ChangePermission_to_the_same_value_is_a_no_op_and_publishes_nothing()
+    {
+        var tenantId = Guid.NewGuid();
+        var link = SeededLink(tenantId, ShareVisibility.TenantOnly); // Permission=View por defecto en SeededLink
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var audit = new FakeStorageAuditRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await ChangeSharePermissionHandler.Handle(
+            new ChangeSharePermissionCommand(tenantId, Guid.NewGuid(), true, link.Id, SharePermission.View, Audit),
+            shares,
+            new FakeStorageLimitRepository(),
+            audit,
+            new FakeSystemClock(DateTime.UtcNow),
+            bus,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(audit.Logs);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task ChangePermission_rejects_Upload_on_a_Public_link_even_with_the_manage_claim()
+    {
+        var tenantId = Guid.NewGuid();
+        var link = SeededLink(tenantId, ShareVisibility.Public);
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+
+        var result = await ChangeSharePermissionHandler.Handle(
+            new ChangeSharePermissionCommand(tenantId, Guid.NewGuid(), true, link.Id, SharePermission.Upload, Audit),
+            shares,
+            new FakeStorageLimitRepository(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ShareErrors.ElevatedPermissionNotAllowedOnPublicLink, result.Error);
+        Assert.Equal(SharePermission.View, link.Permission); // sin cambios
+    }
+
     // ---------- ResolvePublicShareHandler ----------
 
     private static async Task<ShareAccessResult> ResolvePublic(
@@ -447,6 +572,7 @@ public sealed class ShareLinkHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -480,6 +606,61 @@ public sealed class ShareLinkHandlerTests
 
         Assert.Equal(ShareAccessOutcome.Redirect, result.Outcome);
         Assert.Equal(1, link.Link.AccessCount);
+    }
+
+    [Theory]
+    [InlineData(SharePermission.View, "inline")]
+    [InlineData(SharePermission.Preview, "inline")]
+    [InlineData(SharePermission.Download, "attachment")]
+    public async Task ResolvePublic_sets_ContentDisposition_from_the_link_permission(
+        SharePermission permission,
+        string expectedKind
+    )
+    {
+        // Fase C4 (completitud) — antes View/Preview/Download producian exactamente
+        // la misma presigned URL; ahora View/Preview fuerzan "inline" (se renderiza
+        // en el browser) y Download fuerza "attachment" (descarga forzada).
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var link = ShareLink
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                file.Id,
+                ShareResourceType.File,
+                ShareVisibility.Public,
+                permission,
+                null,
+                null,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link.Link);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var storage = new FakeObjectStorage();
+
+        var result = await ResolvePublicShareHandler.Handle(
+            new ResolvePublicShareQuery(link.PlainToken, null, null, null, null, null),
+            shares,
+            files,
+            new FakeFolderRepository(),
+            storage,
+            new FakeShareLinkPasswordHasher(),
+            new FakeStorageAuditRepository(),
+            Options(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(ShareAccessOutcome.Redirect, result.Outcome);
+        var presigned = Assert.Single(storage.PresignedWithDisposition);
+        Assert.StartsWith(expectedKind, presigned.ContentDisposition, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -551,6 +732,7 @@ public sealed class ShareLinkHandlerTests
         var files = new FakeFileObjectRepository();
         files.Seed(file);
 
+        var bus = new FakeMessageBus();
         var result = await ResolvePublicShareHandler.Handle(
             new ResolvePublicShareQuery(token, null, null, null, null, null),
             shares,
@@ -561,11 +743,14 @@ public sealed class ShareLinkHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(now.AddMinutes(5)), // ya vencido
+            bus,
             new FakeUnitOfWork(),
             CancellationToken.None
         );
 
         Assert.Equal(ShareAccessOutcome.Denied, result.Outcome);
+        Assert.Single(bus.Published.OfType<ShareLinkExpiredIntegrationEvent>());
+        Assert.Single(bus.Published.OfType<ShareLinkAccessDeniedIntegrationEvent>());
     }
 
     [Fact]
@@ -720,6 +905,7 @@ public sealed class ShareLinkHandlerTests
             new FakeStorageAuditRepository(),
             Options(),
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );

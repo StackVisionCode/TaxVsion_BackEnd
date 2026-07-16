@@ -46,7 +46,17 @@ public sealed class ZipDownloadHandlerTests
 
     private static Folder RootFolder(Guid tenantId, string name = "Recibos") =>
         Folder
-            .Create(Guid.NewGuid(), tenantId, OwnerType.Tenant, null, null, FolderName.Create(name).Value, null, Guid.NewGuid(), DateTime.UtcNow)
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Tenant,
+                null,
+                null,
+                FolderName.Create(name).Value,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
             .Value;
 
     private static Folder ChildFolder(Guid tenantId, Folder parent, string name) =>
@@ -72,7 +82,12 @@ public sealed class ZipDownloadHandlerTests
         int maxFolders = 50
     ) =>
         Microsoft.Extensions.Options.Options.Create(
-            new CloudStorageOptions { MaxZipFiles = maxFiles, MaxZipAggregateBytes = maxBytes, MaxZipFolders = maxFolders }
+            new CloudStorageOptions
+            {
+                MaxZipFiles = maxFiles,
+                MaxZipAggregateBytes = maxBytes,
+                MaxZipFolders = maxFolders,
+            }
         );
 
     private sealed record Harness(
@@ -113,15 +128,28 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(fileB);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [fileA.Id, fileB.Id], [], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [fileA.Id, fileB.Id],
+                [],
+                Audit()
+            )
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value.Entries.Count);
         Assert.Equal(fileA.Id, result.Value.Entries[0].FileId);
         Assert.Equal(fileB.Id, result.Value.Entries[1].FileId);
-        Assert.Single(h.Audit.Logs, log => log.Action == "download.zip" && log.Details == "files=2;folders=0;bytes=300");
-        Assert.Equal(2, h.Bus.Published.OfType<FileAccessAuditedIntegrationEvent>().Count(e => e.Action == "download.zip"));
+        Assert.Single(
+            h.Audit.Logs,
+            log => log.Action == "download.zip" && log.Details == "files=2;folders=0;bytes=300"
+        );
+        Assert.Equal(
+            2,
+            h.Bus.Published.OfType<FileAccessAuditedIntegrationEvent>().Count(e => e.Action == "download.zip")
+        );
         Assert.Equal(1, h.UnitOfWork.SaveChangesCallCount);
     }
 
@@ -136,7 +164,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(second);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [first.Id, second.Id], [], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [first.Id, second.Id],
+                [],
+                Audit()
+            )
         );
 
         Assert.True(result.IsSuccess);
@@ -150,7 +185,14 @@ public sealed class ZipDownloadHandlerTests
         var h = Harness.New();
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(Guid.NewGuid(), Guid.NewGuid(), new StorageActorScope(false, null), [], [], Audit())
+            new PrepareZipDownloadQuery(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [],
+                [],
+                Audit()
+            )
         );
 
         Assert.True(result.IsFailure);
@@ -168,7 +210,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(file);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [file.Id, file.Id], [], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [file.Id, file.Id],
+                [],
+                Audit()
+            )
         );
 
         Assert.True(result.IsSuccess);
@@ -253,7 +302,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(pendingFile);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [pendingFile.Id], [], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [pendingFile.Id],
+                [],
+                Audit()
+            )
         );
 
         Assert.True(result.IsFailure);
@@ -273,7 +329,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(fileB);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [fileA.Id, fileB.Id], [], Audit()),
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [fileA.Id, fileB.Id],
+                [],
+                Audit()
+            ),
             Options(maxBytes: 500)
         );
 
@@ -300,7 +363,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(subFile);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [], [root.Id], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [],
+                [root.Id],
+                Audit()
+            )
         );
 
         Assert.True(result.IsSuccess);
@@ -318,7 +388,14 @@ public sealed class ZipDownloadHandlerTests
         h.Folders.Seed(root);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [], [root.Id], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [],
+                [root.Id],
+                Audit()
+            )
         );
 
         Assert.True(result.IsFailure);
@@ -359,7 +436,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(stillScanning);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [], [root.Id], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [],
+                [root.Id],
+                Audit()
+            )
         );
 
         Assert.True(result.IsSuccess);
@@ -374,7 +458,14 @@ public sealed class ZipDownloadHandlerTests
         var h = Harness.New();
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [], [Guid.NewGuid()], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [],
+                [Guid.NewGuid()],
+                Audit()
+            )
         );
 
         Assert.True(result.IsFailure);
@@ -388,7 +479,17 @@ public sealed class ZipDownloadHandlerTests
         var h = Harness.New();
         var rootA = RootFolder(tenantId, "Recibos");
         var rootB = Folder
-            .Create(Guid.NewGuid(), tenantId, OwnerType.Tenant, null, null, FolderName.Create("Recibos").Value, null, Guid.NewGuid(), DateTime.UtcNow)
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Tenant,
+                null,
+                null,
+                FolderName.Create("Recibos").Value,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
             .Value;
         h.Folders.Seed(rootA);
         h.Folders.Seed(rootB);
@@ -398,7 +499,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(fileB);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [], [rootA.Id, rootB.Id], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [],
+                [rootA.Id, rootB.Id],
+                Audit()
+            )
         );
 
         Assert.True(result.IsSuccess);
@@ -417,7 +525,14 @@ public sealed class ZipDownloadHandlerTests
         h.Files.Seed(file);
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [file.Id], [root.Id], Audit())
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [file.Id],
+                [root.Id],
+                Audit()
+            )
         );
 
         Assert.True(result.IsSuccess);
@@ -440,7 +555,14 @@ public sealed class ZipDownloadHandlerTests
         }
 
         var result = await h.Handle(
-            new PrepareZipDownloadQuery(tenantId, Guid.NewGuid(), new StorageActorScope(false, null), [], folderIds, Audit()),
+            new PrepareZipDownloadQuery(
+                tenantId,
+                Guid.NewGuid(),
+                new StorageActorScope(false, null),
+                [],
+                folderIds,
+                Audit()
+            ),
             Options(maxFolders: 2)
         );
 

@@ -148,6 +148,11 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantDomainDisabledIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantDomainProvisioningFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantTermsAcceptedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Fase A7 — faltaba: se publicaba via TenantSubdomainChangedHandler pero nunca se
+    // registro aca, asi que Wolverine nunca lo mandaba a RabbitMQ (se perdia en silencio).
+    options.PublishMessage<TenantSubdomainChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantDomainReservedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantResolutionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
     options

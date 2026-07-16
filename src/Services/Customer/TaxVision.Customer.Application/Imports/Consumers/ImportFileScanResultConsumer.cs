@@ -40,7 +40,10 @@ public static class ImportFileScanResultConsumer
 
         if (attempt.Status == ImportStatus.Canceling)
         {
-            logger.LogInformation("Import {AttemptId} was canceled before the scan finished; confirming cancel.", attempt.Id);
+            logger.LogInformation(
+                "Import {AttemptId} was canceled before the scan finished; confirming cancel.",
+                attempt.Id
+            );
             attempt.ConfirmCanceled();
             await unitOfWork.SaveChangesAsync(ct);
             return;
@@ -67,7 +70,10 @@ public static class ImportFileScanResultConsumer
 
         if (attempt.Status == ImportStatus.Canceling)
         {
-            logger.LogInformation("Import {AttemptId} was canceled before the scan finished; confirming cancel.", attempt.Id);
+            logger.LogInformation(
+                "Import {AttemptId} was canceled before the scan finished; confirming cancel.",
+                attempt.Id
+            );
             attempt.ConfirmCanceled();
             await unitOfWork.SaveChangesAsync(ct);
             return;
@@ -92,7 +98,10 @@ public static class ImportFileScanResultConsumer
 
         if (attempt.Status == ImportStatus.Canceling)
         {
-            logger.LogInformation("Import {AttemptId} was canceled before the scan finished; confirming cancel.", attempt.Id);
+            logger.LogInformation(
+                "Import {AttemptId} was canceled before the scan finished; confirming cancel.",
+                attempt.Id
+            );
             attempt.ConfirmCanceled();
             await unitOfWork.SaveChangesAsync(ct);
             return;

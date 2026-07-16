@@ -987,6 +987,42 @@
 					"response": []
 				},
 				{
+					"name": "ChangeSharePermission",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newPermission\": \"Download\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/storage/shares/{{shareLinkId}}/permission",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"shares",
+								"{{shareLinkId}}",
+								"permission"
+							]
+						},
+						"description": "Fase C4 (completitud) — cambia el Permission de un link ya creado. Requiere cloudstorage.share.manage. Upload/EditMetadata nunca se aceptan si el link es Visibility=Public (ShareLink.ElevatedPermissionNotAllowedOnPublicLink)."
+					},
+					"response": []
+				},
+				{
 					"name": "ResolvePublicShare",
 					"request": {
 						"method": "GET",

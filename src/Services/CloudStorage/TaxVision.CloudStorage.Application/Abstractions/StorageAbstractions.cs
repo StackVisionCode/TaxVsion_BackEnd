@@ -174,6 +174,24 @@ public interface IObjectStorage
         CancellationToken ct
     );
     Task<Uri> PresignGetAsync(string bucket, string objectKey, TimeSpan lifetime, CancellationToken ct);
+
+    /// <summary>
+    /// Fase C4 (completitud) — igual que el overload de arriba, pero fuerza el
+    /// Content-Disposition de la respuesta via el query param response-content-
+    /// disposition que S3/MinIO reconoce en un presigned GET (RFC — no requiere
+    /// que el objeto en si tenga otro Content-Disposition guardado). Usado por
+    /// ResolvePublicShareHandler/ResolvePrivateShareHandler para diferenciar
+    /// SharePermission.View/Preview (inline, se renderiza en el browser) de
+    /// SharePermission.Download (attachment, fuerza la descarga) — antes ambos
+    /// devolvian exactamente la misma URL, haciendo el Permission decorativo.
+    /// </summary>
+    Task<Uri> PresignGetAsync(
+        string bucket,
+        string objectKey,
+        TimeSpan lifetime,
+        string contentDisposition,
+        CancellationToken ct
+    );
     Task<long> GetSizeAsync(string bucket, string objectKey, CancellationToken ct);
     Task<bool> ExistsAsync(string bucket, string objectKey, CancellationToken ct);
     Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct);
