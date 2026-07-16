@@ -25,6 +25,9 @@ public static class GetMySubscriptionHandler
         if (planVersion is null)
             return Result.Failure<MySubscriptionResponse>(new Error("Plan.NoPublishedVersion", "Plan has no published version."));
 
+        var cyclePrice = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, subscription.BillingCycle);
+        var currentCyclePriceUsd = cyclePrice is null ? 0m : cyclePrice.Value.AmountCents / 100m;
+
         return Result.Success(
             new MySubscriptionResponse(
                 plan.Code.Value,
@@ -32,6 +35,7 @@ public static class GetMySubscriptionHandler
                 subscription.Status.ToString(),
                 subscription.BillingCycle.ToString(),
                 PlanVersionEntitlements.GetMonthlyPriceUsd(planVersion),
+                currentCyclePriceUsd,
                 PlanVersionEntitlements.GetInt(planVersion, "seats.max", fallback: 0),
                 PlanVersionEntitlements.GetInt(planVersion, "invitations.max_pending", fallback: 0),
                 PlanVersionEntitlements.GetLong(planVersion, "storage.max_bytes", fallback: 0),

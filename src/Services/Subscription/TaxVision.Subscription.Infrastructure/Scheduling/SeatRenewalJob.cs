@@ -48,6 +48,8 @@ public sealed class SeatRenewalJob(IServiceScopeFactory scopeFactory, IDistribut
                 PeriodStartUtc = seat.CurrentPeriodEndUtc.Value,
                 PeriodEndUtc = seat.BillingCycle.CalculateNext(seat.CurrentPeriodEndUtc.Value),
                 IdempotencyKey = idempotencyKey,
+                AmountCents = (long)Math.Round(seat.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
+                Currency = seat.UnitPrice.Currency,
             });
         }
 

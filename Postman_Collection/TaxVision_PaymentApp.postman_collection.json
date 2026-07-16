@@ -1,0 +1,252 @@
+{
+  "info": {
+    "_postman_id": "a1e9b6f4-2c1a-4b7e-9c3a-5f6d8e0a1b2c",
+    "name": "TaxVision - PaymentApp",
+    "description": "Colección de pruebas del microservicio PaymentApp de TaxVision (cobra a los tenants por su propia suscripción SaaS). Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047). La mayoría de endpoints requieren TenantAdmin (o el rol con los permisos payment_app.* correspondientes); la carpeta Admin requiere PlatformAdmin (permiso payment_app.admin.cross_tenant). Los webhooks de Stripe son públicos y verifican HMAC — sin un evento real de Stripe (p. ej. via `stripe listen --forward-to`) responderán 400 por firma inválida, lo cual es el comportamiento esperado.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "SaaSPayments",
+      "item": [
+        {
+          "name": "GetSaaSPaymentById",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/saas-payments/{{saaSPaymentId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "saas-payments", "{{saaSPaymentId}}"]
+            },
+            "description": "Detalle de un SaaSPayment del tenant autenticado (scoped por TenantId). Requiere payment_app.saas_payment.read."
+          },
+          "response": []
+        },
+        {
+          "name": "RefundSaaSPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refundAmountCents\": 500,\n  \"reason\": \"cliente solicito reembolso parcial\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/saas-payments/{{saaSPaymentId}}/refund",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "saas-payments", "{{saaSPaymentId}}", "refund"]
+            },
+            "description": "Reembolso administrativo, solo plataforma (un tenant nunca se reembolsa a si mismo). Requiere payment_app.saas_payment.refund. Falla si excede el invariante SumOfRefunds + newRefund <= Amount."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "ProviderCustomers",
+      "item": [
+        {
+          "name": "GetProviderCustomer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const c = pm.response.json();\r",
+                  "if (c && c.id) {\r",
+                  "    pm.environment.set('tenantProviderCustomerId', c.id);\r",
+                  "    console.log('tenantProviderCustomerId:', c.id);\r",
+                  "}\r"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/provider-customers/Stripe",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "provider-customers", "Stripe"]
+            },
+            "description": "Customer del tenant en Stripe (con sus SavedMethods) para pagos de la suscripcion SaaS. Requiere payment_app.provider_customer.read. Se provisiona automaticamente al crear el tenant (§D.4)."
+          },
+          "response": []
+        },
+        {
+          "name": "AttachPaymentMethod",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const methodId = pm.response.json();\r",
+                  "if (methodId) {\r",
+                  "    pm.environment.set('providerMethodId', methodId);\r",
+                  "    console.log('providerMethodId:', methodId);\r",
+                  "}\r"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethodReference\": \"pm_card_visa\",\n  \"setAsDefault\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/provider-customers/Stripe/methods",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "provider-customers", "Stripe", "methods"]
+            },
+            "description": "El frontend ya tokenizo la tarjeta con Stripe Elements/SetupIntent; este endpoint solo recibe la referencia opaca (nunca PAN crudo). pm_card_visa es el payment method de test que expone Stripe para pegarle a la API sin pasar por Elements. Requiere payment_app.provider_customer.manage. Devuelve el Guid del metodo guardado."
+          },
+          "response": []
+        },
+        {
+          "name": "DetachPaymentMethod",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/provider-customers/{{tenantProviderCustomerId}}/methods/{{providerMethodId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "provider-customers", "{{tenantProviderCustomerId}}", "methods", "{{providerMethodId}}"]
+            },
+            "description": "Desasocia un metodo de pago guardado. Requiere payment_app.provider_customer.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "SetDefaultPaymentMethod",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/provider-customers/{{tenantProviderCustomerId}}/methods/{{providerMethodId}}/default",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "provider-customers", "{{tenantProviderCustomerId}}", "methods", "{{providerMethodId}}", "default"]
+            },
+            "description": "Marca un metodo guardado como default para cobros futuros (renovaciones, dunning). Requiere payment_app.provider_customer.manage."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin (PlatformAdmin)",
+      "item": [
+        {
+          "name": "SearchAllTenantsPayments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/admin/payments?page=1&pageSize=50",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "admin", "payments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "50" },
+                { "key": "status", "value": "Succeeded", "disabled": true },
+                { "key": "type", "value": "SubscriptionRenewal", "disabled": true },
+                { "key": "from", "value": "2026-01-01T00:00:00Z", "disabled": true },
+                { "key": "to", "value": "2026-12-31T23:59:59Z", "disabled": true }
+              ]
+            },
+            "description": "Cross-tenant por diseño (§42.6): sin tenantId trae pagos de TODOS los tenants, incluso suspendidos. Requiere payment_app.admin.cross_tenant (PlatformAdmin lo tiene siempre). No confundir con GetSaaSPaymentById, que esta scoped al tenant del JWT."
+          },
+          "response": []
+        },
+        {
+          "name": "SearchTenantPayments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/admin/tenants/{{tenantId}}/payments?page=1&pageSize=50",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "admin", "tenants", "{{tenantId}}", "payments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "50" }
+              ]
+            },
+            "description": "Vista admin de los pagos de UN tenant especifico (incluso si esta suspendido). Requiere payment_app.admin.cross_tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "ExportPaymentsCsv",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/admin/payments/export",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "admin", "payments", "export"],
+              "query": [
+                { "key": "tenantId", "value": "{{tenantId}}", "disabled": true },
+                { "key": "status", "value": "Succeeded", "disabled": true }
+              ]
+            },
+            "description": "Mismos filtros que SearchAllTenantsPayments, sin paginacion (capado a 5000 filas). Devuelve text/csv. Requiere payment_app.admin.cross_tenant."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks (Stripe - publico)",
+      "item": [
+        {
+          "name": "StripeWebhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Stripe-Signature", "value": "t=1700000000,v1=replace_with_a_real_signature", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_test_postman\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_test_postman\"\n    }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-app/webhooks/stripe",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-app", "webhooks", "stripe"]
+            },
+            "description": "Publico, sin JWT — Stripe autentica con HMAC en Stripe-Signature. Este body/firma son de ejemplo: con la firma dummy de arriba la respuesta esperada es 400 (Stripe.WebhookSignature.Invalid), NO 500 — eso confirma que la verificacion de firma esta activa. Para probar el flujo completo usa `stripe listen --forward-to {{UrlBase}}/payments-app/webhooks/stripe` y dispara un evento real con `stripe trigger payment_intent.succeeded`. Rate limitado a 1000 req/min/IP (§K.1)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

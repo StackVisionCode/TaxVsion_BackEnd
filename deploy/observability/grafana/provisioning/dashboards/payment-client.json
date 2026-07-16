@@ -1,0 +1,77 @@
+{
+  "title": "PaymentClient — Overview",
+  "uid": "taxvision-payment-client",
+  "tags": ["taxvision", "payments"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "GMV (gross merchandise value)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum(increase(paymentclient_tenant_payments_gmv_cents[1h])) by (currency) / 100",
+          "legendFormat": "{{currency}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Platform fees retenidos",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum(increase(paymentclient_platform_fee_cents_total[1h])) by (currency) / 100",
+          "legendFormat": "{{currency}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Connect onboarding completado (acumulado)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "paymentclient_connect_onboarding_completed_total", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "title": "Payment links creados vs usados",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 6, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(paymentclient_payment_links_created_total[1h]))", "legendFormat": "created", "refId": "A" },
+        { "expr": "sum(rate(paymentclient_payment_links_used_total[1h]))", "legendFormat": "used", "refId": "B" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Cobros por hora",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(paymentclient_tenant_payments_count_total[1h]))", "legendFormat": "cobros", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "title": "Refunds",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(rate(paymentclient_refund_total[1h])) by (provider)", "legendFormat": "{{provider}}", "refId": "A" }]
+    }
+  ]
+}

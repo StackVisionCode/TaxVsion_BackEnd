@@ -20,6 +20,7 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
         builder.Property(subscription => subscription.BillingCycle).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(subscription => subscription.CancellationReason).HasMaxLength(500);
         builder.Property(subscription => subscription.SuspensionReason).HasMaxLength(500);
+        builder.Property(subscription => subscription.RowVersion).IsRowVersion();
 
         builder.HasIndex(subscription => subscription.TenantId)
             .IsUnique()
@@ -51,5 +52,11 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
             .HasForeignKey(request => request.TenantSubscriptionId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(subscription => subscription.PlanChangeRequests).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(subscription => subscription.PendingDowngrades)
+            .WithOne()
+            .HasForeignKey(pending => pending.TenantSubscriptionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(subscription => subscription.PendingDowngrades).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

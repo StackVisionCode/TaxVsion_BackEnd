@@ -281,6 +281,10 @@ services:
       # devuelve un keyset vacio, ver SigningKeyProvider.cs:65-69 — rompe la
       # validacion de Communication, que SOLO valida via JWKS).
       Jwt__PrivateKeyPath: /run/secrets/jwt-private.pem
+      # Auth también valida bearer tokens en sus propios endpoints protegidos
+      # (/auth/logout, /auth/me, etc.) — necesita la pública igual que el resto
+      # de los servicios, no solo la privada para firmar (README §31.4).
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       # Clave de cifrado de secretos de MFA (AesGcmSecretProtector.cs). Antes caia
@@ -315,9 +319,16 @@ services:
       ServiceAuth__Clients__3__Permissions__1: cloudstorage.file.download
       ServiceAuth__Clients__3__Permissions__2: cloudstorage.file.view
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Bootstrap del primer PlatformAdmin (README §"Bootstrap del PlatformAdmin") — crea una
+      # invitacion pendiente al arrancar SI todavia no existe ningun PlatformAdmin. Deshabilitar
+      # (o dejar sin PLATFORM_BOOTSTRAP_INVITATION_TOKEN) despues de aceptarla en produccion.
+      PlatformBootstrap__Enabled: ${PLATFORM_BOOTSTRAP_ENABLED:-false}
+      PlatformBootstrap__Email: ${PLATFORM_BOOTSTRAP_EMAIL:-}
+      PlatformBootstrap__InvitationToken: ${PLATFORM_BOOTSTRAP_INVITATION_TOKEN:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-private.pem:/run/secrets/jwt-private.pem:ro
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -478,7 +489,10 @@ services:
       Minio__Endpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxprocore.com}
       Minio__AccessKey: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-      Minio__UseTls: "true"
+      # Default "true" para producción (Caddy termina TLS en el dominio público). En
+      # dev local sin Caddy/dominio real, overridear MINIO_PUBLIC_ENDPOINT=minio:9000
+      # y MINIO_USE_TLS=false en .env — minio local sirve HTTP plano.
+      Minio__UseTls: ${MINIO_USE_TLS:-true}
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
@@ -534,6 +548,89 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-sealing.pfx:/run/secrets/signature-sealing.pfx:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  payment-app-api:
+    image: taxvision/payment-app-api:dev
+    container_name: taxvision-payment-app-api
+    build:
+      context: ../..
+      dockerfile: src/Services/PaymentApp/TaxVision.PaymentApp.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Producción: solo estas dos claves — el resto del adapter Intellipay usa
+      # defaults hardcoded (ver IntellipayOptions.cs).
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY:?Set STRIPE_SECRET_KEY in .env}
+      Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET:?Set STRIPE_WEBHOOK_SECRET in .env}
+      Intellipay__MerchantKey: ${INTELLIPAY_MERCHANT_KEY:-}
+      Intellipay__ApiKey: ${INTELLIPAY_API_KEY:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  payment-client-api:
+    image: taxvision/payment-client-api:dev
+    container_name: taxvision-payment-client-api
+    build:
+      context: ../..
+      dockerfile: src/Services/PaymentClient/TaxVision.PaymentClient.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Modo DirectApiKeys: cada tenant trae sus propias credenciales Stripe
+      # (TenantPaymentConfig) cifradas con esta clave.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      # Modo Connect: una sola cuenta Stripe (la de la plataforma) crea Connected
+      # Accounts y cobra direct charges en nombre del tenant — a diferencia de
+      # DirectApiKeys, esto sí es una credencial global, análoga a Stripe__SecretKey
+      # en payment-app-api.
+      Stripe__PlatformSecretKey: ${STRIPE_CONNECT_PLATFORM_SECRET_KEY:-}
+      Stripe__ConnectWebhookSecret: ${STRIPE_CONNECT_WEBHOOK_SECRET:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -652,6 +749,8 @@ services:
       NOTIFICATION_DB_CONNECTION: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
       CLOUDSTORAGE_DB_CONNECTION: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
       SIGNATURE_DB_CONNECTION: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
+      PAYMENTAPP_DB_CONNECTION: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
+      PAYMENTCLIENT_DB_CONNECTION: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -690,6 +789,8 @@ services:
       ReverseProxy__Clusters__cloudstorage__Destinations__cloudstorage1__Address: http://cloudstorage-api:8080/
       ReverseProxy__Clusters__signature__Destinations__signature1__Address: http://signature-api:8080/
       ReverseProxy__Clusters__communication__Destinations__communication1__Address: http://communication-api:5350/
+      ReverseProxy__Clusters__paymentapp__Destinations__paymentapp1__Address: http://payment-app-api:8080/
+      ReverseProxy__Clusters__paymentclient__Destinations__paymentclient1__Address: http://payment-client-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -702,6 +803,8 @@ services:
       - cloudstorage-api
       - signature-api
       - communication-api
+      - payment-app-api
+      - payment-client-api
       - otel-collector
     networks:
       - taxvision-network

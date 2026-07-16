@@ -48,6 +48,8 @@ public sealed class AddOnRenewalJob(IServiceScopeFactory scopeFactory, IDistribu
                 PeriodStartUtc = addOn.CurrentPeriodEndUtc,
                 PeriodEndUtc = addOn.BillingCycle.CalculateNext(addOn.CurrentPeriodEndUtc),
                 IdempotencyKey = idempotencyKey,
+                AmountCents = (long)Math.Round(addOn.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
+                Currency = addOn.UnitPrice.Currency,
             });
         }
 

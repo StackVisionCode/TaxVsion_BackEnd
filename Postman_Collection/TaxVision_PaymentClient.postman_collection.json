@@ -1,0 +1,608 @@
+{
+  "info": {
+    "_postman_id": "b2f0c7a5-3d2b-4c8f-a04b-6a7e9f1b2c3d",
+    "name": "TaxVision - PaymentClient",
+    "description": "Colección de pruebas del microservicio PaymentClient de TaxVision (cada tenant cobra a SUS propios clientes/taxpayers, modo DirectApiKeys o Stripe Connect). Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047). Los endpoints bajo Config/Connect/Payments/Payouts/Recurring/PaymentLinks requieren TenantAdmin (o el rol con los permisos payment_client.* correspondientes); Admin requiere PlatformAdmin (payment_client.admin.cross_tenant). Webhooks y Checkout son públicos: los webhooks verifican HMAC (400 con firma dummy es el resultado esperado) y el checkout usa el token del PaymentLink como única prueba de posesión.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "PaymentLinks",
+      "item": [
+        {
+          "name": "CreatePaymentLink",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const link = pm.response.json();\r",
+                  "if (link && link.id) {\r",
+                  "    pm.environment.set('paymentLinkId', link.id);\r",
+                  "    pm.environment.set('paymentLinkToken', link.token);\r",
+                  "    console.log('paymentLinkId:', link.id, '- token:', link.token);\r",
+                  "}\r"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxpayerId\": null,\n  \"amountCents\": 2500,\n  \"currency\": \"USD\",\n  \"purposeKind\": \"InvoicePayment\",\n  \"purposeExternalReferenceId\": \"inv-postman-001\",\n  \"expiration\": \"01:00:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payment-links",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payment-links"]
+            },
+            "description": "Crea un link magico de pago (§32.2). El token (32 bytes de RNG) es la unica prueba de posesion — no requiere cuenta ni JWT para canjearse. expiration en formato TimeSpan constante (hh:mm:ss). Requiere payment_client.payment_link.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "SearchPaymentLinks",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payment-links?page=1&pageSize=20",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payment-links"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "status", "value": "Active", "disabled": true }
+              ]
+            },
+            "description": "Lista los PaymentLinks del tenant autenticado. Requiere payment_client.payment_link.read."
+          },
+          "response": []
+        },
+        {
+          "name": "RevokePaymentLink",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"creado por error\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payment-links/{{paymentLinkId}}/revoke",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payment-links", "{{paymentLinkId}}", "revoke"]
+            },
+            "description": "Revoca un link Active (transicion terminal, no vuelve a Active). Requiere payment_client.payment_link.manage."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Config",
+      "item": [
+        {
+          "name": "GetConfig",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/config/Stripe",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "config", "Stripe"]
+            },
+            "description": "Config de Stripe del tenant (modo DirectApiKeys o Connect, sin exponer los secretos cifrados). Requiere payment_client.config.read."
+          },
+          "response": []
+        },
+        {
+          "name": "CreateConfig",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"providerCode\": \"Stripe\",\n  \"mode\": \"DirectApiKeys\",\n  \"publishableKey\": \"pk_test_reemplazar\",\n  \"statementDescriptor\": \"TAXVISION CLIENT\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/config",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "config"]
+            },
+            "description": "Crea la config de pagos del tenant. mode=DirectApiKeys (el tenant trae sus propias credenciales Stripe) o Connect (Stripe Connect, credenciales de plataforma). Requiere payment_client.config.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "UpdateSecrets",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"secretKey\": \"sk_test_reemplazar\",\n  \"webhookSecret\": \"whsec_reemplazar\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/config/Stripe/secrets",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "config", "Stripe", "secrets"]
+            },
+            "description": "El secreto viaja en claro SOLO en este request HTTPS — el handler lo cifra con ISecretProtector (AES-256-GCM) antes de persistirlo y nunca lo loguea. Requiere payment_client.config.manage. Usar claves de test de Stripe, nunca las de produccion en un ambiente de pruebas."
+          },
+          "response": []
+        },
+        {
+          "name": "DeactivateConfig",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"tenant cambio de provider\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/config/Stripe/deactivate",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "config", "Stripe", "deactivate"]
+            },
+            "description": "Desactiva la config (IsActive=false) — un config inactivo no puede usarse para cobrar. Requiere payment_client.config.manage."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Connect",
+      "item": [
+        {
+          "name": "OnboardConnectAccount",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Express\",\n  \"email\": \"taxpayer-payouts@example.com\",\n  \"refreshUrl\": \"https://app.taxvision.local/connect/refresh\",\n  \"returnUrl\": \"https://app.taxvision.local/connect/return\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/connect/onboard",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "connect", "onboard"]
+            },
+            "description": "Idempotente: reintentar con un formulario a medio llenar reusa la misma Connected Account y solo emite un AccountLink nuevo (expiran a los pocos minutos). Requiere payment_client.connect_account.onboard. Devuelve la URL de onboarding de Stripe a la que redirigir al tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "GetConnectStatus",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/connect/status",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "connect", "status"]
+            },
+            "description": "Estado de la Connected Account del tenant (capabilities, si puede recibir cobros/payouts). Requiere payment_client.connect_account.read."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "ChargeTenantPayment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const paymentId = pm.response.json();\r",
+                  "if (paymentId) {\r",
+                  "    pm.environment.set('tenantPaymentId', paymentId);\r",
+                  "    console.log('tenantPaymentId:', paymentId);\r",
+                  "}\r"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"providerCode\": \"Stripe\",\n  \"amountCents\": 1500,\n  \"currency\": \"USD\",\n  \"taxpayerId\": null,\n  \"purposeKind\": \"InvoicePayment\",\n  \"purposeExternalReferenceId\": \"inv-postman-001\",\n  \"paymentMethodReference\": \"pm_card_visa\",\n  \"receiptEmail\": null,\n  \"idempotencyKey\": \"postman-{{$guid}}\",\n  \"platformFeeAmountCents\": null,\n  \"platformFeeReference\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payments",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payments"]
+            },
+            "description": "Cobro directo sin PaymentLink. El frontend ya tokenizo la tarjeta (nunca PAN crudo). platformFeeAmountCents solo aplica si el config del tenant esta en modo Connect. idempotencyKey usa la variable dinamica de Postman {{$guid}} para no chocar entre corridas. Requiere payment_client.payment.charge. Devuelve el Guid del TenantPayment creado."
+          },
+          "response": []
+        },
+        {
+          "name": "GetTenantPayment",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payments/{{tenantPaymentId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payments", "{{tenantPaymentId}}"]
+            },
+            "description": "Detalle de un TenantPayment del tenant autenticado. Requiere payment_client.payment.read."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payouts",
+      "item": [
+        {
+          "name": "GetPayoutSchedule",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payouts",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payouts"]
+            },
+            "description": "Preferencia de calendario de payouts del tenant y el ledger de payouts ya ejecutados. Stripe ejecuta el payout en si (§19.1); esto solo expone la preferencia y el historial. Requiere payment_client.payout.read."
+          },
+          "response": []
+        },
+        {
+          "name": "UpsertPayoutSchedule",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"frequency\": \"Weekly\",\n  \"anchor\": 1,\n  \"currency\": \"USD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payouts",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payouts"]
+            },
+            "description": "Crea o actualiza el calendario de payouts (Manual|Daily|Weekly|Monthly). anchor: dia de la semana (1=lunes) para Weekly, dia del mes para Monthly, null para Daily/Manual. Requiere payment_client.payout.manage."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Recurring",
+      "item": [
+        {
+          "name": "CreateRecurringPayment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.response.json();\r",
+                  "if (id) {\r",
+                  "    pm.environment.set('tenantRecurringPaymentId', id);\r",
+                  "    console.log('tenantRecurringPaymentId:', id);\r",
+                  "}\r"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxpayerId\": \"00000000-0000-0000-0000-000000000000\",\n  \"providerCode\": \"Stripe\",\n  \"paymentMethodReference\": \"pm_card_visa\",\n  \"amountCents\": 5000,\n  \"currency\": \"USD\",\n  \"purposeKind\": \"InvoicePayment\",\n  \"purposeExternalReferenceId\": \"plan-postman-001\",\n  \"billingCycle\": \"Monthly\",\n  \"customIntervalDays\": null,\n  \"startDate\": \"2026-08-01T00:00:00Z\",\n  \"endDate\": null,\n  \"maxExecutions\": null,\n  \"platformFeeAmountCents\": null,\n  \"platformFeeReference\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/recurring",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "recurring"]
+            },
+            "description": "Crea un plan de cobro recurrente (§H). taxpayerId es un placeholder — reemplazar con un id real de Customer service antes de correr contra datos reales. billingCycle=Custom requiere customIntervalDays. Requiere payment_client.recurring.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "SearchRecurringPayments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/recurring?page=1&pageSize=20",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "recurring"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "taxpayerId", "value": "", "disabled": true },
+                { "key": "status", "value": "Active", "disabled": true }
+              ]
+            },
+            "description": "Lista los planes de cobro recurrente del tenant. Requiere payment_client.recurring.read."
+          },
+          "response": []
+        },
+        {
+          "name": "GetRecurringPayment",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/recurring/{{tenantRecurringPaymentId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "recurring", "{{tenantRecurringPaymentId}}"]
+            },
+            "description": "Detalle de un plan de cobro recurrente. Requiere payment_client.recurring.read."
+          },
+          "response": []
+        },
+        {
+          "name": "PauseRecurringPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/recurring/{{tenantRecurringPaymentId}}/pause",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "recurring", "{{tenantRecurringPaymentId}}", "pause"]
+            },
+            "description": "Pausa un plan Active (no ejecuta cobros hasta Resume). Requiere payment_client.recurring.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "ResumeRecurringPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/recurring/{{tenantRecurringPaymentId}}/resume",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "recurring", "{{tenantRecurringPaymentId}}", "resume"]
+            },
+            "description": "Reanuda un plan Paused. Requiere payment_client.recurring.manage."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelRecurringPayment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"taxpayer solicito cancelacion\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/recurring/{{tenantRecurringPaymentId}}/cancel",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "recurring", "{{tenantRecurringPaymentId}}", "cancel"]
+            },
+            "description": "Cancela un plan (transicion terminal). Requiere payment_client.recurring.manage."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin (PlatformAdmin)",
+      "item": [
+        {
+          "name": "SearchAllTenantsPayments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/admin/payments?page=1&pageSize=50",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "admin", "payments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "50" },
+                { "key": "status", "value": "Succeeded", "disabled": true },
+                { "key": "from", "value": "2026-01-01T00:00:00Z", "disabled": true },
+                { "key": "to", "value": "2026-12-31T23:59:59Z", "disabled": true }
+              ]
+            },
+            "description": "Cross-tenant por diseño (§42.6): sin tenantId trae pagos de TODOS los tenants, incluso suspendidos. Requiere payment_client.admin.cross_tenant (PlatformAdmin lo tiene siempre)."
+          },
+          "response": []
+        },
+        {
+          "name": "SearchTenantPayments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/admin/tenants/{{tenantId}}/payments?page=1&pageSize=50",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "admin", "tenants", "{{tenantId}}", "payments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "50" }
+              ]
+            },
+            "description": "Vista admin de los pagos de UN tenant especifico. Requiere payment_client.admin.cross_tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "ExportPaymentsCsv",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/admin/payments/export",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "admin", "payments", "export"],
+              "query": [
+                { "key": "tenantId", "value": "{{tenantId}}", "disabled": true },
+                { "key": "status", "value": "Succeeded", "disabled": true }
+              ]
+            },
+            "description": "Mismos filtros que SearchAllTenantsPayments, sin paginacion (capado a 5000 filas). Devuelve text/csv. Requiere payment_client.admin.cross_tenant."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks (publico)",
+      "item": [
+        {
+          "name": "StripeWebhookPerTenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Stripe-Signature", "value": "t=1700000000,v1=replace_with_a_real_signature", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_test_postman\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_test_postman\"\n    }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/webhooks/{{tenantId}}/stripe",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "webhooks", "{{tenantId}}", "stripe"]
+            },
+            "description": "Publico, sin JWT — verificado contra el WebhookSecretEncrypted DEL TENANT (a diferencia de PaymentApp, no hay un secret global). Con la firma dummy de arriba la respuesta esperada es 400, no 500. Rate limitado a 1000 req/min/IP (§K.1)."
+          },
+          "response": []
+        },
+        {
+          "name": "StripeConnectWebhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Stripe-Signature", "value": "t=1700000000,v1=replace_with_a_real_signature", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_test_postman_connect\",\n  \"type\": \"account.updated\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"acct_test_postman\"\n    }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/webhooks/stripe-connect",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "webhooks", "stripe-connect"]
+            },
+            "description": "Publico, sin JWT — no hay {tenantId} en la ruta, el tenant sale del StripeConnectAccountId del payload. Verificado contra el webhook secret de PLATAFORMA (Stripe__ConnectWebhookSecret). Con la firma dummy de arriba la respuesta esperada es 400. Rate limitado a 1000 req/min/IP (§K.1)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Checkout (publico)",
+      "item": [
+        {
+          "name": "GetCheckout",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/checkout/{{paymentLinkToken}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "checkout", "{{paymentLinkToken}}"]
+            },
+            "description": "Publico, sin JWT — el linkToken del path es la unica prueba de posesion (§32.2). Trae los datos del link (monto, moneda, estado) para renderizar la pagina de pago. 404 si el link no existe, ya se uso, expiro o fue revocado/bloqueado."
+          },
+          "response": []
+        },
+        {
+          "name": "PayCheckout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"providerPaymentMethodToken\": \"pm_card_visa\",\n  \"receiptEmail\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/checkout/{{paymentLinkToken}}/pay",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "checkout", "{{paymentLinkToken}}", "pay"]
+            },
+            "description": "Publico, sin JWT — el frontend ya tokenizo la tarjeta con Stripe Elements (nunca PAN crudo). Un link es de un solo uso: correr esto dos veces con el mismo token la segunda vez da 404 (ya Used) o el link queda Revoked tras 5 intentos fallidos consecutivos (§K.1, PaymentLink.MarkBlockedAfterExcessiveFailures)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

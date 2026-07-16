@@ -78,6 +78,50 @@ public sealed class TenantSubscriptionRenewalTests
     }
 
     [Fact]
+    public void FailRenewal_with_a_permanent_failure_code_moves_to_past_due_even_when_caller_reports_willRetry_true()
+    {
+        // Regression: PaymentApp can report WillRetry=true forever for charges that fail
+        // before reaching Processing (e.g. no payment method saved), so the subscription
+        // must not blindly trust it for known-permanent failure codes.
+        var subscription = CreateActiveSubscription();
+        subscription.BeginRenewal("key-1", Guid.Empty, DateTime.UtcNow);
+        var renewalId = subscription.Renewals.First().Id;
+
+        var result = subscription.FailRenewal(
+            renewalId, "requires_payment_method", "No payment method on file", willRetry: true, DateTime.UtcNow.AddHours(1), Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SubscriptionStatus.PastDue, subscription.Status);
+        Assert.Equal(RenewalStatus.Failed, subscription.Renewals.First().Status);
+    }
+
+    [Fact]
+    public void FailRenewal_forces_past_due_once_retry_attempts_are_exhausted_even_when_caller_reports_willRetry_true()
+    {
+        // Regression: same upstream WillRetry-always-true bug, but for failure codes that
+        // aren't in the known-permanent list — the subscription's own retry cap must still
+        // kick in instead of staying Active indefinitely.
+        var subscription = CreateActiveSubscription();
+        subscription.BeginRenewal("key-1", Guid.Empty, DateTime.UtcNow);
+        var renewalId = subscription.Renewals.First().Id;
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var retryResult = subscription.FailRenewal(
+                renewalId, "temporary_failure", "Try again later", willRetry: true, DateTime.UtcNow.AddHours(1), Guid.Empty, DateTime.UtcNow);
+            Assert.True(retryResult.IsSuccess);
+            Assert.Equal(SubscriptionStatus.Active, subscription.Status);
+        }
+
+        var finalResult = subscription.FailRenewal(
+            renewalId, "temporary_failure", "Try again later", willRetry: true, DateTime.UtcNow.AddHours(1), Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(finalResult.IsSuccess);
+        Assert.Equal(SubscriptionStatus.PastDue, subscription.Status);
+        Assert.Equal(RenewalStatus.Failed, subscription.Renewals.First().Status);
+    }
+
+    [Fact]
     public void CompleteRenewal_for_an_unknown_renewal_fails()
     {
         var subscription = CreateActiveSubscription();

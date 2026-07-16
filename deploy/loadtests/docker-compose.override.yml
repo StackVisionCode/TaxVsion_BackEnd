@@ -1,0 +1,9 @@
+# Solo para correr los scripts de esta carpeta desde el host — publica el puerto del gateway
+# que en deploy/docker/docker-compose.yml queda intencionalmente sin publicar (Caddy es el
+# único entry point público). No usar en producción.
+#
+# Uso: ver README.md de esta carpeta.
+services:
+  gateway:
+    ports:
+      - "8080:8080"

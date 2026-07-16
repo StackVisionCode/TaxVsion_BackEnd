@@ -884,11 +884,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<bool>("PauseSeatRenewalsWhenBaseSuspended")
                         .HasColumnType("bit");
 
-                    b.Property<string>("PlanChangeEffective")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
                     b.Property<int>("SeatGracePeriod")
                         .HasColumnType("int")
                         .HasColumnName("SeatGraceDays");
@@ -933,7 +928,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.ToTable("SubscriptionTenantSettings", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.PlanChangeRequest", b =>
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.PendingDowngrade", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
@@ -946,11 +941,6 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("EffectiveAtUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("EffectiveMode")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("FromPlanCode")
                         .IsRequired()
@@ -980,6 +970,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantSubscriptionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ToBillingCycle")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("ToPlanCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -994,8 +988,86 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("EffectiveAtUtc")
-                        .HasDatabaseName("IX_PlanChangeRequests_EffectiveAtUtc_Pending")
-                        .HasFilter("[Status] = 'Pending'");
+                        .HasDatabaseName("IX_PendingDowngrades_EffectiveAtUtc_Scheduled")
+                        .HasFilter("[Status] = 'Scheduled'");
+
+                    b.HasIndex("TenantSubscriptionId", "Status")
+                        .HasDatabaseName("IX_PendingDowngrades_TenantSubscriptionId_Status");
+
+                    b.ToTable("PendingDowngrades", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.PlanChangeRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AppliedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("ChargeAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ChargeCurrency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<DateTime?>("FailedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FromPlanCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("FromPlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FromPlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PaymentIdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("RequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SaaSPaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ToBillingCycle")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ToPlanCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("ToPlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ToPlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
 
                     b.HasIndex("TenantSubscriptionId", "Status")
                         .HasDatabaseName("IX_PlanChangeRequests_TenantSubscriptionId_Status");
@@ -1052,6 +1124,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("PlanVersionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1370,6 +1448,15 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.PendingDowngrade", b =>
+                {
+                    b.HasOne("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", null)
+                        .WithMany("PendingDowngrades")
+                        .HasForeignKey("TenantSubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.PlanChangeRequest", b =>
                 {
                     b.HasOne("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", null)
@@ -1440,6 +1527,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", b =>
                 {
+                    b.Navigation("PendingDowngrades");
+
                     b.Navigation("PlanChangeRequests");
 
                     b.Navigation("Renewals");

@@ -28,10 +28,6 @@ public interface ISubscriptionRepository
     Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
     Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(DateTime fromUtc, DateTime toUtc, int batchSize, CancellationToken ct = default);
 
-    /// <summary>Subscriptions with a Pending PlanChangeRequest whose EffectiveAtUtc has passed —
-    /// batch job query, cross-tenant by design, only the scheduler calls this.</summary>
-    Task<IReadOnlyList<TenantSubscription>> GetWithDuePlanChangeRequestsAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
-
     /// <summary>Admin cross-tenant query — only PlatformAdmin endpoints call this.</summary>
     Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(int page, int pageSize, CancellationToken ct = default);
 }

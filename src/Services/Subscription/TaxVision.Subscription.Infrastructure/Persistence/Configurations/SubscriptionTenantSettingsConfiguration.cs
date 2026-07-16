@@ -31,7 +31,6 @@ public sealed class SubscriptionTenantSettingsConfiguration : IEntityTypeConfigu
         builder.Property(settings => settings.NotifyAfterFailedRenewalDays).IsRequired();
         builder.Property(settings => settings.AutoRenewCascadeMode).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(settings => settings.PauseSeatRenewalsWhenBaseSuspended).IsRequired();
-        builder.Property(settings => settings.PlanChangeEffective).HasConversion<string>().HasMaxLength(30).IsRequired();
 
         builder.Property(settings => settings.TenantSubscriptionGracePeriod)
             .HasConversion(grace => grace.Days, days => GracePeriod.Create(days).Value)

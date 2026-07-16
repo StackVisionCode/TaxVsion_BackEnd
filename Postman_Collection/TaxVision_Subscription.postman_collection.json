@@ -19,7 +19,7 @@
 							"host": ["{{UrlBase}}"],
 							"path": ["plans"]
 						},
-						"description": "Catalogo publico de planes para la landing. Anonimo."
+						"description": "Catalogo publico de planes para la landing. Anonimo. Cada plan incluye supportedBillingCycles y pricesUsdByCycle (ej. {\"Monthly\": 49, \"Yearly\": 490}) para que la landing muestre precio mensual y anual sin calcularlo del lado del cliente."
 					},
 					"response": [],
 					"event": [
@@ -81,6 +81,41 @@
 					]
 				},
 				{
+					"name": "ActivateSubscription",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('status 204', () => pm.response.code === 204 || pm.expect.fail('Got ' + pm.response.code + ': ' + pm.response.text()));\r",
+									"if (pm.response.code === 204) pm.environment.set('subscriptionStatus', 'Active');\r"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/activate",
+							"host": ["{{UrlBase}}"],
+							"path": ["subscriptions", "activate"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"billingCycle\": \"Monthly\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"description": "Self-service (TenantAdmin): paga YA en vez de esperar a que termine el trial. Solo funciona si la suscripcion esta en Trialing — convierte a Active y dispara un cobro real via PaymentApp (mismo evento SubscriptionRenewalDueIntegrationEvent que usa el job de renovacion periodica). Requiere que el tenant ya tenga un metodo de pago adjunto en PaymentApp (ver coleccion PaymentApp > ProviderCustomers > AttachPaymentMethod) — si no, el cobro falla y la suscripcion queda PastDue con reintentos via DunningJob, igual que cualquier renovacion fallida. 204 en exito; correr GetMySubscription despues para confirmar status=Active. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con la activacion; si se omite o es null, mantiene el ciclo que ya tenia el trial. Sin prorrateo: el cobro se hace al precio completo del ciclo elegido."
+					},
+					"response": []
+				},
+				{
 					"name": "ChangePlan",
 					"request": {
 						"method": "POST",
@@ -94,10 +129,10 @@
 						},
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"planCode\": \"pro\"\n}",
+							"raw": "{\n  \"planCode\": \"pro\",\n  \"billingCycle\": \"Yearly\"\n}",
 							"options": { "raw": { "language": "json" } }
 						},
-						"description": "Upgrade/downgrade de plan (TenantAdmin). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange."
+						"description": "Upgrade/downgrade de plan (TenantAdmin). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con el plan en el mismo request para elegir/cambiar el ciclo de facturacion a la vez que el plan. Si se omite o es null, mantiene el ciclo actual. Sin prorrateo: el periodo en curso sigue como esta (ya cobrado con el ciclo/precio anteriores); el ciclo nuevo se cobra recien en la proxima renovacion, al precio de ESE ciclo."
 					},
 					"response": []
 				},

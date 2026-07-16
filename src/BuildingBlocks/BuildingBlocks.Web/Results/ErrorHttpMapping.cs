@@ -21,7 +21,17 @@ public static class ErrorHttpMapping
             or "EmailLayout.NotFound"
             or "Campaign.NotFound"
             or "EmailAccount.NotFound"
-            or "EmailMessage.NotFound" => StatusCodes.Status404NotFound,
+            or "EmailMessage.NotFound"
+            or "SaaSPayment.NotFound"
+            or "TenantProviderCustomer.NotFound"
+            or "TenantProviderCustomer.MethodNotFound"
+            or "TenantPaymentConfig.NotFound"
+            or "TenantPayment.NotFound"
+            or "PaymentLink.NotFound"
+            or "TenantConnectAccount.NotFound"
+            or "PayoutSchedule.NotFound"
+            or "TenantRecurringPayment.NotFound"
+            or "TenantRecurringPayment.ScheduleNotFound" => StatusCodes.Status404NotFound,
             "Auth.Invalid"
             or "Auth.InvalidInvitation"
             or "Auth.InvalidRefreshToken"
@@ -33,6 +43,7 @@ public static class ErrorHttpMapping
             or "Auth.InvalidClient" => StatusCodes.Status401Unauthorized,
             "Auth.Inactive"
             or "Tenant.Inactive"
+            or "TenantPaymentConfig.NotActive"
             or "Invitation.Forbidden"
             or "Session.Forbidden"
             or "Mfa.RequiredByPolicy"
@@ -57,8 +68,11 @@ public static class ErrorHttpMapping
             or "EmailConfiguration.Conflict"
             or "EmailTemplate.KeyConflict"
             or "EmailLayout.NameConflict"
-            or "EmailAccount.Conflict" => StatusCodes.Status409Conflict,
-            "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit" => StatusCodes.Status429TooManyRequests,
+            or "EmailAccount.Conflict"
+            or "TenantPaymentConfig.AlreadyExists" => StatusCodes.Status409Conflict,
+            "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit"
+            or "PaymentApp.AdminActionThrottled"
+            or "PaymentLink.RedemptionThrottled" => StatusCodes.Status429TooManyRequests,
             _ => StatusCodes.Status400BadRequest,
         };
 }

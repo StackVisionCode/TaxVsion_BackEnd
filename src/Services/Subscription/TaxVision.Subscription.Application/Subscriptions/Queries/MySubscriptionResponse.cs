@@ -6,6 +6,7 @@ public sealed record MySubscriptionResponse(
     string Status,
     string BillingCycle,
     decimal MonthlyPriceUsd,
+    decimal CurrentCyclePriceUsd,
     int MaxUsers,
     int MaxPendingInvitations,
     long StorageQuotaBytes,

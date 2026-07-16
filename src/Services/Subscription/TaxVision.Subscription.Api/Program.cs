@@ -51,8 +51,8 @@ builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
 
-// Aplica cambios de plan diferidos (EndOfPeriod) cuya EffectiveAtUtc ya llegó (Fase 6).
-builder.Services.AddHostedService<PendingPlanChangeApplicationJob>();
+// Los downgrades agendados (PendingDowngrade) los aplica TenantSubscriptionRenewalJob mismo,
+// justo antes de facturar la renovación — no hay un job separado.
 
 // Solo llamadas service-to-service (Auth consultando /internal/users/{id}/access) pasan
 // esta policy. No se expone vía gateway público.
@@ -96,6 +96,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<AddOnActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionPlanChangeDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
