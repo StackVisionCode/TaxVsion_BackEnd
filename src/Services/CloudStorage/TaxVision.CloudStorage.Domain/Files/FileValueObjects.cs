@@ -97,10 +97,22 @@ public static class FileErrors
         "The combined size of the requested files exceeds the ZIP download limit."
     );
 
-    /// <summary>Fase B2 — el body no trajo ningun fileId.</summary>
+    /// <summary>Fase B2 — el body no trajo ningun fileId ni folderId.</summary>
     public static readonly Error NoFilesRequested = new(
         "File.NoFilesRequested",
-        "At least one file must be requested."
+        "At least one file or folder must be requested."
+    );
+
+    /// <summary>Fase B2.1 — fileIds+folderIds validos pero sin ningun archivo Available para incluir (carpetas vacias o aun escaneando).</summary>
+    public static readonly Error NoFilesResolved = new(
+        "File.NoFilesResolved",
+        "The requested files and folders did not resolve to any downloadable file."
+    );
+
+    /// <summary>Fase B2.1 — cap duro de cantidad de carpetas por descarga ZIP (413 si se supera), chequeado antes de resolver su contenido.</summary>
+    public static readonly Error TooManyFolders = new(
+        "File.TooManyFolders",
+        "Too many folders requested for a single ZIP."
     );
 
     /// <summary>Fase U — el ensamblado final del multipart upload en el storage fallo (ETags invalidos, parte faltante, etc).</summary>

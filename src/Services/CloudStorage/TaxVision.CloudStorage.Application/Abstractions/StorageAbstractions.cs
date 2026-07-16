@@ -34,6 +34,19 @@ public interface IFileObjectRepository
         Guid? restrictedCustomerId,
         CancellationToken ct
     );
+
+    /// <summary>
+    /// Fase B2.1 — archivos directamente dentro de CUALQUIERA de las carpetas
+    /// dadas, en una sola query (batch) — usado por la descarga ZIP de folders
+    /// para resolver un subarbol completo (carpeta + descendientes) sin caer en
+    /// N+1 (una query por carpeta en un loop).
+    /// </summary>
+    Task<IReadOnlyList<FileObject>> ListInFoldersAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> folderIds,
+        Guid? restrictedCustomerId,
+        CancellationToken ct
+    );
 }
 
 /// <summary>Fase C2 — carpetas navegables (arbol logico, ver Domain/Folders/Folder.cs).</summary>

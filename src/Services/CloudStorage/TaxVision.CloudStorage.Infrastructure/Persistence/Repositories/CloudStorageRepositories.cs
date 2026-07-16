@@ -95,6 +95,26 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             )
             .OrderByDescending(file => file.CreatedAtUtc)
             .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<FileObject>> ListInFoldersAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> folderIds,
+        Guid? restrictedCustomerId,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.AsNoTracking()
+            .Where(file =>
+                file.TenantId == tenantId
+                && file.FolderId != null
+                && folderIds.Contains(file.FolderId.Value)
+                && file.Status != FileStatus.SoftDeleted
+                && (
+                    restrictedCustomerId == null
+                    || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
+                )
+            )
+            .ToListAsync(ct);
 }
 
 public sealed class FolderRepository(CloudStorageDbContext db) : IFolderRepository

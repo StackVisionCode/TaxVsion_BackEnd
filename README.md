@@ -2766,22 +2766,46 @@ El proyecto se encuentra en `deploy/tests/TaxVision.CloudStorage.Tests` y cubre:
 - expiracion de uploads abandonados;
 - aislamiento por owner para Customer Portal.
 
-## 27.7 Descarga ZIP multi-archivo (Fase B2)
+## 27.7 Descarga ZIP multi-archivo y multi-carpeta (Fase B2/B2.1)
 
 `POST /storage/files/zip` (permiso `cloudstorage.file.download`, `FilesController.DownloadZip`)
-recibe una lista de `FileIds` y devuelve un `.zip` de streaming real: el controller abre un
-`System.IO.Compression.ZipArchive` directamente sobre `Response.Body`
-(`ZipArchiveMode.Create, leaveOpen: true`) y por cada entrada copia el objeto desde MinIO al
-stream de la entrada (`entry.Open()`) sin bufferear el ZIP completo en memoria. La validacion y
-el armado del plan de descarga (que archivos, en que orden, tamano total) pasan por
-`PrepareZipDownloadQuery`/`PrepareZipDownloadHandler` via Wolverine; el volcado de bytes es la
-unica parte que corre fuera del bus porque un handler no tiene acceso al `HttpResponse`.
+recibe `{ fileIds, folderIds }` (ambos opcionales, al menos uno debe traer algo) y devuelve un
+`.zip` de streaming real: el controller abre un `System.IO.Compression.ZipArchive` directamente
+sobre `Response.Body` (`ZipArchiveMode.Create, leaveOpen: true`) y por cada entrada copia el
+objeto desde MinIO al stream de la entrada (`entry.Open()`) sin bufferear el ZIP completo en
+memoria. La validacion, resolucion de carpetas y armado del plan de descarga (que archivos, en
+que orden, tamano total) pasan por `PrepareZipDownloadQuery`/`PrepareZipDownloadHandler` via
+Wolverine; el volcado de bytes es la unica parte que corre fuera del bus porque un handler no
+tiene acceso al `HttpResponse`.
+
+**`fileIds`** — archivos sueltos, van en la raiz del ZIP. Resolucion **estricta**: un id
+invalido, de otro tenant/owner, o que no este `Available` aborta TODO el pedido con
+`File.NotFound`/`File.NotAvailable` (el usuario los eligio uno por uno, un descarte silencioso
+seria confuso).
+
+**`folderIds`** — carpetas completas, **recursivo** (incluye subcarpetas). Cada carpeta pedida
+se resuelve via el `RelativePath` materializado de `Folder` (`IFolderRepository.
+ListByPathPrefixAsync`, 1 query trae todo el subarbol) y sus archivos se traen en un unico
+batch (`IFileObjectRepository.ListInFoldersAsync`) — evita el N+1 de una query por carpeta.
+Dentro del ZIP, la estructura de carpetas se preserva como directorios (ej.
+`Recibos/2025/factura.pdf`); si dos carpetas pedidas comparten nombre en el request, la segunda
+se desambigua como `Recibos_1/...`. Resolucion **tolerante**: una carpeta vacia o con archivos
+aun en escaneo no aborta el resto del ZIP, simplemente no aporta esas entries — solo falla si
+el `folderId` en si no existe/no es accesible (`Folder.NotFound`, `Folder.Forbidden`) o si tras
+resolver todo no queda ningun archivo para incluir (`File.NoFilesResolved`).
+
+Si un `fileId` explicito tambien cae dentro de un `folderId` pedido en el mismo request, no se
+duplica — gana la resolucion estricta (queda en la raiz del ZIP, no bajo el prefijo de carpeta).
 
 Limites, en `CloudStorageOptions`:
 
-- `MaxZipFiles` = 500 archivos por request (default).
+- `MaxZipFiles` = 500 archivos por request (default) — se chequea sobre `fileIds` de entrada
+  (fail fast) y de nuevo sobre el total ya resuelto (archivos sueltos + de carpetas).
+- `MaxZipFolders` = 50 carpetas por request (default) — chequeado ANTES de resolver contenido,
+  para no pagar el costo de I/O de una carpeta pedida de mas.
 - `MaxZipAggregateBytes` = 500 MB agregados (default).
-- Excederlos devuelve `FileErrors.TooManyItems` / `FileErrors.ZipTooLarge` (413).
+- Excederlos devuelve `FileErrors.TooManyItems` / `FileErrors.TooManyFolders` /
+  `FileErrors.ZipTooLarge` (413).
 
 Rate limit dedicado `zip-download`: 5 requests/minuto, particionado por `sub` del JWT (con
 fallback a IP). Si MinIO falla a mitad de la descarga, los headers HTTP ya se enviaron (ZIP

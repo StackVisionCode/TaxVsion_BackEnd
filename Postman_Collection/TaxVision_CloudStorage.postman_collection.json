@@ -374,7 +374,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"fileIds\": [\n    \"{{fileId}}\"\n  ]\n}",
+							"raw": "{\n  \"fileIds\": [\n    \"{{fileId}}\"\n  ],\n  \"folderIds\": [\n    \"{{folderId}}\"\n  ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -392,7 +392,7 @@
 								"zip"
 							]
 						},
-						"description": "Fase B2 — descarga varios archivos como un unico .zip, streameado directo al Response.Body (Content-Type application/zip). Requiere storage.file.download. Rate-limited por la politica \"zip-download\"."
+						"description": "Fase B2/B2.1 — descarga varios archivos y/o carpetas completas (recursivo, incluye subcarpetas) como un unico .zip, streameado directo al Response.Body (Content-Type application/zip). fileIds va suelto en la raiz del ZIP; folderIds trae el subarbol completo preservando la estructura de rutas como directorios (ej. \"Recibos/2025/factura.pdf\"). Ambos campos son opcionales pero al menos uno debe traer algo. Un fileId invalido/inaccesible/no disponible aborta todo el pedido; una carpeta vacia o con archivos aun en escaneo simplemente no aporta entries (no aborta el resto). Requiere storage.file.download. Caps: 500 archivos, 500MB agregados, 50 carpetas (413 si se supera cualquiera). Rate-limited por la politica \"zip-download\"."
 					},
 					"response": [],
 					"event": [

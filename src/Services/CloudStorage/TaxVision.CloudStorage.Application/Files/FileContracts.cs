@@ -39,8 +39,13 @@ public sealed record FileResponse(
 
 public sealed record DownloadUrlResponse(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 
-/// <summary>Fase B2 — body de POST storage/files/zip.</summary>
-public sealed record ZipDownloadRequest(IReadOnlyList<Guid> FileIds);
+/// <summary>
+/// Fase B2 — body de POST storage/files/zip. FolderIds (Fase B2.1) agrega el
+/// contenido COMPLETO de cada carpeta (recursivo, incluye subcarpetas) al ZIP,
+/// preservando la estructura de rutas como directorios dentro del archivo —
+/// FileIds sueltos van sueltos en la raiz del ZIP. Se puede combinar ambos.
+/// </summary>
+public sealed record ZipDownloadRequest(IReadOnlyList<Guid> FileIds, IReadOnlyList<Guid>? FolderIds = null);
 
 /// <summary>Fase U — body de POST storage/files/uploads/initiate-multipart.</summary>
 public sealed record InitiateMultipartUploadRequest(

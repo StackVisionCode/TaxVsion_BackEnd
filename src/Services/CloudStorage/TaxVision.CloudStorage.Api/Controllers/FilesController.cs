@@ -153,13 +153,14 @@ public sealed class FilesController(
     }
 
     /// <summary>
-    /// Fase B2 — descarga varios archivos como un unico .zip, streameado directo
-    /// al Response.Body. Deliberadamente NO pasa por bus.InvokeAsync para los
-    /// bytes en si (un Wolverine handler no tiene acceso a HttpResponse) — solo
-    /// la validacion/auditoria (PrepareZipDownloadQuery) va por el bus, igual que
-    /// el resto del controller. Si MinIO falla a mitad de stream, los headers ya
-    /// se mandaron (200 + Content-Type) y la conexion se corta en seco — no hay
-    /// forma de degradar a una respuesta de error prolija una vez que el streaming
+    /// Fase B2/B2.1 — descarga varios archivos y/o carpetas completas (recursivo)
+    /// como un unico .zip, streameado directo al Response.Body. Deliberadamente
+    /// NO pasa por bus.InvokeAsync para los bytes en si (un Wolverine handler no
+    /// tiene acceso a HttpResponse) — solo la validacion/auditoria/resolucion de
+    /// carpetas (PrepareZipDownloadQuery) va por el bus, igual que el resto del
+    /// controller. Si MinIO falla a mitad de stream, los headers ya se mandaron
+    /// (200 + Content-Type) y la conexion se corta en seco — no hay forma de
+    /// degradar a una respuesta de error prolija una vez que el streaming
     /// arranco; es una limitacion inherente a este tipo de endpoint, no un gap.
     /// </summary>
     [HttpPost("zip")]
@@ -171,7 +172,14 @@ public sealed class FilesController(
             return Unauthorized();
 
         var plan = await bus.InvokeAsync<Result<ZipDownloadPlan>>(
-            new PrepareZipDownloadQuery(tenantId, actorId, scope, request.FileIds, AuditContext()),
+            new PrepareZipDownloadQuery(
+                tenantId,
+                actorId,
+                scope,
+                request.FileIds,
+                request.FolderIds ?? [],
+                AuditContext()
+            ),
             ct
         );
         if (plan.IsFailure)

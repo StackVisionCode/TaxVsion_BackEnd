@@ -24,6 +24,15 @@ public sealed class CloudStorageOptions
     public long MaxZipAggregateBytes { get; set; } = 500L * 1024 * 1024;
 
     /// <summary>
+    /// Fase B2.1 — cap duro de cantidad de carpetas por descarga ZIP (413 si se
+    /// supera). Se chequea ANTES de resolver el contenido de cada carpeta (folder
+    /// pedido -> 1 query ListByPathPrefixAsync) para fallar barato antes de pagar
+    /// el costo de I/O — MaxZipFiles sigue aplicando como tope real sobre el total
+    /// de archivos ya resuelto (carpetas grandes con pocos IDs igual quedan acotadas).
+    /// </summary>
+    public int MaxZipFolders { get; set; } = 50;
+
+    /// <summary>
     /// Fase U — tamano de cada parte en un multipart upload. 5MB es el minimo que
     /// exige la API S3 para cualquier parte que no sea la ultima (la ultima puede
     /// ser mas chica) — no bajar de eso o InitiateMultipartUpload/UploadPart fallan.

@@ -16,6 +16,7 @@ public static class ErrorHttpMapping
             or "Permission.NotFound"
             or "Mfa.DeviceNotFound"
             or "File.NotFound"
+            or "Folder.NotFound"
             or "EmailConfiguration.NotFound"
             or "EmailTemplate.NotFound"
             or "EmailLayout.NotFound"
@@ -65,6 +66,7 @@ public static class ErrorHttpMapping
             or "StorageQuota.Suspended"
             or "File.NotAvailable"
             or "File.Forbidden"
+            or "Folder.Forbidden"
             or "EmailConfiguration.Forbidden"
             or "EmailTemplate.Forbidden"
             or "EmailLayout.Forbidden"
@@ -89,7 +91,7 @@ public static class ErrorHttpMapping
             or "EmailAccount.Conflict"
             or "ShareLink.AlreadyRevoked" => StatusCodes.Status409Conflict,
             "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit" => StatusCodes.Status429TooManyRequests,
-            "File.TooManyItems" or "File.ZipTooLarge" => StatusCodes.Status413PayloadTooLarge,
+            "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" => StatusCodes.Status413PayloadTooLarge,
             "File.MultipartCompleteFailed" => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest,
         };

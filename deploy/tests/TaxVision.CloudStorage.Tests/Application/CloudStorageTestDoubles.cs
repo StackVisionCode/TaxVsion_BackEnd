@@ -72,6 +72,23 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                 )
                 .ToList()
         );
+
+    public Task<IReadOnlyList<FileObject>> ListInFoldersAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> folderIds,
+        Guid? restrictedCustomerId,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<FileObject>>(
+            _byId
+                .Values.Where(file =>
+                    file.TenantId == tenantId
+                    && file.FolderId is { } folderId
+                    && folderIds.Contains(folderId)
+                    && file.Status != FileStatus.SoftDeleted
+                )
+                .ToList()
+        );
 }
 
 internal sealed class FakeFolderRepository : IFolderRepository
@@ -279,8 +296,14 @@ internal sealed class FakeObjectStorage : IObjectStorage
     public Task<long> GetSizeAsync(string bucket, string objectKey, CancellationToken ct) =>
         SizeToReturn is { } size ? Task.FromResult(size) : throw new NotImplementedException();
 
+    /// <summary>Seedable para probar el guard de idempotencia de SaveFileFromSourceHandler (destino ya copiado en un intento anterior).</summary>
+    public HashSet<(string Bucket, string ObjectKey)> Existing { get; } = [];
+
     public Task<bool> ExistsAsync(string bucket, string objectKey, CancellationToken ct) =>
-        throw new NotImplementedException();
+        Task.FromResult(
+            Existing.Contains((bucket, objectKey))
+                || Copied.Any(c => c.DestinationBucket == bucket && c.DestinationObjectKey == objectKey)
+        );
 
     public Task DownloadAsync(string bucket, string objectKey, Stream destination, CancellationToken ct) =>
         throw new NotImplementedException();
