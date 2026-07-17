@@ -63,6 +63,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
             TenantId: p.tenantId,
             UserId: p.userId,
             DisplayName: p.displayName,
+            ActorType: p.actorType,
             Role: p.role,
             Status: p.status,
             JoinOrder: p.joinOrder,
@@ -78,6 +79,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
           },
           update: {
             DisplayName: p.displayName,
+            ActorType: p.actorType,
             Role: p.role,
             Status: p.status,
             AdmittedAtUtc: p.admittedAtUtc,
@@ -112,6 +114,15 @@ export class PrismaMeetingRepository implements MeetingRepository {
     return toDomainMeeting(row, participants);
   }
 
+  async findByShortCodeAnyTenant(shortCode: string): Promise<Meeting | null> {
+    const row = await this.prisma.meeting.findFirst({ where: { ShortCode: shortCode } });
+    if (!row) return null;
+    const participants = await this.prisma.meetingParticipant.findMany({
+      where: { MeetingId: row.Id, TenantId: row.TenantId },
+    });
+    return toDomainMeeting(row, participants);
+  }
+
   async saveInvitation(invitation: MeetingInvitation): Promise<void> {
     const s = invitation.toSnapshot();
     await this.prisma.meetingInvitation.upsert({
@@ -120,8 +131,11 @@ export class PrismaMeetingRepository implements MeetingRepository {
         Id: s.id,
         MeetingId: s.meetingId,
         TenantId: s.tenantId,
+        InviteeKind: s.inviteeKind,
         InviteeEmail: s.inviteeEmail,
         InviteeUserId: s.inviteeUserId,
+        InviteeName: s.inviteeName,
+        InviteeExternalPhone: s.inviteeExternalPhone,
         TokenHash: s.tokenHash,
         ExpiresAtUtc: s.expiresAtUtc,
         UsedAtUtc: s.usedAtUtc,
@@ -138,6 +152,19 @@ export class PrismaMeetingRepository implements MeetingRepository {
   async findInvitationByHash(tokenHash: string): Promise<MeetingInvitation | null> {
     const row = await this.prisma.meetingInvitation.findUnique({ where: { TokenHash: tokenHash } });
     return row ? toDomainMeetingInvitation(row) : null;
+  }
+
+  async findInvitationById(tenantId: string, invitationId: string): Promise<MeetingInvitation | null> {
+    const row = await this.prisma.meetingInvitation.findFirst({ where: { Id: invitationId, TenantId: tenantId } });
+    return row ? toDomainMeetingInvitation(row) : null;
+  }
+
+  async listInvitationsByMeeting(tenantId: string, meetingId: string): Promise<MeetingInvitation[]> {
+    const rows = await this.prisma.meetingInvitation.findMany({
+      where: { MeetingId: meetingId, TenantId: tenantId },
+      orderBy: { CreatedAtUtc: 'desc' },
+    });
+    return rows.map(toDomainMeetingInvitation);
   }
 
   async listUpcomingForUser(input: {
@@ -165,6 +192,39 @@ export class PrismaMeetingRepository implements MeetingRepository {
       where: {
         TenantId: tenantId,
         Status: { in: ['Scheduled', 'Live'] },
+        OR: [{ HostUserId: userId }, { Participants: { some: { UserId: userId } } }],
+      },
+    });
+  }
+
+  async listPastForUser(input: {
+    tenantId: string;
+    userId: string;
+    take: number;
+    skip: number;
+  }): Promise<MeetingSnapshot[]> {
+    const rows = await this.prisma.meeting.findMany({
+      where: {
+        TenantId: input.tenantId,
+        Status: { in: ['Ended', 'Cancelled'] },
+        OR: [{ HostUserId: input.userId }, { Participants: { some: { UserId: input.userId } } }],
+      },
+      include: { Participants: true },
+      // CreatedAtUtc siempre esta poblado (a diferencia de EndedAtUtc, que
+      // un meeting Cancelled sin haber arrancado nunca tiene) — mismo
+      // criterio de orden seguro que el resto del repo.
+      orderBy: { CreatedAtUtc: 'desc' },
+      take: input.take,
+      skip: input.skip,
+    });
+    return rows.map((row) => toDomainMeeting(row, row.Participants).toSnapshot());
+  }
+
+  async countPastForUser(tenantId: string, userId: string): Promise<number> {
+    return this.prisma.meeting.count({
+      where: {
+        TenantId: tenantId,
+        Status: { in: ['Ended', 'Cancelled'] },
         OR: [{ HostUserId: userId }, { Participants: { some: { UserId: userId } } }],
       },
     });

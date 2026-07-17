@@ -8,9 +8,10 @@ import type {
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import {
   MarkNotificationReadPayloadSchema,
+  DismissNotificationPayloadSchema,
   NotificationSocketEvents,
 } from '../../../contracts/socket/notification-socket-events.js';
-import { markNotificationRead } from '../../../application/use-cases/notification-queries.js';
+import { markNotificationRead, dismissNotification } from '../../../application/use-cases/notification-queries.js';
 import type { SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
 
 export function registerNotificationHandlers(io: CommunicationIoServer, container: AppContainer): void {
@@ -44,6 +45,25 @@ function wireNotifSocket(
       event: NotificationSocketEvents.ReadConfirmed,
       envelope: envelope({ notificationId: result.value.notificationId }),
     });
+    emitter.emitToUser({
+      tenantId,
+      userId,
+      event: NotificationSocketEvents.UnreadCountChanged,
+      envelope: envelope({ count: result.value.unreadCount }),
+    });
+  });
+
+  socket.on(NotificationSocketEvents.Dismiss, async (...args: unknown[]) => {
+    const parsed = DismissNotificationPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) return;
+    const result = await dismissNotification(
+      { tenantId, userId, notificationId: parsed.data.notificationId },
+      container,
+    );
+    if (!result.isSuccess) {
+      logger.debug({ err: result.error }, 'dismiss rejected');
+      return;
+    }
     emitter.emitToUser({
       tenantId,
       userId,

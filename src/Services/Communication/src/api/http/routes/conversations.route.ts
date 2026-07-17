@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { listConversations } from '../../../application/use-cases/list-conversations.js';
 import { getMessages } from '../../../application/use-cases/get-messages.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
+import { searchMessages } from '../../../application/use-cases/search-messages.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const ListQuerySchema = z.object({
@@ -21,6 +22,12 @@ const GetMessagesQuerySchema = z.object({
 const MarkReadBodySchema = z.object({
   lastReadMessageId: z.string().uuid(),
 });
+
+const SearchQuerySchema = z.object({
+  q: z.string().min(2).max(200),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+const ConversationIdParams = z.object({ id: z.string().uuid() });
 
 export async function registerConversationRoutes(
   app: FastifyInstance,
@@ -96,16 +103,31 @@ export async function registerConversationRoutes(
     },
   );
 
-  // GET /communication/conversations/:id/messages/search — NUNCA modelado en el
-  // legacy. Se reserva 501 explicito para documentar la intencion sin bloquear
-  // la migracion del FE.
+  // GET /communication/conversations/:id/messages/search — Fase Backend 9.
+  // Query LIKE-based (no Full-Text catalog en el entorno actual, ver
+  // docblock en searchMessages y en PrismaMessageRepository.searchByBody).
   app.get(
     '/communication/conversations/:id/messages/search',
     { preHandler: [app.authenticate] },
-    async (_request, reply) => {
-      return reply
-        .code(501)
-        .send({ code: 'Chat.Search.NotImplemented', message: 'Full-text message search arrives in a later phase.' });
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = ConversationIdParams.parse(request.params);
+      const query = SearchQuerySchema.parse(request.query);
+      const result = await searchMessages(
+        {
+          tenantId: principal.tenantId,
+          conversationId: params.id,
+          actorUserId: principal.userId,
+          query: query.q,
+          ...(query.limit !== undefined ? { limit: query.limit } : {}),
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        const status = result.error.code === 'Chat.Conversation.NotFound' ? 404 : 400;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
     },
   );
 }

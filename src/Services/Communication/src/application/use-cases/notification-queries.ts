@@ -74,3 +74,34 @@ export async function markNotificationRead(
   const unreadCount = await deps.notifications.countUnread(cmd.tenantId, cmd.userId);
   return Result.ok({ notificationId: cmd.notificationId, unreadCount });
 }
+
+export interface DismissNotificationCommand {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly notificationId: string;
+}
+
+export interface DismissNotificationResult {
+  readonly notificationId: string;
+  readonly unreadCount: number;
+}
+
+/**
+ * Fase Backend 11 — el dominio (Notification.dismiss(), ya existente) y la
+ * columna DismissedAtUtc no tenian ningun use case/socket que los expusiera;
+ * `listForUser`/`countUnread` ya excluyen dismissed (ver PrismaNotificationRepository),
+ * asi que dismiss oculta la notificacion de la lista sin borrarla.
+ */
+export async function dismissNotification(
+  cmd: DismissNotificationCommand,
+  deps: { notifications: NotificationRepository },
+): Promise<Result<DismissNotificationResult>> {
+  const notification = await deps.notifications.findById(cmd.tenantId, cmd.notificationId, cmd.userId);
+  if (!notification) {
+    return Result.fail(makeError('Notification.NotFound', 'Notification not found.'));
+  }
+  notification.dismiss();
+  await deps.notifications.update(cmd.tenantId, notification);
+  const unreadCount = await deps.notifications.countUnread(cmd.tenantId, cmd.userId);
+  return Result.ok({ notificationId: cmd.notificationId, unreadCount });
+}

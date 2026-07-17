@@ -122,8 +122,10 @@ internal static class FileTypeCompatibility
             ".html" => detectedContentType is "text/html" or "text/plain",
             // Scans profesionales (Fase L1.1 — whitelist granular por FolderType).
             ".tif" or ".tiff" => detectedContentType == "image/tiff",
-            // Grabaciones de meetings/calls (MediaRecorder del navegador via meeting.recording.attach).
-            ".webm" => detectedContentType == "video/webm",
+            // Grabaciones de meetings/calls (MediaRecorder del navegador via meeting.recording.attach)
+            // y voice notes de chat (Fase Frontend 10) — un .webm solo-audio
+            // suele detectarse como "audio/webm", no "video/webm".
+            ".webm" => detectedContentType is "video/webm" or "audio/webm",
             ".mp4" => detectedContentType == "video/mp4",
             _ => false,
         };

@@ -20,8 +20,14 @@ export interface MessageSnapshot {
   readonly body: string | null;
   readonly attachmentFileId: string | null;
   readonly replyToMessageId: string | null;
+  /** Fase Backend 9 — set cuando el mensaje fue creado via forward-message.ts; null para mensajes originales. */
+  readonly forwardedFromMessageId: string | null;
   readonly isEdited: boolean;
   readonly isDeleted: boolean;
+  /** Fase Backend 9 — pinned flag + metadata. `PinnedByUserId` != senderId permitido (host pinea msg de otro). */
+  readonly isPinned: boolean;
+  readonly pinnedAtUtc: Date | null;
+  readonly pinnedByUserId: string | null;
   readonly deletedAtUtc: Date | null;
   readonly createdAtUtc: Date;
   readonly editedAtUtc: Date | null;
@@ -57,8 +63,12 @@ export class Message {
         body: bodyResult.value.value,
         attachmentFileId: null,
         replyToMessageId: input.replyToMessageId ?? null,
+        forwardedFromMessageId: null,
         isEdited: false,
         isDeleted: false,
+        isPinned: false,
+        pinnedAtUtc: null,
+        pinnedByUserId: null,
         deletedAtUtc: null,
         createdAtUtc: input.now ?? new Date(),
         editedAtUtc: null,
@@ -89,8 +99,59 @@ export class Message {
         body: null,
         attachmentFileId: input.attachmentFileId,
         replyToMessageId: input.replyToMessageId ?? null,
+        forwardedFromMessageId: null,
         isEdited: false,
         isDeleted: false,
+        isPinned: false,
+        pinnedAtUtc: null,
+        pinnedByUserId: null,
+        deletedAtUtc: null,
+        createdAtUtc: input.now ?? new Date(),
+        editedAtUtc: null,
+      }),
+    );
+  }
+
+  /**
+   * Fase Backend 9 — forward. Crea un mensaje NUEVO en la conversation
+   * destino, copiando body+attachment del origen, marcando la referencia via
+   * `forwardedFromMessageId`. Sender es el actor del forward (NO el sender
+   * original) — el receptor debe ver "reenviado por X (originalmente de Y)"
+   * pero el remitente del mensaje es X para efectos de authz/edit/delete.
+   */
+  static createForwarded(input: {
+    conversationId: string;
+    tenantId: string;
+    forwarderUserId: string;
+    forwarderDisplayName: string;
+    origin: MessageSnapshot;
+    now?: Date;
+  }): Result<Message> {
+    if (input.origin.isDeleted) {
+      return Result.fail(makeError('Chat.Message.ForwardDeleted', 'Cannot forward a deleted message.'));
+    }
+    if (input.origin.kind !== MessageKind.Text && input.origin.kind !== MessageKind.Attachment) {
+      return Result.fail(
+        makeError('Chat.Message.ForwardKindUnsupported', `Cannot forward messages of kind ${input.origin.kind}.`),
+      );
+    }
+    return Result.ok(
+      new Message({
+        id: randomUUID(),
+        conversationId: input.conversationId,
+        tenantId: input.tenantId,
+        senderId: input.forwarderUserId,
+        senderDisplayName: input.forwarderDisplayName.trim().slice(0, 120),
+        kind: input.origin.kind,
+        body: input.origin.body,
+        attachmentFileId: input.origin.attachmentFileId,
+        replyToMessageId: null,
+        forwardedFromMessageId: input.origin.id,
+        isEdited: false,
+        isDeleted: false,
+        isPinned: false,
+        pinnedAtUtc: null,
+        pinnedByUserId: null,
         deletedAtUtc: null,
         createdAtUtc: input.now ?? new Date(),
         editedAtUtc: null,
@@ -135,6 +196,24 @@ export class Message {
       body: this.state.kind === MessageKind.Text ? null : this.state.body,
     };
     return Result.okVoid();
+  }
+
+  /**
+   * Fase Backend 9 — pin. Sin chequeo de actor propio: el use case ya valido
+   * la politica (Direct = cualquier participante, Group/Meeting/Support =
+   * permiso `ChatModerate` o Host/Cohost en Meeting). Idempotente: pin sobre
+   * un mensaje ya pineado es no-op silencioso.
+   */
+  pin(byUserId: string, now: Date = new Date()): void {
+    if (this.state.isDeleted) return;
+    if (this.state.isPinned) return;
+    this.state = { ...this.state, isPinned: true, pinnedAtUtc: now, pinnedByUserId: byUserId };
+  }
+
+  unpin(now: Date = new Date()): void {
+    if (!this.state.isPinned) return;
+    void now;
+    this.state = { ...this.state, isPinned: false, pinnedAtUtc: null, pinnedByUserId: null };
   }
 
   toSnapshot(): MessageSnapshot {

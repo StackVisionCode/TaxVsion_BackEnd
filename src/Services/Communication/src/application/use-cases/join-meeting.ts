@@ -5,6 +5,7 @@ import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { PasscodeHasher } from '../ports/passcode-hasher.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { TurnCredentialFactory } from '../ports/turn-credential-factory.js';
 import {
   MeetingEventTypes,
   type MeetingParticipantJoinedEvent,
@@ -12,14 +13,24 @@ import {
 import type { MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
 import { participantSnapshotToDto } from './meeting-mappers.js';
 import { ensureMeetingConversation } from './ensure-meeting-conversation.js';
+import { issueIceCredentials, type IssueIceCredentialsResult } from './issue-ice-credentials.js';
 
 export interface JoinMeetingCommand {
   readonly tenantId: string;
   readonly correlationId: string;
   readonly meetingId: string;
-  readonly user: { userId: string; displayName: string };
+  readonly user: { userId: string; displayName: string; actorType?: string };
   readonly passcode?: string;
   readonly invitationToken?: string;
+  /**
+   * Fase Backend 5 — presente SOLO cuando el join viene de un guest conectado
+   * con `auth.ticket` (ver build-io.ts). A diferencia de `invitationToken`
+   * (plainToken, para usuarios con cuenta que destraban un meeting locked),
+   * aca ya no hay plainToken disponible — el ticket solo lleva el id. La
+   * invitation se re-carga por id y se consume via
+   * MeetingInvitation.consumeForGuestJoin (revoked/used/expired, sin hash).
+   */
+  readonly guestInvitationId?: string;
   readonly audioDefault?: boolean;
   readonly videoDefault?: boolean;
 }
@@ -27,6 +38,15 @@ export interface JoinMeetingCommand {
 export interface JoinMeetingResult {
   readonly snapshot: MeetingSnapshotDto;
   readonly requiresAdmission: boolean;
+  /**
+   * Fase Frontend 5 — un guest (auth.ticket) no puede llamar GET
+   * /communication/webrtc/ice (exige un JWT real via app.authenticate, que
+   * un guest nunca tiene). Se devuelve aca, reutilizando el socket YA
+   * autenticado por el ticket, en vez de inventar un mecanismo de auth HTTP
+   * nuevo. Usuarios con cuenta real lo reciben tambien (mismo shape) pero
+   * pueden seguir usando el fetch HTTP existente si prefieren.
+   */
+  readonly iceServers: IssueIceCredentialsResult;
 }
 
 export interface JoinMeetingDeps {
@@ -34,6 +54,7 @@ export interface JoinMeetingDeps {
   readonly passcodes: PasscodeHasher;
   readonly publisher: IntegrationEventPublisher;
   readonly conversations: ConversationRepository;
+  readonly turn: TurnCredentialFactory;
 }
 
 export async function joinMeeting(
@@ -58,6 +79,15 @@ export async function joinMeeting(
         await deps.meetings.saveInvitation(invitation);
       }
     }
+  } else if (command.guestInvitationId) {
+    const invitation = await deps.meetings.findInvitationById(command.tenantId, command.guestInvitationId);
+    if (!invitation) {
+      return Result.fail(makeError('Meeting.Invitation.NotFound', 'Invitation not found.'));
+    }
+    const consumeResult = invitation.consumeForGuestJoin(new Date());
+    if (!consumeResult.isSuccess) return Result.fail(consumeResult.error);
+    invitationValid = true;
+    await deps.meetings.saveInvitation(invitation);
   }
 
   let passcodeMatch: boolean | null = null;
@@ -70,6 +100,7 @@ export async function joinMeeting(
   const joinResult = meeting.requestJoin({
     userId: command.user.userId,
     displayName: command.user.displayName,
+    ...(command.user.actorType !== undefined ? { actorType: command.user.actorType } : {}),
     hasValidInvitation: invitationValid,
     passcodeMatch,
     ...(command.audioDefault !== undefined ? { audioDefault: command.audioDefault } : {}),
@@ -106,7 +137,11 @@ export async function joinMeeting(
         correlationId: command.correlationId,
         meetingId: command.meetingId,
         meetingTitle: snapshot.title,
-        member: { userId: command.user.userId, displayName: command.user.displayName, actorType: 'TenantEmployee' },
+        member: {
+          userId: command.user.userId,
+          displayName: command.user.displayName,
+          actorType: command.user.actorType ?? 'TenantEmployee',
+        },
       },
       deps,
     );
@@ -127,5 +162,13 @@ export async function joinMeeting(
     conversationId,
   };
 
-  return Result.ok({ snapshot: dto, requiresAdmission });
+  // Best-effort: `issueIceCredentials` no tiene ningun camino de fallo real
+  // hoy (ver docblock de JoinMeetingResult.iceServers), pero si algun dia lo
+  // tuviera, no tiene sentido tumbar un join ya exitoso por esto — el
+  // cliente se queda sin TURN (WebRTC solo funciona en la misma LAN) en vez
+  // de quedarse sin poder entrar al meeting.
+  const iceResult = issueIceCredentials({ tenantId: command.tenantId, userId: command.user.userId }, deps);
+  const iceServers = iceResult.isSuccess ? iceResult.value : { iceServers: [], expiresAtUtc: new Date().toISOString() };
+
+  return Result.ok({ snapshot: dto, requiresAdmission, iceServers });
 }

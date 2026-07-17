@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
 import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
@@ -14,6 +15,12 @@ import { endCall } from '../../../application/use-cases/end-call.js';
 import { updateCallMediaStatus } from '../../../application/use-cases/update-call-media-status.js';
 import { relayCallSignal } from '../../../application/use-cases/relay-call-signal.js';
 import { attachCallRecording } from '../../../application/use-cases/attach-call-recording.js';
+import { requestCallRecording } from '../../../application/use-cases/request-call-recording.js';
+import { respondCallRecordingConsent } from '../../../application/use-cases/respond-call-recording-consent.js';
+import { stopCallRecording } from '../../../application/use-cases/stop-call-recording.js';
+import { upgradeCallToVideo } from '../../../application/use-cases/upgrade-call-to-video.js';
+import { startCallScreenShare } from '../../../application/use-cases/start-call-screen-share.js';
+import { stopCallScreenShare } from '../../../application/use-cases/stop-call-screen-share.js';
 import {
   AttachCallRecordingPayloadSchema,
   CallActionPayloadSchema,
@@ -22,9 +29,16 @@ import {
   ConnectionQualityPayloadSchema,
   InitiateCallPayloadSchema,
   MediaStatusPayloadSchema,
+  RequestCallRecordingPayloadSchema,
+  RespondCallRecordingConsentPayloadSchema,
+  StartCallScreenSharePayloadSchema,
+  StopCallRecordingPayloadSchema,
+  StopCallScreenSharePayloadSchema,
+  UpgradeCallToVideoPayloadSchema,
   type IncomingCallDto,
 } from '../../../contracts/socket/call-socket-events.js';
 import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
+import type { RecordingConsentEntryStatus } from '../../../domain/recording/recording-consent.js';
 
 /**
  * Handlers de calls 1:1. Cada handler:
@@ -74,8 +88,8 @@ function wireCallSocket(
       scope: 'call.initiate',
       tenantId,
       userId,
-      maxPerWindow: 10,
-      windowSeconds: 30,
+      maxPerWindow: config.rateLimit.callInitiate.maxPerWindow,
+      windowSeconds: config.rateLimit.callInitiate.windowSeconds,
     });
     if (!allowed) {
       ack?.({ ok: false, code: 'Call.RateLimited', message: 'Too many call attempts, slow down.' });
@@ -221,8 +235,8 @@ function wireCallSocket(
       scope: 'call.signal',
       tenantId,
       userId,
-      maxPerWindow: 60,
-      windowSeconds: 10,
+      maxPerWindow: config.rateLimit.callSignal.maxPerWindow,
+      windowSeconds: config.rateLimit.callSignal.windowSeconds,
     });
     if (!allowed) {
       ack?.({ ok: false, code: 'Call.RateLimited', message: 'Too many signaling messages, slow down.' });
@@ -306,7 +320,180 @@ function wireCallSocket(
         actorUserId: userId,
         fileId: parsed.data.fileId,
       },
-      container,
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  // ---------------------------------------------------------------------
+  // Recording consent (Fase Backend 4) — mismo criterio que meetings: sin
+  // handler socket separado para "start" (nunca lo dispara el cliente
+  // directo, solo respond-call-recording-consent.ts via auto-invoke o el
+  // timeout scheduler a los 15s). Policy fija AllAcceptedRequired.
+  // ---------------------------------------------------------------------
+
+  socket.on(CallSocketEvents.RequestRecording, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ callId: string; participantUserIds: readonly string[]; requestedAtUtc: string }>) => void)
+      : undefined;
+    const parsed = RequestCallRecordingPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await requestCallRecording(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        callId: parsed.data.callId,
+        actorUserId: userId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(CallSocketEvents.RespondRecordingConsent, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ response: RecordingConsentEntryStatus }>) => void)
+      : undefined;
+    const parsed = RespondCallRecordingConsentPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await respondCallRecordingConsent(
+      {
+        tenantId,
+        correlationId: socket.id,
+        callId: parsed.data.callId,
+        actorUserId: userId,
+        response: parsed.data.response,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(CallSocketEvents.StopRecording, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ callId: string; elapsedSeconds: number }>) => void)
+      : undefined;
+    const parsed = StopCallRecordingPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await stopCallRecording(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        callId: parsed.data.callId,
+        actorUserId: userId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(CallSocketEvents.UpgradeToVideo, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ callId: string; upgradedAtUtc: string }>) => void)
+      : undefined;
+    const parsed = UpgradeCallToVideoPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await upgradeCallToVideo(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        callId: parsed.data.callId,
+        actorUserId: userId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(CallSocketEvents.ScreenShareStart, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ callId: string; startedAtUtc: string }>) => void)
+      : undefined;
+    const parsed = StartCallScreenSharePayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await startCallScreenShare(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        callId: parsed.data.callId,
+        actorUserId: userId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(CallSocketEvents.ScreenShareStop, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (
+          args[1] as (
+            r: SocketAck<{ callId: string; startedAtUtc: string; stoppedAtUtc: string; durationSeconds: number }>,
+          ) => void
+        )
+      : undefined;
+    const parsed = StopCallScreenSharePayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await stopCallScreenShare(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        callId: parsed.data.callId,
+        actorUserId: userId,
+      },
+      { ...container, emitter },
     );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });

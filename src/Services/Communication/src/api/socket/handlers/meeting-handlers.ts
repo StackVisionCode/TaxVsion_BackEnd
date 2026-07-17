@@ -1,4 +1,5 @@
 ﻿import { randomUUID } from 'node:crypto';
+import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
 import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
@@ -11,10 +12,15 @@ import { resolveDisplayName } from './resolve-display-name.js';
 import {
   AdmitPayloadSchema,
   AttachMeetingRecordingPayloadSchema,
+  CancelMeetingPayloadSchema,
+  DemoteCohostPayloadSchema,
+  DenyParticipantPayloadSchema,
   DominantSpeakerPayloadSchema,
   JoinMeetingPayloadSchema,
   LeaveMeetingPayloadSchema,
   LockPayloadSchema,
+  PromoteCohostPayloadSchema,
+  RescheduleMeetingPayloadSchema,
   MeetingChatDeletePayloadSchema,
   MeetingChatEditPayloadSchema,
   MeetingChatMarkReadPayloadSchema,
@@ -24,6 +30,8 @@ import {
   MeetingSignalPayloadSchema,
   MeetingSocketEvents,
   RemovePayloadSchema,
+  RequestMeetingRecordingPayloadSchema,
+  RespondMeetingRecordingConsentPayloadSchema,
   SfuConnectTransportPayloadSchema,
   SfuConsumePayloadSchema,
   SfuCreateTransportPayloadSchema,
@@ -31,9 +39,9 @@ import {
   SfuProducePayloadSchema,
   SfuResumeConsumerPayloadSchema,
   SfuRouterCapabilitiesPayloadSchema,
+  StopMeetingRecordingPayloadSchema,
   TransferHostPayloadSchema,
   type MeetingParticipantDto,
-  type MeetingSnapshotDto,
   type MessageDeletedDto,
   type MessageDto,
   type MessageEditedDto,
@@ -41,7 +49,7 @@ import {
   type SfuProducerClosedDto,
 } from '../../../contracts/socket/meeting-socket-events.js';
 import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
-import { joinMeeting } from '../../../application/use-cases/join-meeting.js';
+import { joinMeeting, type JoinMeetingResult } from '../../../application/use-cases/join-meeting.js';
 import { leaveMeeting } from '../../../application/use-cases/leave-meeting.js';
 import { relayMeetingSignal } from '../../../application/use-cases/relay-meeting-signal.js';
 import { updateMeetingMediaStatus, updateRaiseHand } from '../../../application/use-cases/update-meeting-media-status.js';
@@ -53,6 +61,17 @@ import {
   transferMeetingHost,
 } from '../../../application/use-cases/meeting-host-actions.js';
 import { attachMeetingRecording } from '../../../application/use-cases/attach-meeting-recording.js';
+import { requestMeetingRecording } from '../../../application/use-cases/request-meeting-recording.js';
+import { respondMeetingRecordingConsent } from '../../../application/use-cases/respond-meeting-recording-consent.js';
+import { stopMeetingRecording } from '../../../application/use-cases/stop-meeting-recording.js';
+import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
+import { rescheduleMeeting } from '../../../application/use-cases/reschedule-meeting.js';
+import { denyWaitingRoomParticipant } from '../../../application/use-cases/deny-waiting-room-participant.js';
+import {
+  demoteCohostToAttendee,
+  promoteParticipantToCohost,
+} from '../../../application/use-cases/change-participant-role.js';
+import type { RecordingConsentEntryStatus } from '../../../domain/recording/recording-consent.js';
 import {
   connectSfuTransport,
   consumeSfuMedia,
@@ -107,26 +126,45 @@ function wireMeetingSocket(
   socket.on(MeetingSocketEvents.Join, async (...args: unknown[]) => {
     const raw = args[0];
     const ack = typeof args[1] === 'function'
-      ? (args[1] as (r: SocketAck<{ snapshot: MeetingSnapshotDto; requiresAdmission: boolean }>) => void)
+      ? (args[1] as (r: SocketAck<JoinMeetingResult>) => void)
       : undefined;
     const parsed = JoinMeetingPayloadSchema.safeParse(raw);
     if (!parsed.success) {
       ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.MeetingJoin)) {
+
+    // Fase Backend 5 — un guest (ticket firmado, ver build-io.ts/join-ticket.ts)
+    // no tiene permissions reales (siempre []), asi que el chequeo normal de
+    // hasPermission fallaria siempre. El ticket YA es la autorizacion — esta
+    // scoped a un unico meetingId (claim `meeting_id`), que se valida aca para
+    // que un guest no pueda usar su ticket para entrar a OTRO meeting. Todas
+    // las demas acciones (record/cohost/promote) siguen bloqueadas para Guest
+    // porque sus permissions vacios hacen fallar hasPermission en esos handlers.
+    const isGuest = principal.actorType === 'Guest';
+    if (isGuest) {
+      const ticketMeetingId = typeof principal.raw['meeting_id'] === 'string' ? principal.raw['meeting_id'] : undefined;
+      if (!ticketMeetingId || ticketMeetingId !== parsed.data.meetingId) {
+        ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Guest ticket is not scoped to this meeting.' });
+        return;
+      }
+    } else if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.MeetingJoin)) {
       ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.meeting.join.' });
       return;
     }
-    const selfDisplayName = await resolveDisplayName(container.userDirectory, userId);
+
+    const guestDisplayName = typeof principal.raw['display_name'] === 'string' ? principal.raw['display_name'] : undefined;
+    const guestInvitationId = typeof principal.raw['invitation_id'] === 'string' ? principal.raw['invitation_id'] : undefined;
+    const selfDisplayName = isGuest ? (guestDisplayName ?? 'Invitado') : await resolveDisplayName(container.userDirectory, userId);
     const result = await joinMeeting(
       {
         tenantId,
         correlationId: socket.id,
         meetingId: parsed.data.meetingId,
-        user: { userId, displayName: selfDisplayName },
+        user: { userId, displayName: selfDisplayName, actorType: principal.actorType },
         ...(parsed.data.passcode !== undefined ? { passcode: parsed.data.passcode } : {}),
         ...(parsed.data.invitationToken !== undefined ? { invitationToken: parsed.data.invitationToken } : {}),
+        ...(isGuest && guestInvitationId !== undefined ? { guestInvitationId } : {}),
         ...(parsed.data.audioDefault !== undefined ? { audioDefault: parsed.data.audioDefault } : {}),
         ...(parsed.data.videoDefault !== undefined ? { videoDefault: parsed.data.videoDefault } : {}),
       },
@@ -350,6 +388,135 @@ function wireMeetingSocket(
     });
   });
 
+  socket.on(MeetingSocketEvents.DenyParticipant, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<void>) => void) : undefined;
+    const parsed = DenyParticipantPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await denyWaitingRoomParticipant(
+      {
+        tenantId,
+        correlationId: socket.id,
+        meetingId: parsed.data.meetingId,
+        hostUserId: userId,
+        targetUserId: parsed.data.targetUserId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: undefined });
+  });
+
+  socket.on(MeetingSocketEvents.CancelMeeting, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<void>) => void) : undefined;
+    const parsed = CancelMeetingPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await cancelMeeting(
+      {
+        tenantId,
+        correlationId: socket.id,
+        meetingId: parsed.data.meetingId,
+        hostUserId: userId,
+        ...(parsed.data.reason !== undefined ? { reason: parsed.data.reason } : {}),
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: undefined });
+  });
+
+  socket.on(MeetingSocketEvents.RescheduleMeeting, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<void>) => void) : undefined;
+    const parsed = RescheduleMeetingPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await rescheduleMeeting(
+      {
+        tenantId,
+        correlationId: socket.id,
+        meetingId: parsed.data.meetingId,
+        hostUserId: userId,
+        newScheduledForUtc: parsed.data.newScheduledForUtc,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: undefined });
+  });
+
+  socket.on(MeetingSocketEvents.PromoteCohost, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void)
+      : undefined;
+    const parsed = PromoteCohostPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await promoteParticipantToCohost(
+      {
+        tenantId,
+        correlationId: socket.id,
+        meetingId: parsed.data.meetingId,
+        hostUserId: userId,
+        targetUserId: parsed.data.targetUserId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value.participant });
+  });
+
+  socket.on(MeetingSocketEvents.DemoteCohost, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<MeetingParticipantDto>) => void)
+      : undefined;
+    const parsed = DemoteCohostPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await demoteCohostToAttendee(
+      {
+        tenantId,
+        correlationId: socket.id,
+        meetingId: parsed.data.meetingId,
+        hostUserId: userId,
+        targetUserId: parsed.data.targetUserId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value.participant });
+  });
+
   socket.on(MeetingSocketEvents.Signal, async (...args: unknown[]) => {
     const parsed = MeetingSignalPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
@@ -452,7 +619,97 @@ function wireMeetingSocket(
         actorUserId: userId,
         fileId: parsed.data.fileId,
       },
-      container,
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  // ---------------------------------------------------------------------
+  // Recording consent (Fase Backend 3) — meeting.recording.start_request pide
+  // consentimiento (Meeting.requestRecording, Idle -> Requesting), NO arranca
+  // la grabacion todavia; el arranque real ocurre dentro de
+  // respond-meeting-recording-consent.ts (auto-invoke) o del timeout scheduler
+  // cuando la policy del tenant se satisface — por eso no hay un handler
+  // socket separado para "start": nunca lo dispara directamente el cliente.
+  // ---------------------------------------------------------------------
+
+  socket.on(MeetingSocketEvents.RequestRecording, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ meetingId: string; participantUserIds: readonly string[]; requestedAtUtc: string }>) => void)
+      : undefined;
+    const parsed = RequestMeetingRecordingPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await requestMeetingRecording(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        meetingId: parsed.data.meetingId,
+        actorUserId: userId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(MeetingSocketEvents.RespondRecordingConsent, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ response: RecordingConsentEntryStatus }>) => void)
+      : undefined;
+    const parsed = RespondMeetingRecordingConsentPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await respondMeetingRecordingConsent(
+      {
+        tenantId,
+        correlationId: socket.id,
+        meetingId: parsed.data.meetingId,
+        actorUserId: userId,
+        response: parsed.data.response,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(MeetingSocketEvents.StopRecording, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function'
+      ? (args[1] as (r: SocketAck<{ meetingId: string; elapsedSeconds: number }>) => void)
+      : undefined;
+    const parsed = StopMeetingRecordingPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await stopMeetingRecording(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        meetingId: parsed.data.meetingId,
+        actorUserId: userId,
+      },
+      { ...container, emitter },
     );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
@@ -497,8 +754,8 @@ function wireMeetingSocket(
       scope: 'meeting.chat.send',
       tenantId,
       userId,
-      maxPerWindow: 30,
-      windowSeconds: 10,
+      maxPerWindow: config.rateLimit.meetingChatSend.maxPerWindow,
+      windowSeconds: config.rateLimit.meetingChatSend.windowSeconds,
     });
     if (!allowed) {
       ack?.({ ok: false, code: 'Meeting.Chat.RateLimited', message: 'Too many messages, slow down.' });

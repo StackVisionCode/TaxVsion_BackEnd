@@ -10,10 +10,15 @@ import { PrismaNotificationRepository } from './persistence/prisma-notification-
 import { PrismaProcessedEventStore } from './persistence/prisma-processed-event-store.js';
 import { PrismaUserPermissionsProjectionRepository } from './persistence/prisma-user-permissions-projection.js';
 import { PrismaUserDirectoryRepository } from './persistence/prisma-user-directory-repository.js';
+import { PrismaCustomerDirectoryRepository } from './persistence/prisma-customer-directory-repository.js';
 import { PrismaAttachmentTrackingRepository } from './persistence/prisma-attachment-tracking-repository.js';
 import { PrismaSupportTicketRepository } from './persistence/prisma-support-ticket-repository.js';
 import { PrismaLimitsRepository, PrismaSettingsRepository } from './persistence/prisma-settings-repository.js';
 import { PrismaAnalyticsRepository } from './persistence/prisma-analytics-repository.js';
+import {
+  PrismaRecordingSessionRepository,
+  PrismaRecordingConsentRepository,
+} from './persistence/prisma-recording-repository.js';
 import { RedisCachedTenantSettingsProvider } from './persistence/tenant-settings-provider-impl.js';
 import { ConfigPlatformTenantProvider } from './config-platform-tenant-provider.js';
 import { RedisPresenceService } from './redis/redis-presence-service.js';
@@ -23,6 +28,8 @@ import { DominantSpeakerThrottle } from './redis/dominant-speaker-throttle.js';
 import { SocketRateLimiter } from './redis/socket-rate-limiter.js';
 import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
+import { ServiceTokenClient } from './auth/service-token-client.js';
+import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage-metadata-client.js';
 import type { ConversationRepository } from '../application/ports/conversation-repository.js';
 import type { MessageRepository } from '../application/ports/message-repository.js';
 import type { IntegrationEventPublisher } from '../application/ports/integration-event-publisher.js';
@@ -37,12 +44,19 @@ import type { NotificationRepository } from '../application/ports/notification-r
 import type { ProcessedEventStore } from '../application/ports/processed-event-store.js';
 import type { UserPermissionsProjectionRepository } from '../application/ports/user-permissions-projection-repository.js';
 import type { UserDirectoryRepository } from '../application/ports/user-directory-repository.js';
+import type { CustomerDirectoryRepository } from '../application/ports/customer-directory-repository.js';
 import type { AttachmentTrackingRepository } from '../application/ports/attachment-tracking-repository.js';
 import type { SupportTicketRepository } from '../application/ports/support-ticket-repository.js';
 import type { PlatformTenantProvider } from '../application/ports/platform-tenant-provider.js';
 import type { LimitsRepository, SettingsRepository } from '../application/ports/settings-repository.js';
 import type { AnalyticsRepository } from '../application/ports/analytics-repository.js';
+import type {
+  RecordingSessionRepository,
+  RecordingConsentRepository,
+} from '../application/ports/recording-repository.js';
 import type { SfuService } from '../application/ports/sfu-service.js';
+import type { RealtimeEmitter } from '../application/ports/realtime-emitter.js';
+import type { CloudStorageMetadataClient } from '../application/ports/cloudstorage-metadata-client.js';
 
 /**
  * Contenedor de dependencias — sin frameworks DI. Cada campo es una interfaz
@@ -67,6 +81,7 @@ export interface AppContainer {
   readonly processedEvents: ProcessedEventStore;
   readonly userPermissions: UserPermissionsProjectionRepository;
   readonly userDirectory: UserDirectoryRepository;
+  readonly customerDirectory: CustomerDirectoryRepository;
   readonly attachmentTracking: AttachmentTrackingRepository;
   readonly supportTickets: SupportTicketRepository;
   readonly platform: PlatformTenantProvider;
@@ -74,9 +89,24 @@ export interface AppContainer {
   readonly limits: LimitsRepository;
   readonly analytics: AnalyticsRepository;
   readonly sfu: SfuService;
+  readonly recordingSessions: RecordingSessionRepository;
+  readonly recordingConsents: RecordingConsentRepository;
+  readonly cloudStorageMetadata: CloudStorageMetadataClient;
+  /**
+   * Wired late (post-init) por main.ts inmediatamente despues de construir el
+   * Socket.IO server, porque `SocketRealtimeEmitter` necesita el `io` que a
+   * su vez necesita el `app.server` de Fastify — el HTTP se construye antes
+   * y no puede llevar el emitter en el constructor. Rutas HTTP que necesitan
+   * emitir a rooms (Fase Backend 6+) leen `container.emitter` en el momento
+   * del request handler, no en el registro; para entonces main.ts ya lo
+   * cableo. Undefined solo mientras `buildHttpServer` esta corriendo su
+   * pasada de registro — nunca durante un request real.
+   */
+  emitter?: RealtimeEmitter;
 }
 
 export function buildContainer(): AppContainer {
+  const serviceTokens = new ServiceTokenClient();
   return {
     conversations: new PrismaConversationRepository(prisma),
     messages: new PrismaMessageRepository(prisma),
@@ -95,6 +125,7 @@ export function buildContainer(): AppContainer {
     processedEvents: new PrismaProcessedEventStore(prisma),
     userPermissions: new PrismaUserPermissionsProjectionRepository(prisma),
     userDirectory: new PrismaUserDirectoryRepository(prisma),
+    customerDirectory: new PrismaCustomerDirectoryRepository(prisma),
     attachmentTracking: new PrismaAttachmentTrackingRepository(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
@@ -102,5 +133,8 @@ export function buildContainer(): AppContainer {
     limits: new PrismaLimitsRepository(prisma),
     analytics: new PrismaAnalyticsRepository(prisma),
     sfu: new MediasoupSfuService(),
+    recordingSessions: new PrismaRecordingSessionRepository(prisma),
+    recordingConsents: new PrismaRecordingConsentRepository(prisma),
+    cloudStorageMetadata: new HttpCloudStorageMetadataClient(serviceTokens),
   };
 }

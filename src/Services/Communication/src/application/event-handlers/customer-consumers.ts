@@ -3,16 +3,23 @@ import { pushNotification } from '../use-cases/push-notification.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
+import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
 import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 
 /**
  * Cierra TODO explicito en src/Services/Customer/DependencyInjection.cs:46 y
  * README §25.15: bulk import completado -> notificacion push al usuario que lo
- * lanzo.
+ * lanzo. Ademas (Fase Backend 10) mantiene al dia CustomerDirectoryEntry, la
+ * proyeccion que usa create-meeting-invitations.ts para autocompletar
+ * customers por nombre/email sin round-trip HTTP a Customer.
  */
 export function bindCustomerConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
-  deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
+  deps: {
+    notifications: NotificationRepository;
+    emitter: RealtimeEmitter;
+    customerDirectory: CustomerDirectoryRepository;
+  },
 ): void {
   register('customer.bulk_imported.v1', async (env) => {
     const createdBy =
@@ -65,6 +72,44 @@ export function bindCustomerConsumers(
         },
       });
     }
+  });
+
+  // Fase Backend 10 — CustomerDirectoryEntry. `Kind`/`PreferredChannel` etc no
+  // se proyectan aqui: solo lo que un autocomplete de invitacion necesita
+  // (nombre + email), igual criterio que UserDirectoryEntry para empleados.
+  register('customer.created.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    const displayName = getString(env.payload, 'displayName') ?? getString(env.payload, 'DisplayName');
+    const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail');
+    if (!customerId || !displayName || !email) return;
+    await deps.customerDirectory.upsert({
+      customerId,
+      tenantId: env.tenantId,
+      displayName,
+      email,
+      isActive: true,
+    });
+  });
+
+  register('customer.updated.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    const displayName = getString(env.payload, 'displayName') ?? getString(env.payload, 'DisplayName');
+    const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail');
+    if (!customerId || !displayName || !email) return;
+    const existing = await deps.customerDirectory.findByCustomerId(env.tenantId, customerId);
+    await deps.customerDirectory.upsert({
+      customerId,
+      tenantId: env.tenantId,
+      displayName,
+      email,
+      isActive: existing?.isActive ?? true,
+    });
+  });
+
+  register('customer.deactivated.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    if (!customerId) return;
+    await deps.customerDirectory.markInactive(customerId);
   });
 }
 

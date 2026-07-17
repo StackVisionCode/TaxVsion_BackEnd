@@ -9,6 +9,8 @@ import {
   verifyAccessToken,
   type AuthenticatedPrincipal,
 } from '../jwks/jwt-verifier.js';
+import { InvalidJoinTicketError, verifyGuestJoinTicket } from '../jwks/join-ticket.js';
+import { socketConnectionsActive } from '../telemetry/metrics.js';
 
 /**
  * `SocketData` es el tercer generic de `Server<S2C, C2S, IE, SocketData>` en
@@ -45,6 +47,15 @@ export type CommunicationIoServer = SocketIoServer<
  * con Redis adapter (cierre CRIT-5) y auth middleware JWKS.
  * Path fijo `/communication/socket.io` — coincide con la ruta YARP del Gateway.
  */
+// Fase Backend 11 — graceful drain en SIGTERM (ver shutdown() en main.ts).
+// Flag simple, no un EventEmitter: solo un middleware (`io.use`) lo lee, y
+// solo `main.ts` lo escribe, una vez, al recibir la señal.
+let shuttingDown = false;
+
+export function markShuttingDown(): void {
+  shuttingDown = true;
+}
+
 export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer {
   const io: CommunicationIoServer = new SocketIoServer<
     ClientToServerEvents,
@@ -67,13 +78,42 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
   logger.info('Socket.IO Redis adapter attached');
 
   io.use(async (socket, next) => {
+    if (shuttingDown) {
+      next(new Error('Server.ShuttingDown'));
+      return;
+    }
     // Aceptamos el token SOLO desde handshake.auth.token, nunca desde query
     // string (fuga en logs) — misma politica que el design doc.
     const token = (socket.handshake.auth?.['token'] ?? '').toString().trim();
-    if (!token) {
+    // Fase Backend 5 — path alternativo para guests sin cuenta Auth: en vez
+    // de `token` (JWT RS256 real), traen `ticket` (shortLivedJoinTicket
+    // HS256 emitido por resolve-invitation-token.ts, ver join-ticket.ts).
+    const ticket = (socket.handshake.auth?.['ticket'] ?? '').toString().trim();
+
+    if (!token && !ticket) {
       next(new Error('Auth.MissingToken'));
       return;
     }
+
+    if (ticket) {
+      try {
+        const principal = await verifyGuestJoinTicket(ticket);
+        socket.data.principal = principal;
+        // Solo room de tenant — un guest no tiene `t:{tenant}:u:{userId}`
+        // real donde recibir notificaciones dirigidas (no tiene inbox).
+        await socket.join(`t:${principal.tenantId}`);
+        next();
+      } catch (err) {
+        if (err instanceof InvalidJoinTicketError) {
+          next(new Error('Auth.InvalidToken'));
+          return;
+        }
+        logger.error({ err }, 'Unexpected guest ticket auth error');
+        next(new Error('Auth.InvalidToken'));
+      }
+      return;
+    }
+
     try {
       const principal = await verifyAccessToken(token);
       socket.data.principal = principal;
@@ -101,7 +141,9 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
       { sid: socket.id, userId: p.userId, tenantId: p.tenantId, actorType: p.actorType },
       'Socket connected',
     );
+    socketConnectionsActive.inc();
     socket.on('disconnect', (reason) => {
+      socketConnectionsActive.dec();
       logger.info({ sid: socket.id, userId: p.userId, reason }, 'Socket disconnected');
     });
   });

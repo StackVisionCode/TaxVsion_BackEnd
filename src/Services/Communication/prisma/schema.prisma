@@ -46,6 +46,10 @@ model TenantCommunicationSettings {
   MessageRetentionDays        Int      @default(365)
   RecordingRetentionDays      Int      @default(90)
   PurgeEnabled                Boolean  @default(false)
+  // Politica de consentimiento de grabacion (Fase Backend 2) — ver
+  // RecordingConsentPolicy en domain/recording/recording-consent.ts.
+  // "AllAcceptedRequired" | "NoRejections" | "HostOverride"
+  RecordingConsentPolicy      String   @default("NoRejections") @db.NVarChar(32)
   // Auditoría.
   CreatedAtUtc                DateTime @default(now()) @db.DateTime2
   UpdatedAtUtc                DateTime @default(now()) @updatedAt @db.DateTime2
@@ -98,9 +102,36 @@ model UserDirectoryEntry {
   DisplayName     String   @db.NVarChar(200)
   Email           String   @db.NVarChar(320)
   IsActive        Boolean  @default(true)
+  // Fase Backend 10 — permite filtrar lookups a solo empleados de tenant
+  // ("TenantEmployee") sin necesitar una proyeccion EmployeeDirectory
+  // separada; ver docblock de CustomerDirectoryEntry para el contraste con
+  // customers (proyeccion propia, source distinto).
+  ActorType       String   @default("TenantEmployee") @db.NVarChar(32)
   UpdatedAtUtc    DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
+}
+
+// -----------------------------------------------------------------------------
+// CustomerDirectoryEntry — proyeccion local de `(CustomerId → DisplayName,
+// Email, IsActive)` alimentada por customer.created.v1/updated.v1/
+// deactivated.v1. A diferencia de UserDirectoryEntry (empleados, via
+// auth.user.*), esta cubre customers: el hot-path es el host de un meeting
+// buscando/autocompletando un customer por nombre/email al armar invitaciones
+// (Fase Backend 5). Decision Fase Backend 10: SI crear esta tabla (a
+// diferencia de InvitationTokenLookup/NotificationInbox, descartadas por
+// tener ya un indice/tabla que cumple el mismo rol).
+// @since Fase Backend 10
+model CustomerDirectoryEntry {
+  CustomerId   String   @id @db.UniqueIdentifier
+  TenantId     String   @db.UniqueIdentifier
+  DisplayName  String   @db.NVarChar(200)
+  Email        String   @db.NVarChar(320)
+  IsActive     Boolean  @default(true)
+  UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@index([TenantId, IsActive])
+  @@index([TenantId, DisplayName])
 }
 
 // -----------------------------------------------------------------------------
@@ -268,17 +299,55 @@ model Message {
   AttachmentFileId   String?   @db.UniqueIdentifier
   // Optional reply-to (soporte trivial de citacion — no thread real).
   ReplyToMessageId   String?   @db.UniqueIdentifier
+  // Fase Backend 9 — forwarding. Ref al mensaje original en OTRA conversation.
+  // No FK: la conversation origen podria estar en otro tenant en el futuro
+  // (support cross-tenant), y una FK duro cascadearia deletes cross-tenant.
+  ForwardedFromMessageId String? @db.UniqueIdentifier
   IsEdited           Boolean   @default(false)
   IsDeleted          Boolean   @default(false)
+  // Fase Backend 9 — pinned messages. Solo host/cohost puede pinear en groups;
+  // ambos participantes pueden en Direct/Meeting/Support (autorizacion en el
+  // use case, no en el aggregate — depende del ConversationKind).
+  IsPinned           Boolean   @default(false)
+  PinnedAtUtc        DateTime? @db.DateTime2
+  PinnedByUserId     String?   @db.UniqueIdentifier
   DeletedAtUtc       DateTime? @db.DateTime2
   CreatedAtUtc       DateTime  @default(now()) @db.DateTime2
   EditedAtUtc        DateTime? @db.DateTime2
 
   Conversation Conversation      @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
   Receipts     MessageReceipt[]
+  Reactions    MessageReaction[]
 
   @@index([ConversationId, CreatedAtUtc])
   @@index([TenantId, SenderId, CreatedAtUtc])
+  // Filtered index para el "list pinned" del conversation topbar — SQL Server
+  // permite WHERE clause en indices no-clustered, es mucho mas barato que un
+  // full scan filtrando IsPinned=true de una conversation con miles de msgs.
+  @@index([ConversationId, PinnedAtUtc(sort: Desc)])
+}
+
+// -----------------------------------------------------------------------------
+// FASE BACKEND 9 — Reactions
+// -----------------------------------------------------------------------------
+// Un usuario puede reaccionar N veces al mismo mensaje con emojis distintos,
+// pero solo UNA vez con el mismo emoji (@@unique([MessageId, UserId, Emoji]) —
+// deduplica double-tap del cliente sin necesitar idempotency-key).
+// El emoji se guarda como el codepoint literal (NVarChar corto) — asi el FE
+// puede rendearlo directo sin mapeo, y ClickHouse/analytics puede agregarlo
+// por popularidad sin depender de un catalogo separado.
+model MessageReaction {
+  Id           String   @id @default(uuid()) @db.UniqueIdentifier
+  MessageId    String   @db.UniqueIdentifier
+  TenantId     String   @db.UniqueIdentifier
+  UserId       String   @db.UniqueIdentifier
+  Emoji        String   @db.NVarChar(16)
+  CreatedAtUtc DateTime @default(now()) @db.DateTime2
+
+  Message Message @relation(fields: [MessageId], references: [Id], onDelete: Cascade)
+
+  @@unique([MessageId, UserId, Emoji])
+  @@index([TenantId, MessageId])
 }
 
 // Receipt por (mensaje, destinatario). "Delivered" = socket lo entrego a un
@@ -356,6 +425,10 @@ model CallParticipant {
   AudioEnabled    Boolean   @default(true)
   VideoEnabled    Boolean   @default(true)
   ScreenSharing   Boolean   @default(false)
+  // Fase Backend 7 — timestamp del inicio del share actual (para calcular
+  // durationSeconds en CallScreenShareStoppedEvent). Null cuando no se esta
+  // compartiendo.
+  ScreenShareStartedAtUtc DateTime? @db.DateTime2
   ConnectionQuality String  @default("Unknown") @db.NVarChar(16)
 
   Call Call @relation(fields: [CallId], references: [Id], onDelete: Cascade)
@@ -413,6 +486,10 @@ model MeetingParticipant {
   TenantId           String    @db.UniqueIdentifier
   UserId             String    @db.UniqueIdentifier
   DisplayName        String    @db.NVarChar(120)
+  // Espejo libre del claim JWT actor_type ("TenantEmployee"|"TenantAdmin"|
+  // "Customer"|...). Fase Backend 5 agrega "Guest" para invitados sin cuenta
+  // Auth que entran via join-by-token + shortLivedJoinTicket.
+  ActorType          String    @default("TenantEmployee") @db.NVarChar(32)
   // "Host" | "Cohost" | "Attendee"
   Role               String    @db.NVarChar(16)
   // "Waiting" | "Joined" | "Left" | "Removed"
@@ -542,9 +619,17 @@ model MeetingInvitation {
   Id             String    @id @default(uuid()) @db.UniqueIdentifier
   MeetingId      String    @db.UniqueIdentifier
   TenantId       String    @db.UniqueIdentifier
+  // "Employee" | "Customer" | "External" — determina como se resuelve el join:
+  // Employee/Customer llevan cuenta Auth real (invitationToken solo destraba
+  // el lock del meeting); External nunca tiene cuenta y entra 100% via
+  // join-by-token + shortLivedJoinTicket como Guest (Fase Backend 5).
+  InviteeKind    String    @default("External") @db.NVarChar(16)
   // Cuando invitamos por email externo (no user Auth) guardamos el email.
   InviteeEmail   String?   @db.NVarChar(320)
   InviteeUserId  String?   @db.UniqueIdentifier
+  // Nombre para mostrar cuando no hay cuenta Auth que lo resuelva (Guest).
+  InviteeName    String?   @db.NVarChar(120)
+  InviteeExternalPhone String? @db.NVarChar(32)
   TokenHash      String    @db.NVarChar(128)
   ExpiresAtUtc   DateTime  @db.DateTime2
   UsedAtUtc      DateTime? @db.DateTime2
@@ -555,4 +640,52 @@ model MeetingInvitation {
 
   @@unique([TokenHash])
   @@index([MeetingId, ExpiresAtUtc])
+}
+
+// =============================================================================
+// FASE BACKEND 2 — Recording consent + state machine
+// =============================================================================
+// Tablas genericas compartidas entre Meeting y Call (discriminadas por
+// Scope+ScopeId) — NO son child-tables de Meeting/MeetingParticipant ni de
+// Call/CallParticipant, por eso no llevan @relation ni onDelete Cascade: el
+// dominio (RecordingSession/RecordingConsentEntry, ver src/domain/recording/)
+// las orquesta desde Meeting.requestRecording/Call.requestRecording pero las
+// persiste via su propio repository.
+
+// Log append-only — nunca se actualiza ni se borra una fila existente. Cada
+// cambio de respuesta de un usuario agrega una fila nueva, permitiendo
+// reconstruir el historial completo (auditoria/compliance de grabaciones).
+model RecordingConsentEvent {
+  Id             String   @id @default(uuid()) @db.UniqueIdentifier
+  TenantId       String   @db.UniqueIdentifier
+  Scope          String   @db.NVarChar(16) // "Meeting" | "Call"
+  ScopeId        String   @db.UniqueIdentifier // meetingId | callId
+  UserId         String   @db.UniqueIdentifier
+  Response       String   @db.NVarChar(16) // "Requested" | "Accepted" | "Rejected"
+  RespondedAtUtc DateTime @db.DateTime2
+  RecordedAtUtc  DateTime @default(now()) @db.DateTime2
+
+  @@index([TenantId, Scope, ScopeId, RespondedAtUtc])
+}
+
+// Una unica fila por (Scope, ScopeId) durante toda la vida del meeting/call —
+// no hay "reintentar grabar" dentro de la misma sesion; Failed es terminal.
+model RecordingSession {
+  Id                String    @id @default(uuid()) @db.UniqueIdentifier
+  TenantId          String    @db.UniqueIdentifier
+  Scope             String    @db.NVarChar(16) // "Meeting" | "Call"
+  ScopeId           String    @db.UniqueIdentifier
+  // "Idle"|"Requesting"|"Recording"|"Stopping"|"Processing"|"Ready"|"Failed"
+  // ("Idle" nunca se persiste — la ausencia de fila ES Idle.)
+  State             String    @db.NVarChar(16)
+  RequestedByUserId String    @db.UniqueIdentifier
+  RequestedAtUtc    DateTime  @db.DateTime2
+  StartedAtUtc      DateTime? @db.DateTime2
+  StoppedAtUtc      DateTime? @db.DateTime2
+  RecordingFileId   String?   @db.UniqueIdentifier
+  DurationSeconds   Int?
+  FailureReason     String?   @db.NVarChar(500)
+
+  @@unique([Scope, ScopeId])
+  @@index([TenantId, Scope, ScopeId])
 }

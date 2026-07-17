@@ -7,6 +7,7 @@ import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.j
 import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-repository.js';
 import { ChatEventTypes, type MessageSentEvent } from '../../contracts/events/chat-events.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
+import { messageSnapshotToDto } from './chat-mappers.js';
 
 /**
  * Comando: enviar un mensaje a una conversacion existente. Body (Text) o
@@ -145,20 +146,7 @@ export async function sendMessage(
   };
   await deps.publisher.enqueue(sentEvent);
 
-  const dto: MessageDto = {
-    id: messageSnapshot.id,
-    conversationId: messageSnapshot.conversationId,
-    senderId: messageSnapshot.senderId,
-    senderDisplayName: messageSnapshot.senderDisplayName,
-    kind: messageSnapshot.kind,
-    body: messageSnapshot.body,
-    attachmentFileId: messageSnapshot.attachmentFileId,
-    replyToMessageId: messageSnapshot.replyToMessageId,
-    isEdited: messageSnapshot.isEdited,
-    isDeleted: messageSnapshot.isDeleted,
-    createdAtUtc: messageSnapshot.createdAtUtc.toISOString(),
-    editedAtUtc: messageSnapshot.editedAtUtc ? messageSnapshot.editedAtUtc.toISOString() : null,
-  };
+  const dto: MessageDto = messageSnapshotToDto(messageSnapshot);
   const result: SendMessageResult = { message: dto };
   await deps.idempotency.commit({
     tenantId: command.tenantId,

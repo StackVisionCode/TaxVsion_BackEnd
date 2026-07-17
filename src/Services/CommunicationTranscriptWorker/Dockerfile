@@ -66,4 +66,7 @@ RUN groupadd -r taxvision && useradd -r -g taxvision taxvision \
     && mkdir -p /tmp/transcript-worker && chown -R taxvision:taxvision /app /tmp/transcript-worker
 USER taxvision
 
+# Fase Transcript 8 — servidor HTTP minimo solo para /metrics (Prometheus scrape).
+EXPOSE 9464
+
 CMD ["node", "--enable-source-maps", "dist/main.js"]

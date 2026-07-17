@@ -1,4 +1,5 @@
 import { Result, makeError } from '../shared/result.js';
+import { RecordingConsentPolicy, isRecordingConsentPolicy } from '../recording/recording-consent.js';
 
 /**
  * Aggregate root: TenantCommunicationSettings. Un aggregate por tenant. Se
@@ -21,6 +22,12 @@ export interface TenantCommunicationSettingsSnapshot {
   readonly messageRetentionDays: number;
   readonly recordingRetentionDays: number;
   readonly purgeEnabled: boolean;
+  /**
+   * Gap cerrado en Fase Backend 3 — la columna Prisma existia desde Fase 2
+   * (default 'NoRejections') pero nunca se conecto al aggregate. Ver
+   * evaluateRecordingConsentPolicy en domain/recording/recording-consent.ts.
+   */
+  readonly recordingConsentPolicy: RecordingConsentPolicy;
   readonly createdAtUtc: Date;
   readonly updatedAtUtc: Date;
 }
@@ -49,6 +56,7 @@ export class TenantCommunicationSettings {
       messageRetentionDays: 365,
       recordingRetentionDays: 90,
       purgeEnabled: false,
+      recordingConsentPolicy: RecordingConsentPolicy.NoRejections,
       createdAtUtc: now,
       updatedAtUtc: now,
     });
@@ -60,6 +68,9 @@ export class TenantCommunicationSettings {
     }
     if (input.recordingRetentionDays !== undefined && (input.recordingRetentionDays < 1 || input.recordingRetentionDays > 3650)) {
       return Result.fail(makeError('Settings.InvalidRetention', 'recordingRetentionDays must be 1..3650.'));
+    }
+    if (input.recordingConsentPolicy !== undefined && !isRecordingConsentPolicy(input.recordingConsentPolicy)) {
+      return Result.fail(makeError('Settings.InvalidRecordingConsentPolicy', 'Invalid recordingConsentPolicy.'));
     }
     this.state = { ...this.state, ...input, updatedAtUtc: new Date() };
     return Result.okVoid();

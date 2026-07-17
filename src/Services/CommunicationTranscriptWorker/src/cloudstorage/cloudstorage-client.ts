@@ -23,6 +23,40 @@ interface DownloadUrlResponse {
   readonly downloadUrl: string;
 }
 
+/**
+ * Fase Transcript 4 — lleva el status HTTP para que pipeline.ts pueda
+ * clasificar 5xx como retriable (ver retry.ts) sin parsear el mensaje.
+ *
+ * `errorCode` (opcional) — el body de error de CloudStorage (BuildingBlocks
+ * `Error(Code, Message)`, serializado camelCase). Lo agregamos porque un 403
+ * de `download-url` puede ser `File.NotAvailable` (el archivo TODAVIA esta
+ * en ClamAV scan — transitorio, se resuelve solo en 1-3s) o `File.Forbidden`
+ * (mismatch real de scope — un retry no lo arregla nunca). Sin distinguir el
+ * codigo, el download-url de una grabacion recien subida podia perder la
+ * carrera contra el scan async de CloudStorage y el pipeline dead-letreaba
+ * en el primer intento aunque el archivo pasara a Available 200ms despues.
+ */
+export class DownloadStatusError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly errorCode?: string,
+  ) {
+    super(message);
+    this.name = 'DownloadStatusError';
+  }
+}
+
+async function readErrorCode(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.clone().json()) as { code?: unknown; Code?: unknown };
+    const code = body.code ?? body.Code;
+    return typeof code === 'string' ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class CloudStorageClient {
   constructor(private readonly tokens: ServiceTokenClient) {}
 
@@ -33,7 +67,12 @@ export class CloudStorageClient {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!initiate.ok) {
-      throw new Error(`download-url request failed with status ${initiate.status} for file ${fileId}`);
+      const errorCode = await readErrorCode(initiate);
+      throw new DownloadStatusError(
+        initiate.status,
+        `download-url request failed with status ${initiate.status} for file ${fileId}`,
+        errorCode,
+      );
     }
     const { downloadUrl } = (await initiate.json()) as DownloadUrlResponse;
 
@@ -41,7 +80,7 @@ export class CloudStorageClient {
     // en la propia URL (mismo criterio que SignatureCloudStorageClient).
     const fileResponse = await fetch(downloadUrl);
     if (!fileResponse.ok || !fileResponse.body) {
-      throw new Error(`presigned download failed with status ${fileResponse.status} for file ${fileId}`);
+      throw new DownloadStatusError(fileResponse.status, `presigned download failed with status ${fileResponse.status} for file ${fileId}`);
     }
     await pipeline(Readable.fromWeb(fileResponse.body as never), createWriteStream(destPath));
   }

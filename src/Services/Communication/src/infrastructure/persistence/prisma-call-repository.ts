@@ -60,6 +60,7 @@ export class PrismaCallRepository implements CallRepository {
             AudioEnabled: p.audioEnabled,
             VideoEnabled: p.videoEnabled,
             ScreenSharing: p.screenSharing,
+            ScreenShareStartedAtUtc: p.screenShareStartedAtUtc,
             ConnectionQuality: p.connectionQuality,
           },
           update: {
@@ -68,6 +69,7 @@ export class PrismaCallRepository implements CallRepository {
             AudioEnabled: p.audioEnabled,
             VideoEnabled: p.videoEnabled,
             ScreenSharing: p.screenSharing,
+            ScreenShareStartedAtUtc: p.screenShareStartedAtUtc,
             ConnectionQuality: p.connectionQuality,
           },
         });
