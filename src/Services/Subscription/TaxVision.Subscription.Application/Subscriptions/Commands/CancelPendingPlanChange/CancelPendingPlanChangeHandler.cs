@@ -42,7 +42,10 @@ public static class CancelPendingPlanChangeHandler
             command.RequestedByUserId, correlation.CorrelationId,
             before: new { PendingPlanCode = pending.ToPlanCode },
             after: new { PendingPlanCode = (string?)null },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         logger.LogInformation(
             "Tenant {TenantId} cancelled its pending downgrade to {PlanCode} (requested by {UserId}).",

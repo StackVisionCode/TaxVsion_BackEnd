@@ -71,6 +71,15 @@ public sealed class FileContentInspector : IFileContentInspector
         // asi que asumir WebM directamente es correcto para este caso de uso.
         if (StartsWith(header, new byte[] { 0x1A, 0x45, 0xDF, 0xA3 }))
             return "video/webm";
+        // TIFF: little-endian "II*\0" o big-endian "MM\0*" (scans profesionales, Fase L1.1).
+        if (
+            StartsWith(header, new byte[] { 0x49, 0x49, 0x2A, 0x00 })
+            || StartsWith(header, new byte[] { 0x4D, 0x4D, 0x00, 0x2A })
+        )
+            return "image/tiff";
+        // MP4/ISO-BMFF: caja "ftyp" en el offset 4 (grabaciones de meetings/calls, Fase L1.1).
+        if (header.Length >= 8 && header.AsSpan(4, 4).SequenceEqual("ftyp"u8))
+            return "video/mp4";
 
         if (header.All(value => value is 9 or 10 or 13 || value >= 32))
         {

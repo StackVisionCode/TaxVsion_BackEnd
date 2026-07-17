@@ -10,7 +10,12 @@ public static class EntitlementSummaryMapper
         foreach (var entry in snapshot.Entries)
         {
             entries[entry.Key.Value] = new EntitlementValueResponse(
-                entry.ValueType.ToString(), entry.Value, entry.Status.ToString(), entry.Source.ToString(), entry.ExpiresAtUtc);
+                entry.ValueType.ToString(),
+                entry.Value,
+                entry.Status.ToString(),
+                entry.Source.ToString(),
+                entry.ExpiresAtUtc
+            );
         }
 
         return new EntitlementSummaryResponse(

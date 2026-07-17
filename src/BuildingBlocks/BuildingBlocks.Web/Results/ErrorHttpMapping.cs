@@ -16,12 +16,15 @@ public static class ErrorHttpMapping
             or "Permission.NotFound"
             or "Mfa.DeviceNotFound"
             or "File.NotFound"
+            or "Folder.NotFound"
             or "EmailConfiguration.NotFound"
             or "EmailTemplate.NotFound"
             or "EmailLayout.NotFound"
             or "Campaign.NotFound"
             or "EmailAccount.NotFound"
             or "EmailMessage.NotFound"
+            or "TenantDomain.NotFound"
+            or "ShareLink.NotFound"
             or "SaaSPayment.NotFound"
             or "TenantProviderCustomer.NotFound"
             or "TenantProviderCustomer.MethodNotFound"
@@ -32,6 +35,28 @@ public static class ErrorHttpMapping
             or "PayoutSchedule.NotFound"
             or "TenantRecurringPayment.NotFound"
             or "TenantRecurringPayment.ScheduleNotFound" => StatusCodes.Status404NotFound,
+            "TenantDomain.SlugLength"
+            or "TenantDomain.SlugInvalid"
+            or "TenantDomain.SlugReserved"
+            or "TenantDomain.Tenant"
+            or "TenantDomain.BaseDomain"
+            or "TenantDomain.HostInvalid"
+            or "TenantDomain.NotCustomHostname"
+            or "TenantDomain.NotSubdomain"
+            or "TenantDomain.SlugUnchanged"
+            or "TenantDomain.InvalidTransition"
+            or "TenantDomain.ReservationEmail"
+            or "TenantDomain.ReservationTtl"
+            or "Auth.TenantIdRequired" => StatusCodes.Status400BadRequest,
+            "TenantDomain.ReservationConsumed"
+            or "TenantDomain.ReservationExpired"
+            or "TenantDomain.HostTaken"
+            or "TenantDomain.SlugTaken"
+            or "TenantDomain.SlugReservedTemporarily"
+            or "TenantDomain.NotReadyForActivation" => StatusCodes.Status409Conflict,
+            "TenantDomain.Disabled"
+            or "TenantDomain.PrimaryCannotBeDisabled" => StatusCodes.Status403Forbidden,
+            "TenantDomain.CloudflareHttp" or "TenantDomain.CloudflareRejected" => StatusCodes.Status502BadGateway,
             "Auth.Invalid"
             or "Auth.InvalidInvitation"
             or "Auth.InvalidRefreshToken"
@@ -52,11 +77,17 @@ public static class ErrorHttpMapping
             or "StorageQuota.Suspended"
             or "File.NotAvailable"
             or "File.Forbidden"
+            or "Folder.Forbidden"
             or "EmailConfiguration.Forbidden"
             or "EmailTemplate.Forbidden"
             or "EmailLayout.Forbidden"
             or "Campaign.Forbidden"
-            or "EmailAccount.Forbidden" => StatusCodes.Status403Forbidden,
+            or "EmailAccount.Forbidden"
+            or "Role.PermissionNotAssignable"
+            or "Role.NotAssignableToCustomerPortal"
+            or "ShareLink.Forbidden"
+            or "ShareLink.PublicSharingDisabled"
+            or "ShareLink.ElevatedPermissionRequiresManage" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -69,10 +100,13 @@ public static class ErrorHttpMapping
             or "EmailTemplate.KeyConflict"
             or "EmailLayout.NameConflict"
             or "EmailAccount.Conflict"
+            or "ShareLink.AlreadyRevoked"
             or "TenantPaymentConfig.AlreadyExists" => StatusCodes.Status409Conflict,
             "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit"
             or "PaymentApp.AdminActionThrottled"
             or "PaymentLink.RedemptionThrottled" => StatusCodes.Status429TooManyRequests,
+            "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" => StatusCodes.Status413PayloadTooLarge,
+            "File.MultipartCompleteFailed" => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest,
         };
 }

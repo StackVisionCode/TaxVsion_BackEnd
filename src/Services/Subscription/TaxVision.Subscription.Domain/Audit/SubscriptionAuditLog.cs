@@ -37,31 +37,36 @@ public sealed class SubscriptionAuditLog : BaseEntity
         Guid? causationId,
         string? beforePayload,
         string? afterPayload,
-        string? reason)
+        string? reason
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<SubscriptionAuditLog>(new Error("AuditLog.InvalidTenant", "TenantId is required."));
 
         if (string.IsNullOrWhiteSpace(aggregateType))
-            return Result.Failure<SubscriptionAuditLog>(new Error("AuditLog.InvalidAggregateType", "AggregateType is required."));
+            return Result.Failure<SubscriptionAuditLog>(
+                new Error("AuditLog.InvalidAggregateType", "AggregateType is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(action))
             return Result.Failure<SubscriptionAuditLog>(new Error("AuditLog.InvalidAction", "Action is required."));
 
-        return Result.Success(new SubscriptionAuditLog
-        {
-            TenantId = tenantId,
-            AggregateType = aggregateType,
-            AggregateId = aggregateId,
-            Action = action,
-            ActorUserId = actorUserId,
-            ActorType = actorType,
-            OccurredAtUtc = occurredAtUtc,
-            CorrelationId = correlationId,
-            CausationId = causationId,
-            BeforePayload = beforePayload,
-            AfterPayload = afterPayload,
-            Reason = reason?.Length > 500 ? reason[..500] : reason,
-        });
+        return Result.Success(
+            new SubscriptionAuditLog
+            {
+                TenantId = tenantId,
+                AggregateType = aggregateType,
+                AggregateId = aggregateId,
+                Action = action,
+                ActorUserId = actorUserId,
+                ActorType = actorType,
+                OccurredAtUtc = occurredAtUtc,
+                CorrelationId = correlationId,
+                CausationId = causationId,
+                BeforePayload = beforePayload,
+                AfterPayload = afterPayload,
+                Reason = reason?.Length > 500 ? reason[..500] : reason,
+            }
+        );
     }
 }

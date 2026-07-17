@@ -17,7 +17,7 @@ namespace TaxVision.Notification.Application.Email.Accounts;
 public sealed class EmailSyncService(
     IEmailAccountRepository accounts,
     IEmailProviderAdapterFactory adapters,
-    ICloudStorageClient cloudStorage,
+    IInboundAttachmentStorageWriter attachmentStorage,
     IMessageBus bus,
     ICorrelationContext correlation,
     IUnitOfWork unitOfWork,
@@ -129,18 +129,16 @@ public sealed class EmailSyncService(
                         att.ExternalId
                     );
 
-                    // Sube el binario a CloudStorage con token de servicio (M2M) del tenant. Si el tipo no
-                    // esta permitido o falla, se conserva solo la metadata (FileId queda null).
+                    // Fase D3 — sube directo a MinIO + publica SaveFileRequestedIntegrationEvent (ya
+                    // no HTTP a CloudStorage). Si falla, se conserva solo la metadata (FileId queda null).
                     if (att.Content is { Length: > 0 })
                     {
-                        var upload = await cloudStorage.UploadAsync(
-                            new CloudStorageUpload(
+                        var upload = await attachmentStorage.SaveAsync(
+                            new InboundAttachmentUpload(
                                 att.Content,
                                 att.FileName,
                                 att.ContentType ?? "application/octet-stream",
-                                "Communication",
                                 message.Id,
-                                "EmailIncoming",
                                 (pm.ReceivedAtUtc ?? pm.SentAtUtc ?? DateTime.UtcNow).Year
                             ),
                             account.TenantId,

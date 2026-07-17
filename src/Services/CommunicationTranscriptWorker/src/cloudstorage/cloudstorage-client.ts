@@ -1,30 +1,26 @@
+import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ServiceTokenClient } from '../auth/service-token-client.js';
 import { config } from '../config.js';
+import { putSourceObject } from './minio-uploader.js';
+import { publishSaveFileRequested } from './save-file-requested-publisher.js';
 
 /**
- * Cliente CloudStorage — replica exacta de `SignatureCloudStorageClient.cs`
- * (mismos endpoints, mismo flujo en 2 pasos: initiate contra CloudStorage +
- * POST directo al presigned URL de MinIO, luego complete). NUNCA le pega a
- * MinIO directo, siempre via CloudStorage.
+ * Cliente CloudStorage.
  *
- * OwnerType/FolderType usados aca ("Communication"/"Recordings") ya existen
- * en `FileEnums.cs` de CloudStorage, purpose-built para este caso — no un
- * fallback generico "Other" (ver auditoria previa a esta fase).
+ * Fase D2 — downloadFile (bajar la grabacion original) sigue el flujo HTTP+M2M
+ * presignado sin cambios: leer de cualquier FolderType requeriria un IAM de MinIO
+ * mucho mas amplio que el write scoped de uploadFile, y no estaba en el scope
+ * acordado (mismo criterio que Signature dejo su DownloadAsync intacto en D1).
+ *
+ * uploadFile YA NO llama a CloudStorage por HTTP: sube el .txt del transcript
+ * directo a MinIO (credenciales propias) y publica SaveFileRequestedIntegrationEvent
+ * para que CloudStorage lo registre y escanee de forma asincrona.
  */
 interface DownloadUrlResponse {
   readonly downloadUrl: string;
-}
-
-interface InitiateUploadResponse {
-  readonly fileId: string;
-  readonly uploadUrl: string;
-  readonly formData: Record<string, string>;
-  readonly expiresAtUtc: string;
-  readonly status: string;
 }
 
 export class CloudStorageClient {
@@ -57,56 +53,24 @@ export class CloudStorageClient {
     contentType: string;
     sizeBytes: number;
     ownerId: string | null;
+    correlationId?: string | undefined;
   }): Promise<{ fileId: string }> {
-    const token = await this.tokens.getToken(input.tenantId);
+    const fileId = randomUUID();
+    const sourceObjectKey = `${config.minio.sourcePrefix}/${fileId}/${input.originalName}`;
 
-    const initiateResponse = await fetch(`${config.cloudStorage.baseUrl}/storage/files/uploads`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        originalName: input.originalName,
-        contentType: input.contentType,
-        sizeBytes: input.sizeBytes,
-        ownerType: 'Communication',
-        ownerId: input.ownerId,
-        folderType: 'Recordings',
-        taxYear: null,
-      }),
+    await putSourceObject(sourceObjectKey, input.filePath, input.contentType);
+
+    publishSaveFileRequested({
+      tenantId: input.tenantId,
+      fileId,
+      sourceObjectKey,
+      ownerId: input.ownerId,
+      originalName: input.originalName,
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+      correlationId: input.correlationId,
     });
-    if (!initiateResponse.ok) {
-      throw new Error(`upload initiate failed with status ${initiateResponse.status}`);
-    }
-    const initiate = (await initiateResponse.json()) as InitiateUploadResponse;
 
-    const fileBuffer = await readFile(input.filePath);
-    const form = new FormData();
-    for (const [key, value] of Object.entries(initiate.formData)) {
-      form.append(key, value);
-    }
-    // El SDK de Minio firma una condicion Content-Type en la policy
-    // (`policy.SetContentType(...)`) pero `PresignedPostPolicyAsync` no
-    // siempre la refleja como campo dentro de `formData` — si el campo
-    // Content-Type no viaja en el multipart, Minio rechaza el POST con 403
-    // aunque la firma sea valida (mismo caso ya resuelto en el cliente de
-    // Communication, ver cloudstorage-client.ts de ese servicio).
-    if (!Object.keys(initiate.formData).some((k) => k.toLowerCase() === 'content-type')) {
-      form.append('Content-Type', input.contentType);
-    }
-    form.append('file', new Blob([fileBuffer], { type: input.contentType }), input.originalName);
-
-    const uploadResponse = await fetch(initiate.uploadUrl, { method: 'POST', body: form });
-    if (!uploadResponse.ok) {
-      throw new Error(`presigned upload failed with status ${uploadResponse.status} for file ${initiate.fileId}`);
-    }
-
-    const completeResponse = await fetch(
-      `${config.cloudStorage.baseUrl}/storage/files/${initiate.fileId}/complete`,
-      { method: 'POST', headers: { authorization: `Bearer ${token}` } },
-    );
-    if (!completeResponse.ok) {
-      throw new Error(`upload complete failed with status ${completeResponse.status} for file ${initiate.fileId}`);
-    }
-
-    return { fileId: initiate.fileId };
+    return { fileId };
   }
 }

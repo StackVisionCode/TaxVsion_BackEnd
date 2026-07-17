@@ -14,7 +14,8 @@ public sealed class AddOnDefinitionConfiguration : IEntityTypeConfiguration<AddO
         builder.ToTable("AddOnDefinitions");
         builder.HasKey(definition => definition.Id);
 
-        builder.Property(definition => definition.Code)
+        builder
+            .Property(definition => definition.Code)
             .HasConversion(code => code.Value, value => AddOnCode.Create(value).Value)
             .HasMaxLength(50)
             .IsRequired();
@@ -28,31 +29,37 @@ public sealed class AddOnDefinitionConfiguration : IEntityTypeConfiguration<AddO
 
         var billingCyclesConverter = new ValueConverter<List<BillingCycle>, string>(
             cycles => string.Join(',', cycles),
-            csv => ParseBillingCycles(csv));
+            csv => ParseBillingCycles(csv)
+        );
         var billingCyclesComparer = new ValueComparer<List<BillingCycle>>(
             (a, b) => (a ?? new()).SequenceEqual(b ?? new()),
             list => list.Aggregate(0, (hash, cycle) => HashCode.Combine(hash, cycle)),
-            list => list.ToList());
+            list => list.ToList()
+        );
 
-        builder.Property<List<BillingCycle>>("_supportedBillingCycles")
+        builder
+            .Property<List<BillingCycle>>("_supportedBillingCycles")
             .HasColumnName("SupportedBillingCycles")
             .HasConversion(billingCyclesConverter)
             .HasMaxLength(200)
             .Metadata.SetValueComparer(billingCyclesComparer);
 
-        builder.HasMany(definition => definition.Features)
+        builder
+            .HasMany(definition => definition.Features)
             .WithOne()
             .HasForeignKey(feature => feature.AddOnDefinitionId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(definition => definition.Features).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasMany(definition => definition.Entitlements)
+        builder
+            .HasMany(definition => definition.Entitlements)
             .WithOne()
             .HasForeignKey(entitlement => entitlement.AddOnDefinitionId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(definition => definition.Entitlements).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasMany(definition => definition.PriceTiers)
+        builder
+            .HasMany(definition => definition.PriceTiers)
             .WithOne()
             .HasForeignKey(tier => tier.AddOnDefinitionId)
             .OnDelete(DeleteBehavior.Cascade);
@@ -62,7 +69,5 @@ public sealed class AddOnDefinitionConfiguration : IEntityTypeConfiguration<AddO
     private static List<BillingCycle> ParseBillingCycles(string csv) =>
         string.IsNullOrEmpty(csv)
             ? []
-            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(Enum.Parse<BillingCycle>)
-                .ToList();
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Enum.Parse<BillingCycle>).ToList();
 }

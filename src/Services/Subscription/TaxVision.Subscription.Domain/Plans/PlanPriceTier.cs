@@ -20,24 +20,37 @@ public sealed class PlanPriceTier : BaseEntity
     private PlanPriceTier() { }
 
     public static Result<PlanPriceTier> Create(
-        Guid planVersionId, BillingCycle billingCycle, int minQuantity, int? maxQuantity, Money unitAmount)
+        Guid planVersionId,
+        BillingCycle billingCycle,
+        int minQuantity,
+        int? maxQuantity,
+        Money unitAmount
+    )
     {
         if (planVersionId == Guid.Empty)
-            return Result.Failure<PlanPriceTier>(new Error("PlanPriceTier.InvalidVersion", "PlanVersionId is required."));
+            return Result.Failure<PlanPriceTier>(
+                new Error("PlanPriceTier.InvalidVersion", "PlanVersionId is required.")
+            );
 
         if (minQuantity < 0)
-            return Result.Failure<PlanPriceTier>(new Error("PlanPriceTier.InvalidMinQuantity", "MinQuantity cannot be negative."));
+            return Result.Failure<PlanPriceTier>(
+                new Error("PlanPriceTier.InvalidMinQuantity", "MinQuantity cannot be negative.")
+            );
 
         if (maxQuantity is not null && maxQuantity < minQuantity)
-            return Result.Failure<PlanPriceTier>(new Error("PlanPriceTier.InvalidRange", "MaxQuantity cannot be less than MinQuantity."));
+            return Result.Failure<PlanPriceTier>(
+                new Error("PlanPriceTier.InvalidRange", "MaxQuantity cannot be less than MinQuantity.")
+            );
 
-        return Result.Success(new PlanPriceTier
-        {
-            PlanVersionId = planVersionId,
-            BillingCycle = billingCycle,
-            MinQuantity = minQuantity,
-            MaxQuantity = maxQuantity,
-            UnitAmount = unitAmount,
-        });
+        return Result.Success(
+            new PlanPriceTier
+            {
+                PlanVersionId = planVersionId,
+                BillingCycle = billingCycle,
+                MinQuantity = minQuantity,
+                MaxQuantity = maxQuantity,
+                UnitAmount = unitAmount,
+            }
+        );
     }
 }

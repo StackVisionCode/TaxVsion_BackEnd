@@ -2,23 +2,40 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Minio;
+using Minio.DataModel.Args;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using Wolverine;
 
 namespace TaxVision.Signature.Infrastructure.Sealing.HttpClients;
 
 /// <summary>
-/// Implementación HTTP del <see cref="ISignatureCloudStorageClient"/> siguiendo el mismo
-/// flujo presignado que usa Notification (initiate → POST directo a MinIO → complete).
-/// Descarga con URL presignada. No accede a MinIO ni a la BD de CloudStorage.
-/// Autenticación M2M via <see cref="ISignatureServiceTokenAcquirer"/>.
+/// Implementación de <see cref="ISignatureCloudStorageClient"/>.
+///
+/// <para>
+/// DownloadAsync sigue el flujo HTTP+M2M presignado (initiate → GET, ver
+/// <see cref="ISignatureServiceTokenAcquirer"/>) — fuera del scope de la Fase D1, ver
+/// project_cloudstorage_hardening_plan.md. UploadAsync ya NO llama a CloudStorage por
+/// HTTP (Fase D1): sube el objeto directo a MinIO con credenciales propias (IAM
+/// scoped a taxvision-temp/signature/*) y publica SaveFileRequestedIntegrationEvent
+/// para que CloudStorage lo registre y escanee de forma asincrona — el mismo patron
+/// que ya usa el flujo normal de subida (initiate → complete → scan async).
+/// </para>
 ///
 /// <para>Estructurado con métodos privados por fase para mantener SRP.</para>
 /// </summary>
 internal sealed class SignatureCloudStorageClient(
     HttpClient httpClient,
     ISignatureServiceTokenAcquirer tokenAcquirer,
+    IMinioClient minioClient,
+    IOptions<SignatureMinioOptions> minioOptions,
+    IMessageBus bus,
+    ICorrelationContext correlation,
     ILogger<SignatureCloudStorageClient> logger
 ) : ISignatureCloudStorageClient
 {
@@ -50,23 +67,50 @@ internal sealed class SignatureCloudStorageClient(
     {
         ArgumentNullException.ThrowIfNull(upload);
 
-        var tokenResult = await AcquireTokenAsync(tenantId, ct);
-        if (tokenResult.IsFailure)
-            return Result.Failure<Guid>(tokenResult.Error);
+        var fileId = Guid.NewGuid();
+        var options = minioOptions.Value;
+        var sourceObjectKey = $"{options.SourcePrefix}/{fileId:N}/{upload.FileName}";
 
-        var initResult = await InitiateUploadAsync(upload, tokenResult.Value, ct);
-        if (initResult.IsFailure)
-            return Result.Failure<Guid>(initResult.Error);
+        try
+        {
+            using var content = new MemoryStream(upload.Content);
+            await minioClient.PutObjectAsync(
+                new PutObjectArgs()
+                    .WithBucket(options.TempBucket)
+                    .WithObject(sourceObjectKey)
+                    .WithStreamData(content)
+                    .WithObjectSize(upload.Content.LongLength)
+                    .WithContentType(upload.ContentType),
+                ct
+            );
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MinIO PUT failed for sealed document upload ({FileName}).", upload.FileName);
+            return Result.Failure<Guid>(new Error("Signature.Storage.Upload", "MinIO PUT failed."));
+        }
 
-        var putResult = await PostToMinioAsync(initResult.Value, upload, ct);
-        if (putResult.IsFailure)
-            return Result.Failure<Guid>(putResult.Error);
+        await bus.PublishAsync(
+            new SaveFileRequestedIntegrationEvent
+            {
+                TenantId = tenantId,
+                FileId = fileId,
+                RequestingService = "signature",
+                SourceBucket = options.TempBucket,
+                SourceObjectKey = sourceObjectKey,
+                ActorId = upload.ActorId,
+                OwnerType = upload.OwnerType,
+                OwnerId = upload.OwnerId,
+                FolderType = upload.FolderType,
+                TaxYear = upload.TaxYear,
+                OriginalName = upload.FileName,
+                ContentType = upload.ContentType,
+                SizeBytes = upload.Content.LongLength,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
-        var completeResult = await CompleteUploadAsync(initResult.Value.FileId, tokenResult.Value, ct);
-        if (completeResult.IsFailure)
-            return Result.Failure<Guid>(completeResult.Error);
-
-        return Result.Success(initResult.Value.FileId);
+        return Result.Success(fileId);
     }
 
     // ------------------------------------------------------------------
@@ -110,99 +154,7 @@ internal sealed class SignatureCloudStorageClient(
         return Result.Success(bytes);
     }
 
-    private async Task<Result<InitiatedUploadDto>> InitiateUploadAsync(
-        SignaturePdfUpload upload,
-        string token,
-        CancellationToken ct
-    )
-    {
-        var body = new InitiateUploadRequestDto(
-            upload.FileName,
-            upload.ContentType,
-            upload.Content.LongLength,
-            upload.OwnerType,
-            upload.OwnerId,
-            upload.FolderType,
-            upload.TaxYear
-        );
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "storage/files/uploads")
-        {
-            Content = JsonContent.Create(body, options: Json),
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        using var response = await httpClient.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("CloudStorage initiate call failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure<InitiatedUploadDto>(new Error("Signature.Storage.Upload", "initiate failed."));
-        }
-        var payload = await response.Content.ReadFromJsonAsync<InitiatedUploadDto>(Json, ct);
-        return payload is null
-            ? Result.Failure<InitiatedUploadDto>(new Error("Signature.Storage.Upload", "empty initiate response."))
-            : Result.Success(payload);
-    }
-
-    private async Task<Result> PostToMinioAsync(
-        InitiatedUploadDto initiated,
-        SignaturePdfUpload upload,
-        CancellationToken ct
-    )
-    {
-        using var form = new MultipartFormDataContent();
-        foreach (var (key, value) in initiated.FormData)
-            form.Add(new StringContent(value), key);
-
-        if (!initiated.FormData.Keys.Any(k => k.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)))
-            form.Add(new StringContent(upload.ContentType), "Content-Type");
-
-        var content = new ByteArrayContent(upload.Content);
-        content.Headers.ContentType = new MediaTypeHeaderValue(upload.ContentType);
-        form.Add(content, "file", upload.FileName);
-
-        using var response = await httpClient.PostAsync(initiated.UploadUrl, form, ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("MinIO upload failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure(new Error("Signature.Storage.Upload", "MinIO PUT failed."));
-        }
-        return Result.Success();
-    }
-
-    private async Task<Result> CompleteUploadAsync(Guid fileId, string token, CancellationToken ct)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{fileId}/complete");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        using var response = await httpClient.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("CloudStorage complete call failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure(new Error("Signature.Storage.Upload", "complete failed."));
-        }
-        return Result.Success();
-    }
-
     // ==================== DTOs privados ====================
-
-    private sealed record InitiateUploadRequestDto(
-        string OriginalName,
-        string ContentType,
-        long SizeBytes,
-        string OwnerType,
-        Guid? OwnerId,
-        string FolderType,
-        int? TaxYear
-    );
-
-    private sealed record InitiatedUploadDto(
-        Guid FileId,
-        Uri UploadUrl,
-        Dictionary<string, string> FormData,
-        DateTime ExpiresAtUtc,
-        string Status
-    );
 
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 }

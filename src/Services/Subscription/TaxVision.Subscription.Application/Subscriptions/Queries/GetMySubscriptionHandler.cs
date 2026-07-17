@@ -15,7 +15,9 @@ public static class GetMySubscriptionHandler
     {
         var subscription = await subscriptions.GetByTenantIdAsync(query.TenantId, ct);
         if (subscription is null)
-            return Result.Failure<MySubscriptionResponse>(new Error("Subscription.NotFound", "Subscription does not exist."));
+            return Result.Failure<MySubscriptionResponse>(
+                new Error("Subscription.NotFound", "Subscription does not exist.")
+            );
 
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         if (plan is null)
@@ -23,7 +25,9 @@ public static class GetMySubscriptionHandler
 
         var planVersion = plan.GetPublishedVersion();
         if (planVersion is null)
-            return Result.Failure<MySubscriptionResponse>(new Error("Plan.NoPublishedVersion", "Plan has no published version."));
+            return Result.Failure<MySubscriptionResponse>(
+                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
+            );
 
         var cyclePrice = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, subscription.BillingCycle);
         var currentCyclePriceUsd = cyclePrice is null ? 0m : cyclePrice.Value.AmountCents / 100m;

@@ -12,8 +12,11 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 /// <summary>Publica el intent de cobro por cada seat que llega a su NextRenewalAtUtc.
 /// Completamente independiente de TenantSubscriptionRenewalJob — un seat puede renovarse
 /// aunque la suscripción base no venza ese mismo día, y viceversa.</summary>
-public sealed class SeatRenewalJob(IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<SeatRenewalJob> logger)
-    : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
+public sealed class SeatRenewalJob(
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<SeatRenewalJob> logger
+) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
 

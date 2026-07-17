@@ -19,7 +19,8 @@ public sealed class AddOnFeatureConfiguration : IEntityTypeConfiguration<AddOnFe
 
         builder.Property(feature => feature.AddOnDefinitionId).IsRequired();
 
-        builder.Property(feature => feature.FeatureKey)
+        builder
+            .Property(feature => feature.FeatureKey)
             .HasConversion(key => key.Value, value => EntitlementKey.Create(value).Value)
             .HasMaxLength(100)
             .IsRequired();

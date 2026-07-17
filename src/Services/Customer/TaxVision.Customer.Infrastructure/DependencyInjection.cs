@@ -2,6 +2,8 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Minio;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Infrastructure.Imports;
@@ -36,12 +38,42 @@ public static class InfrastructureRegistration
         // ---- Imports (bulk) ----
         services.AddScoped<ICustomerImportRepository, CustomerImportRepository>();
         services.AddScoped<ICustomerImportReadService, CustomerImportReadService>();
-        services.AddScoped<IImportFileStore, SqlServerImportFileStore>();
         services.AddScoped<ICustomerDuplicateDetector, SqlServerCustomerDuplicateDetector>();
         services.AddScoped<ICatalogResolver, SqlServerCatalogResolver>();
         services.AddScoped<CsvCustomerImportReader>();
         services.AddScoped<XlsxCustomerImportReader>();
         services.AddScoped<ICustomerImportReaderFactory, CustomerImportReaderFactory>();
+
+        // Archivo de import en CloudStorage (reemplaza CustomerImportFiles/IImportFileStore) —
+        // sube directo a MinIO con credenciales propias; descarga/borrado via HTTP+M2M.
+        services.AddOptions<ServiceAuthClientOptions>().Bind(config.GetSection(ServiceAuthClientOptions.SectionName));
+        services.AddOptions<CloudStorageClientOptions>().Bind(config.GetSection(CloudStorageClientOptions.SectionName));
+        services.AddOptions<CustomerMinioOptions>().Bind(config.GetSection(CustomerMinioOptions.SectionName));
+
+        services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+            }
+        );
+
+        services.AddSingleton<IMinioClient>(sp =>
+        {
+            var opt = sp.GetRequiredService<IOptions<CustomerMinioOptions>>().Value;
+            var builder = new MinioClient().WithEndpoint(opt.Endpoint).WithCredentials(opt.AccessKey, opt.SecretKey);
+            if (opt.UseTls)
+                builder = builder.WithSSL();
+            return builder.Build();
+        });
+
+        services.AddHttpClient<ICustomerImportCloudStorageClient, CustomerImportCloudStorageClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<CloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+            }
+        );
 
         // Cleanup diario (jobs > N dias). Runs como BackgroundService.
         // TODO: cuando exista RealTime Service, agregar SignalR push para notificar completado.
@@ -49,4 +81,6 @@ public static class InfrastructureRegistration
 
         return services;
     }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

@@ -12,7 +12,8 @@ public sealed class SubscriptionPlanConfiguration : IEntityTypeConfiguration<Sub
         builder.ToTable("SubscriptionPlans");
         builder.HasKey(plan => plan.Id);
 
-        builder.Property(plan => plan.Code)
+        builder
+            .Property(plan => plan.Code)
             .HasConversion(code => code.Value, value => PlanCode.Create(value).Value)
             .HasMaxLength(50)
             .IsRequired();
@@ -23,7 +24,8 @@ public sealed class SubscriptionPlanConfiguration : IEntityTypeConfiguration<Sub
         builder.Property(plan => plan.Tier).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(plan => plan.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
 
-        builder.HasMany(plan => plan.Versions)
+        builder
+            .HasMany(plan => plan.Versions)
             .WithOne()
             .HasForeignKey(version => version.PlanId)
             .OnDelete(DeleteBehavior.Restrict);

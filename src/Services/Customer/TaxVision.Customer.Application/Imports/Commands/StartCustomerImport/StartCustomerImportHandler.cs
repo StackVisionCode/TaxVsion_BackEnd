@@ -5,9 +5,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Application.Imports.Dtos;
-using TaxVision.Customer.Application.Imports.Messages;
 using TaxVision.Customer.Domain.Imports;
-using Wolverine;
 
 namespace TaxVision.Customer.Application.Imports.Commands.StartCustomerImport;
 
@@ -16,9 +14,8 @@ public static class StartCustomerImportHandler
     public static async Task<Result<CustomerImportAttemptResponse>> Handle(
         StartCustomerImportCommand cmd,
         ICustomerImportRepository repository,
-        IImportFileStore fileStore,
+        ICustomerImportCloudStorageClient cloudStorage,
         IUnitOfWork unitOfWork,
-        IMessageBus bus,
         IOptionsMonitor<CustomerImportOptions> importOptions,
         ILogger<StartCustomerImportCommand> logger,
         CancellationToken ct
@@ -40,7 +37,6 @@ public static class StartCustomerImportHandler
             attemptResult.Value,
             cmd,
             repository,
-            fileStore,
             unitOfWork,
             logger,
             ct
@@ -50,10 +46,19 @@ public static class StartCustomerImportHandler
 
         var finalAttempt = persistResult.Value;
 
-        // Si fue un race idempotente resuelto, ya existe un job encolado por el ganador; no republicar.
+        // Si fue un race idempotente resuelto, ya existe un upload en curso por el ganador; no repetirlo.
         if (finalAttempt.Id == attemptResult.Value.Id)
         {
-            await QueueWorkerAsync(bus, finalAttempt.Id);
+            // Sube directo a MinIO y publica SaveFileRequestedIntegrationEvent (Fase D) — el
+            // worker de import NO se encola aca: ImportFileScanResultConsumer lo hace cuando
+            // CloudStorage confirma que el archivo paso el escaneo (FileAvailableIntegrationEvent).
+            var uploadResult = await UploadFileAsync(cloudStorage, cmd, finalAttempt.Id, ct);
+            if (uploadResult.IsFailure)
+            {
+                finalAttempt.Fail(uploadResult.Error.Message);
+                await unitOfWork.SaveChangesAsync(ct);
+                return Result.Failure<CustomerImportAttemptResponse>(uploadResult.Error);
+            }
             LogQueued(logger, cmd, finalAttempt.Id);
         }
 
@@ -142,14 +147,12 @@ public static class StartCustomerImportHandler
         CustomerImportAttempt attempt,
         StartCustomerImportCommand cmd,
         ICustomerImportRepository repository,
-        IImportFileStore fileStore,
         IUnitOfWork unitOfWork,
         ILogger logger,
         CancellationToken ct
     )
     {
         await repository.AddAsync(attempt, ct);
-        await fileStore.SaveAsync(attempt.Id, cmd.FileBytes, ct);
 
         try
         {
@@ -180,10 +183,31 @@ public static class StartCustomerImportHandler
         }
     }
 
-    // ============== Fase 5: encolar el worker background ==============
+    // ============== Fase 5: subir el archivo a CloudStorage ==============
 
-    private static Task QueueWorkerAsync(IMessageBus bus, Guid attemptId) =>
-        bus.PublishAsync(new RunCustomerImportMessage(attemptId)).AsTask();
+    private static Task<Result> UploadFileAsync(
+        ICustomerImportCloudStorageClient cloudStorage,
+        StartCustomerImportCommand cmd,
+        Guid attemptId,
+        CancellationToken ct
+    ) =>
+        cloudStorage.UploadAsync(
+            cmd.TenantId,
+            attemptId,
+            cmd.FileBytes,
+            cmd.SourceFileName,
+            ContentTypeFor(cmd.SourceKind),
+            cmd.CreatedByUserId,
+            ct
+        );
+
+    private static string ContentTypeFor(ImportSourceKind kind) =>
+        kind switch
+        {
+            ImportSourceKind.Csv => "text/csv",
+            ImportSourceKind.Xlsx => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            _ => "application/octet-stream",
+        };
 
     private static void LogQueued(ILogger logger, StartCustomerImportCommand cmd, Guid attemptId) =>
         logger.LogInformation(

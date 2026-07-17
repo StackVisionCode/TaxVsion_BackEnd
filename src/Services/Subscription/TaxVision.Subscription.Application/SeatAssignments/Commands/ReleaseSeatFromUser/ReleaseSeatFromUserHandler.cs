@@ -35,28 +35,43 @@ public static class ReleaseSeatFromUserHandler
         if (result.IsFailure)
             return result;
 
-        await bus.PublishAsync(new SeatReleasedFromUserIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            SeatId = seat.Id,
-            UserId = releasedUserId!.Value,
-            ReleasedByUserId = command.ActorUserId,
-            ReleaseReason = command.Reason,
-            ReleasedAtUtc = nowUtc,
-            CorrelationId = correlation.CorrelationId,
-        });
+        await bus.PublishAsync(
+            new SeatReleasedFromUserIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                SeatId = seat.Id,
+                UserId = releasedUserId!.Value,
+                ReleasedByUserId = command.ActorUserId,
+                ReleaseReason = command.Reason,
+                ReleasedAtUtc = nowUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "SubscriptionSeat", seat.Id, "Seat.Released",
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "SubscriptionSeat",
+            seat.Id,
+            "Seat.Released",
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: new { CurrentUserId = releasedUserId },
             after: new { CurrentUserId = seat.CurrentUserId },
-            reason: command.Reason, nowUtc, ct);
+            reason: command.Reason,
+            nowUtc,
+            ct
+        );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
-        logger.LogInformation("Seat {SeatId} released from user {UserId} for tenant {TenantId}.", seat.Id, releasedUserId, command.TenantId);
+        logger.LogInformation(
+            "Seat {SeatId} released from user {UserId} for tenant {TenantId}.",
+            seat.Id,
+            releasedUserId,
+            command.TenantId
+        );
         return Result.Success();
     }
 }

@@ -36,8 +36,11 @@ public static class PlanVersionEntitlements
             .ToDictionary(tier => tier.BillingCycle.ToString(), tier => tier.UnitAmount.Amount);
 
     public static string[] GetEnabledModules(SubscriptionPlanVersion version) =>
-        version.Features
-            .Where(feature => feature.DefaultEnabled && feature.FeatureKey.Value.StartsWith(ModuleFeaturePrefix, StringComparison.Ordinal))
+        version
+            .Features.Where(feature =>
+                feature.DefaultEnabled
+                && feature.FeatureKey.Value.StartsWith(ModuleFeaturePrefix, StringComparison.Ordinal)
+            )
             .Select(feature => feature.FeatureKey.Value[ModuleFeaturePrefix.Length..])
             .ToArray();
 

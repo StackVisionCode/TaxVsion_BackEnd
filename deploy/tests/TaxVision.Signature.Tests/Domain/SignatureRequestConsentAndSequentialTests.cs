@@ -108,18 +108,20 @@ public sealed class SignatureRequestConsentAndSequentialTests
 
     private static SignatureRequest NewInProgressWithConsent()
     {
-        var draft = SignatureRequest.CreateDraft(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "Consent Test",
-            null,
-            SignatureCategory.ConsentToDisclose,
-            Guid.NewGuid(),
-            tokenExpirationHours: 72,
-            requiresSequentialSigning: false,
-            requiresConsent: true,
-            generateCertificate: false
-        ).Value;
+        var draft = SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Consent Test",
+                null,
+                SignatureCategory.ConsentToDisclose,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: false,
+                requiresConsent: true,
+                generateCertificate: false
+            )
+            .Value;
         AddSignerAndReady(draft, "s@example.com");
         draft.Send(DateTime.UtcNow);
         return draft;
@@ -127,18 +129,20 @@ public sealed class SignatureRequestConsentAndSequentialTests
 
     private static SignatureRequest NewInProgressWithoutConsent()
     {
-        var draft = SignatureRequest.CreateDraft(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "No Consent",
-            null,
-            SignatureCategory.Fiscal,
-            Guid.NewGuid(),
-            tokenExpirationHours: 72,
-            requiresSequentialSigning: false,
-            requiresConsent: false,
-            generateCertificate: false
-        ).Value;
+        var draft = SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "No Consent",
+                null,
+                SignatureCategory.Fiscal,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: false,
+                requiresConsent: false,
+                generateCertificate: false
+            )
+            .Value;
         AddSignerAndReady(draft, "s@example.com");
         draft.Send(DateTime.UtcNow);
         return draft;
@@ -146,18 +150,20 @@ public sealed class SignatureRequestConsentAndSequentialTests
 
     private static SignatureRequest NewInProgressSequential()
     {
-        var draft = SignatureRequest.CreateDraft(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "Sequential",
-            null,
-            SignatureCategory.Fiscal,
-            Guid.NewGuid(),
-            tokenExpirationHours: 72,
-            requiresSequentialSigning: true,
-            requiresConsent: false,
-            generateCertificate: false
-        ).Value;
+        var draft = SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Sequential",
+                null,
+                SignatureCategory.Fiscal,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: true,
+                requiresConsent: false,
+                generateCertificate: false
+            )
+            .Value;
         AddSignerWithField(draft, "one@example.com", "Signer One");
         AddSignerWithField(draft, "two@example.com", "Signer Two");
         var hash = DocumentHash.Create(new string('b', 64)).Value;
@@ -175,11 +181,7 @@ public sealed class SignatureRequestConsentAndSequentialTests
 
     private static void AddSignerWithField(SignatureRequest request, string email, string name)
     {
-        var signer = request.AddSigner(
-            SignerEmail.Create(email).Value,
-            SignerFullName.Create(name).Value,
-            null
-        ).Value;
+        var signer = request.AddSigner(SignerEmail.Create(email).Value, SignerFullName.Create(name).Value, null).Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         request.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
     }

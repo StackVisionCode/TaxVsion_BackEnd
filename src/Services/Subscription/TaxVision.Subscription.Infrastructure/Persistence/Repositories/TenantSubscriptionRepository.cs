@@ -12,52 +12,93 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
     public async Task AddAsync(TenantSubscription subscription, CancellationToken ct = default) =>
         await db.Subscriptions.AddAsync(subscription, ct);
 
-    public async Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
         await WithRenewals(db.Subscriptions)
-            .Where(s => s.Status == SubscriptionStatus.Active && s.NextRenewalAtUtc != null && s.NextRenewalAtUtc <= nowUtc)
+            .Where(s =>
+                s.Status == SubscriptionStatus.Active && s.NextRenewalAtUtc != null && s.NextRenewalAtUtc <= nowUtc
+            )
             .OrderBy(s => s.NextRenewalAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantSubscription>> GetExpiredTrialsAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default) =>
-        await db.Subscriptions
-            .Where(s => s.Status == SubscriptionStatus.Trialing && s.TrialEndsAtUtc != null && s.TrialEndsAtUtc <= nowUtc)
+    public async Task<IReadOnlyList<TenantSubscription>> GetExpiredTrialsAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.Where(s =>
+                s.Status == SubscriptionStatus.Trialing && s.TrialEndsAtUtc != null && s.TrialEndsAtUtc <= nowUtc
+            )
             .OrderBy(s => s.TrialEndsAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default) =>
-        await db.Subscriptions
-            .Where(s => s.Status == SubscriptionStatus.GracePeriod && s.GracePeriodEndsAtUtc != null && s.GracePeriodEndsAtUtc <= nowUtc)
+    public async Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.Where(s =>
+                s.Status == SubscriptionStatus.GracePeriod
+                && s.GracePeriodEndsAtUtc != null
+                && s.GracePeriodEndsAtUtc <= nowUtc
+            )
             .OrderBy(s => s.GracePeriodEndsAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default) =>
-        await db.Subscriptions
-            .Where(s => s.Status == SubscriptionStatus.Suspended && s.SuspendedAtUtc != null && s.SuspendedAtUtc <= cutoffUtc)
+    public async Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.Where(s =>
+                s.Status == SubscriptionStatus.Suspended && s.SuspendedAtUtc != null && s.SuspendedAtUtc <= cutoffUtc
+            )
             .OrderBy(s => s.SuspendedAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default) =>
-        await db.Subscriptions
-            .Where(s => s.Status == SubscriptionStatus.Cancelled && s.CurrentPeriodEndUtc <= nowUtc)
+    public async Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.Where(s => s.Status == SubscriptionStatus.Cancelled && s.CurrentPeriodEndUtc <= nowUtc)
             .OrderBy(s => s.CurrentPeriodEndUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(
-        DateTime fromUtc, DateTime toUtc, int batchSize, CancellationToken ct = default) =>
-        await db.Subscriptions
-            .Where(s => s.Status == SubscriptionStatus.Active && s.NextRenewalAtUtc != null
-                && s.NextRenewalAtUtc >= fromUtc && s.NextRenewalAtUtc <= toUtc)
+        DateTime fromUtc,
+        DateTime toUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.Where(s =>
+                s.Status == SubscriptionStatus.Active
+                && s.NextRenewalAtUtc != null
+                && s.NextRenewalAtUtc >= fromUtc
+                && s.NextRenewalAtUtc <= toUtc
+            )
             .OrderBy(s => s.NextRenewalAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
     public async Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
-        int page, int pageSize, CancellationToken ct = default)
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
         var query = db.Subscriptions.AsNoTracking().Where(s => s.Status == SubscriptionStatus.PastDue);
 

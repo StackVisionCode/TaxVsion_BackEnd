@@ -30,7 +30,8 @@ public static class ReassignSeatHandler
             return Result.Failure(new Error("Seat.NotFound", "Seat does not exist."));
 
         var previousUserId = seat.CurrentUserId;
-        var cooldownDays = (await settingsRepository.GetByTenantIdAsync(command.TenantId, ct))?.SeatReassignmentCooldownDays ?? 0;
+        var cooldownDays =
+            (await settingsRepository.GetByTenantIdAsync(command.TenantId, ct))?.SeatReassignmentCooldownDays ?? 0;
         var nowUtc = DateTime.UtcNow;
 
         var result = seat.ReassignSeat(command.ToUserId, command.ActorUserId, nowUtc, command.Reason, cooldownDays);
@@ -39,43 +40,58 @@ public static class ReassignSeatHandler
 
         if (previousUserId is not null)
         {
-            await bus.PublishAsync(new SeatReleasedFromUserIntegrationEvent
+            await bus.PublishAsync(
+                new SeatReleasedFromUserIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    SeatId = seat.Id,
+                    UserId = previousUserId.Value,
+                    ReleasedByUserId = command.ActorUserId,
+                    ReleaseReason = command.Reason,
+                    ReleasedAtUtc = nowUtc,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
+        }
+
+        await bus.PublishAsync(
+            new SeatAssignedToUserIntegrationEvent
             {
                 TenantId = command.TenantId,
                 SeatId = seat.Id,
-                UserId = previousUserId.Value,
-                ReleasedByUserId = command.ActorUserId,
-                ReleaseReason = command.Reason,
-                ReleasedAtUtc = nowUtc,
+                UserId = command.ToUserId,
+                AssignedByUserId = command.ActorUserId,
+                SeatType = seat.Type.ToString(),
+                AssignedAtUtc = nowUtc,
+                SeatExpiresAtUtc = seat.CurrentPeriodEndUtc,
                 CorrelationId = correlation.CorrelationId,
-            });
-        }
-
-        await bus.PublishAsync(new SeatAssignedToUserIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            SeatId = seat.Id,
-            UserId = command.ToUserId,
-            AssignedByUserId = command.ActorUserId,
-            SeatType = seat.Type.ToString(),
-            AssignedAtUtc = nowUtc,
-            SeatExpiresAtUtc = seat.CurrentPeriodEndUtc,
-            CorrelationId = correlation.CorrelationId,
-        });
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "SubscriptionSeat", seat.Id, "Seat.Reassigned",
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "SubscriptionSeat",
+            seat.Id,
+            "Seat.Reassigned",
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: new { CurrentUserId = previousUserId },
             after: new { CurrentUserId = seat.CurrentUserId },
-            reason: command.Reason, nowUtc, ct);
+            reason: command.Reason,
+            nowUtc,
+            ct
+        );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Seat {SeatId} reassigned from {PreviousUserId} to {NewUserId} for tenant {TenantId}.",
-            seat.Id, previousUserId, command.ToUserId, command.TenantId
+            seat.Id,
+            previousUserId,
+            command.ToUserId,
+            command.TenantId
         );
         return Result.Success();
     }

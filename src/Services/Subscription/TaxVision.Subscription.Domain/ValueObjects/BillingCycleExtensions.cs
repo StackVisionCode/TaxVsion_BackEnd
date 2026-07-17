@@ -9,7 +9,8 @@ public static class BillingCycleExtensions
             BillingCycle.Quarterly => fromUtc.AddMonths(3),
             BillingCycle.Yearly => fromUtc.AddYears(1),
             BillingCycle.Custom => fromUtc.AddDays(
-                customDays ?? throw new InvalidOperationException("Custom billing cycle requires customDays.")),
+                customDays ?? throw new InvalidOperationException("Custom billing cycle requires customDays.")
+            ),
             _ => throw new ArgumentOutOfRangeException(nameof(cycle), cycle, "Unsupported billing cycle."),
         };
 }

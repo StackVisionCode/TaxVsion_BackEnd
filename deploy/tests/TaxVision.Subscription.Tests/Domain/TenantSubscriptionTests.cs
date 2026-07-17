@@ -25,7 +25,9 @@ public sealed class TenantSubscriptionTests
     {
         var (starter, starterVersion) = CreatePublishedPlan("starter");
         var (pro, proVersion) = CreatePublishedPlan("pro");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
 
         var result = subscription.ChangePlan(pro, proVersion, null, Guid.Empty, DateTime.UtcNow);
 
@@ -38,7 +40,9 @@ public sealed class TenantSubscriptionTests
     public void SuspendForPolicyViolation_during_trial_is_allowed()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
 
         var result = subscription.SuspendForPolicyViolation("abuse", Guid.Empty, DateTime.UtcNow);
 
@@ -50,7 +54,9 @@ public sealed class TenantSubscriptionTests
     public void CancelImmediately_on_an_already_cancelled_subscription_fails()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
         subscription.CancelImmediately("tenant requested", Guid.Empty, DateTime.UtcNow);
 
         var result = subscription.CancelImmediately("tenant requested again", Guid.Empty, DateTime.UtcNow);
@@ -63,9 +69,16 @@ public sealed class TenantSubscriptionTests
     public void ReactivateAfterAdminReview_requires_suspended_status()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
 
-        var result = subscription.ReactivateAfterAdminReview(DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow);
+        var result = subscription.ReactivateAfterAdminReview(
+            DateTime.UtcNow,
+            DateTime.UtcNow.AddMonths(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Subscription.InvalidTransition", result.Error.Code);
@@ -78,11 +91,16 @@ public sealed class TenantSubscriptionTests
         // confirme el cobro del precio completo.
         var (starter, starterVersion) = CreatePublishedPlan("starter");
         var (pro, proVersion) = CreatePublishedPlan("pro");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
 
         var result = subscription.RequestUpgrade(
-            pro, proVersion, null, chargeAmountCents: 8000, "usd", "plan-change-token-1", Guid.Empty, DateTime.UtcNow);
+            
+            pro,
+            proVersion,
+            null, chargeAmountCents: 8000, "usd", "plan-change-token-1",
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("starter", subscription.PlanCode);

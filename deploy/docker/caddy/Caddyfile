@@ -1,13 +1,29 @@
-# Unico punto de entrada publico del stack. TLS automatico (Let's Encrypt) sin
-# tocar nada mas — Caddy renueva los certificados solo. Requiere que el DNS de
-# {$TAXVISION_DOMAIN} ya apunte a este server antes del primer arranque.
+# Unico punto de entrada publico del stack. TLS WILDCARD automatico (Let's
+# Encrypt via desafio DNS-01 en Cloudflare) — Caddy emite y renueva un unico
+# certificado que cubre TANTO el apex (taxprocore.com, usado hoy por
+# TAXVISION_DOMAIN=api.taxprocore.com) COMO cualquier subdominio de tenant
+# (oficina1.taxprocore.com, oficina2.taxprocore.com, ...) sin tener que volver
+# a tocar este archivo cuando se de de alta una oficina nueva — el DNS ya
+# resuelve por el wildcard `CNAME *` (o A) que apunta a este mismo server;
+# Caddy no necesita saber los subdominios de antemano porque DNS-01 no
+# depende del Host de la request entrante (a diferencia de HTTP-01, que si).
+#
+# Requiere: (1) el registro wildcard DNS ya apuntando a este server, (2)
+# CLOUDFLARE_API_TOKEN (permiso Zone:DNS:Edit sobre la zona) — ver
+# deploy/docker/caddy/Dockerfile para el build de Caddy con el plugin DNS.
 #
 # Los 3 prefijos de bucket de MinIO se rutean directo al contenedor interno
 # (proxy transparente de bytes, sin logica de aplicacion) porque las URLs
 # presignadas que genera CloudStorage usan el nombre del bucket como primer
 # segmento de path — no pisan ninguna ruta del Gateway (/auth, /customers,
-# /storage, etc). Todo lo demas va al Gateway.
-{$TAXVISION_DOMAIN:api.taxprocore.com} {
+# /storage, etc). Todo lo demas (incluida la resolucion de tenant por Host
+# que hace Auth) va al Gateway, que ya forwardea el Host original — Caddy
+# reenvia el Host real por defecto en reverse_proxy, sin configuracion extra.
+{$TAXVISION_BASE_DOMAIN:taxprocore.com}, *.{$TAXVISION_BASE_DOMAIN:taxprocore.com} {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+
 	@minio path /taxvision-storage/* /taxvision-temp/* /taxvision-quarantine/*
 	reverse_proxy @minio minio:9000
 

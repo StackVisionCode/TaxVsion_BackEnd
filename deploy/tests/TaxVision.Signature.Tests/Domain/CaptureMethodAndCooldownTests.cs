@@ -123,7 +123,13 @@ public sealed class CaptureMethodAndCooldownTests
         var request = NewInProgressWithPhone();
         var signer = request.Signers.Single();
         var now = DateTime.UtcNow;
-        request.IssueVerificationChallenge(signer.Id, SignerVerificationMethod.SmsOtp, "hash-1", now, TimeSpan.FromMinutes(10));
+        request.IssueVerificationChallenge(
+            signer.Id,
+            SignerVerificationMethod.SmsOtp,
+            "hash-1",
+            now,
+            TimeSpan.FromMinutes(10)
+        );
 
         var again = request.IssueVerificationChallenge(
             signer.Id,
@@ -143,7 +149,13 @@ public sealed class CaptureMethodAndCooldownTests
         var request = NewInProgressWithPhone();
         var signer = request.Signers.Single();
         var now = DateTime.UtcNow;
-        request.IssueVerificationChallenge(signer.Id, SignerVerificationMethod.SmsOtp, "hash-sms", now, TimeSpan.FromMinutes(10));
+        request.IssueVerificationChallenge(
+            signer.Id,
+            SignerVerificationMethod.SmsOtp,
+            "hash-sms",
+            now,
+            TimeSpan.FromMinutes(10)
+        );
 
         var email = request.IssueVerificationChallenge(
             signer.Id,
@@ -162,7 +174,13 @@ public sealed class CaptureMethodAndCooldownTests
         var request = NewInProgressWithPhone();
         var signer = request.Signers.Single();
         var now = DateTime.UtcNow;
-        request.IssueVerificationChallenge(signer.Id, SignerVerificationMethod.SmsOtp, "hash-old", now, TimeSpan.FromMinutes(10));
+        request.IssueVerificationChallenge(
+            signer.Id,
+            SignerVerificationMethod.SmsOtp,
+            "hash-old",
+            now,
+            TimeSpan.FromMinutes(10)
+        );
 
         var afterCooldown = request.IssueVerificationChallenge(
             signer.Id,
@@ -179,16 +197,23 @@ public sealed class CaptureMethodAndCooldownTests
 
     private static SignatureRequest NewInProgress()
     {
-        var draft = SignatureRequest.CreateDraft(
-            Guid.NewGuid(), Guid.NewGuid(), "Test", null, SignatureCategory.Fiscal,
-            Guid.NewGuid(), tokenExpirationHours: 72, requiresSequentialSigning: false,
-            requiresConsent: false, generateCertificate: false
-        ).Value;
-        var signer = draft.AddSigner(
-            SignerEmail.Create("s@example.com").Value,
-            SignerFullName.Create("The Signer").Value,
-            null
-        ).Value;
+        var draft = SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Test",
+                null,
+                SignatureCategory.Fiscal,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: false,
+                requiresConsent: false,
+                generateCertificate: false
+            )
+            .Value;
+        var signer = draft
+            .AddSigner(SignerEmail.Create("s@example.com").Value, SignerFullName.Create("The Signer").Value, null)
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);
@@ -198,17 +223,28 @@ public sealed class CaptureMethodAndCooldownTests
 
     private static SignatureRequest NewInProgressWithPhone()
     {
-        var draft = SignatureRequest.CreateDraft(
-            Guid.NewGuid(), Guid.NewGuid(), "Test", null, SignatureCategory.Fiscal,
-            Guid.NewGuid(), tokenExpirationHours: 72, requiresSequentialSigning: false,
-            requiresConsent: false, generateCertificate: false
-        ).Value;
-        var signer = draft.AddSigner(
-            SignerEmail.Create("s@example.com").Value,
-            SignerFullName.Create("The Signer").Value,
-            null,
-            SignerPhoneNumber.Create("+17865550123").Value
-        ).Value;
+        var draft = SignatureRequest
+            .CreateDraft(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Test",
+                null,
+                SignatureCategory.Fiscal,
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: false,
+                requiresConsent: false,
+                generateCertificate: false
+            )
+            .Value;
+        var signer = draft
+            .AddSigner(
+                SignerEmail.Create("s@example.com").Value,
+                SignerFullName.Create("The Signer").Value,
+                null,
+                SignerPhoneNumber.Create("+17865550123").Value
+            )
+            .Value;
         var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
         draft.PlaceField(signer.Id, SignatureFieldKind.Signature, pos, null, false);
         draft.MarkReadyForSending(DocumentHash.Create(new string('a', 64)).Value);

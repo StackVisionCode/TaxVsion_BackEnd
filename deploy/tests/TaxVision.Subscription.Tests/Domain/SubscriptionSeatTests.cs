@@ -74,6 +74,7 @@ public sealed class SubscriptionSeatTests
                 BillingCycle.Monthly,
                 autoRenew: true,
                 Guid.Empty,
-                DateTime.UtcNow)
+                DateTime.UtcNow
+            )
             .Value;
 }

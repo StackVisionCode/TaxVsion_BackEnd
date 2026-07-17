@@ -62,10 +62,14 @@ public sealed class PlanChangeRequest : BaseEntity
         string paymentIdempotencyKey)
     {
         if (tenantSubscriptionId == Guid.Empty)
-            return Result.Failure<PlanChangeRequest>(new Error("PlanChangeRequest.InvalidSubscription", "TenantSubscriptionId is required."));
+            return Result.Failure<PlanChangeRequest>(
+                new Error("PlanChangeRequest.InvalidSubscription", "TenantSubscriptionId is required.")
+            );
 
         if (tenantId == Guid.Empty)
-            return Result.Failure<PlanChangeRequest>(new Error("PlanChangeRequest.InvalidTenant", "TenantId is required."));
+            return Result.Failure<PlanChangeRequest>(
+                new Error("PlanChangeRequest.InvalidTenant", "TenantId is required.")
+            );
 
         if (fromPlanId == toPlanId && fromPlanVersionId == toPlanVersionId && toBillingCycle is null)
             return Result.Failure<PlanChangeRequest>(new Error("PlanChangeRequest.SamePlan", "Target plan is the same as the current plan."));

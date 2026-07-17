@@ -31,7 +31,15 @@ public static class RecalculateEntitlementsHandler
         var previous = await snapshots.GetByTenantIdAsync(command.TenantId, ct);
 
         var rebuilt = await EntitlementSnapshotBuilder.BuildAsync(
-            command.TenantId, subscriptions, plans, seats, tenantAddOns, addOnDefinitions, snapshots, ct);
+            command.TenantId,
+            subscriptions,
+            plans,
+            seats,
+            tenantAddOns,
+            addOnDefinitions,
+            snapshots,
+            ct
+        );
         if (rebuilt.IsFailure)
             return Result.Failure(rebuilt.Error);
 
@@ -41,23 +49,27 @@ public static class RecalculateEntitlementsHandler
         await snapshots.UpsertAsync(snapshot, ct);
         await cache.RemoveAsync(EntitlementCacheKeys.Summary(command.TenantId), ct);
 
-        await bus.PublishAsync(new TenantEntitlementsChangedIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            RevisionNumber = snapshot.RevisionNumber,
-            ChangedKeys = changedKeys,
-            PlanCode = snapshot.PlanCode,
-            SubscriptionStatus = snapshot.SubscriptionStatus,
-            SeatCount = snapshot.SeatCount,
-            AvailableSeatCount = snapshot.AvailableSeatCount,
-            EntitlementValues = BuildEntitlementValues(snapshot),
-            CorrelationId = correlation.CorrelationId,
-        });
+        await bus.PublishAsync(
+            new TenantEntitlementsChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                RevisionNumber = snapshot.RevisionNumber,
+                ChangedKeys = changedKeys,
+                PlanCode = snapshot.PlanCode,
+                SubscriptionStatus = snapshot.SubscriptionStatus,
+                SeatCount = snapshot.SeatCount,
+                AvailableSeatCount = snapshot.AvailableSeatCount,
+                EntitlementValues = BuildEntitlementValues(snapshot),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "Entitlement snapshot recalculated for tenant {TenantId}: revision {Revision}, {ChangedCount} key(s) changed.",
-            command.TenantId, snapshot.RevisionNumber, changedKeys.Length
+            command.TenantId,
+            snapshot.RevisionNumber,
+            changedKeys.Length
         );
         return Result.Success();
     }

@@ -51,10 +51,13 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-    # El puerto 9000 (API S3) NO se publica al host — Caddy le pega a minio:9000
-    # directo por la red interna de docker, no necesita ports: para eso. El 9001
-    # (consola de administracion) queda solo loopback, via VPN+SSH.
+    # 9000 (API S3) solo loopback: los servicios .NET/Node corridos con `dotnet run`/
+    # `npm run dev` en el host (no en Docker) necesitan pegarle a localhost:9000 —
+    # sin esto ningun servicio local (ni siquiera CloudStorage) puede alcanzar MinIO.
+    # En produccion Caddy le pega a minio:9000 por la red interna de docker (no usa
+    # este mapeo), asi que loopback-only no afloja nada ahi. 9001 (consola) igual.
     ports:
+      - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
@@ -311,13 +314,24 @@ services:
       ServiceAuth__Clients__2__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__2__Permissions__1: cloudstorage.file.view
       ServiceAuth__Clients__2__Permissions__2: cloudstorage.file.upload
-      # Cliente de servicio (M2M) para Communication (communication-worker): sube grabaciones
-      # de meetings y adjuntos de chat a CloudStorage (cloudstorage-client.ts).
-      ServiceAuth__Clients__3__ClientId: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
-      ServiceAuth__Clients__3__Secret: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:-}
-      ServiceAuth__Clients__3__Permissions__0: cloudstorage.file.upload
-      ServiceAuth__Clients__3__Permissions__1: cloudstorage.file.download
-      ServiceAuth__Clients__3__Permissions__2: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Customer: sube el Excel/CSV de import directo a MinIO
+      # con credenciales propias (ver Customer__Minio__* mas abajo) y solo usa este token para
+      # descargarlo de vuelta (parseo de filas) y borrarlo al terminar — nunca para subir.
+      ServiceAuth__Clients__3__ClientId: ${CUSTOMER_SERVICE_CLIENT_ID:-customer-worker}
+      ServiceAuth__Clients__3__Secret: ${CUSTOMER_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__3__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__3__Permissions__1: cloudstorage.file.view
+      ServiceAuth__Clients__3__Permissions__2: cloudstorage.file.delete
+      # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
+      # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
+      # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
+      # faltan o son invalidos, el hosted service tira InvalidOperationException al
+      # arrancar y tumba todo auth-api. Activar explicitamente (PLATFORM_BOOTSTRAP_ENABLED=true)
+      # solo para el deploy que crea al primer PlatformAdmin, despues se puede dejar
+      # en true sin riesgo — el service detecta que ya existe un PlatformAdmin y hace no-op.
+      PlatformBootstrap__Enabled: ${PLATFORM_BOOTSTRAP_ENABLED:-false}
+      PlatformBootstrap__Email: ${PLATFORM_BOOTSTRAP_EMAIL:-}
+      PlatformBootstrap__InvitationToken: ${PLATFORM_BOOTSTRAP_INVITATION_TOKEN:-}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # Bootstrap del primer PlatformAdmin (README §"Bootstrap del PlatformAdmin") — crea una
       # invitacion pendiente al arrancar SI todavia no existe ningun PlatformAdmin. Deshabilitar
@@ -358,6 +372,22 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Microservicio CloudStorage donde vive el archivo de import mientras se procesa.
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # Credenciales de servicio (M2M) — solo para DownloadAsync/DeleteAsync del archivo de
+      # import (el UploadAsync va directo a MinIO, ver Customer__Minio__* abajo).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${CUSTOMER_SERVICE_CLIENT_ID:-customer-worker}
+      ServiceAuthClient__ClientSecret: ${CUSTOMER_SERVICE_CLIENT_SECRET:-}
+      # Credenciales MinIO propias para el archivo de import (IAM scoped a
+      # taxvision-temp/customer/*, ver deploy/docker/minio/policies/customer-source.json +
+      # provision-service-accounts.sh). NUNCA MINIO_ROOT_USER/PASSWORD.
+      Customer__Minio__Endpoint: minio:9000
+      Customer__Minio__UseTls: "false"
+      Customer__Minio__AccessKey: customer-worker
+      Customer__Minio__SecretKey: ${CUSTOMER_MINIO_SECRET:?Set CUSTOMER_MINIO_SECRET in .env}
+      Customer__Minio__TempBucket: taxvision-temp
+      Customer__Minio__SourcePrefix: customer
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -366,6 +396,8 @@ services:
       sqlserver:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -434,12 +466,23 @@ services:
       # Clave de cifrado de secretos del módulo email (config SMTP/API, tokens OAuth).
       # Base64 de 32 bytes; requerida para los endpoints de configuración/cuentas de correo.
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
-      # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts.
+      # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts
+      # (contexto de request, JWT del usuario/M2M — sin cambios en la Fase D3).
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
-      # Credenciales de servicio (M2M) para que el worker de sync obtenga tokens del Auth (adjuntos→CloudStorage).
+      # Credenciales de servicio (M2M) — siguen haciendo falta para el CloudStorageClient de
+      # arriba (plantillas/layouts); los adjuntos IMAP entrantes (Fase D3) ya no las usan.
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
       ServiceAuthClient__ClientSecret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
+      # Fase D3 — credenciales MinIO propias para adjuntos IMAP entrantes (IAM scoped a
+      # taxvision-temp/notification/*, ver deploy/docker/minio/policies/notification-source.json
+      # + provision-service-accounts.sh). NUNCA MINIO_ROOT_USER/PASSWORD.
+      Notification__Minio__Endpoint: minio:9000
+      Notification__Minio__UseTls: "false"
+      Notification__Minio__AccessKey: notification-worker
+      Notification__Minio__SecretKey: ${NOTIFICATION_MINIO_SECRET:?Set NOTIFICATION_MINIO_SECRET in .env}
+      Notification__Minio__TempBucket: taxvision-temp
+      Notification__Minio__SourcePrefix: notification
       # Secreto de los webhooks de tracking (delivered/opened/clicked/bounced).
       EmailWebhook__Secret: ${EMAIL_WEBHOOK_SECRET:-}
       # Credenciales de las apps OAuth para refrescar tokens de Gmail/Graph (solo refresh; el token inicial va en connect).
@@ -456,6 +499,8 @@ services:
       sqlserver:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -538,6 +583,15 @@ services:
       Signature__ServiceAuth__ClientId: ${SIGNATURE_SERVICE_CLIENT_ID:-signature-worker}
       Signature__ServiceAuth__ClientSecret: ${SIGNATURE_SERVICE_CLIENT_SECRET:-}
       Signature__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Fase D1 — credenciales MinIO propias para subir PDFs sellados (IAM scoped a
+      # taxvision-temp/signature/*, ver deploy/docker/minio/policies/signature-source.json
+      # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
+      Signature__Minio__Endpoint: minio:9000
+      Signature__Minio__UseTls: "false"
+      Signature__Minio__AccessKey: signature-worker
+      Signature__Minio__SecretKey: ${SIGNATURE_MINIO_SECRET:?Set SIGNATURE_MINIO_SECRET in .env}
+      Signature__Minio__TempBucket: taxvision-temp
+      Signature__Minio__SourcePrefix: signature
       # Certificado PAdES-B (CMS signing) montado desde /run/secrets — ver seccion 4 del plan
       # de deploy. Sin CertificatePath configurado, el registro del CMS signer queda inerte
       # (no crashea, pero el sellado no funciona) — ver DependencyInjection.cs linea 73-83.
@@ -554,6 +608,8 @@ services:
       rabbitmq:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -670,12 +726,13 @@ services:
       COMMUNICATION_JWT_ISSUER: TaxVision.Auth
       COMMUNICATION_JWT_AUDIENCE: TaxVision.Services
       COMMUNICATION_JWKS_URI: http://auth-api:8080/auth/.well-known/jwks.json
-      COMMUNICATION_SERVICE_AUTH_CLIENT_ID: communication-worker
-      COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:-}
-      COMMUNICATION_AUTH_BASE_URL: http://auth-api:8080
-      COMMUNICATION_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
       COMMUNICATION_TURN_URL: ${COMMUNICATION_TURN_URL:-}
       COMMUNICATION_TURN_STATIC_AUTH_SECRET: ${COMMUNICATION_TURN_STATIC_AUTH_SECRET:-}
+      # Fallback numerico explicito (no vacio): COMMUNICATION_TURN_TTL_SECONDS usa
+      # z.coerce.number().positive() en config.ts — un string vacio coacciona a 0,
+      # que falla esa validacion y tumba el arranque, a diferencia de TURN_URL/
+      # TURN_STATIC_AUTH_SECRET arriba que son string().optional() (vacio es valido).
+      COMMUNICATION_TURN_TTL_SECONDS: ${COMMUNICATION_TURN_TTL_SECONDS:-300}
       # Temporal (pedido explicito): mismo criterio que Cors__Origins del gateway.
       COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-http://localhost:5173,http://localhost:4200}
       # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
@@ -719,7 +776,21 @@ services:
       TRANSCRIPT_WORKER_AUTH_BASE_URL: http://auth-api:8080
       TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_ID: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
       TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET:-}
+      # downloadFile (bajar la grabacion original) sigue via HTTP+M2M contra esta
+      # base URL. uploadFile (Fase D2) ya no la usa — sube directo a MinIO y
+      # publica a la cola dedicada de abajo.
       TRANSCRIPT_WORKER_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      TRANSCRIPT_WORKER_CLOUDSTORAGE_EXTERNAL_QUEUE: cloudstorage-external-uploads
+      # Fase D2 — credenciales MinIO propias (IAM scoped a taxvision-temp/transcript/*,
+      # ver deploy/docker/minio/policies/transcript-source.json + provision-service-accounts.sh).
+      # NUNCA MINIO_ROOT_USER/PASSWORD.
+      TRANSCRIPT_WORKER_MINIO_ENDPOINT: minio
+      TRANSCRIPT_WORKER_MINIO_PORT: "9000"
+      TRANSCRIPT_WORKER_MINIO_USE_SSL: "false"
+      TRANSCRIPT_WORKER_MINIO_ACCESS_KEY: communication-transcript-worker
+      TRANSCRIPT_WORKER_MINIO_SECRET_KEY: ${TRANSCRIPT_WORKER_MINIO_SECRET:?Set TRANSCRIPT_WORKER_MINIO_SECRET in .env}
+      TRANSCRIPT_WORKER_MINIO_TEMP_BUCKET: taxvision-temp
+      TRANSCRIPT_WORKER_MINIO_SOURCE_PREFIX: transcript
       # Modelo/binario/idioma se dejan en los defaults del Dockerfile
       # (ggml-base, whisper-cli, auto-detect) salvo que se sobreescriban aca.
     depends_on:
@@ -729,8 +800,41 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
       auth-api:
         condition: service_started
+    networks:
+      - taxvision-network
+
+  # Fase D0 (cerrado en la revision post-D4) — crea/actualiza las cuentas de
+  # servicio scoped de MinIO para Signature/Notification/CommunicationTranscriptWorker
+  # (ver deploy/docker/minio/provision-service-accounts.sh + policies/*.json).
+  # Antes esto era un paso manual que el operador podia olvidarse de correr —
+  # ahora es parte del deploy, igual que "migrations" de abajo. Idempotente:
+  # correrlo de nuevo en cada deploy no rompe nada (mc admin user add
+  # actualiza la password si el user ya existe; policy create/attach tambien
+  # son no-ops si ya estan). Usa `minio/mc` oficial, no una imagen propia —
+  # es solo un CLI de un solo uso, no un servicio de larga duracion.
+  minio-provision:
+    profiles:
+      - tools
+    image: minio/mc:latest
+    entrypoint: ["sh", "/provision/provision-service-accounts.sh"]
+    environment:
+      MINIO_ALIAS: taxvision
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      SIGNATURE_MINIO_SECRET: ${SIGNATURE_MINIO_SECRET:?Set SIGNATURE_MINIO_SECRET in .env}
+      NOTIFICATION_MINIO_SECRET: ${NOTIFICATION_MINIO_SECRET:?Set NOTIFICATION_MINIO_SECRET in .env}
+      TRANSCRIPT_WORKER_MINIO_SECRET: ${TRANSCRIPT_WORKER_MINIO_SECRET:?Set TRANSCRIPT_WORKER_MINIO_SECRET in .env}
+      CUSTOMER_MINIO_SECRET: ${CUSTOMER_MINIO_SECRET:?Set CUSTOMER_MINIO_SECRET in .env}
+    volumes:
+      - ./minio:/provision:ro
+    depends_on:
+      minio:
+        condition: service_healthy
     networks:
       - taxvision-network
 
@@ -810,10 +914,22 @@ services:
       - taxvision-network
 
   caddy:
-    image: caddy:2-alpine
+    # Build custom (no la imagen caddy:2-alpine estandar) — agrega el plugin
+    # caddy-dns/cloudflare, necesario para el certificado WILDCARD via DNS-01
+    # (ver deploy/docker/caddy/Dockerfile y Caddyfile). Sin esto, Caddy solo
+    # puede emitir TLS para el Host exacto que ya conoce (HTTP-01), nunca para
+    # los subdominios de tenant dinamicos que TenantDomain resuelve en Auth.
+    build:
+      context: ./caddy
     container_name: taxvision-caddy
     environment:
-      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxprocore.com}
+      TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
+      # Zone:DNS:Edit sobre la zona — SOLO para el reto DNS-01 del certificado
+      # wildcard. Token distinto (y con permisos mas chicos) que el que usa
+      # Auth para provisionar custom hostnames (ver CloudflareOptions en
+      # TaxVision.Auth.Infrastructure/Cloudflare) — no reusar el mismo token
+      # entre los dos usos aunque compartan la misma cuenta de Cloudflare.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_DNS_API_TOKEN:?Set CLOUDFLARE_DNS_API_TOKEN in .env}
     ports:
       - "80:80"
       - "443:443"

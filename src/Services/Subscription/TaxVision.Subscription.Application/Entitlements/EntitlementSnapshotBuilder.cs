@@ -23,16 +23,21 @@ public static class EntitlementSnapshotBuilder
         ITenantAddOnRepository tenantAddOns,
         IAddOnDefinitionRepository addOnDefinitions,
         ITenantEntitlementSnapshotRepository snapshots,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(tenantId, ct);
         if (subscription is null)
-            return Result.Failure<TenantEntitlementSnapshot>(new Error("Subscription.NotFound", "Subscription does not exist."));
+            return Result.Failure<TenantEntitlementSnapshot>(
+                new Error("Subscription.NotFound", "Subscription does not exist.")
+            );
 
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         var planVersion = plan?.GetPublishedVersion();
         if (plan is null || planVersion is null)
-            return Result.Failure<TenantEntitlementSnapshot>(new Error("Plan.NoPublishedVersion", "Plan has no published version."));
+            return Result.Failure<TenantEntitlementSnapshot>(
+                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
+            );
 
         var entries = SeedEntriesFromPlan(planVersion);
         await MergeActiveAddOnsAsync(tenantId, tenantAddOns, addOnDefinitions, entries, ct);
@@ -49,7 +54,8 @@ public static class EntitlementSnapshotBuilder
             seatCount,
             availableSeatCount,
             entries.Values.ToList(),
-            DateTime.UtcNow);
+            DateTime.UtcNow
+        );
     }
 
     private static Dictionary<string, EntitlementEntry> SeedEntriesFromPlan(SubscriptionPlanVersion planVersion)
@@ -59,13 +65,25 @@ public static class EntitlementSnapshotBuilder
         foreach (var entitlement in planVersion.Entitlements)
         {
             entries[entitlement.Key.Value] = new EntitlementEntry(
-                entitlement.Key, entitlement.ValueType, entitlement.DefaultValue, EntitlementStatus.Active, EntitlementSource.Plan, ExpiresAtUtc: null);
+                entitlement.Key,
+                entitlement.ValueType,
+                entitlement.DefaultValue,
+                EntitlementStatus.Active,
+                EntitlementSource.Plan,
+                ExpiresAtUtc: null
+            );
         }
 
         foreach (var feature in planVersion.Features)
         {
             entries[feature.FeatureKey.Value] = new EntitlementEntry(
-                feature.FeatureKey, EntitlementValueType.Bool, feature.DefaultEnabled.ToString(), EntitlementStatus.Active, EntitlementSource.Plan, ExpiresAtUtc: null);
+                feature.FeatureKey,
+                EntitlementValueType.Bool,
+                feature.DefaultEnabled.ToString(),
+                EntitlementStatus.Active,
+                EntitlementSource.Plan,
+                ExpiresAtUtc: null
+            );
         }
 
         return entries;
@@ -76,7 +94,8 @@ public static class EntitlementSnapshotBuilder
         ITenantAddOnRepository tenantAddOns,
         IAddOnDefinitionRepository addOnDefinitions,
         Dictionary<string, EntitlementEntry> entries,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var addOns = await tenantAddOns.GetByTenantIdAsync(tenantId, ct);
 
@@ -96,20 +115,33 @@ public static class EntitlementSnapshotBuilder
 
                 entries.TryGetValue(feature.FeatureKey.Value, out var existing);
                 entries[feature.FeatureKey.Value] = EntitlementMerger.MergeAddOnValue(
-                    existing, feature.FeatureKey, EntitlementValueType.Bool, "true", AddOnMergeStrategy.Or);
+                    existing,
+                    feature.FeatureKey,
+                    EntitlementValueType.Bool,
+                    "true",
+                    AddOnMergeStrategy.Or
+                );
             }
 
             foreach (var entitlement in definition.Entitlements)
             {
                 entries.TryGetValue(entitlement.Key.Value, out var existing);
                 entries[entitlement.Key.Value] = EntitlementMerger.MergeAddOnValue(
-                    existing, entitlement.Key, entitlement.ValueType, entitlement.Value, entitlement.MergeStrategy);
+                    existing,
+                    entitlement.Key,
+                    entitlement.ValueType,
+                    entitlement.Value,
+                    entitlement.MergeStrategy
+                );
             }
         }
     }
 
     private static async Task<(int SeatCount, int AvailableSeatCount)> CountSeatsAsync(
-        Guid tenantId, ISubscriptionSeatRepository seats, CancellationToken ct)
+        Guid tenantId,
+        ISubscriptionSeatRepository seats,
+        CancellationToken ct
+    )
     {
         var tenantSeats = await seats.GetByTenantIdAsync(tenantId, ct);
 

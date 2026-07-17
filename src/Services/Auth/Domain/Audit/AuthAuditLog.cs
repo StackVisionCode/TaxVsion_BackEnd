@@ -92,4 +92,24 @@ public static class AuthAuditAction
     public const string RoleCreated = "auth.role.created";
     public const string RoleUpdated = "auth.role.updated";
     public const string RoleDeactivated = "auth.role.deactivated";
+
+    // Fase A6 — ciclo de vida de dominios (TargetType="TenantDomain", TargetId=domain.Id).
+    // Detalles de Cloudflare (status/sslStatus/error) van en DetailsJson: son un detalle
+    // de implementación detrás del ACL, no vocabulario propio de auditoría.
+    public const string TenantDomainCreated = "tenantdomain.created";
+    public const string TenantDomainVerified = "tenantdomain.verified";
+    public const string TenantDomainActivated = "tenantdomain.activated";
+    public const string TenantDomainDisabled = "tenantdomain.disabled";
+    public const string TenantDomainProvisioningFailed = "tenantdomain.provisioning_failed";
+    public const string TenantSubdomainChanged = "tenantdomain.subdomain_changed";
+
+    /// <summary>
+    /// Solo se registra en falla (Host Header Injection / subdominio desconocido). Los
+    /// éxitos NO se auditan uno por uno — inundarían la tabla en tráfico normal; ver
+    /// TenantHostResolutionMiddleware.
+    /// </summary>
+    public const string TenantResolutionFailed = "tenantdomain.resolution_failed";
+
+    /// <summary>Fase L1.4 — ver TenantTermsAcceptance/TermsAcceptanceMiddleware.</summary>
+    public const string TermsAccepted = "tenant.terms_accepted";
 }

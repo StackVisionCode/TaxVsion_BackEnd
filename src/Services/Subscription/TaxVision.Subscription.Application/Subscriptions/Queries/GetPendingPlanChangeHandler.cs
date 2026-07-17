@@ -14,7 +14,9 @@ public static class GetPendingPlanChangeHandler
     {
         var subscription = await subscriptions.GetByTenantIdAsync(query.TenantId, ct);
         if (subscription is null)
-            return Result.Failure<PendingPlanChangeResponse?>(new Error("Subscription.NotFound", "Subscription does not exist."));
+            return Result.Failure<PendingPlanChangeResponse?>(
+                new Error("Subscription.NotFound", "Subscription does not exist.")
+            );
 
         // Prioridad: un upgrade en vuelo (AwaitingPayment) es lo más urgente de mostrar, luego
         // un downgrade agendado. Si no hay nada accionable, mostrar el fallo de upgrade más

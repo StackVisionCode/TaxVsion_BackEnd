@@ -13,10 +13,22 @@ namespace TaxVision.Subscription.Application.Entitlements;
 public static class EntitlementMerger
 {
     public static EntitlementEntry MergeAddOnValue(
-        EntitlementEntry? existing, EntitlementKey key, EntitlementValueType valueType, string incomingValue, AddOnMergeStrategy strategy)
+        EntitlementEntry? existing,
+        EntitlementKey key,
+        EntitlementValueType valueType,
+        string incomingValue,
+        AddOnMergeStrategy strategy
+    )
     {
         if (existing is null)
-            return new EntitlementEntry(key, valueType, incomingValue, EntitlementStatus.Active, EntitlementSource.AddOn, ExpiresAtUtc: null);
+            return new EntitlementEntry(
+                key,
+                valueType,
+                incomingValue,
+                EntitlementStatus.Active,
+                EntitlementSource.AddOn,
+                ExpiresAtUtc: null
+            );
 
         var mergedValue = strategy switch
         {
@@ -27,7 +39,11 @@ public static class EntitlementMerger
             _ => incomingValue,
         };
 
-        return existing with { Value = mergedValue, Source = EntitlementSource.AddOn };
+        return existing with
+        {
+            Value = mergedValue,
+            Source = EntitlementSource.AddOn,
+        };
     }
 
     private static string MergeBool(string existingValue, string incomingValue)
@@ -37,10 +53,29 @@ public static class EntitlementMerger
         return (existingBool || incomingBool).ToString();
     }
 
-    private static string MergeNumeric(string existingValue, string incomingValue, EntitlementValueType valueType, Func<decimal, decimal, decimal> combine)
+    private static string MergeNumeric(
+        string existingValue,
+        string incomingValue,
+        EntitlementValueType valueType,
+        Func<decimal, decimal, decimal> combine
+    )
     {
-        var existingNumber = decimal.TryParse(existingValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var e) ? e : 0m;
-        var incomingNumber = decimal.TryParse(incomingValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var i) ? i : 0m;
+        var existingNumber = decimal.TryParse(
+            existingValue,
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var e
+        )
+            ? e
+            : 0m;
+        var incomingNumber = decimal.TryParse(
+            incomingValue,
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var i
+        )
+            ? i
+            : 0m;
         var result = combine(existingNumber, incomingNumber);
 
         return valueType switch

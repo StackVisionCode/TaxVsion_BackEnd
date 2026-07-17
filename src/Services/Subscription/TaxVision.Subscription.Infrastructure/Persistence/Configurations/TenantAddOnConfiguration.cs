@@ -20,19 +20,24 @@ public sealed class TenantAddOnConfiguration : IEntityTypeConfiguration<TenantAd
         builder.Property(addOn => addOn.CancellationReason).HasMaxLength(500);
         builder.Property(addOn => addOn.SuspensionReason).HasMaxLength(500);
 
-        builder.OwnsOne(addOn => addOn.UnitPrice, money =>
-        {
-            money.Property(m => m.Amount).HasColumnName("UnitPriceAmount").HasPrecision(18, 4).IsRequired();
-            money.Property(m => m.Currency).HasColumnName("UnitPriceCurrency").HasMaxLength(3).IsRequired();
-        });
+        builder.OwnsOne(
+            addOn => addOn.UnitPrice,
+            money =>
+            {
+                money.Property(m => m.Amount).HasColumnName("UnitPriceAmount").HasPrecision(18, 4).IsRequired();
+                money.Property(m => m.Currency).HasColumnName("UnitPriceCurrency").HasMaxLength(3).IsRequired();
+            }
+        );
 
         builder.HasIndex(addOn => new { addOn.TenantId, addOn.Status });
 
-        builder.HasIndex(addOn => addOn.NextRenewalAtUtc)
+        builder
+            .HasIndex(addOn => addOn.NextRenewalAtUtc)
             .HasFilter("[Status] = 'Active' AND [AutoRenew] = 1")
             .HasDatabaseName("IX_TenantAddOns_NextRenewalAtUtc");
 
-        builder.HasMany(addOn => addOn.Renewals)
+        builder
+            .HasMany(addOn => addOn.Renewals)
             .WithOne()
             .HasForeignKey(renewal => renewal.TenantAddOnId)
             .OnDelete(DeleteBehavior.Cascade);

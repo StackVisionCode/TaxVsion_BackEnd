@@ -27,12 +27,14 @@ public sealed class SubscriptionSeatAssignmentConfiguration : IEntityTypeConfigu
 
         builder.Ignore(assignment => assignment.IsActive);
 
-        builder.HasIndex(assignment => assignment.SeatId)
+        builder
+            .HasIndex(assignment => assignment.SeatId)
             .HasFilter("[ReleasedAtUtc] IS NULL")
             .IsUnique()
             .HasDatabaseName("UX_SubscriptionSeatAssignments_SeatId_Active");
 
-        builder.HasIndex(assignment => new { assignment.UserId, assignment.TenantId })
+        builder
+            .HasIndex(assignment => new { assignment.UserId, assignment.TenantId })
             .HasDatabaseName("IX_SubscriptionSeatAssignments_UserId_TenantId");
     }
 }

@@ -27,29 +27,31 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     CausationId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     BeforePayload = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     AfterPayload = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                    Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SubscriptionAuditLogs", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionAuditLogs_AggregateType_AggregateId",
                 table: "SubscriptionAuditLogs",
-                columns: new[] { "AggregateType", "AggregateId" });
+                columns: new[] { "AggregateType", "AggregateId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionAuditLogs_TenantId_OccurredAtUtc",
                 table: "SubscriptionAuditLogs",
-                columns: new[] { "TenantId", "OccurredAtUtc" });
+                columns: new[] { "TenantId", "OccurredAtUtc" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "SubscriptionAuditLogs");
+            migrationBuilder.DropTable(name: "SubscriptionAuditLogs");
         }
     }
 }

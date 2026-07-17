@@ -24,12 +24,13 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SubscriptionPlans", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "SubscriptionSeats",
@@ -47,7 +48,12 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     GracePeriodEndsAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     AutoRenew = table.Column<bool>(type: "bit", nullable: false),
                     BillingCycle = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    UnitPriceAmount = table.Column<decimal>(type: "decimal(18,4)", precision: 18, scale: 4, nullable: false),
+                    UnitPriceAmount = table.Column<decimal>(
+                        type: "decimal(18,4)",
+                        precision: 18,
+                        scale: 4,
+                        nullable: false
+                    ),
                     UnitPriceCurrency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                     CancelledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     SuspendedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -58,12 +64,13 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SubscriptionSeats", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "SubscriptionTenantSettings",
@@ -94,13 +101,18 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    NotifyBeforeRenewalDays = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    NotifyBeforeRenewalDays = table.Column<string>(
+                        type: "nvarchar(100)",
+                        maxLength: 100,
+                        nullable: false
+                    ),
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SubscriptionTenantSettings", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "SubscriptionPlanVersions",
@@ -113,7 +125,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     EffectiveFromUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     EffectiveUntilUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     TrialDaysDefault = table.Column<int>(type: "int", nullable: false),
-                    SupportedBillingCycles = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false)
+                    SupportedBillingCycles = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
@@ -123,8 +139,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.PlanId,
                         principalTable: "SubscriptionPlans",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "PlanEntitlementDefinitions",
@@ -135,7 +153,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     Key = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     ValueType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     DefaultValue = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false)
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -145,8 +163,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.PlanVersionId,
                         principalTable: "SubscriptionPlanVersions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "PlanFeatures",
@@ -156,7 +176,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     PlanVersionId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     FeatureKey = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     DefaultEnabled = table.Column<bool>(type: "bit", nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false)
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -166,8 +186,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.PlanVersionId,
                         principalTable: "SubscriptionPlanVersions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "PlanPriceTiers",
@@ -179,7 +201,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     MinQuantity = table.Column<int>(type: "int", nullable: false),
                     MaxQuantity = table.Column<int>(type: "int", nullable: true),
                     UnitAmount = table.Column<decimal>(type: "decimal(18,4)", precision: 18, scale: 4, nullable: false),
-                    Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false)
+                    Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -189,8 +211,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.PlanVersionId,
                         principalTable: "SubscriptionPlanVersions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TenantSubscriptions",
@@ -216,7 +240,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -226,119 +250,127 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.PlanVersionId,
                         principalTable: "SubscriptionPlanVersions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Restrict
+                    );
                     table.ForeignKey(
                         name: "FK_TenantSubscriptions_SubscriptionPlans_PlanId",
                         column: x => x.PlanId,
                         principalTable: "SubscriptionPlans",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlanEntitlementDefinitions_PlanVersionId_Key",
                 table: "PlanEntitlementDefinitions",
                 columns: new[] { "PlanVersionId", "Key" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlanFeatures_PlanVersionId_FeatureKey",
                 table: "PlanFeatures",
                 columns: new[] { "PlanVersionId", "FeatureKey" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlanPriceTiers_PlanVersionId_BillingCycle_MinQuantity",
                 table: "PlanPriceTiers",
                 columns: new[] { "PlanVersionId", "BillingCycle", "MinQuantity" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionPlans_Code",
                 table: "SubscriptionPlans",
                 column: "Code",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionPlanVersions_PlanId_VersionNumber",
                 table: "SubscriptionPlanVersions",
                 columns: new[] { "PlanId", "VersionNumber" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_SubscriptionPlanVersions_PlanId_Published",
                 table: "SubscriptionPlanVersions",
                 column: "PlanId",
                 unique: true,
-                filter: "[Status] = 'Published'");
+                filter: "[Status] = 'Published'"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionSeats_NextRenewalAtUtc",
                 table: "SubscriptionSeats",
                 column: "NextRenewalAtUtc",
-                filter: "[Status] IN ('Active','PastDue') AND [AutoRenew] = 1");
+                filter: "[Status] IN ('Active','PastDue') AND [AutoRenew] = 1"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionSeats_TenantId_Status",
                 table: "SubscriptionSeats",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionTenantSettings_TenantId",
                 table: "SubscriptionTenantSettings",
                 column: "TenantId",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantSubscriptions_NextRenewalAtUtc",
                 table: "TenantSubscriptions",
                 column: "NextRenewalAtUtc",
-                filter: "[Status] = 'Active'");
+                filter: "[Status] = 'Active'"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantSubscriptions_PlanId",
                 table: "TenantSubscriptions",
-                column: "PlanId");
+                column: "PlanId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantSubscriptions_PlanVersionId",
                 table: "TenantSubscriptions",
-                column: "PlanVersionId");
+                column: "PlanVersionId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_TenantSubscriptions_TenantId_Active",
                 table: "TenantSubscriptions",
                 column: "TenantId",
                 unique: true,
-                filter: "[Status] <> 'Cancelled' AND [Status] <> 'Expired'");
+                filter: "[Status] <> 'Cancelled' AND [Status] <> 'Expired'"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PlanEntitlementDefinitions");
+            migrationBuilder.DropTable(name: "PlanEntitlementDefinitions");
 
-            migrationBuilder.DropTable(
-                name: "PlanFeatures");
+            migrationBuilder.DropTable(name: "PlanFeatures");
 
-            migrationBuilder.DropTable(
-                name: "PlanPriceTiers");
+            migrationBuilder.DropTable(name: "PlanPriceTiers");
 
-            migrationBuilder.DropTable(
-                name: "SubscriptionSeats");
+            migrationBuilder.DropTable(name: "SubscriptionSeats");
 
-            migrationBuilder.DropTable(
-                name: "SubscriptionTenantSettings");
+            migrationBuilder.DropTable(name: "SubscriptionTenantSettings");
 
-            migrationBuilder.DropTable(
-                name: "TenantSubscriptions");
+            migrationBuilder.DropTable(name: "TenantSubscriptions");
 
-            migrationBuilder.DropTable(
-                name: "SubscriptionPlanVersions");
+            migrationBuilder.DropTable(name: "SubscriptionPlanVersions");
 
-            migrationBuilder.DropTable(
-                name: "SubscriptionPlans");
+            migrationBuilder.DropTable(name: "SubscriptionPlans");
         }
     }
 }

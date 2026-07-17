@@ -125,8 +125,16 @@ public static class ChangePlanHandler
             audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanDowngradeScheduled",
             command.RequestedByUserId, correlation.CorrelationId,
             before: new { PlanCode = previousPlanCode },
-            after: new { PlanCode = previousPlanCode, PendingPlanCode = plan.Code.Value, EffectiveAtUtc = subscription.CurrentPeriodEndUtc },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                PlanCode = previousPlanCode,
+                PendingPlanCode = plan.Code.Value,
+                EffectiveAtUtc = subscription.CurrentPeriodEndUtc,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         logger.LogInformation(
             "Tenant {TenantId} scheduled a downgrade to {PlanCode}, effective at end of period (requested by {UserId}).",

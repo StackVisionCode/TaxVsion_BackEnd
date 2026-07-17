@@ -24,7 +24,10 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<IReadOnlyList<AddOnDefinitionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetCatalog(CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<AddOnDefinitionResponse>>>(new GetAddOnCatalogQuery(), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<AddOnDefinitionResponse>>>(
+            new GetAddOnCatalogQuery(),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -37,7 +40,10 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
         if (!TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<AddOnResponse>>>(new GetTenantAddOnsQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<AddOnResponse>>>(
+            new GetTenantAddOnsQuery(tenantId),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -53,9 +59,13 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<Guid>>(
-            new PurchaseAddOnCommand(tenantId, request.AddOnCode, request.Quantity, request.AutoRenew, userId), ct);
+            new PurchaseAddOnCommand(tenantId, request.AddOnCode, request.Quantity, request.AutoRenew, userId),
+            ct
+        );
 
-        return result.IsSuccess ? StatusCode(StatusCodes.Status201Created, result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess
+            ? StatusCode(StatusCodes.Status201Created, result.Value)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record CancelAddOnRequest(string Reason);

@@ -658,6 +658,22 @@
 						"description": "Suscripciones en PastDue, cross-tenant. Solo PlatformAdmin."
 					},
 					"response": []
+				},
+				{
+					"name": "RecalculateEntitlements",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/admin/subscription/tenants/{{tenantId}}/recalculate-entitlements",
+							"host": ["{{UrlBase}}"],
+							"path": ["admin", "subscription", "tenants", "{{tenantId}}", "recalculate-entitlements"]
+						},
+						"description": "Fuerza el recalculo del TenantEntitlementSnapshot del tenant y republica TenantEntitlementsChangedIntegrationEvent. Solo PlatformAdmin. Via de escape para reconciliar un tenant que quedo con TenantSubscription valida pero sin snapshot (p.ej. tras una falla transitoria en un intento anterior de RecalculateEntitlementsCommand) — ver README §32.6. Devuelve 204 en exito."
+					},
+					"response": []
 				}
 			]
 		}

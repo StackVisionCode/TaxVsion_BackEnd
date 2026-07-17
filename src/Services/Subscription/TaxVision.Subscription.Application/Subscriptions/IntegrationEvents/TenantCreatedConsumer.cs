@@ -19,7 +19,12 @@ namespace TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 /// configuración de políticas por defecto. RecalculateEntitlementsCommand publica
 /// TenantEntitlementsChangedIntegrationEvent, que es lo que Auth/CloudStorage/etc.
 /// consumen para proyectar los límites — no hay un evento de activación aparte.
-/// Idempotente: si ya existe una suscripción para el tenant, no hace nada.
+///
+/// La creación de la suscripción es idempotente (si ya existe, no se vuelve a crear), pero
+/// el recalculo de entitlements se dispara SIEMPRE — RecalculateEntitlementsCommand es un
+/// upsert, así que reprocesar este evento (redelivery, o cualquier reintento manual) también
+/// sirve para autosanar un tenant que quedó con suscripción pero sin snapshot de entitlements
+/// por una falla anterior (ver RecalculateEntitlementsSafelyAsync).
 /// </summary>
 public static class TenantCreatedConsumer
 {
@@ -36,7 +41,9 @@ public static class TenantCreatedConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -45,19 +52,35 @@ public static class TenantCreatedConsumer
 
             if (await subscriptions.GetByTenantIdAsync(evt.NewTenantId, ct) is not null)
             {
-                logger.LogInformation("Subscription already exists for tenant {TenantId}; ignoring event.", evt.NewTenantId);
+                logger.LogInformation(
+                    "Subscription already exists for tenant {TenantId}; skipping creation but "
+                        + "still recalculating entitlements in case a previous attempt left it stale.",
+                    evt.NewTenantId
+                );
+                await bus.RecalculateEntitlementsSafelyAsync(evt.NewTenantId, logger, ct);
                 return;
             }
 
-            var (plan, planVersion) = await LoadDefaultPlanOrThrow(plans, options.Value.DefaultPlanCode, evt.NewTenantId, logger, ct);
+            var (plan, planVersion) = await LoadDefaultPlanOrThrow(
+                plans,
+                options.Value.DefaultPlanCode,
+                evt.NewTenantId,
+                logger,
+                ct
+            );
 
-            var subscription = CreateTrialSubscriptionOrThrow(evt.NewTenantId, plan, planVersion, options.Value.TrialDays);
+            var subscription = CreateTrialSubscriptionOrThrow(
+                evt.NewTenantId,
+                plan,
+                planVersion,
+                options.Value.TrialDays
+            );
             await subscriptions.AddAsync(subscription, ct);
 
             await EnsureDefaultSettingsAsync(evt.NewTenantId, settingsRepository, ct);
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(evt.NewTenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(evt.NewTenantId, logger, ct);
 
             logger.LogInformation(
                 "Trial subscription created for tenant {TenantId} on plan {PlanCode} until {TrialEnd}.",
@@ -72,7 +95,12 @@ public static class TenantCreatedConsumer
         Enum.TryParse<TenantKind>(kind, ignoreCase: true, out var parsed) && parsed == TenantKind.Platform;
 
     private static async Task<(SubscriptionPlan Plan, SubscriptionPlanVersion Version)> LoadDefaultPlanOrThrow(
-        IPlanRepository plans, string defaultPlanCode, Guid tenantId, ILogger logger, CancellationToken ct)
+        IPlanRepository plans,
+        string defaultPlanCode,
+        Guid tenantId,
+        ILogger logger,
+        CancellationToken ct
+    )
     {
         var plan = await plans.GetByCodeAsync(defaultPlanCode, ct);
         var version = plan?.GetPublishedVersion();
@@ -90,9 +118,20 @@ public static class TenantCreatedConsumer
     }
 
     private static TenantSubscription CreateTrialSubscriptionOrThrow(
-        Guid tenantId, SubscriptionPlan plan, SubscriptionPlanVersion planVersion, int trialDays)
+        Guid tenantId,
+        SubscriptionPlan plan,
+        SubscriptionPlanVersion planVersion,
+        int trialDays
+    )
     {
-        var result = TenantSubscription.StartTrial(tenantId, plan, planVersion, trialDays, actorUserId: Guid.Empty, DateTime.UtcNow);
+        var result = TenantSubscription.StartTrial(
+            tenantId,
+            plan,
+            planVersion,
+            trialDays,
+            actorUserId: Guid.Empty,
+            DateTime.UtcNow
+        );
         if (result.IsFailure)
             throw new InvalidOperationException(result.Error.Message);
 
@@ -100,7 +139,10 @@ public static class TenantCreatedConsumer
     }
 
     private static async Task EnsureDefaultSettingsAsync(
-        Guid tenantId, ISubscriptionTenantSettingsRepository settingsRepository, CancellationToken ct)
+        Guid tenantId,
+        ISubscriptionTenantSettingsRepository settingsRepository,
+        CancellationToken ct
+    )
     {
         if (await settingsRepository.GetByTenantIdAsync(tenantId, ct) is not null)
             return;

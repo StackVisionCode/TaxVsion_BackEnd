@@ -29,33 +29,43 @@ public sealed class SubscriptionTenantSettingsConfiguration : IEntityTypeConfigu
         builder.Property(settings => settings.SuspendTenantWhenBaseSubscriptionExpired).IsRequired();
         builder.Property(settings => settings.SuspendUserWhenSeatExpired).IsRequired();
         builder.Property(settings => settings.NotifyAfterFailedRenewalDays).IsRequired();
-        builder.Property(settings => settings.AutoRenewCascadeMode).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder
+            .Property(settings => settings.AutoRenewCascadeMode)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
         builder.Property(settings => settings.PauseSeatRenewalsWhenBaseSuspended).IsRequired();
 
-        builder.Property(settings => settings.TenantSubscriptionGracePeriod)
+        builder
+            .Property(settings => settings.TenantSubscriptionGracePeriod)
             .HasConversion(grace => grace.Days, days => GracePeriod.Create(days).Value)
             .HasColumnName("TenantSubscriptionGraceDays")
             .IsRequired();
 
-        builder.Property(settings => settings.SeatGracePeriod)
+        builder
+            .Property(settings => settings.SeatGracePeriod)
             .HasConversion(grace => grace.Days, days => GracePeriod.Create(days).Value)
             .HasColumnName("SeatGraceDays")
             .IsRequired();
 
-        builder.Property(settings => settings.TrialDays)
+        builder
+            .Property(settings => settings.TrialDays)
             .HasConversion(trial => trial.Value, days => TrialDays.Create(days).Value)
             .HasColumnName("TrialDays")
             .IsRequired();
 
         var notifyDaysConverter = new ValueConverter<List<int>, string>(
             days => string.Join(',', days),
-            csv => ParseDays(csv));
+            csv => ParseDays(csv)
+        );
         var notifyDaysComparer = new ValueComparer<List<int>>(
             (a, b) => (a ?? new()).SequenceEqual(b ?? new()),
             list => list.Aggregate(0, (hash, day) => HashCode.Combine(hash, day)),
-            list => list.ToList());
+            list => list.ToList()
+        );
 
-        builder.Property<List<int>>("_notifyBeforeRenewalDays")
+        builder
+            .Property<List<int>>("_notifyBeforeRenewalDays")
             .HasColumnName("NotifyBeforeRenewalDays")
             .HasConversion(notifyDaysConverter)
             .HasMaxLength(100)

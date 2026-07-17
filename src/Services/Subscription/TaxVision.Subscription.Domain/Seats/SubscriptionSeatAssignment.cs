@@ -25,25 +25,38 @@ public sealed class SubscriptionSeatAssignment : BaseEntity
     private SubscriptionSeatAssignment() { }
 
     public static Result<SubscriptionSeatAssignment> Create(
-        Guid seatId, Guid tenantId, Guid userId, Guid assignedByUserId, DateTime nowUtc)
+        Guid seatId,
+        Guid tenantId,
+        Guid userId,
+        Guid assignedByUserId,
+        DateTime nowUtc
+    )
     {
         if (seatId == Guid.Empty)
-            return Result.Failure<SubscriptionSeatAssignment>(new Error("SeatAssignment.InvalidSeat", "SeatId is required."));
+            return Result.Failure<SubscriptionSeatAssignment>(
+                new Error("SeatAssignment.InvalidSeat", "SeatId is required.")
+            );
 
         if (tenantId == Guid.Empty)
-            return Result.Failure<SubscriptionSeatAssignment>(new Error("SeatAssignment.InvalidTenant", "TenantId is required."));
+            return Result.Failure<SubscriptionSeatAssignment>(
+                new Error("SeatAssignment.InvalidTenant", "TenantId is required.")
+            );
 
         if (userId == Guid.Empty)
-            return Result.Failure<SubscriptionSeatAssignment>(new Error("SeatAssignment.InvalidUser", "UserId is required."));
+            return Result.Failure<SubscriptionSeatAssignment>(
+                new Error("SeatAssignment.InvalidUser", "UserId is required.")
+            );
 
-        return Result.Success(new SubscriptionSeatAssignment
-        {
-            SeatId = seatId,
-            TenantId = tenantId,
-            UserId = userId,
-            AssignedAtUtc = nowUtc,
-            AssignedByUserId = assignedByUserId,
-        });
+        return Result.Success(
+            new SubscriptionSeatAssignment
+            {
+                SeatId = seatId,
+                TenantId = tenantId,
+                UserId = userId,
+                AssignedAtUtc = nowUtc,
+                AssignedByUserId = assignedByUserId,
+            }
+        );
     }
 
     public Result Release(Guid releasedByUserId, DateTime nowUtc, string? reason)

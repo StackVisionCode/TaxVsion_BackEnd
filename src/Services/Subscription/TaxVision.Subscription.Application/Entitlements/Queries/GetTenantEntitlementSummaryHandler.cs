@@ -29,7 +29,9 @@ public static class GetTenantEntitlementSummaryHandler
         );
 
         return response is null
-            ? Result.Failure<EntitlementSummaryResponse>(new Error("EntitlementSnapshot.NotFound", "No entitlement snapshot exists for this tenant yet."))
+            ? Result.Failure<EntitlementSummaryResponse>(
+                new Error("EntitlementSnapshot.NotFound", "No entitlement snapshot exists for this tenant yet.")
+            )
             : Result.Success(response);
     }
 }

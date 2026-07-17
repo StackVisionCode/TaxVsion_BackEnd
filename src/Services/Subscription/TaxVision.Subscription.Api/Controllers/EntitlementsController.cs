@@ -19,7 +19,10 @@ public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
         if (!TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<EntitlementSummaryResponse>>(new GetTenantEntitlementSummaryQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<EntitlementSummaryResponse>>(
+            new GetTenantEntitlementSummaryQuery(tenantId),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -31,7 +34,10 @@ public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
         if (!TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<EntitlementValueResponse>>(new GetTenantEntitlementByKeyQuery(tenantId, key), ct);
+        var result = await bus.InvokeAsync<Result<EntitlementValueResponse>>(
+            new GetTenantEntitlementByKeyQuery(tenantId, key),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

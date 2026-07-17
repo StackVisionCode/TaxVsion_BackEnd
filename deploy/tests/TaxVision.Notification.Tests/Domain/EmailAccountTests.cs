@@ -8,8 +8,15 @@ public sealed class EmailAccountTests
     public void Imap_account_requires_host()
     {
         var result = EmailAccountConnection.CreateImap(
-            Guid.NewGuid(), Guid.NewGuid(), "user@example.com", null,
-            imapHost: " ", imapPort: 993, imapUsername: "user", imapPasswordCipher: "cipher", imapUseSsl: true
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "user@example.com",
+            null,
+            imapHost: " ",
+            imapPort: 993,
+            imapUsername: "user",
+            imapPasswordCipher: "cipher",
+            imapUseSsl: true
         );
 
         Assert.True(result.IsFailure);
@@ -20,7 +27,15 @@ public sealed class EmailAccountTests
     public void Oauth_factory_rejects_imap_provider()
     {
         var result = EmailAccountConnection.CreateOAuth(
-            Guid.NewGuid(), Guid.NewGuid(), EmailExternalProvider.Imap, "user@example.com", null, null, "at", "rt", null
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            EmailExternalProvider.Imap,
+            "user@example.com",
+            null,
+            null,
+            "at",
+            "rt",
+            null
         );
 
         Assert.True(result.IsFailure);
@@ -62,8 +77,17 @@ public sealed class EmailAccountTests
     }
 
     private static EmailAccountConnection CreateImap() =>
-        EmailAccountConnection.CreateImap(
-            Guid.NewGuid(), Guid.NewGuid(), "user@example.com", "User",
-            imapHost: "imap.example.com", imapPort: 993, imapUsername: "user", imapPasswordCipher: "cipher", imapUseSsl: true
-        ).Value;
+        EmailAccountConnection
+            .CreateImap(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "user@example.com",
+                "User",
+                imapHost: "imap.example.com",
+                imapPort: 993,
+                imapUsername: "user",
+                imapPasswordCipher: "cipher",
+                imapUseSsl: true
+            )
+            .Value;
 }

@@ -20,7 +20,10 @@ public sealed class SubscriptionTenantSettingsTests
         var settings = SubscriptionTenantSettings.Default(Guid.NewGuid(), Guid.Empty, DateTime.UtcNow).Value;
 
         var result = settings.ApplyPatch(
-            new SubscriptionSettingsPatch(AllowSeatSelfAssignment: true), Guid.Empty, DateTime.UtcNow);
+            new SubscriptionSettingsPatch(AllowSeatSelfAssignment: true),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.True(settings.AllowSeatSelfAssignment);
@@ -33,7 +36,10 @@ public sealed class SubscriptionTenantSettingsTests
         var settings = SubscriptionTenantSettings.Default(Guid.NewGuid(), Guid.Empty, DateTime.UtcNow).Value;
 
         var result = settings.ApplyPatch(
-            new SubscriptionSettingsPatch(MinSeatsRequired: 5, MaxSeatsAllowed: 2), Guid.Empty, DateTime.UtcNow);
+            new SubscriptionSettingsPatch(MinSeatsRequired: 5, MaxSeatsAllowed: 2),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SubscriptionSettings.InvalidMaxSeats", result.Error.Code);
@@ -45,7 +51,11 @@ public sealed class SubscriptionTenantSettingsTests
         var settings = SubscriptionTenantSettings.Default(Guid.NewGuid(), Guid.Empty, DateTime.UtcNow).Value;
         settings.ApplyPatch(new SubscriptionSettingsPatch(MaxSeatsAllowed: 10), Guid.Empty, DateTime.UtcNow);
 
-        var result = settings.ApplyPatch(new SubscriptionSettingsPatch(ClearMaxSeatsAllowed: true), Guid.Empty, DateTime.UtcNow);
+        var result = settings.ApplyPatch(
+            new SubscriptionSettingsPatch(ClearMaxSeatsAllowed: true),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Null(settings.MaxSeatsAllowed);

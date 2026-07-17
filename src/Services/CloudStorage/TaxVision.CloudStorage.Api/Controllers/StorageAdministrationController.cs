@@ -44,5 +44,20 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
         return Ok(result);
     }
 
+    public sealed record SetPublicSharingPolicyRequest(bool Allow);
+
+    /// <summary>Fase C3 — habilita/deshabilita links Visibility.Public. Deshabilitado por defecto (datos fiscales).</summary>
+    [HttpPut("settings/public-sharing")]
+    [Authorize(Policy = CloudStoragePermissions.SettingsManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> SetPublicSharingPolicy(SetPublicSharingPolicyRequest request, CancellationToken ct)
+    {
+        if (!TryGetTenant(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new SetPublicSharingPolicyCommand(tenantId, request.Allow), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     private bool TryGetTenant(out Guid tenantId) => Guid.TryParse(User.FindFirst("tenant_id")?.Value, out tenantId);
 }

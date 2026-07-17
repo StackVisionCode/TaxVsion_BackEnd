@@ -17,13 +17,17 @@ public sealed class AddOnFeature : BaseEntity
     public static Result<AddOnFeature> Create(Guid addOnDefinitionId, EntitlementKey featureKey, bool enabled)
     {
         if (addOnDefinitionId == Guid.Empty)
-            return Result.Failure<AddOnFeature>(new Error("AddOnFeature.InvalidDefinition", "AddOnDefinitionId is required."));
+            return Result.Failure<AddOnFeature>(
+                new Error("AddOnFeature.InvalidDefinition", "AddOnDefinitionId is required.")
+            );
 
-        return Result.Success(new AddOnFeature
-        {
-            AddOnDefinitionId = addOnDefinitionId,
-            FeatureKey = featureKey,
-            Enabled = enabled,
-        });
+        return Result.Success(
+            new AddOnFeature
+            {
+                AddOnDefinitionId = addOnDefinitionId,
+                FeatureKey = featureKey,
+                Enabled = enabled,
+            }
+        );
     }
 }

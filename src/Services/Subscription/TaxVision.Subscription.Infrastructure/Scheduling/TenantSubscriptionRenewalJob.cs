@@ -17,8 +17,10 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 /// precio — así la renovación cobra normalmente el precio del plan nuevo, sin ningún job
 /// separado ni prorrateo.</summary>
 public sealed class TenantSubscriptionRenewalJob(
-    IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<TenantSubscriptionRenewalJob> logger)
-    : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<TenantSubscriptionRenewalJob> logger
+) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
 
@@ -55,7 +57,10 @@ public sealed class TenantSubscriptionRenewalJob(
             if (result.IsFailure)
             {
                 logger.LogWarning(
-                    "Could not begin renewal for subscription {SubscriptionId}: {Code}.", subscription.Id, result.Error.Code);
+                    "Could not begin renewal for subscription {SubscriptionId}: {Code}.",
+                    subscription.Id,
+                    result.Error.Code
+                );
                 continue;
             }
 

@@ -58,7 +58,9 @@ public sealed class SubscriptionPlanTests
     }
 
     private static SubscriptionPlan CreatePlan(string code) =>
-        SubscriptionPlan.Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow).Value;
+        SubscriptionPlan
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Value;
 
     private static SubscriptionPlanVersion CreateVersion(Guid planId, int versionNumber) =>
         SubscriptionPlanVersion.Create(planId, versionNumber, trialDaysDefault: 14, [BillingCycle.Monthly]).Value;

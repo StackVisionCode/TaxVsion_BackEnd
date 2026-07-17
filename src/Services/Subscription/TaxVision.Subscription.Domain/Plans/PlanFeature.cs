@@ -20,7 +20,11 @@ public sealed class PlanFeature : BaseEntity
     private PlanFeature() { }
 
     public static Result<PlanFeature> Create(
-        Guid planVersionId, EntitlementKey featureKey, bool defaultEnabled, string description)
+        Guid planVersionId,
+        EntitlementKey featureKey,
+        bool defaultEnabled,
+        string description
+    )
     {
         if (planVersionId == Guid.Empty)
             return Result.Failure<PlanFeature>(new Error("PlanFeature.InvalidVersion", "PlanVersionId is required."));
@@ -28,12 +32,14 @@ public sealed class PlanFeature : BaseEntity
         if (string.IsNullOrWhiteSpace(description))
             return Result.Failure<PlanFeature>(new Error("PlanFeature.InvalidDescription", "Description is required."));
 
-        return Result.Success(new PlanFeature
-        {
-            PlanVersionId = planVersionId,
-            FeatureKey = featureKey,
-            DefaultEnabled = defaultEnabled,
-            Description = description,
-        });
+        return Result.Success(
+            new PlanFeature
+            {
+                PlanVersionId = planVersionId,
+                FeatureKey = featureKey,
+                DefaultEnabled = defaultEnabled,
+                Description = description,
+            }
+        );
     }
 }

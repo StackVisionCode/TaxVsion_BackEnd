@@ -1,13 +1,19 @@
+using System.Net.Http.Headers;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Invitations.Commands;
 using TaxVision.Auth.Application.ServiceTokens;
+using TaxVision.Auth.Application.TenantDomains;
+using TaxVision.Auth.Application.Terms;
+using TaxVision.Auth.Infrastructure.Cloudflare;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Persistence.Repositories;
 using TaxVision.Auth.Infrastructure.Security;
+using TaxVision.Auth.Infrastructure.Tenancy;
 
 namespace TaxVision.Auth.Infrastructure;
 
@@ -28,6 +34,9 @@ public static class DependencyInjection
         services.Configure<RefreshTokenOptions>(configuration.GetSection(RefreshTokenOptions.SectionName));
         services.Configure<InvitationOptions>(configuration.GetSection(InvitationOptions.SectionName));
         services.Configure<ServiceAuthOptions>(configuration.GetSection(ServiceAuthOptions.SectionName));
+        services.Configure<TenantDomainOptions>(configuration.GetSection(TenantDomainOptions.SectionName));
+        services.Configure<CloudflareOptions>(configuration.GetSection(CloudflareOptions.SectionName));
+        services.Configure<TermsOptions>(configuration.GetSection(TermsOptions.SectionName));
 
         // Persistencia
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AuthDbContext>());
@@ -39,6 +48,22 @@ public static class DependencyInjection
         services.AddScoped<IMfaRepository, MfaRepository>();
         services.AddScoped<ICredentialTokenRepository, CredentialTokenRepository>();
         services.AddScoped<ITenantPlanLimitsStore, TenantPlanLimitsStore>();
+        services.AddScoped<ITenantDomainRepository, TenantDomainRepository>();
+        services.AddScoped<ITenantSubdomainReservationRepository, TenantSubdomainReservationRepository>();
+        services.AddScoped<ITenantResolutionCache, TenantResolutionCache>();
+        services.AddScoped<ITenantResolver, TenantResolver>();
+        services.AddScoped<ITenantTermsAcceptanceRepository, TenantTermsAcceptanceRepository>();
+        services.AddHttpClient<ICloudflareProvisioningClient, CloudflareProvisioningClient>(
+            (provider, client) =>
+            {
+                var cloudflare = provider.GetRequiredService<IOptions<CloudflareOptions>>().Value;
+                client.BaseAddress = new Uri(cloudflare.BaseUrl);
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    cloudflare.ApiToken
+                );
+            }
+        );
         services.AddScoped<AuthAuditStore>();
         services.AddScoped<IAuthAuditWriter>(provider => provider.GetRequiredService<AuthAuditStore>());
         services.AddScoped<IAuthAuditReader>(provider => provider.GetRequiredService<AuthAuditStore>());

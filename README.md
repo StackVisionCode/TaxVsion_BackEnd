@@ -14,7 +14,7 @@ Backend multitenant de TaxVision construido con microservicios en .NET 10.
 
 **Autor de las implementaciones documentadas:** Jorge Turbi
 
-**Actualizado:** 10-07-2026
+**Actualizado:** 14-07-2026
 
 **Licencia del codigo propio:** propietaria; consulte [LICENSE](LICENSE).
 
@@ -64,6 +64,8 @@ OpenTelemetry.
 30. Communication Service (chat, calls, meetings, notifs realtime)
 31. Claves JWT RS256 — Setup de desarrollo
 32. Subscription Service: implementacion completa (Fases 1-4, 6-7)
+33. Multi-tenancy: subdominios y dominios propios (Auth)
+34. Terminos de servicio (ToS) — aceptacion y gating (Auth)
 
 ## 1. Introduccion y objetivo
 
@@ -150,16 +152,24 @@ TaxVision/
 |-- .env
 |-- README.md
 |-- Postman_Collection/
+|-- .github/
+|   `-- workflows/
+|       `-- deploy.yml           # unico workflow: build+migra+deploy a produccion (sec 20)
 |-- deploy/
-|   |-- docker-compose.yml
+|   |-- docker-compose.yml       # infraestructura minima
 |   |-- docker/
-|   |   `-- docker-compose.yml
+|   |   |-- docker-compose.yml   # stack completo (canonico, sec 20)
+|   |   |-- compose.ps1          # wrapper que fuerza el .env de la raiz
+|   |   |-- caddy/Caddyfile      # reverse proxy publico + TLS automatico
+|   |   |-- minio/               # provisioning de cuentas de servicio MinIO (policies/*.json)
+|   |   `-- migrations/Dockerfile
 |   |-- tests/
 |   |   |-- TaxVision.Auth.Tests/
 |   |   |-- TaxVision.Tenant.Tests/
 |   |   |-- TaxVision.Customer.Tests/
 |   |   |-- TaxVision.Subscription.Tests/
 |   |   |-- TaxVision.Notification.Tests/
+|   |   |-- TaxVision.Signature.Tests/
 |   |   `-- TaxVision.CloudStorage.Tests/
 |   `-- observability/
 |       |-- loki.yml
@@ -167,6 +177,7 @@ TaxVision/
 |       |-- prometheus.yml
 |       |-- otel-collector.yml
 |       `-- grafana/provisioning/
+|           `-- dashboards/      # overview.json, service-detail.json, infrastructure.json
 `-- src/
     |-- BuildingBlocks/
     |   |-- BuildingBlocks.csproj
@@ -174,21 +185,15 @@ TaxVision/
     |   `-- BuildingBlocks.Web/
     |-- Gateway/TaxVision.Gateway/
     `-- Services/
-        |-- Auth/
-        |   |-- Api/
-        |   |-- Application/
-        |   |-- Domain/
-        |   `-- Infrastructure/
-        |-- Tenant/
-            |-- TaxVision.Tenant.Api/
-            |-- TaxVision.Tenant.Application/
-            |-- TaxVision.Tenant.Domain/
-            `-- TaxVision.Tenant.Infrastructure/
-        `-- CloudStorage/
-            |-- TaxVision.CloudStorage.Api/
-            |-- TaxVision.CloudStorage.Application/
-            |-- TaxVision.CloudStorage.Domain/
-            `-- TaxVision.CloudStorage.Infrastructure/
+        |-- Auth/                 # Api / Application / Domain / Infrastructure
+        |-- Tenant/                TaxVision.Tenant.{Api,Application,Domain,Infrastructure}
+        |-- Customer/              TaxVision.Customer.{Api,Application,Domain,Infrastructure}
+        |-- Subscription/          TaxVision.Subscription.{Api,Application,Domain,Infrastructure}
+        |-- Notification/          TaxVision.Notification.{Api,Application,Domain,Infrastructure}
+        |-- CloudStorage/          TaxVision.CloudStorage.{Api,Application,Domain,Infrastructure}
+        |-- Signature/             TaxVision.Signature.{Api,Application,Domain,Infrastructure}
+        |-- Communication/         Node.js/TypeScript, Fastify + Socket.IO + Prisma (sec 30)
+        `-- CommunicationTranscriptWorker/  # worker Node standalone, whisper.cpp (sec 27.2/29)
 ```
 
 ### BuildingBlocks separados
@@ -276,8 +281,12 @@ Las versiones se fijan en `.csproj`, `global.json` y Dockerfiles.
 | Redis | 7.2.12-alpine | cache | BSD-3-Clause |
 | MinIO (servidor) | RELEASE.2025-09-07T16-13-09Z | object storage S3 local | AGPL-3.0 |
 | Minio (.NET SDK) | 7.0.0 | cliente S3 en CloudStorage | Apache-2.0 |
+| AWSSDK.S3 (.NET) | ver `.csproj` | multipart upload directo a S3/MinIO (sec 27.8) | Apache-2.0 |
 | ClamAV | 1.4.3 | antivirus de archivos subidos | GPL-2.0 |
-| YARP | 2.3.0 | reverse proxy | MIT |
+| YARP | 2.3.0 | reverse proxy interno (Gateway) | MIT |
+| Caddy | 2-alpine | reverse proxy publico + TLS automatico en produccion (sec 20) | Apache-2.0 |
+| cAdvisor | v0.49.1 | metricas de contenedores para Prometheus | Apache-2.0 |
+| node-exporter | v1.8.2 | metricas de host para Prometheus | Apache-2.0 |
 | Serilog | 10.0.0 | logging estructurado | Apache-2.0 |
 | Serilog OTLP sink | 4.2.0 | logs remotos | Apache-2.0 |
 | OpenTelemetry | 1.16.0 / instrumentaciones 1.15.x | metricas y trazas | Apache-2.0 |
@@ -1197,6 +1206,140 @@ docker compose --env-file .env `
 
 No use `down -v` salvo que quiera eliminar los volumenes.
 
+### Servicios adicionales del stack completo
+
+`deploy/docker/docker-compose.yml` ya no es solo "APIs + infraestructura minima": incluye
+todo lo necesario para un despliegue de produccion real detras de un solo host:
+
+- `sqlserver` (`mcr.microsoft.com/mssql/server:2022-latest`, edicion Developer):
+  **SQL Server esta containerizado** en este compose, no es `host.docker.internal`. Puerto
+  1433 solo en loopback (acceso por VPN/SSH, nunca publico).
+- `cadvisor` (`gcr.io/cadvisor/cadvisor:v0.49.1`, privileged) y `node-exporter`
+  (`prom/node-exporter:v1.8.2`, `pid: host`): metricas de contenedores y de host para
+  Prometheus/Grafana.
+- `caddy` (`caddy:2-alpine`): unico servicio que publica 80/443 al host; ver mas abajo.
+- `minio-provision` (`minio/mc:latest`, perfil `tools`, un solo uso): aprovisiona cuentas de
+  servicio MinIO con alcance minimo (`signature-worker`, `notification-worker`,
+  `communication-transcript-worker`) y sus policies IAM (`deploy/docker/minio/policies/*.json`)
+  para que cada servicio de la Fase D (sec 27.2) suba directo a su propio prefijo temporal, sin
+  usar `MINIO_ROOT_USER`/`PASSWORD`. Idempotente: se puede correr en cada deploy.
+- `signature-api`, `communication-api`, `communication-transcript-worker`: los tres
+  microservicios mas recientes tambien estan dockerizados en este compose (Dockerfiles propios
+  bajo cada `src/Services/<Nombre>/`).
+- `migrations` (perfil `tools`): contenedor que aplica las migraciones EF Core de los 7
+  servicios .NET en una sola corrida.
+
+### Despliegue en produccion (Caddy + TLS wildcard automatico + RS256)
+
+En produccion el `gateway` YARP **no publica puerto al host**: queda solo en la red interna
+`taxvision-network`, y `caddy` es el unico punto de entrada:
+
+```text
+Internet :80/:443 -> caddy (TLS WILDCARD automatico via Let's Encrypt, DNS-01/Cloudflare)
+                       |-- /taxvision-storage/*, /taxvision-temp/*, /taxvision-quarantine/*
+                       |     -> reverse_proxy minio:9000   (URLs presignadas de CloudStorage)
+                       `-- todo lo demas -> reverse_proxy gateway:8080
+                             (incluye la resolucion de tenant por subdominio que hace Auth)
+```
+
+**Fase X1 (completitud del plan de subdominios de tenant, ver `Auth_y_CloudStorage_Plan_
+Completitud_v2.md`)** — el `Caddyfile` (`deploy/docker/caddy/Caddyfile`) usa un site block
+**wildcard** sobre `{$TAXVISION_BASE_DOMAIN:taxprocore.com}, *.{$TAXVISION_BASE_DOMAIN}`, con
+`caddy` construido desde un `Dockerfile` propio (`deploy/docker/caddy/Dockerfile`, no la imagen
+`caddy:2-alpine` estandar) que agrega el plugin `caddy-dns/cloudflare`. Esto es necesario porque
+Let's Encrypt solo emite certificados wildcard via desafio **DNS-01** (crear un registro TXT de
+validacion) — el HTTP-01 automatico que usaba el `Caddyfile` anterior (single-domain) no puede
+emitir para un Host que Caddy no conoce de antemano, asi que nunca iba a poder cubrir subdominios
+de tenant dinamicos (`oficina1.taxprocore.com`, `oficina2.taxprocore.com`, ...). Requiere:
+
+- DNS wildcard (`CNAME *` o `A *`) apuntando a este server, ya configurado antes del primer arranque.
+- `CLOUDFLARE_DNS_API_TOKEN` en `.env` — token de Cloudflare con permiso **Zone:DNS:Edit** sobre
+  la zona, **distinto** del que ya usa Auth para provisionar custom hostnames (`Cloudflare__ApiToken`
+  en `auth-api`, con permisos Zone:DNS:Edit + Zone:SSL:Edit) — no reusar el mismo token entre los
+  dos usos aunque compartan la misma cuenta de Cloudflare.
+- `TAXVISION_DOMAIN` (el host que usan hoy `MINIO_PUBLIC_ENDPOINT`/el healthcheck del workflow de
+  deploy, ej. `api.taxprocore.com`) sigue funcionando sin cambios — como es un subdominio de
+  `TAXVISION_BASE_DOMAIN`, el mismo certificado wildcard ya lo cubre, no hace falta nada mas.
+
+La regla de MinIO existe porque las URLs presignadas que CloudStorage entrega al cliente apuntan
+al mismo dominio publico, con el nombre del bucket como primer segmento — no colisiona con rutas
+del Gateway (`/auth`, `/customers`, `/storage`, etc.).
+
+JWT en produccion usa **RS256 con las claves montadas como archivo**, no HS256 con secreto
+compartido: todos los servicios .NET montan
+`${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem` (`Jwt__PublicKeyPath`); solo
+`auth-api` monta ademas `jwt-private.pem` (`Jwt__PrivateKeyPath`). Esto es necesario para que
+`/auth/.well-known/jwks.json` publique un JWKS real (con HS256 ese endpoint devolveria un
+keyset vacio, ver sec 31) — de eso depende `communication-api` (Node), que valida tokens solo
+via JWKS remoto. `signature-api` monta ademas su certificado PAdES
+(`Signature__Sealing__Cms__CertificatePath`) desde el mismo directorio de secretos.
+
+Grafana trae tres dashboards provisionados automaticamente (`deploy/observability/grafana/
+provisioning/dashboards/`): `overview.json` (request rate y error rate 5xx agregados por
+servicio), `service-detail.json` (mismo detalle con un selector `$service` — un solo dashboard
+parametrizado cubre los ocho servicios, no uno por archivo) e `infrastructure.json`
+(disco/memoria del host, alimentado por cadvisor/node-exporter).
+
+### CI/CD (GitHub Actions)
+
+`.github/workflows/deploy.yml` — unico workflow del repo. Trigger: push a `main` o
+`workflow_dispatch` manual; `concurrency: production-deploy` evita despliegues solapados;
+corre en runner `self-hosted` con timeout de 45 minutos. Pasos, en orden:
+
+1. Checkout.
+2. Escribe un `.env` de produccion (nunca commiteado) desde GitHub Secrets: las 8 connection
+   strings, credenciales de RabbitMQ/MinIO/Grafana, secretos de cuentas MinIO por servicio,
+   claves de cifrado, credenciales SMTP/OAuth (Gmail/Graph), clientes M2M `ServiceAuth`,
+   password del PFX de Signature, variables TURN/CORS de Communication, token de bootstrap del
+   primer `PlatformAdmin`, `TAXVISION_DOMAIN` y (Fase X1) `TAXVISION_BASE_DOMAIN` +
+   `CLOUDFLARE_DNS_API_TOKEN` para el cert wildcard de Caddy; `chmod 600`.
+3. Decodifica `JWT_PRIVATE_KEY_PEM_B64`, `JWT_PUBLIC_KEY_PEM_B64` y
+   `SIGNATURE_SEALING_PFX_B64` a `$TAXVISION_SECRETS_DIR` (`/opt/taxvision/secrets`,
+   `chmod 700`/`600`).
+4. `docker compose ... build` — build de todas las imagenes.
+5. `docker compose ... --profile tools run --rm minio-provision` — antes de levantar nada que
+   dependa de las cuentas de servicio.
+6. `docker compose ... --profile tools run --rm migrations` — migraciones EF Core de los 7
+   servicios .NET.
+7. `docker compose ... run --rm communication-api npx prisma migrate deploy` — migraciones
+   Prisma del servicio Node aparte, porque no pasa por el contenedor `migrations`.
+8. `docker compose ... up -d --remove-orphans` — nunca toca volumenes nombrados
+   (`sqlserver-data`, `minio-data`, etc.).
+9. Limpieza: `docker image prune -f` y `docker builder prune -f --filter "until=24h"` (nunca
+   volumenes).
+10. Healthcheck: hasta 20 intentos con 5s de espera contra
+    `https://${TAXVISION_DOMAIN}/health/ready`; falla el job si el Gateway nunca queda `ready`.
+
+No hay SBOM ni escaneo de secretos automatizado todavia (ver "Pendientes reales", sec 23).
+
+### Probar subdominios de tenant en local y staging (Fase X2 completitud)
+
+El middleware de resolucion de tenant (`TenantHostResolutionMiddleware` en Auth) es agnostico de
+Cloudflare — lee `HttpContext.Request.Host`, nada mas — asi que la logica multi-tenant se prueba
+sin tocar Cloudflare ni Caddy en ningun entorno:
+
+**Local (recomendado — sin instalar nada):** Chrome/Edge resuelven **cualquier** subdominio de
+`*.localhost` a `127.0.0.1` de forma nativa, sin tocar el archivo hosts. Corriendo Auth con
+`dotnet run` (`http://localhost:5124` por defecto, ver `launchSettings.json`), un tenant sembrado
+con `TenantDomain.Host = "oficina1.localhost:5124"` ya resuelve pegandole a
+`http://oficina1.localhost:5124/...` — no hace falta HTTPS ni certificados para probar la
+resolucion en si. Para otros navegadores (o si se necesita HTTPS local): agregar entradas al
+archivo hosts (`127.0.0.1 oficina1.taxprocore.test`, una por tenant de prueba) y generar un
+certificado wildcard local con **mkcert**:
+```
+mkcert -install
+mkcert "*.taxprocore.test" taxprocore.test localhost 127.0.0.1
+```
+y servirlo con Kestrel (`Kestrel:Certificates:Default:Path` en `appsettings.Development.json`) o
+con una segunda instancia local de Caddy apuntando al `.pfx` generado. Evitar el TLD `.dev`
+(Chrome lo fuerza a HSTS/HTTPS via preload list) y `.local` (reservado para mDNS).
+
+**Staging:** misma estrategia que produccion pero en una zona separada — `TAXVISION_BASE_DOMAIN=
+staging.taxprocore.com` (o el subdominio que se use como raiz de staging) con su propio wildcard
+DNS y su propio `CLOUDFLARE_DNS_API_TOKEN`/despliegue de `caddy`, para que un certificado o un
+tenant de prueba en staging nunca comparta nada con produccion. El codigo de resolucion de tenant
+no cambia entre entornos — solo la config (`TenantDomainOptions`/`TAXVISION_BASE_DOMAIN`).
+
 ## 21. Depuracion
 
 ### Health
@@ -1304,13 +1447,18 @@ Checklist:
 
 ### Pendientes reales
 
-- reemplazar credenciales locales por un secret manager en produccion;
-- mover el bootstrap de `PlatformAdmin` a un secret manager/Job de provisioning en produccion;
-- habilitar TLS externo e interno segun el entorno;
-- agregar CI/CD, SBOM y escaneo de secretos;
+- reemplazar GitHub Secrets por un secret manager/KMS dedicado en produccion (hoy
+  `deploy.yml` escribe `.env` y las PEM desde secrets de GitHub Actions en cada deploy, ver
+  sec 20);
+- el bootstrap de `PlatformAdmin` sigue siendo una variable de entorno
+  (`PLATFORM_BOOTSTRAP_INVITATION_TOKEN`) inyectada por CI, no un Job de provisioning separado;
+- TLS externo ya esta resuelto (Caddy + Let's Encrypt automatico, sec 20); falta TLS interno
+  entre servicios dentro de `taxvision-network` (hoy HTTP/AMQP en texto plano dentro de la red
+  Docker privada);
+- CI/CD de despliegue ya existe (`.github/workflows/deploy.yml`, sec 20); faltan SBOM y
+  escaneo de secretos automatizado en el pipeline;
 - implementar las pruebas de la guia;
 - definir retencion y almacenamiento object storage para observabilidad productiva;
-- crear el microservicio de Suscripcion;
 - crear `UserProfile` y aplicar la sobrescritura personal de `TimeZoneId`;
 - versionar contratos de eventos antes de incorporar mas consumidores.
 
@@ -1386,7 +1534,8 @@ Base `TaxVision_Customer`. Migraciones aplicadas en orden:
 
 - `InitialCustomer`: crea las 8 tablas de dominio mas el seed de catalogos y
   las tablas `wolverine_*` de outbox/inbox.
-- `CustomerImports`: agrega las 3 tablas del flujo de bulk import.
+- `CustomerImports`: agrega las 3 tablas del flujo de bulk import (`CustomerImportFiles`
+  entre ellas, retirada despues — ver `DropCustomerImportFiles`).
 - `CustomerImportActiveJobUniqueIndex`: indice filtrado unique para garantizar
   un solo job activo por tenant a nivel BD.
 - `UniqueFiscalProfileBlindIndex`: convierte los indices
@@ -1395,6 +1544,8 @@ Base `TaxVision_Customer`. Migraciones aplicadas en orden:
   customers o dos relaciones del mismo tenant.
 - `AddCustomerAuditLog`: crea `CustomerAuditLogs` — audit trail de acciones
   sensibles (hoy solo `RevealTaxIdentifier`, ver sec 25.5).
+- `DropCustomerImportFiles`: elimina la tabla `CustomerImportFiles` — el
+  archivo de import ya no vive en SQL, ver sec 25.10.1a (CloudStorage).
 
 Tablas de dominio core:
 
@@ -1412,7 +1563,8 @@ Tablas del flujo de bulk import:
 
 - `CustomerImportAttempts`
 - `CustomerImportRows`
-- `CustomerImportFiles`
+
+(El archivo subido en si ya no es una tabla — vive en CloudStorage, ver sec 25.10.1a.)
 
 Indices clave:
 
@@ -1509,10 +1661,17 @@ Customer publica al exchange `taxvision-events`. Contratos en
 - `CustomerArchivedIntegrationEvent`
 - `CustomerPortalInvitationRequestedIntegrationEvent`
 - `CustomersBulkImportedIntegrationEvent`
+- `SaveFileRequestedIntegrationEvent` — Fase D, ver sec 25.10.1a. Le pide a
+  CloudStorage que registre/escanee el archivo de import ya subido a MinIO.
 
 Ninguno transporta identificadores fiscales, contrasenas ni datos bancarios.
 Solo `CustomerId`, `TenantId`, `DisplayName`, contacto basico, idioma, canal
 preferido y metadatos.
+
+Customer tambien **consume** del mismo exchange (`customer-events`, bindeada
+a `taxvision-events`): `FileAvailableIntegrationEvent`,
+`FileInfectedDetectedIntegrationEvent`, `FileBlockedByPolicyIntegrationEvent`
+de CloudStorage — ver `ImportFileScanResultConsumer`, sec 25.10.1a.
 
 ### 25.9 Consumer en Auth
 
@@ -1536,13 +1695,43 @@ y `CustomersBulkImportedV1` (pag 11, paso 9).
 #### 25.10.1 Patron async job
 
 1. POST `/customers/imports` con archivo multipart y header `Idempotency-Key`
-   retorna 202 Accepted con `importJobId`.
-2. Wolverine encola `RunCustomerImportMessage` que procesa en background.
-3. Cliente hace polling a GET `/customers/imports/{id}` cada dos segundos.
-4. Al completar se publica `CustomersBulkImportedIntegrationEvent` y se ofrece
+   retorna 202 Accepted con `importJobId` (status `Queued`).
+2. `StartCustomerImportHandler` sube el archivo directo a CloudStorage (ver
+   25.10.1a) — no encola el worker todavia.
+3. `ImportFileScanResultConsumer` recibe `FileAvailableIntegrationEvent` cuando
+   CloudStorage confirma que el archivo paso el antivirus/politica de
+   contenido, y recien ahi encola `RunCustomerImportMessage` que procesa en
+   background. Si el escaneo falla (`FileInfectedDetectedIntegrationEvent` o
+   `FileBlockedByPolicyIntegrationEvent`), el job pasa directo a `Failed`.
+4. Cliente hace polling a GET `/customers/imports/{id}` cada dos segundos —
+   el status se queda en `Queued` un poco mas de tiempo que antes (el
+   escaneo agrega latencia, tipicamente sub-segundo en local con ClamAV).
+5. Al completar se publica `CustomersBulkImportedIntegrationEvent` y se ofrece
    reporte descargable.
 
 No hay request HTTP de larga duracion. El frontend nunca bloquea.
+
+#### 25.10.1a Archivo de import en CloudStorage
+
+El binario ya no vive en SQL (`CustomerImportFiles`, retirada por
+`DropCustomerImportFiles`) — sigue el mismo patron Fase D que usan
+Signature/Notification:
+
+- **Subida**: `CustomerImportCloudStorageClient.UploadAsync` sube el objeto
+  directo a MinIO con credenciales propias de Customer (IAM scoped a
+  `taxvision-temp/customer/*`, ver `deploy/docker/minio/policies/
+  customer-source.json`) y publica `SaveFileRequestedIntegrationEvent`. El
+  `FileId` que viaja en el evento **es el mismo `CustomerImportAttempt.Id`** —
+  no hace falta persistir una correlacion aparte, el consumer solo busca el
+  attempt por ese Id.
+- **Descarga/borrado**: siguen via HTTP+M2M (`ServiceAuthClient` +
+  `CloudStorageClient`, grant client-credentials contra `/auth/service-token`)
+  — mismo mecanismo que Signature/Notification, cliente M2M propio
+  `customer-worker` con permisos `cloudstorage.file.download`,
+  `cloudstorage.file.view`, `cloudstorage.file.delete` (ver `ServiceAuth:Clients`
+  en Auth, config directa por `.env`/user-secrets — sin codigo nuevo en Auth).
+- `FolderType.Imports` / `OwnerType.Tenant` — CloudStorage ya tenia una policy
+  dedicada para `.csv`/`.xlsx` en esa carpeta (100 MB, ver sec 27.1/27.6).
 
 #### 25.10.2 Endpoints
 
@@ -1653,11 +1842,14 @@ operador puede usar como molde. Telefonos en formato E.164.
 
 `CustomerImportCleanupHostedService` corre como `BackgroundService` diario.
 Purga attempts terminales con `CreatedAtUtc < UtcNow - 90 dias` y sus filas
-y archivos asociados. Configurable via `CustomerImport:ReportRetentionDays`.
+asociadas. Configurable via `CustomerImport:ReportRetentionDays`.
 
-El binario del archivo en `CustomerImportFiles` se borra inmediatamente al
-terminar el job; el cleanup de 90 dias solo aplica a attempts huerfanos
-o a la auditoria del reporte.
+El archivo en CloudStorage se borra inmediatamente al terminar el job
+(`FinishAttemptAsync` llama `ICustomerImportCloudStorageClient.DeleteAsync`);
+el cleanup de 90 dias reintenta ese borrado remoto por cada attempt purgado
+como defense-in-depth (si `FinishAttemptAsync` no llego a hacerlo por un
+fallo de red o un crash mid-flight) — un archivo ya borrado responde
+NotFound y no genera error.
 
 ### 25.11 Wolverine y observabilidad
 
@@ -1707,6 +1899,33 @@ dotnet user-secrets set "CustomerImport:ReportRetentionDays" "90" `
   --project src\Services\Customer\TaxVision.Customer.Api
 ```
 
+Credenciales para que el archivo de import hable con CloudStorage (sec 25.10.1a
+— mismo patron que `Signature:ServiceAuth`/`Notification:Minio`, ver sec 27):
+
+```powershell
+dotnet user-secrets set "ServiceAuthClient:AuthBaseUrl" "http://localhost:5124" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "ServiceAuthClient:ClientId" "customer-worker" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "ServiceAuthClient:ClientSecret" "<mismo valor que ServiceAuth:Clients:3:Secret en Auth>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "CloudStorageClient:BaseUrl" "http://localhost:5330" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Customer:Minio:Endpoint" "localhost:9000" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Customer:Minio:AccessKey" "customer-worker" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Customer:Minio:SecretKey" "<generado por provision-service-accounts.sh>" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+dotnet user-secrets set "Customer:Minio:UseTls" "false" `
+  --project src\Services\Customer\TaxVision.Customer.Api
+```
+
+El cliente M2M `customer-worker` se da de alta en Auth con permisos
+`cloudstorage.file.download`, `cloudstorage.file.view`,
+`cloudstorage.file.delete` (`ServiceAuth:Clients:3:*` en user-secrets de Auth,
+mismo patron que `signature-worker`/`notification-worker`).
+
 En produccion el master key va a Key Vault o equivalente; nunca al repo ni al
 `.env`.
 
@@ -1737,9 +1956,6 @@ dotnet ef database update `
   Email Service envie el correo cuando exista.
 - Notificacion push al frontend cuando completa el job de bulk import. Hoy
   solo polling; cuando exista RealTime Service, agregar SignalR.
-- Migracion de `CustomerImportFiles` a CloudStorage Service. Hoy el archivo
-  vive en BD; cuando exista el microservicio, reemplazar `IImportFileStore`
-  por un fileId externo y borrar la tabla local.
 - Notificacion por email al operador cuando completa: requiere Email Service.
 - Pruebas automatizadas siguiendo la guia general del proyecto.
 
@@ -2398,10 +2614,45 @@ La implementacion sigue la arquitectura del resto de TaxVision:
 
 Los modulos Media Manager, Signature, Communication, Email, Billing e IRS deben
 guardar unicamente el `FileId` y proyectar la metadata que necesiten al consumir
-los eventos. Para archivos seleccionados por un usuario utilizan el flujo REST +
-POST policy anterior. La integracion de archivos generados exclusivamente en
-backend mediante un comando de integracion todavia no esta implementada; no se
-debe introducir acceso directo de esos servicios a MinIO como atajo.
+los eventos. Para archivos seleccionados por un usuario, o descargados por un
+proceso en background en nombre de un request, usan el flujo REST + POST policy
+anterior con JWT de usuario o token M2M.
+
+Para archivos generados exclusivamente en backend (sin usuario en el request) existe,
+desde la fase de decoupling por eventos ("Fase D"), un segundo camino: el productor
+sube el objeto directamente a MinIO/S3 con credenciales IAM propias acotadas a un
+bucket temporal (`taxvision-temp/<servicio>/*`, aprovisionadas por el servicio
+`minio-provision`, ver sec 20) y publica `SaveFileRequestedIntegrationEvent`
+(`BuildingBlocks/Messaging/CloudStorageIntegrationEvents`) en vez de llamar al flujo
+HTTP+M2M de 3 pasos. `SaveFileFromSourceHandler` en CloudStorage consume el evento de
+forma idempotente, revalida politica de folder/plan y cuota, copia el objeto al bucket
+temporal canonico y continua por el mismo pipeline de escaneo que un upload normal
+(ScanFileCommand -> ClamAV -> Available/Quarantine). Los productores .NET (Wolverine)
+publican al exchange fanout compartido `taxvision-events`; los productores Node (que no
+usan Wolverine) publican a una cola dedicada `cloudstorage-external-uploads` consumida
+aparte por CloudStorage.
+
+Migrado a este flujo (solo el lado de **subida**; las **descargas** siguen usando el
+flujo REST `download-url` + M2M anterior en los tres casos, deliberadamente fuera de
+alcance de esta fase):
+
+- **Signature** (`SignatureCloudStorageClient.UploadAsync`): PDF sellado y certificado
+  de firma (ver sec 29.8).
+- **CommunicationTranscriptWorker** (`cloudstorage-client.ts`, microservicio Node
+  standalone en `src/Services/CommunicationTranscriptWorker/`): transcript de
+  whisper.cpp de calls/meetings.
+- **Notification**, unicamente el path de adjuntos entrantes por sincronizacion IMAP
+  (`InboundAttachmentStorageWriter`).
+
+Pendiente real, no oculto: `TemplateStorageService` y `LayoutStorageService` de
+Notification (`Infrastructure/Storage/EmailStorageServices.cs`, assets HTML/design
+JSON/preview PNG de plantillas y layouts de email, ver sec 28.1) **siguen usando** el
+flujo HTTP+M2M de 3 pasos anterior (`Infrastructure/Storage/CloudStorageClient.cs`:
+initiate -> POST a la URL presignada -> complete) porque se suben en contexto de
+request con el JWT del usuario que edita la plantilla, no desde un worker en
+background. No hay urgencia arquitectonica para migrarlos — el criterio de Fase D es
+"sin usuario en el request" — pero es, a la fecha, el unico productor de archivos entre
+microservicios que no paso por el flujo de eventos.
 
 ## 27.3 Acciones, roles y permisos
 
@@ -2442,12 +2693,50 @@ asignaciones de permisos. Las reglas de almacenamiento por plan se configuran en
 
 ## 27.4 Endpoints
 
+Archivos:
+
 - `POST /storage/files/uploads`
 - `POST /storage/files/{fileId}/complete`
+- `POST /storage/files/uploads/initiate-multipart` (Fase U, ver sec 27.8)
+- `POST /storage/files/{fileId}/complete-multipart` (Fase U, ver sec 27.8)
 - `GET /storage/files/{fileId}`
 - `GET /storage/files`
 - `POST /storage/files/{fileId}/download-url`
+- `POST /storage/files/zip` (Fase B2, ver sec 27.7)
 - `DELETE /storage/files/{fileId}`
+- `PUT /storage/files/{fileId}/legal-hold`, `DELETE /storage/files/{fileId}/legal-hold` (ver sec 27.12)
+
+Folders (ver sec 27.9):
+
+- `GET /storage/folders`
+- `POST /storage/folders`
+- `PUT /storage/folders/{folderId}/rename`
+- `PUT /storage/folders/{folderId}/move`
+
+Sharing (ver sec 27.10):
+
+- `POST /storage/files/{fileId}/shares`, `GET /storage/files/{fileId}/shares`
+- `POST /storage/folders/{folderId}/shares`, `GET /storage/folders/{folderId}/shares`
+- `GET /storage/shares/shared-with-me`
+- `DELETE /storage/shares/{shareLinkId}`
+- `PUT /storage/shares/{shareLinkId}/expiration`
+- `GET /storage/public/{token}` (anonimo)
+- `GET /storage/private/{token}` (autenticado)
+
+Recycle bin (ver sec 27.11):
+
+- `GET /storage/recycle-bin`
+- `POST /storage/recycle-bin/restore/{fileId}`
+- `DELETE /storage/recycle-bin/empty`
+
+Legal / DMCA (ver sec 27.12):
+
+- `POST /storage/legal/dmca-notices`
+- `POST /storage/legal/dmca-notices/{dmcaNoticeId}/counter-notice`
+- `POST /storage/legal/dmca-notices/{dmcaNoticeId}/reinstate`
+
+Cuota, auditoria y salud:
+
 - `GET /storage/usage`
 - `GET /storage/audit`
 - `GET /health/live`
@@ -2522,6 +2811,205 @@ El proyecto se encuentra en `deploy/tests/TaxVision.CloudStorage.Tests` y cubre:
 - folders fiscales que requieren ano;
 - expiracion de uploads abandonados;
 - aislamiento por owner para Customer Portal.
+
+## 27.7 Descarga ZIP multi-archivo y multi-carpeta (Fase B2/B2.1)
+
+`POST /storage/files/zip` (permiso `cloudstorage.file.download`, `FilesController.DownloadZip`)
+recibe `{ fileIds, folderIds }` (ambos opcionales, al menos uno debe traer algo) y devuelve un
+`.zip` de streaming real: el controller abre un `System.IO.Compression.ZipArchive` directamente
+sobre `Response.Body` (`ZipArchiveMode.Create, leaveOpen: true`) y por cada entrada copia el
+objeto desde MinIO al stream de la entrada (`entry.Open()`) sin bufferear el ZIP completo en
+memoria. La validacion, resolucion de carpetas y armado del plan de descarga (que archivos, en
+que orden, tamano total) pasan por `PrepareZipDownloadQuery`/`PrepareZipDownloadHandler` via
+Wolverine; el volcado de bytes es la unica parte que corre fuera del bus porque un handler no
+tiene acceso al `HttpResponse`.
+
+**`fileIds`** — archivos sueltos, van en la raiz del ZIP. Resolucion **estricta**: un id
+invalido, de otro tenant/owner, o que no este `Available` aborta TODO el pedido con
+`File.NotFound`/`File.NotAvailable` (el usuario los eligio uno por uno, un descarte silencioso
+seria confuso).
+
+**`folderIds`** — carpetas completas, **recursivo** (incluye subcarpetas). Cada carpeta pedida
+se resuelve via el `RelativePath` materializado de `Folder` (`IFolderRepository.
+ListByPathPrefixAsync`, 1 query trae todo el subarbol) y sus archivos se traen en un unico
+batch (`IFileObjectRepository.ListInFoldersAsync`) — evita el N+1 de una query por carpeta.
+Dentro del ZIP, la estructura de carpetas se preserva como directorios (ej.
+`Recibos/2025/factura.pdf`); si dos carpetas pedidas comparten nombre en el request, la segunda
+se desambigua como `Recibos_1/...`. Resolucion **tolerante**: una carpeta vacia o con archivos
+aun en escaneo no aborta el resto del ZIP, simplemente no aporta esas entries — solo falla si
+el `folderId` en si no existe/no es accesible (`Folder.NotFound`, `Folder.Forbidden`) o si tras
+resolver todo no queda ningun archivo para incluir (`File.NoFilesResolved`).
+
+Si un `fileId` explicito tambien cae dentro de un `folderId` pedido en el mismo request, no se
+duplica — gana la resolucion estricta (queda en la raiz del ZIP, no bajo el prefijo de carpeta).
+
+Limites, en `CloudStorageOptions`:
+
+- `MaxZipFiles` = 500 archivos por request (default) — se chequea sobre `fileIds` de entrada
+  (fail fast) y de nuevo sobre el total ya resuelto (archivos sueltos + de carpetas).
+- `MaxZipFolders` = 50 carpetas por request (default) — chequeado ANTES de resolver contenido,
+  para no pagar el costo de I/O de una carpeta pedida de mas.
+- `MaxZipAggregateBytes` = 500 MB agregados (default).
+- Excederlos devuelve `FileErrors.TooManyItems` / `FileErrors.TooManyFolders` /
+  `FileErrors.ZipTooLarge` (413).
+
+Rate limit dedicado `zip-download`: 5 requests/minuto, particionado por `sub` del JWT (con
+fallback a IP). Si MinIO falla a mitad de la descarga, los headers HTTP ya se enviaron (ZIP
+truncado) y la conexion simplemente se corta — limitacion inherente al streaming aceptada por
+diseno, no un bug pendiente.
+
+## 27.8 Multipart upload directo a S3/MinIO (Fase U)
+
+Para archivos grandes, `IMultipartUploadStorage` (implementado por `S3MultipartUploadStorage`
+sobre `AWSSDK.S3`) permite subir por partes directamente al object storage sin pasar los bytes
+por el backend:
+
+1. `POST /storage/files/uploads/initiate-multipart` — valida igual que un upload normal
+   (permiso, tenant, owner, folder, cuota) y llama `InitiateMultipartUploadAsync`; genera una URL
+   PUT presignada por parte (`GetPreSignedURLAsync`) con tamano de parte `MultipartPartSizeBytes`
+   (default 5 MB, el minimo de S3).
+2. El cliente sube cada parte directamente a MinIO/S3 con las URLs recibidas, sin credenciales de
+   MinIO ni pasar por CloudStorage.
+3. `POST /storage/files/{fileId}/complete-multipart` — recibe la lista `Parts` (`PartNumber`,
+   `ETag`) del cliente; `CompleteMultipartUploadHandler` llama
+   `multipartStorage.CompleteAsync(...)` y despues cae en el mismo `CompleteUploadHandler` que usa
+   el flujo de upload simple (verifica tamano, marca `PendingScan`).
+
+**Abort en fallo o abandono**: `FileObject.MultipartUploadId` persiste el `UploadId` que S3
+devuelve en `InitiateAsync` (migracion `AddMultipartUploadIdAndShareLinkRowVersion`). Si
+`CompleteAsync` falla, `CompleteMultipartUploadHandler` captura la excepcion, llama
+`multipartStorage.AbortAsync(...)` para liberar las partes ya subidas, y devuelve
+`File.MultipartCompleteFailed` (409) — el archivo queda en `PendingUpload`. Si el cliente
+abandona el upload sin completar, `ExpiredUploadCleanupService` (barre cada 30 minutos las
+reservas vencidas) distingue el caso: si `MultipartUploadId` esta presente llama
+`multipartStorage.AbortAsync(...)` en vez del `storage.DeleteAsync` simple (que no hace nada
+sobre una sesion multiparte nunca ensamblada).
+
+## 27.9 Folders (arbol jerarquico)
+
+`FoldersController.cs` (`storage/folders`) expone un arbol de carpetas puramente logico en base
+de datos — distinto del `FolderType` (enum fijo usado para componer la clave fisica en MinIO, ver
+sec 27.1/27.6) y sin tocar el storage fisico:
+
+- `GET /storage/folders?parentFolderId=` — contenido de una carpeta.
+- `POST /storage/folders` — crear, con `OwnerType`/`OwnerId`.
+- `PUT /storage/folders/{folderId}/rename` — renombrar.
+- `PUT /storage/folders/{folderId}/move` — mover a otro padre.
+
+El agregado `Folder` (`Domain/Folders/Folder.cs`, `TenantEntity`) mantiene un `RelativePath`
+materializado (p. ej. `/Clientes/Oficina A/Recibos`) para evitar recorridos recursivos en cada
+listado o movimiento. Al renombrar o mover una carpeta, `FolderPathCascader.CascadeAsync`
+reescribe el `RelativePath` de todos los descendientes sustituyendo el prefijo antiguo por el
+nuevo (`RebasePath`), compartido por `RenameFolderHandler` y `MoveFolderHandler`.
+
+## 27.10 Sharing / ShareLinks
+
+Tres controllers cubren el ciclo de vida completo de enlaces compartidos:
+
+- `ShareLinksController.cs` (`[Authorize]`): crear/listar para archivo o carpeta, listar "shared
+  with me", revocar, actualizar expiracion, y (Fase C4 completitud)
+  `PUT storage/shares/{shareLinkId}/permission` — cambiar el `Permission` de un link ya creado,
+  gateado por `cloudstorage.share.manage`, reusando la misma validacion de politica que la
+  creacion.
+- `PublicShareController.cs` (`[AllowAnonymous]`, `GET storage/public/{token}`, rate limit
+  `share-public` 20 req/min por `{ip}:{path}`).
+- `PrivateShareController.cs` (`[Authorize]`, `GET storage/private/{token}`).
+
+`ShareVisibility` (`Domain/Sharing/ShareEnums.cs`): `Public`, `TenantOnly`, `SpecificUsers`,
+`TenantCustomers`, `ExternalRecipients`. `SharePermission`: `View`, `Preview`, `Download`,
+`Upload`, `EditMetadata` (estos dos ultimos solo asignables por un actor con
+`cloudstorage.share.manage`, **y nunca junto con `Visibility.Public`** —
+`ShareErrors.ElevatedPermissionNotAllowedOnPublicLink` si se intenta, en creacion o en el cambio
+de permiso). `View`/`Preview` fuerzan `Content-Disposition: inline` en la URL presignada
+(se renderiza en el browser); `Download` fuerza `attachment` (descarga forzada) —
+`IObjectStorage.PresignGetAsync` tiene un overload dedicado para esto. **Nota honesta**: `Upload`/
+`EditMetadata` estan validados y se pueden asignar a un link, pero hoy **ningun endpoint los
+consume realmente** — no existe un flujo de "subir un archivo nuevo via el token de un link
+compartido" ni de "editar metadata via el token"; construir esas dos capacidades es trabajo
+pendiente real, no solo documentacion.
+
+Compartir carpetas (`ShareLink.IsRecursive` + `ShareLink.AppliesToFutureItems`, ambos forzados a
+`false` para links de archivo — `ShareErrors.RecursiveOnlyForFolders` si no) permite que el link
+cubra el contenido actual y, opcionalmente, los items que se agreguen despues.
+
+Password protection: `Pbkdf2ShareLinkPasswordHasher` (PBKDF2-HMACSHA256, 100k iteraciones — mismo
+esquema que Auth; el plan original pedia Argon2id, ver "Pendientes reales" mas abajo).
+Expiracion: `ShareLink.ExpiresAtUtc` (default `CreatedAtUtc + 7 dias` si no se especifica).
+Limite de accesos: `MaxAccessCount` opcional; al alcanzarlo el link pasa a `Exhausted`.
+
+El token (`ShareToken`) es opaco: 32 bytes CSPRNG en base64url, mostrado una sola vez; solo se
+persiste su hash SHA-256 (mas `TokenLast4` para mostrar en UI). La resolucion siempre es por hash,
+nunca decodificando el token. `ResolvePublicShareHandler` solo sirve `Public` (y
+`ExternalRecipients` si el email coincide); `ResolvePrivateShareHandler` es **fail-closed**: exige
+JWT, rechaza `Public` de plano, y deniega si el tenant del JWT no coincide con el del link aunque
+el token sea estructuralmente valido. Ambos caminos colapsan cualquier fallo (no encontrado,
+revocado, expirado, agotado, no autorizado) en la misma respuesta `Denied`, sin distinguir el
+motivo, para no facilitar enumeracion. El acceso concedido es una URL GET presignada de MinIO de 2
+minutos; CloudStorage nunca hace proxy del binario.
+
+**Eventos de integracion** (`BuildingBlocks/Messaging/CloudStorageIntegrationEvents/`):
+`ShareLinkCreated`, `ShareLinkRevoked`, `ShareLinkFolderItemAdded`, y (Fase C4 completitud)
+`ShareLinkAccessed`/`ShareLinkAccessDenied` (publicados en cada resolucion exitosa/denegada, con
+un campo `Reason` de texto libre para el caso denegado — pensados para que un consumidor externo
+tipo SIEM/alertas reaccione, no cambian la respuesta HTTP que sigue siendo el mismo `Denied`
+generico), `ShareLinkExpired` (subconjunto de `AccessDenied` cuando la razon puntual es
+expiracion — se sigue evaluando siempre en vivo contra `ExpiresAtUtc`, no hay un job de
+expiracion proactivo) y `ShareLinkPermissionChanged`. Deliberadamente **no** existe un evento
+`ShareLinkResolutionSucceeded` de alta frecuencia — el middleware/handler corre en cada request,
+publicar un evento por cada uno inundaria el bus sin aportar nada que `StorageAccessLog` (local)
+no cubra ya.
+
+## 27.11 Recycle bin
+
+`RecycleBinController.cs` (`storage/recycle-bin`, permiso `cloudstorage.recyclebin.manage`, no
+asignable a roles de Customer Portal):
+
+- `GET /storage/recycle-bin?skip=&take=` — listar.
+- `POST /storage/recycle-bin/restore/{fileId}` — restaurar.
+- `DELETE /storage/recycle-bin/empty` — vaciar todo el tenant.
+
+`FileObject.SoftDelete` rechaza el borrado si `IsLegalHeld` (sec 27.12). `RecycleBinPurgeService`
+(`BackgroundService`, `PeriodicTimer` de **24 horas**) purga fisicamente lo vencido segun
+`CloudStorageOptions.RecycleBinRetentionDays` (default 30 dias). Tanto la purga manual
+(`EmptyRecycleBinHandler`) como la del job diario comparten `RecycleBinPurger.PurgeAsync`: salta
+(sin borrar) los archivos con legal hold, y para el resto borra el objeto en MinIO, libera la
+cuota (`TenantStorageLimit.ReleaseUsed(sizeBytes)`) y elimina la fila.
+
+## 27.12 Legal hold y DMCA
+
+Legal hold vive en `FilesController.cs`: `PUT /storage/files/{fileId}/legal-hold` y
+`DELETE .../legal-hold` (permiso `cloudstorage.legal.manage`). `FileObject.PlaceLegalHold()` /
+`LiftLegalHold()` son idempotency-guarded (fallan si ya esta en ese estado). Un archivo con legal
+hold no puede pasar por soft-delete ni por la purga fisica del recycle bin; levantar el hold no
+revierte por si solo un estado como `BlockedByPolicy`.
+
+`LegalController.cs` (`storage/legal/dmca-notices`) implementa el ciclo DMCA sobre el agregado
+`DmcaNotice` (`Domain/Legal/DmcaNotice.cs`), estados `Received -> CounterNoticeSubmitted ->
+Reinstated`:
+
+- `POST /storage/legal/dmca-notices` — registrar (permiso `cloudstorage.legal.manage`), exige
+  `SwornStatementAccepted` mas datos del reclamante y del contenido.
+- `POST /storage/legal/dmca-notices/{id}/counter-notice` — contra-notificacion (permiso
+  `cloudstorage.file.dmca_counternotice`), solo valido desde `Received`.
+- `POST /storage/legal/dmca-notices/{id}/reinstate` — reinstalar (permiso
+  `cloudstorage.legal.manage`), valido desde `Received` o `CounterNoticeSubmitted`.
+
+`CloudStorageOptions.FolderTypePolicies` define, por `FolderType`, un whitelist/blacklist de
+extensiones y MIME mas un tope de tamano (p. ej. `Avatars` 5 MB solo jpg/png/webp; `Recordings`
+500 MB solo webm/mp4). Una blacklist global `DangerousExtensions` (ejecutables, imagenes de disco,
+formatos asociados a pirateria, `.torrent`) se resta siempre. La politica efectiva de una subida es
+la interseccion de la politica del `FolderType` con la del plan del tenant, menos la blacklist
+global.
+
+## 27.13 Pendientes reales de CloudStorage
+
+- Region explicita (`.WithRegion(...)`) para AWS S3 fuera de `us-east-1` (sec 27.5).
+- Migrar `TemplateStorageService`/`LayoutStorageService` de Notification al flujo de eventos de
+  Fase D — hoy siguen en HTTP+M2M por diseno (request-scoped con JWT de usuario), ver sec 27.2.
+- Descargas de archivos generados en backend (Signature, CommunicationTranscriptWorker,
+  Notification) siguen usando `download-url` + M2M; no migraron a un flujo de eventos porque no
+  hay problema de acoplamiento HTTP que resolver en ese sentido (CloudStorage sigue siendo la
+  unica fuente de la URL presignada).
 
 # 28. Modulo de Email avanzado (Notification)
 
@@ -3989,7 +4477,7 @@ para mutaciones del propio tenant, `PlatformAdmin` para operaciones cross-tenant
 | AddOns | `GET /addons` (publico), `GET /addons/tenant`, `POST /addons`, `POST /addons/{id}/cancel`, `POST /addons/{id}/renew` |
 | Entitlements | `GET /entitlements/summary`, `GET /entitlements/{key}` |
 | Audit | `GET /audit` (TenantAdmin o PlatformAdmin) |
-| Admin | `GET /admin/subscription/upcoming-renewals`, `/expired-seats`, `/past-due-subscriptions` (PlatformAdmin) |
+| Admin | `GET /admin/subscription/upcoming-renewals`, `/expired-seats`, `/past-due-subscriptions`, `POST /admin/subscription/tenants/{tenantId}/recalculate-entitlements` (PlatformAdmin) |
 | Interno | `GET /internal/users/{userId}/access` (policy `ServiceOnly`, solo Auth lo llama) |
 
 ## 32.5 Jobs en segundo plano
@@ -4042,6 +4530,20 @@ no necesiten una llamada HTTP adicional a Subscription. Lo consumen:
   todavia esas claves en el catalogo (§32.2 solo siembra `module.*` y limites core),
   asi que hoy cae siempre a los defaults conservadores (4 participantes, 60 min,
   etc.) hasta que ese catalogo se extienda.
+
+**Confiabilidad del recalculo (2026-07)**: las ~20 rutas que disparan
+`RecalculateEntitlementsCommand` (alta de tenant, cambio de plan, seats, add-ons,
+jobs de expiracion) lo hacen via `bus.RecalculateEntitlementsSafelyAsync(...)`
+(`Entitlements/Commands/RecalculateEntitlements/RecalculateEntitlementsExtensions.cs`),
+que loguea un `ERROR` con el `TenantId` si el comando falla — antes se ignoraba el
+`Result` devuelto y una falla transitoria (ej. Redis/DB no disponibles un instante)
+dejaba al tenant con `TenantSubscription` valida pero sin `TenantEntitlementSnapshot`,
+sin que nada lo notara ni lo reintentara. Ademas, `TenantCreatedConsumer` ya no corta
+en seco cuando la suscripcion del tenant ya existe: sigue recalculando entitlements en
+ese caso (es upsert), asi que reprocesar `TenantCreatedIntegrationEvent` autosana un
+tenant que quedo en ese estado. Para reconciliar un tenant ya atascado sin esperar un
+reintento automatico, `POST /admin/subscription/tenants/{tenantId}/recalculate-entitlements`
+(PlatformAdmin, §32.4) fuerza el recalculo y republica el evento a demanda.
 
 Retirados en la fase de cleanup del rediseno (2026-07): `SubscriptionActivatedIntegrationEvent`,
 `SubscriptionPlanChangedIntegrationEvent`, `SubscriptionSuspendedIntegrationEvent`,
@@ -4103,7 +4605,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d --build subscription-ap
 ```
 
 La coleccion Postman `Postman_Collection/TaxVision_Subscription.postman_collection.json`
-cubre los 21 endpoints agrupados por recurso (Plans, Subscriptions, Seats, AddOns,
+cubre los 28 endpoints agrupados por recurso (Plans, Subscriptions, Seats, AddOns,
 Entitlements, Audit, Admin). Usa el mismo environment `TaxVisionBackEnd` que el
 resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
 /auth/login`, `tenantId` del claim del JWT). Flujo minimo sugerido:
@@ -4117,6 +4619,10 @@ resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
 4. `PurchaseSeats` / `PurchaseAddOn` y sus variantes de asignar/cancelar/renovar.
 5. `GetEntitlementSummary` para ver el efecto combinado.
 6. `SearchAuditLog` para confirmar que cada mutacion anterior quedo registrada.
+7. `Admin - RecalculateEntitlements` (PlatformAdmin) si un tenant quedo con
+   suscripcion pero sin snapshot de entitlements (ver §32.6) — reintenta el
+   calculo y republica `TenantEntitlementsChangedIntegrationEvent` a demanda, sin
+   esperar a que algo lo dispare de nuevo automaticamente.
 
 ## 32.9 Pendientes documentados
 
@@ -4133,3 +4639,291 @@ resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
   `TenantEntitlementsChangedQuotaConsumer`/`bindSubscriptionConsumers` ya leen esas
   claves si existen; falta sembrarlas en `SubscriptionPlanCatalogSeeder` cuando se
   defina el catalogo real por plan/tier.
+
+# 33. Multi-tenancy: subdominios y dominios propios (Auth)
+
+Esta seccion documenta el trabajo de las fases A3-A7 (julio 2026): Auth se
+convierte en el dueno del ciclo de vida completo de los dominios de un tenant —
+tanto el subdominio de plataforma (`oficina1.taxprocore.com`) como un dominio
+propio opcional (`archivos.suoficina.com`). El diseno completo vive en el
+documento externo `Auth_y_CloudStorage_Plan_Completitud_v2.md` §9-11. No se creo
+un microservicio nuevo: se quedo en Auth porque ya es el dueno de la identidad y
+de la resolucion de tenant, y separarlo hubiera significado una llamada HTTP
+sincronica extra en el path critico de cada request (resolver el Host).
+
+## 33.1 Dominio: `TenantDomain` y `TenantSubdomainReservation`
+
+- **`TenantDomain`** (`Domain/TenantDomains/TenantDomain.cs`), agregado raiz que
+  extiende `AggregateRoot` (ver §33.2 mas abajo). Campos clave: `DomainType`
+  (`Subdomain` | `CustomHostname`), `Host` (unico globalmente), `SubdomainSlug`
+  (solo subdominios, unico filtrado), `Status`
+  (`Pending -> Provisioning -> Active -> Disabled | Failed`), `IsPrimary`.
+  - `CreateSubdomain(...)`: arranca directo en `Active` — el certificado wildcard
+    de Cloudflare ya cubre `*.taxprocore.com`, no hay paso de provisioning.
+  - `CreateCustomHostname(...)`: arranca en `Pending` hasta que se dispara el
+    provisioning en Cloudflare (§33.5).
+  - `MarkProvisioning`, `MarkActive`, `MarkFailed`, `Disable`, `ChangeSubdomain`
+    (Fase A7, solo subdominios, ver §33.4).
+- **`SubdomainSlug`** (value object, `Domain/TenantDomains/SubdomainSlug.cs`):
+  valida forma de etiqueta DNS (3-63 caracteres, minusculas/digitos/guiones, sin
+  guion inicial/final) y rechaza una blocklist de mas de 50 subdominios
+  reservados de sistema/branding (`www`, `api`, `admin`, `auth`, `billing`,
+  `mail`, `status`, `portal`, etc.). Este VO **no** valida unicidad contra otros
+  tenants — eso lo garantiza el indice unico de BD + el endpoint de
+  disponibilidad (§33.3).
+- **`TenantSubdomainReservation`** (`Domain/TenantDomains/TenantSubdomainReservation.cs`,
+  `BaseEntity`, sin `TenantId` porque el tenant todavia no existe): reserva
+  temporal de un slug para un email, con TTL corto (`SubdomainReservationTtlMinutes`,
+  default 15 minutos) mientras se completa el registro. `Consume()` la marca
+  usada; falla si ya esta consumida o expirada.
+- **Domain events** (Fase A7-prep, `Domain/TenantDomains/Events/`):
+  `TenantDomainCreated`, `TenantDomainActivated`, `TenantDomainDisabled`,
+  `TenantDomainProvisioningFailed`, `TenantSubdomainChanged`. `TenantDomain`
+  extiende el nuevo `AggregateRoot` (`BuildingBlocks/Domain/AggregateRoot.cs`),
+  que anade `AddDomainEvent`/`DomainEvents`/`ClearDomainEvents` sobre
+  `TenantEntity`. `AuthDbContext.SaveChangesAsync` drena y despacha estos
+  eventos **antes** del commit (mismo criterio que el outbox de integration
+  events), reutilizando el mismo `IMessageBus` de Wolverine: como estos tipos no
+  estan registrados a RabbitMQ, `PublishAsync` los enruta solo a handlers locales
+  en el mismo proceso (`Application/TenantDomains/DomainEvents/*Handler.cs`), que
+  escriben la auditoria y publican el integration event correspondiente. Esto
+  elimina la duplicacion que existia entre la activacion manual
+  (`ActivateTenantDomainHandler`) y el poller automatico (§33.6) — antes cada uno
+  reimplementaba la misma auditoria/publicacion por separado.
+
+## 33.2 Resolucion de tenant por Host
+
+- **`TenantHostResolutionMiddleware`** (`Api/Middleware/`): lee **solo**
+  `HttpContext.Request.Host` (nunca `X-Forwarded-Host` directo — eso ya lo
+  resolvio `ForwardedHeadersMiddleware` antes, solo si el origen esta en la red
+  de confianza configurada) y publica el tenant candidato en
+  `IResolvedTenantContext`. Si `TenantDomains:EnforceHostResolution` es `true` y
+  el Host no resuelve a un tenant activo, responde 404 — nunca cae a un tenant
+  por defecto. Rutas exentas: health checks, `/auth/service-token`,
+  `/auth/.well-known`, `/openapi`, `/swagger`, y los 3 endpoints llamables desde
+  el apex que nunca resuelven tenant: `check-availability`, `reserve` (Fase A7) y
+  `tenant-resolution/by-email`.
+- **`ITenantResolver`/`TenantResolutionCache`** (`Infrastructure/Tenancy/`):
+  cachean en Redis la resolucion Host->TenantId contra la allowlist de hosts
+  `Active` (`ITenantDomainRepository.GetActiveHostsAsync`).
+- **`EffectiveLoginTenantResolver`** (`Api/Common/`, Fase A6): el gap real que
+  hace efectivo el aislamiento de login. Antes de esto, `LoginCommand`/
+  `ForgotPasswordCommand` tomaban el `TenantId` directo del body — un cliente en
+  `tenantB.taxprocore.com` podia mandar el `TenantId` de otro tenant y el
+  subdominio no importaba nada. Con `EnforceHostResolution=true`
+  (staging/produccion) el `TenantId` del body se **descarta siempre**: solo
+  cuenta el que el middleware resolvio del Host real. Con
+  `EnforceHostResolution=false` (Development, sin subdominios reales locales) se
+  acepta el `TenantId` explicito del body como excepcion de conveniencia. Lo usan
+  igual `AuthController.Login` y `CredentialsController.ForgotPassword`.
+  Sumado a que `User.Email` es unico solo por `(TenantId, Email)` (nunca
+  global), esto cierra el escenario de un mismo email registrado en dos tenants:
+  el tenant siempre lo fija el Host antes de tocar la tabla de usuarios, nunca el
+  cliente.
+
+## 33.3 Flujo de alta de un subdominio (Fase A4/A7)
+
+1. **Disponibilidad**: `GET /auth/subdomains/check-availability?slug=...`
+   (publico, sin auth) — valida formato/blocklist (`SubdomainSlug`), unicidad
+   contra `TenantDomains` y contra reservas activas. Nunca falla: formato
+   invalido/reservado/tomado son resultados validos `{ available, reason }`, no
+   errores HTTP.
+2. **Reserva** (Fase A7): `POST /auth/subdomains/reserve` (publico) crea un
+   `TenantSubdomainReservation` para bloquear el slug por 15 minutos mientras el
+   usuario termina el resto del formulario de alta.
+3. El servicio **Tenant** crea el `Tenant` y publica
+   `TenantCreatedIntegrationEvent` con el subdominio elegido.
+4. Auth consume ese evento en `TenantCreatedConsumer`
+   (`Application/Tenants/IntegrationEvents/`): registra el tenant en su propio
+   `ITenantRegistry`, siembra roles de sistema + politica MFA, crea el
+   `TenantDomain` primario (`EnsurePrimaryDomainAsync`, idempotente) y **consume
+   la reserva activa** si seguia vigente — sin bloquear el alta del resto del
+   tenant si el slug ya no tenia reserva (tenants creados sin pasar por
+   `reserve`, ej. el backfill de tenants viejos).
+5. **Cambio posterior** (Fase A7): `PUT /auth/tenant-domains/{domainId}/subdomain`
+   (autenticado, `tenant.domains.manage`) permite renombrar el subdominio
+   primario ya activo (`oficina1` -> `oficina2`). Vuelve a validar disponibilidad
+   igual que el alta; no aplica a custom hostnames.
+6. **Backfill** (`TenantDomainBackfillService`, hosted service de un solo paso al
+   arrancar): crea el `TenantDomain` primario para tenants dados de alta antes de
+   que existiera este modelo.
+
+## 33.4 Dominios propios y Cloudflare for SaaS (Fase A5)
+
+- **`ICloudflareProvisioningClient`**/`CloudflareProvisioningClient`
+  (`Infrastructure/Cloudflare/`): unico `HttpClient` externo del servicio (cero
+  llamadas HTTP directas a otros microservicios TaxVision). Usa Cloudflare for
+  SaaS (Custom Hostnames) con DCV automatico.
+- Alta: `POST /auth/tenant-domains` (`tenant.domains.manage`) crea el hostname en
+  Cloudflare y el `TenantDomain` en `Pending`/`Provisioning`. Si Cloudflare
+  rechaza el alta, el `TenantDomain` **nunca se persiste** (es el unico camino
+  que sigue auditando/publicando a mano en vez de via domain event, justamente
+  porque el agregado nunca queda rastreado por EF).
+- Verificacion: `PUT /{domainId}/verify` consulta (sin mutar) el estado
+  DNS/TLS reportado por Cloudflare.
+- Activacion: `PUT /{domainId}/activate` confirma `status=active` +
+  `ssl.status=active` y pasa el dominio a `Active`. La misma transicion la
+  dispara automaticamente **`TenantDomainProvisioningPoller`** (hosted service,
+  intervalo de 5 minutos) reconsultando Cloudflare para los hostnames en
+  `Provisioning` — ambos caminos comparten `TenantDomain.MarkActive`, que encola
+  el mismo domain event.
+- Baja: `PUT /{domainId}/disable` primero borra el hostname en Cloudflare
+  (anti subdomain-takeover) y solo si eso funciona deshabilita en Auth. El
+  dominio primario nunca se puede deshabilitar por esta via (usar
+  `ChangeSubdomain`, §33.3).
+
+## 33.5 Endpoints HTTP
+
+| Recurso | Endpoints | Auth |
+| --- | --- | --- |
+| Subdominios | `GET /auth/subdomains/check-availability`, `POST /auth/subdomains/reserve` | Publico (rate limit `tenant-lookup`, 30/min/IP) |
+| Resolucion | `GET /auth/tenant-resolution/by-host`, `POST /auth/tenant-resolution/by-email` | Publico (`tenant-lookup` / `tenant-recovery`, 5/min/IP) |
+| Dominios del tenant | `GET /auth/tenant-domains`, `POST /auth/tenant-domains`, `PUT /{id}/verify`, `PUT /{id}/activate`, `PUT /{id}/disable`, `PUT /{id}/subdomain` | `tenant.domains.manage` (permiso reservado a la plataforma: `IsAssignableByTenant=false`, no se puede meter en un rol custom) |
+
+## 33.6 Eventos de integracion publicados
+
+`TenantDomainCreatedIntegrationEvent`, `TenantDomainVerifiedIntegrationEvent`,
+`TenantDomainActivatedIntegrationEvent`, `TenantDomainDisabledIntegrationEvent`,
+`TenantDomainProvisioningFailedIntegrationEvent`,
+`TenantSubdomainChangedIntegrationEvent` (Fase A7) — en
+`BuildingBlocks/Messaging/AuthIntegrationEvents/`. Hoy no tienen consumer en
+otro microservicio (documentado como pendiente, §33.8); existen porque
+`AuthAuditLog` y la trazabilidad de auditoria ya los necesitaban, y dejarlos
+listos evita otro ciclo de migracion de contrato cuando algun servicio los
+necesite (ej. Notification avisando "tu URL de acceso cambio").
+
+No se publica un evento `TenantDomainReserved`: nada lo consume hoy, y agregarlo
+hubiera sido infraestructura sin uso — se prefirio no construirlo hasta que
+haya un consumidor real (mismo criterio que se aplico para no generalizar
+domain events a todo Auth, ver `EnsurePrimaryDomainAsync` en el codigo).
+
+## 33.7 Persistencia y migraciones
+
+Migraciones relevantes en `TaxVision_Auth`:
+
+```text
+AddTenantDomains                    -- TenantDomains + TenantSubdomainReservations
+AddTenantDomainsManagePermission    -- permiso tenant.domains.manage
+```
+
+`Host` es unico globalmente (no por tenant) — es la clave real de la resolucion
+Host->TenantId. `SubdomainSlug` es unico con filtro (`WHERE SubdomainSlug IS NOT
+NULL`), porque los custom hostnames no tienen slug. El agregado de reserva no
+tiene tenant y su unicidad de "activa" se resuelve en el repositorio
+(`ConsumedAtUtc IS NULL AND ExpiresAtUtc > now`), no con un indice `UNIQUE`
+puro, porque un slug liberado (expirado o consumido) puede reservarse de nuevo.
+
+## 33.8 Configuracion
+
+```json
+"TenantDomains": {
+  "BaseDomain": "taxprocore.com",
+  "EnforceHostResolution": true,
+  "SubdomainReservationTtlMinutes": 15
+},
+"Cloudflare": {
+  "BaseUrl": "https://api.cloudflare.com/client/v4/",
+  "ApiToken": "",
+  "ZoneId": ""
+}
+```
+
+`EnforceHostResolution` se desactiva en `appsettings.Development.json` (no hay
+subdominios reales apuntando a `localhost`). `Cloudflare:ApiToken` debe ser un
+token scoped (Zone->DNS->Edit + Zone->SSL and Certificates->Edit), nunca la
+Global API Key.
+
+## 33.9 Pruebas
+
+Suite en `deploy/tests/TaxVision.Auth.Tests/`: dominio
+(`TenantDomainTests`, `TenantDomainDomainEventsTests`,
+`TenantSubdomainReservationTests`), aplicacion (un test file por
+comando/handler/domain-event-handler en `Application/`), infraestructura
+(`AuthDbContextDomainEventDispatchTests`, con el proveedor InMemory de EF Core,
+probando que `SaveChangesAsync` efectivamente drena y despacha los domain
+events) y aislamiento (`EffectiveLoginTenantResolverTests`,
+`TenantHostResolutionMiddlewareTests`).
+
+## 33.10 Pendientes documentados
+
+- La coleccion Postman de Auth no tenia **ninguna** entrada de esta seccion
+  hasta ahora (ni siquiera `check-availability` de Fase A4) — corregido en esta
+  misma iteracion (folders `Subdomains`, `TenantResolution`, `TenantDomains`).
+- Sin limite de roles custom por tenant (ej. tope de 20) — un tenant admin
+  puede crear roles ilimitados hoy; era una recomendacion de auditoria, no algo
+  implementado.
+- `TenantSubdomainChangedIntegrationEvent` y el resto de eventos de esta
+  seccion no tienen consumer todavia en ningun otro microservicio.
+- `ChangeSubdomain` no reprovisiona nada en Cloudflare porque los subdominios de
+  plataforma no pasan por Cloudflare (certificado wildcard) — solo aplica a
+  `DomainType.Subdomain`, nunca a custom hostnames.
+
+# 34. Terminos de servicio (ToS) — aceptacion y gating (Auth)
+
+Auth es tambien el dueno de la aceptacion de Terminos de Servicio / Acceptable Use
+Policy por tenant. El diseno es deliberadamente simple: una version de texto vigente
+por instalacion (no por tenant) y un historial append-only de aceptaciones.
+
+## 34.1 Dominio y persistencia
+
+- **`TenantTermsAcceptance`** (`Domain/Terms/TenantTermsAcceptance.cs`, `TenantEntity`,
+  sellada, constructor privado): registro **inmutable y append-only** — cada aceptacion
+  inserta una fila nueva, nunca actualiza una existente. Campos: `AcceptedByUserId`,
+  `TermsVersion` (hasta 32 caracteres), `IpAddress` (hasta 45), `UserAgent` (hasta 512),
+  `AcceptedAtUtc`. Se crea solo via la factory estatica
+  `TenantTermsAcceptance.Accept(tenantId, acceptedByUserId, termsVersion, ipAddress,
+  userAgent, nowUtc)`.
+- Tabla `TenantTermsAcceptances` con indice compuesto `(TenantId, AcceptedAtUtc desc)`
+  usado por `GetLatestAsync` para resolver la ultima aceptacion del tenant.
+- Migracion `AddTenantTermsAcceptances`.
+- `ITenantTermsAcceptanceRepository` expone `GetLatestAsync(tenantId, ct)` y `AddAsync`.
+
+## 34.2 Endpoints
+
+Base `/auth/tenant/terms`, `[Authorize]` a nivel de controller sin permiso especifico
+(cualquier usuario autenticado del tenant puede consultar y aceptar; exigir un permiso
+administrativo aqui crearia un deadlock de arranque si el `TenantAdmin` todavia no
+acepto).
+
+| Verbo y ruta | Uso |
+| --- | --- |
+| GET `/auth/tenant/terms/status` | `{ accepted, currentVersion, acceptedVersion, acceptedAtUtc }` para el tenant del JWT |
+| POST `/auth/tenant/terms/accept` | Inserta una nueva `TenantTermsAcceptance`; siempre exitoso, no rechaza "ya aceptado" |
+
+`POST /accept` tambien escribe un `AuthAuditLog` (`AuthAuditAction.TermsAccepted`) y
+publica `TenantTermsAcceptedIntegrationEvent` (`TenantId`, `AcceptedByUserId`,
+`TermsVersion`, `CorrelationId`).
+
+## 34.3 Gating: `TermsAcceptanceMiddleware`
+
+Registrado despues de autenticacion/autorizacion/rate limiting y del
+`SessionDenylistMiddleware`, antes del mapeo de endpoints. Para cada request
+autenticado con claim `tenant_id`:
+
+- Si la ruta empieza por `/health`, `/auth/service-token`, `/auth/.well-known`,
+  `/openapi`, `/swagger` o `/auth/tenant/terms` (el propio endpoint de aceptacion, para
+  no bloquearse a si mismo), pasa de largo.
+- Si el request no esta autenticado o el JWT no trae `tenant_id` (tokens M2M de
+  servicio), tambien pasa de largo — el trafico entre microservicios nunca se bloquea
+  por ToS.
+- En cualquier otro caso, resuelve la ultima `TenantTermsAcceptance` del tenant. Si su
+  `TermsVersion` no coincide con `TermsOptions.CurrentVersion` (incluyendo el caso de no
+  tener ninguna aceptacion), corta la cadena con **HTTP 409**:
+
+```json
+{
+  "type": "Terms.NotAccepted",
+  "title": "The current Terms of Service/Acceptable Use Policy has not been accepted yet.",
+  "currentVersion": "2026-07-14"
+}
+```
+
+## 34.4 Configuracion
+
+```json
+"Terms": { "CurrentVersion": "2026-07-14" }
+```
+
+`TermsOptions.CurrentVersion` (seccion `Terms`) es la unica clave. Subir este valor
+fuerza a **todos los tenants** a re-aceptar en su siguiente request autenticado — no
+hay mecanismo de excepcion ni de periodo de gracia por tenant.

@@ -37,13 +37,21 @@ public static class CancelSubscriptionHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.Cancelled",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.Cancelled",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { Status = previousStatus.ToString() },
             after: new { Status = subscription.Status.ToString() },
-            reason: command.Reason, nowUtc, ct);
+            reason: command.Reason,
+            nowUtc,
+            ct
+        );
 
-        await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(command.TenantId), ct);
+        await bus.RecalculateEntitlementsSafelyAsync(command.TenantId, logger, ct);
 
         logger.LogInformation(
             "Tenant {TenantId} cancelled its subscription (requested by {UserId}): {Reason}.",

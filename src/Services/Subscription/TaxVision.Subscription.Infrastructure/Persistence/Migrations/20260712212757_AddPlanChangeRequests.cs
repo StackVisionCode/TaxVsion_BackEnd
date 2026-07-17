@@ -30,7 +30,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     RequestedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     EffectiveAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     AppliedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    CancelledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    CancelledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -40,26 +40,29 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.TenantSubscriptionId,
                         principalTable: "TenantSubscriptions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlanChangeRequests_EffectiveAtUtc_Pending",
                 table: "PlanChangeRequests",
                 column: "EffectiveAtUtc",
-                filter: "[Status] = 'Pending'");
+                filter: "[Status] = 'Pending'"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlanChangeRequests_TenantSubscriptionId_Status",
                 table: "PlanChangeRequests",
-                columns: new[] { "TenantSubscriptionId", "Status" });
+                columns: new[] { "TenantSubscriptionId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PlanChangeRequests");
+            migrationBuilder.DropTable(name: "PlanChangeRequests");
         }
     }
 }

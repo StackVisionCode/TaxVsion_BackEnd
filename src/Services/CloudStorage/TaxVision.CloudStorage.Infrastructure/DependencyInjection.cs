@@ -1,3 +1,4 @@
+using Amazon.S3;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -30,6 +31,9 @@ public static class DependencyInjection
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
         services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
+        services.AddScoped<IFolderRepository, FolderRepository>();
+        services.AddScoped<IShareLinkRepository, ShareLinkRepository>();
+        services.AddScoped<IDmcaNoticeRepository, DmcaNoticeRepository>();
 
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));
@@ -54,6 +58,30 @@ public static class DependencyInjection
         });
 
         services.AddSingleton<IObjectStorage, MinioObjectStorage>();
+
+        // Fase U — mismo servidor MinIO, mismas credenciales root que arriba, pero via
+        // AWSSDK.S3 (el SDK "Minio" no expone publicamente los primitivos de multipart
+        // presign — ver docblock de IMultipartUploadStorage).
+        services.AddSingleton<IAmazonS3>(provider =>
+        {
+            var options = provider.GetRequiredService<IOptions<MinioOptions>>().Value;
+            if (
+                string.IsNullOrWhiteSpace(options.Endpoint)
+                || string.IsNullOrWhiteSpace(options.AccessKey)
+                || string.IsNullOrWhiteSpace(options.SecretKey)
+            )
+                throw new InvalidOperationException("MinIO endpoint and credentials are required.");
+
+            var scheme = options.UseTls ? "https" : "http";
+            var config = new AmazonS3Config
+            {
+                ServiceURL = $"{scheme}://{options.Endpoint}",
+                ForcePathStyle = true,
+                UseHttp = !options.UseTls,
+            };
+            return new AmazonS3Client(options.AccessKey, options.SecretKey, config);
+        });
+        services.AddSingleton<IMultipartUploadStorage, S3MultipartUploadStorage>();
         services.AddSingleton<IObjectKeyBuilder, DefaultObjectKeyBuilder>();
         services.AddSingleton<IVirusScanner, ClamAvVirusScanner>();
         // Moderacion de contenido (NSFW/CSAM/politica) — NoOp por defecto en este
@@ -61,9 +89,11 @@ public static class DependencyInjection
         // de ScanFileHandler (ver docblock de IContentScanner).
         services.AddSingleton<IContentScanner, NoOpContentScanner>();
         services.AddSingleton<IFileContentInspector, FileContentInspector>();
+        services.AddSingleton<IShareLinkPasswordHasher, Pbkdf2ShareLinkPasswordHasher>();
         services.AddSingleton<ISystemClock, SystemClock>();
         services.AddHostedService<MinioBucketBootstrapper>();
         services.AddHostedService<ExpiredUploadCleanupService>();
+        services.AddHostedService<RecycleBinPurgeService>();
         return services;
     }
 }
