@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -39,7 +40,7 @@ public sealed class TenantSubscriptionRenewalJob(
 
         foreach (var subscription in due)
         {
-            await ApplyPendingDowngradeIfAnyAsync(subscription, plans, unitOfWork, logger, nowUtc, ct);
+            await ApplyPendingDowngradeIfAnyAsync(subscription, plans, unitOfWork, bus, logger, nowUtc, ct);
 
             var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
             var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
@@ -84,7 +85,7 @@ public sealed class TenantSubscriptionRenewalJob(
     }
 
     private static async Task ApplyPendingDowngradeIfAnyAsync(
-        TenantSubscription subscription, IPlanRepository plans, IUnitOfWork unitOfWork,
+        TenantSubscription subscription, IPlanRepository plans, IUnitOfWork unitOfWork, IMessageBus bus,
         ILogger<TenantSubscriptionRenewalJob> logger, DateTime nowUtc, CancellationToken ct)
     {
         var pendingDowngrade = subscription.PendingDowngrades.FirstOrDefault(d => d.Status == PendingDowngradeStatus.Scheduled);
@@ -111,5 +112,6 @@ public sealed class TenantSubscriptionRenewalJob(
         }
 
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
     }
 }

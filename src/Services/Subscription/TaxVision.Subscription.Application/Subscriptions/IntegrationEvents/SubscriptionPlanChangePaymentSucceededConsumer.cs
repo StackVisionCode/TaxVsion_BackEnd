@@ -67,7 +67,7 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
             }
 
             await unitOfWork.SaveChangesAsync(ct);
-            await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(subscription.TenantId), ct);
+            await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
         }
     }
 

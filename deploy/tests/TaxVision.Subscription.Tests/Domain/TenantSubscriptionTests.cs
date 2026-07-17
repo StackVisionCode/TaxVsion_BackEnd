@@ -91,7 +91,8 @@ public sealed class TenantSubscriptionTests
         // confirme el cobro del precio completo.
         var (starter, starterVersion) = CreatePublishedPlan("starter");
         var (pro, proVersion) = CreatePublishedPlan("pro");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription.ActivateImmediately(
+            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
 
         var result = subscription.RequestUpgrade(
             
