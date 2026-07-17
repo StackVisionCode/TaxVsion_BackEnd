@@ -8,6 +8,14 @@ export const CommunicationPermissions = {
   ChatStart: 'communication.chat.start',
   ChatReply: 'communication.chat.reply',
   ChatModerate: 'communication.chat.moderate',
+  // Fase Backend 9 — reactions/pin/forward/search. Todos los participantes de
+  // una conversation pueden reaccionar y buscar (misma politica que ChatReply);
+  // pin en Direct = ambos, pin en Group/Meeting = quien tenga ChatModerate.
+  // Estos son alias semanticos — el enforcement real vive en cada use case.
+  ChatReact: 'communication.chat.react',
+  ChatPin: 'communication.chat.pin',
+  ChatForward: 'communication.chat.forward',
+  ChatSearch: 'communication.chat.search',
 
   SupportOpen: 'communication.support.open',
   SupportAgent: 'communication.support.agent',

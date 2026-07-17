@@ -26,6 +26,14 @@ export function bindCloudStorageConsumers(
   register('cloudstorage.file.available.v1', async (env) => {
     const fileId = getString(env.payload, 'fileId') ?? getString(env.payload, 'FileId');
     if (!fileId) return;
+    // cloudstorage.file.available.v1 se publica para CUALQUIER archivo del
+    // tenant (grabaciones, transcripts, imports, firmas...), no solo adjuntos
+    // de chat — a diferencia de flagAttachment() mas abajo, este handler no
+    // chequeaba el retorno de markStatus() y el .update() de Prisma logueaba
+    // un "Record to update not found" (nivel error, ruidoso) por cada archivo
+    // que no fuera un adjunto trackeado. findByFileId() evita el update fallido.
+    const tracked = await deps.attachmentTracking.findByFileId(fileId);
+    if (!tracked) return;
     await deps.attachmentTracking.markStatus({ fileId, status: 'Available' });
   });
 

@@ -11,6 +11,13 @@ export interface UserDirectoryEntrySnapshot {
   readonly displayName: string;
   readonly email: string;
   readonly isActive: boolean;
+  /**
+   * Fase Backend 10 — 'TenantEmployee' | 'PlatformSupport' | etc (mismo
+   * catalogo que UserPermissionsProjectionRepository.actorType). Permite
+   * filtrar "solo empleados" en un lookup sin necesitar una proyeccion
+   * EmployeeDirectory separada (decision explicita: NO crearla).
+   */
+  readonly actorType: string;
   readonly updatedAtUtc: Date;
 }
 
@@ -27,9 +34,21 @@ export interface UserDirectoryRepository {
     displayName: string;
     email: string;
     isActive: boolean;
+    actorType?: string;
   }): Promise<void>;
 
   findByUserId(userId: string): Promise<UserDirectoryEntrySnapshot | null>;
 
   markInactive(userId: string): Promise<void>;
+
+  /**
+   * Fase Frontend 5 — autocomplete de employees al armar invitaciones de
+   * meeting. Filtra por TenantId + IsActive; `query` matchea contra
+   * DisplayName o Email (contains). Nunca cruza tenants.
+   */
+  searchByDisplayNameOrEmail(
+    tenantId: string,
+    query: string,
+    limit: number,
+  ): Promise<UserDirectoryEntrySnapshot[]>;
 }

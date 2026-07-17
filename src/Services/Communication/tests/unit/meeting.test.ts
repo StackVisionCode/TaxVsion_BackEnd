@@ -195,6 +195,7 @@ describe('MeetingInvitation', () => {
     const r = MeetingInvitation.issue({
       meetingId: u(),
       tenantId: u(),
+      inviteeKind: 'External',
       inviteeEmail: 'a@b.com',
       ttlSeconds: 3600,
       now: new Date(),
@@ -211,6 +212,7 @@ describe('MeetingInvitation', () => {
     const r = MeetingInvitation.issue({
       meetingId: u(),
       tenantId: u(),
+      inviteeKind: 'External',
       inviteeEmail: 'a@b.com',
       ttlSeconds: 3600,
       now,
@@ -226,6 +228,7 @@ describe('MeetingInvitation', () => {
     const r = MeetingInvitation.issue({
       meetingId: u(),
       tenantId: u(),
+      inviteeKind: 'External',
       inviteeEmail: 'a@b.com',
       ttlSeconds: 1,
       now: new Date(Date.now() - 3600 * 1000),

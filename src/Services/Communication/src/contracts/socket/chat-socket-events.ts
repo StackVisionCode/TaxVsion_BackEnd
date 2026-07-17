@@ -74,6 +74,36 @@ export const TypingPayloadSchema = z.object({
 });
 export type TypingPayload = z.infer<typeof TypingPayloadSchema>;
 
+// ---------- Fase Backend 9 — reactions / pin / forward ----------
+
+export const AddReactionPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  messageId: z.string().uuid(),
+  // El emoji viaja como codepoint literal (con variation selectors + skin
+  // tones); no como shortcode ":thumbsup:" — el mapeo es responsabilidad del FE.
+  emoji: z.string().min(1).max(16),
+});
+export type AddReactionPayload = z.infer<typeof AddReactionPayloadSchema>;
+
+export const RemoveReactionPayloadSchema = AddReactionPayloadSchema;
+export type RemoveReactionPayload = z.infer<typeof RemoveReactionPayloadSchema>;
+
+export const PinMessagePayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  messageId: z.string().uuid(),
+});
+export type PinMessagePayload = z.infer<typeof PinMessagePayloadSchema>;
+
+export const UnpinMessagePayloadSchema = PinMessagePayloadSchema;
+export type UnpinMessagePayload = z.infer<typeof UnpinMessagePayloadSchema>;
+
+export const ForwardMessagePayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  originMessageId: z.string().uuid(),
+  targetConversationId: z.string().uuid(),
+});
+export type ForwardMessagePayload = z.infer<typeof ForwardMessagePayloadSchema>;
+
 // -------- Server -> Client --------
 
 export interface ConversationSummaryDto {
@@ -93,8 +123,14 @@ export interface MessageDto {
   body: string | null;
   attachmentFileId: string | null;
   replyToMessageId: string | null;
+  /** Fase Backend 9 — set en messages creados via forward-message.ts. */
+  forwardedFromMessageId: string | null;
   isEdited: boolean;
   isDeleted: boolean;
+  /** Fase Backend 9 — snapshot del estado de pin. Cambia via MessagePinned/Unpinned events. */
+  isPinned: boolean;
+  pinnedAtUtc: string | null;
+  pinnedByUserId: string | null;
   createdAtUtc: string;
   editedAtUtc: string | null;
 }
@@ -139,6 +175,38 @@ export interface AttachmentFlaggedDto {
   flaggedAtUtc: string;
 }
 
+// ---------- Fase Backend 9 — reactions / pin / forward (S→C) ----------
+
+export interface MessageReactionAddedDto {
+  messageId: string;
+  conversationId: string;
+  userId: string;
+  emoji: string;
+  addedAtUtc: string;
+}
+
+export interface MessageReactionRemovedDto {
+  messageId: string;
+  conversationId: string;
+  userId: string;
+  emoji: string;
+  removedAtUtc: string;
+}
+
+export interface MessagePinnedDto {
+  messageId: string;
+  conversationId: string;
+  pinnedByUserId: string;
+  pinnedAtUtc: string;
+}
+
+export interface MessageUnpinnedDto {
+  messageId: string;
+  conversationId: string;
+  unpinnedByUserId: string;
+  unpinnedAtUtc: string;
+}
+
 export interface ConversationCreatedDto {
   id: string;
   kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
@@ -175,6 +243,11 @@ export const ChatSocketEvents = {
   MarkRead: 'chat.message.mark_read',
   TypingStart: 'chat.typing.start',
   TypingStop: 'chat.typing.stop',
+  AddReaction: 'chat.message.reaction.add',
+  RemoveReaction: 'chat.message.reaction.remove',
+  PinMessage: 'chat.message.pin',
+  UnpinMessage: 'chat.message.unpin',
+  ForwardMessage: 'chat.message.forward',
 
   // s -> c
   MessageNew: 'chat.message.new',
@@ -188,4 +261,9 @@ export const ChatSocketEvents = {
   ConversationParticipantRemoved: 'chat.conversation.participant_removed',
   PresenceChanged: 'chat.presence.changed',
   AttachmentFlagged: 'chat.message.attachment_flagged',
+  MessageReactionAdded: 'chat.message.reaction.added',
+  MessageReactionRemoved: 'chat.message.reaction.removed',
+  MessagePinned: 'chat.message.pinned',
+  MessageUnpinned: 'chat.message.unpinned',
+  // Forward reusa MessageNew para el target conversation (es un mensaje nuevo).
 } as const;

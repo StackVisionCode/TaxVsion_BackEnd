@@ -19,6 +19,13 @@ export interface CallParticipantSnapshot {
   readonly audioEnabled: boolean;
   readonly videoEnabled: boolean;
   readonly screenSharing: boolean;
+  /**
+   * Fase Backend 7 — timestamp del comienzo del screen share actual. Se
+   * setea al llamar startScreenSharing() y se limpia al llamar
+   * stopScreenSharing(). Sirve para calcular `durationSeconds` en el evento
+   * de integracion `CallScreenShareStoppedEvent` sin depender de logs.
+   */
+  readonly screenShareStartedAtUtc: Date | null;
   readonly connectionQuality: ConnectionQuality;
 }
 
@@ -53,6 +60,7 @@ export class CallParticipant {
       audioEnabled: input.audioDefault,
       videoEnabled: input.videoDefault,
       screenSharing: false,
+      screenShareStartedAtUtc: null,
       connectionQuality: 'Unknown',
     });
   }
@@ -73,6 +81,36 @@ export class CallParticipant {
       screenSharing: status.screenSharing,
     };
     return Result.okVoid();
+  }
+
+  /**
+   * Fase Backend 7 — inicia el screen share con un timestamp propio (no via
+   * applyMediaStatus, que ya se usa para audio/video toggle). El aggregate
+   * valida que solo un participante comparta a la vez; aca solo se garantiza
+   * que este participante no ya este compartiendo y que no haya salido.
+   */
+  startScreenSharing(now: Date): Result<void> {
+    if (this.state.leftAtUtc !== null) {
+      return Result.fail(makeError('Call.Participant.AlreadyLeft', 'Participant already left the call.'));
+    }
+    if (this.state.screenSharing) {
+      return Result.fail(makeError('Call.ScreenShare.AlreadySharing', 'This participant is already screen sharing.'));
+    }
+    this.state = { ...this.state, screenSharing: true, screenShareStartedAtUtc: now };
+    return Result.okVoid();
+  }
+
+  stopScreenSharing(): Result<{ startedAtUtc: Date }> {
+    if (!this.state.screenSharing || this.state.screenShareStartedAtUtc === null) {
+      return Result.fail(makeError('Call.ScreenShare.NotSharing', 'This participant is not currently screen sharing.'));
+    }
+    const startedAtUtc = this.state.screenShareStartedAtUtc;
+    this.state = { ...this.state, screenSharing: false, screenShareStartedAtUtc: null };
+    return Result.ok({ startedAtUtc });
+  }
+
+  get screenSharing(): boolean {
+    return this.state.screenSharing;
   }
 
   updateConnectionQuality(quality: ConnectionQuality): void {

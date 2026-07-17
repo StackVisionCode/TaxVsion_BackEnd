@@ -78,10 +78,67 @@ export const AttachMeetingRecordingPayloadSchema = z.object({
 });
 export type AttachMeetingRecordingPayload = z.infer<typeof AttachMeetingRecordingPayloadSchema>;
 
+// ---------- Recording consent (Fase Backend 3 — ver domain/meetings/recording-session.ts) ----------
+// clientKey en start/stop porque disparan integration events y deben ser
+// idempotentes ante reintentos del cliente (mismo criterio que AttachRecording).
+
+export const RequestMeetingRecordingPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  meetingId: z.string().uuid(),
+});
+export type RequestMeetingRecordingPayload = z.infer<typeof RequestMeetingRecordingPayloadSchema>;
+
+export const StopMeetingRecordingPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  meetingId: z.string().uuid(),
+});
+export type StopMeetingRecordingPayload = z.infer<typeof StopMeetingRecordingPayloadSchema>;
+
+export const RespondMeetingRecordingConsentPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  response: z.enum(['Accepted', 'Rejected']),
+});
+export type RespondMeetingRecordingConsentPayload = z.infer<
+  typeof RespondMeetingRecordingConsentPayloadSchema
+>;
+
+// ---------- Host actions adicionales (Fase Backend 6) ----------
+
+export const DenyParticipantPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+});
+export type DenyParticipantPayload = z.infer<typeof DenyParticipantPayloadSchema>;
+
+export const CancelMeetingPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  reason: z.string().max(500).optional(),
+});
+export type CancelMeetingPayload = z.infer<typeof CancelMeetingPayloadSchema>;
+
+export const RescheduleMeetingPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  newScheduledForUtc: z.string().datetime(),
+});
+export type RescheduleMeetingPayload = z.infer<typeof RescheduleMeetingPayloadSchema>;
+
+export const PromoteCohostPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+});
+export type PromoteCohostPayload = z.infer<typeof PromoteCohostPayloadSchema>;
+
+export const DemoteCohostPayloadSchema = PromoteCohostPayloadSchema;
+export type DemoteCohostPayload = z.infer<typeof DemoteCohostPayloadSchema>;
+
 export interface MeetingTranscriptReadyDto {
   meetingId: string;
   transcriptFileId: string;
-  language: string | null;
+  detectedLanguage: string | null;
+  /** Fase Transcript 5 — duracion del audio en segundos, derivada por el worker de los timestamps de whisper.cpp. */
+  durationSeconds: number;
+  /** Fase Transcript 5 — conteo de palabras del transcript, para previsualizacion sin descargar el archivo completo. */
+  wordCount: number;
   readyAtUtc: string;
 }
 
@@ -237,6 +294,72 @@ export interface SfuProducerClosedDto {
   producerId: string;
 }
 
+/**
+ * Estado de la RecordingSession del meeting (Fase Backend 2/3). Idle = nunca
+ * se pidio grabar en esta sesion de meeting; Requesting = esperando
+ * respuestas de consentimiento; Processing = el archivo ya se adjunto y el
+ * transcript worker lo esta procesando; Ready/Failed son terminales.
+ */
+export type MeetingRecordingState =
+  | 'Idle'
+  | 'Requesting'
+  | 'Recording'
+  | 'Stopping'
+  | 'Processing'
+  | 'Ready'
+  | 'Failed';
+
+export interface MeetingRecordingConsentRequestedDto {
+  meetingId: string;
+  requestedByUserId: string;
+  requestedAtUtc: string;
+}
+
+export interface MeetingRecordingStateChangedDto {
+  meetingId: string;
+  state: MeetingRecordingState;
+  updatedAtUtc: string;
+}
+
+/**
+ * @since Fase Frontend 3 — el "nudge" de RecordingStateChanged no lleva quien
+ * respondio ni con que respuesta, solo que el estado agregado (todavia
+ * Requesting) puede haber cambiado internamente. Sin este evento, ningun
+ * participante puede armar una UI de "quien acepto/rechazo" en tiempo real —
+ * `MeetingRecordingConsentRecordedEvent` (integration event interno) ya
+ * llevaba esta info, solo faltaba re-emitirla por socket a la room.
+ */
+export interface MeetingRecordingConsentRecordedDto {
+  meetingId: string;
+  userId: string;
+  response: 'Accepted' | 'Rejected';
+  respondedAtUtc: string;
+}
+
+// ---------- Host actions Fase Backend 6 (S→C) ----------
+
+export interface MeetingCancelledDto {
+  meetingId: string;
+  cancelledByUserId: string;
+  reason: string | null;
+  cancelledAtUtc: string;
+}
+
+export interface MeetingRescheduledDto {
+  meetingId: string;
+  rescheduledByUserId: string;
+  previousScheduledForUtc: string | null;
+  newScheduledForUtc: string | null;
+  rescheduledAtUtc: string;
+}
+
+export interface MeetingParticipantDeniedDto {
+  meetingId: string;
+  participantUserId: string;
+  deniedByUserId: string;
+  deniedAtUtc: string;
+}
+
 export const MeetingSocketEvents = {
   // c -> s
   Join: 'meeting.join',
@@ -251,6 +374,14 @@ export const MeetingSocketEvents = {
   RaiseHand: 'meeting.raise_hand',
   DominantSpeaker: 'meeting.dominant_speaker',
   AttachRecording: 'meeting.recording.attach',
+  RequestRecording: 'meeting.recording.start_request',
+  StopRecording: 'meeting.recording.stop',
+  RespondRecordingConsent: 'meeting.consent.respond',
+  DenyParticipant: 'meeting.host.deny_participant',
+  CancelMeeting: 'meeting.host.cancel',
+  RescheduleMeeting: 'meeting.host.reschedule',
+  PromoteCohost: 'meeting.host.promote_cohost',
+  DemoteCohost: 'meeting.host.demote_cohost',
   SfuGetRouterCapabilities: 'meeting.sfu.get_router_capabilities',
   SfuCreateTransport: 'meeting.sfu.create_transport',
   SfuConnectTransport: 'meeting.sfu.connect_transport',
@@ -272,6 +403,12 @@ export const MeetingSocketEvents = {
   SfuNewProducer: 'meeting.sfu.new_producer',
   SfuProducerClosed: 'meeting.sfu.producer_closed',
   TranscriptReady: 'meeting.transcript_ready',
+  RecordingConsentRequested: 'meeting.recording.consent_requested',
+  RecordingConsentRecorded: 'meeting.recording.consent_recorded',
+  RecordingStateChanged: 'meeting.recording.state_changed',
+  ParticipantDenied: 'meeting.participant.denied',
+  Cancelled: 'meeting.cancelled',
+  Rescheduled: 'meeting.rescheduled',
   ChatMessageNew: 'meeting.chat.message.new',
   ChatMessageEdited: 'meeting.chat.message.edited',
   ChatMessageDeleted: 'meeting.chat.message.deleted',

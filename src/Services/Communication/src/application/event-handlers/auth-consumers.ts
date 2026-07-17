@@ -63,6 +63,7 @@ export function bindAuthConsumers(
         displayName,
         email,
         isActive: true,
+        actorType,
       });
     }
   });

@@ -14,6 +14,7 @@ import {
 import type { MeetingParticipantDto } from '../../contracts/socket/meeting-socket-events.js';
 import { participantSnapshotToDto } from './meeting-mappers.js';
 import { ensureMeetingConversation, removeFromMeetingConversation } from './ensure-meeting-conversation.js';
+import { logHostAction } from './host-audit.js';
 
 export interface AdmitCommand {
   readonly tenantId: string;
@@ -52,6 +53,14 @@ export async function admitParticipant(
     admittedAtUtc: now.toISOString(),
   };
   await deps.publisher.enqueue(event);
+  logHostAction({
+    tenantId: cmd.tenantId,
+    meetingId: cmd.meetingId,
+    action: 'meeting.admit',
+    actorUserId: cmd.hostUserId,
+    targetUserId: cmd.targetUserId,
+    correlationId: cmd.correlationId,
+  });
 
   const snapshot = meeting.toSnapshot();
   const target = snapshot.participants.find((p) => p.userId === cmd.targetUserId);
@@ -114,6 +123,14 @@ export async function removeParticipant(
     removedAtUtc: now.toISOString(),
   };
   await deps.publisher.enqueue(event);
+  logHostAction({
+    tenantId: cmd.tenantId,
+    meetingId: cmd.meetingId,
+    action: 'meeting.remove',
+    actorUserId: cmd.hostUserId,
+    targetUserId: cmd.targetUserId,
+    correlationId: cmd.correlationId,
+  });
 
   const target = meeting.toSnapshot().participants.find((p) => p.userId === cmd.targetUserId);
   if (!target) return Result.fail(makeError('Meeting.NotFound', 'Target vanished after remove.'));
@@ -176,6 +193,14 @@ export async function setMeetingLocked(
     await deps.publisher.enqueue(event);
   }
 
+  logHostAction({
+    tenantId: cmd.tenantId,
+    meetingId: cmd.meetingId,
+    action: cmd.locked ? 'meeting.lock' : 'meeting.unlock',
+    actorUserId: cmd.hostUserId,
+    correlationId: cmd.correlationId,
+  });
+
   return Result.ok({ isLocked: cmd.locked });
 }
 
@@ -194,7 +219,15 @@ export async function muteAllInMeeting(
   const result = meeting.muteAll({ hostUserId: cmd.hostUserId });
   if (!result.isSuccess) return Result.fail(result.error);
   await deps.meetings.save(meeting);
-  return Result.ok({ affected: meeting.getJoinedParticipants().length - 1 });
+  const affected = meeting.getJoinedParticipants().length - 1;
+  logHostAction({
+    tenantId: cmd.tenantId,
+    meetingId: cmd.meetingId,
+    action: 'meeting.mute_all',
+    actorUserId: cmd.hostUserId,
+    metadata: { affected },
+  });
+  return Result.ok({ affected });
 }
 
 export interface TransferHostCommand {
@@ -231,6 +264,14 @@ export async function transferMeetingHost(
     transferredAtUtc: now.toISOString(),
   };
   await deps.publisher.enqueue(event);
+  logHostAction({
+    tenantId: cmd.tenantId,
+    meetingId: cmd.meetingId,
+    action: 'meeting.transfer_host',
+    actorUserId: cmd.currentHostUserId,
+    targetUserId: cmd.newHostUserId,
+    correlationId: cmd.correlationId,
+  });
 
   return Result.ok({ hostUserId: cmd.newHostUserId });
 }

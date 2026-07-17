@@ -81,6 +81,18 @@ public static class FileErrors
         "File.UnsupportedType",
         "The file type is not allowed or does not match its content."
     );
+
+    /// <summary>
+    /// Antes esto caia en UnsupportedType junto con extension/content-type invalidos —
+    /// un archivo rechazado solo por tamano (ej. una grabacion de meeting en un plan
+    /// "starter" con MaxFileSizeBytes=10MB) mostraba el mismo mensaje enganoso "tipo de
+    /// archivo no permitido", llevando a debuggear la whitelist de tipos en vez del
+    /// limite real de tamano del plan.
+    /// </summary>
+    public static readonly Error FileTooLarge = new(
+        "File.TooLarge",
+        "The file exceeds the maximum size allowed for this plan and folder."
+    );
     public static readonly Error LegalHold = new("File.LegalHold", "The file is under legal hold.");
     public static readonly Error AlreadyLegalHeld = new(
         "File.AlreadyLegalHeld",

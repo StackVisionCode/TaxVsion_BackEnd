@@ -4,6 +4,10 @@ import { CallKind } from './call-kind.js';
 import { CallStatus, isTerminal } from './call-status.js';
 import { CallParticipant, type CallParticipantSnapshot } from './call-participant.js';
 import type { ConnectionQuality, MediaStatus } from './media-status.js';
+import { RecordingSession } from '../recording/recording-session.js';
+import { RecordingScope } from '../recording/recording-session-state.js';
+import { RecordingConsentEntry } from '../recording/recording-consent-entry.js';
+import type { RecordingConsentEntryStatus } from '../recording/recording-consent.js';
 
 export type CallEndReason = 'Hangup' | 'Missed' | 'Rejected' | 'Cancelled' | 'IceFailed';
 
@@ -247,6 +251,93 @@ export class Call {
     return Result.okVoid();
   }
 
+  /**
+   * Fase Backend 7 — upgrade audio→video. Solo valido si la llamada esta
+   * `Active` y es una llamada de audio (no downgrade video→audio, no upgrade
+   * antes de aceptar). El signaling WebRTC lo resuelve el frontend via
+   * renegociacion (offer/answer con la nueva track de video); el server solo
+   * cambia `kind` para consumers/analytics y para que futuros joiners sepan
+   * que la conversacion es Video.
+   */
+  upgradeToVideo(input: { actorUserId: string; now?: Date }): Result<void> {
+    if (this.state.status !== CallStatus.Active) {
+      return Result.fail(
+        makeError('Call.Upgrade.InvalidState', `Cannot upgrade a call in status ${this.state.status}.`),
+      );
+    }
+    if (this.state.kind === CallKind.Video) {
+      return Result.fail(makeError('Call.Upgrade.AlreadyVideo', 'Call is already a video call.'));
+    }
+    if (!this.isParticipant(input.actorUserId)) {
+      return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
+    }
+    const now = input.now ?? new Date();
+    this.state = { ...this.state, kind: CallKind.Video, updatedAtUtc: now };
+    return Result.okVoid();
+  }
+
+  /**
+   * Fase Backend 7 — screen share con senal dedicada (no piggy-back en
+   * media_status). Invariante 1:1: solo un participante puede compartir a la
+   * vez. Devuelve el `startedAtUtc` para que el use case lo publique en el
+   * evento sin re-leer el snapshot.
+   */
+  startScreenShare(input: { actorUserId: string; now?: Date }): Result<{ startedAtUtc: Date }> {
+    if (this.state.status !== CallStatus.Active) {
+      return Result.fail(
+        makeError('Call.ScreenShare.InvalidState', `Cannot start screen share in status ${this.state.status}.`),
+      );
+    }
+    const participant = this.participants.find((p) => p.userId === input.actorUserId);
+    if (!participant) {
+      return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
+    }
+    const otherSharing = this.participants.find((p) => p.userId !== input.actorUserId && p.screenSharing);
+    if (otherSharing) {
+      return Result.fail(
+        makeError(
+          'Call.ScreenShare.AnotherActive',
+          'Another participant is already screen sharing. Stop that first.',
+        ),
+      );
+    }
+    const now = input.now ?? new Date();
+    const startResult = participant.startScreenSharing(now);
+    if (!startResult.isSuccess) return Result.fail(startResult.error);
+    this.state = {
+      ...this.state,
+      updatedAtUtc: now,
+      participants: this.participants.map((p) => p.toSnapshot()),
+    };
+    return Result.ok({ startedAtUtc: now });
+  }
+
+  /**
+   * Solo el que empezo el screen share puede pararlo (mismo criterio que
+   * `attachCallRecording` en Fase 4). Si la llamada termina antes, el
+   * `end()`/`fail()` ya cierra a todos los participantes — no hace falta
+   * un stop implicito aca.
+   */
+  stopScreenShare(input: {
+    actorUserId: string;
+    now?: Date;
+  }): Result<{ startedAtUtc: Date; stoppedAtUtc: Date; durationSeconds: number }> {
+    const participant = this.participants.find((p) => p.userId === input.actorUserId);
+    if (!participant) {
+      return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
+    }
+    const stopResult = participant.stopScreenSharing();
+    if (!stopResult.isSuccess) return Result.fail(stopResult.error);
+    const now = input.now ?? new Date();
+    const durationSeconds = Math.max(0, Math.floor((now.getTime() - stopResult.value.startedAtUtc.getTime()) / 1000));
+    this.state = {
+      ...this.state,
+      updatedAtUtc: now,
+      participants: this.participants.map((p) => p.toSnapshot()),
+    };
+    return Result.ok({ startedAtUtc: stopResult.value.startedAtUtc, stoppedAtUtc: now, durationSeconds });
+  }
+
   applyMediaStatus(input: { byUserId: string; status: MediaStatus }): Result<void> {
     if (this.state.status !== CallStatus.Active && this.state.status !== CallStatus.Accepted) {
       return Result.fail(
@@ -300,13 +391,17 @@ export class Call {
 
   /**
    * Adjunta el transcript STT generado por el worker de transcripts a partir
-   * de `recordingFileId`. Solo tiene sentido una vez terminada la llamada —
-   * a diferencia de attachRecording, no se permite en Active (el transcript
-   * siempre llega despues, via pipeline asincronico sobre la grabacion ya
-   * completa).
+   * de `recordingFileId`. Mismo criterio que attachRecording (Ended o Active)
+   * — la premisa original de "el transcript siempre llega con la call ya
+   * Ended" no se sostiene: el pipeline de transcripcion (download+ffmpeg+
+   * whisper.cpp) es asincronico y puede tardar mas de lo que tarda la call
+   * en terminar realmente, y TranscriptReady llegaba con la call todavia
+   * Active — attachCallTranscript quedaba huerfano (Call.Transcript.InvalidState,
+   * warn-and-drop en el consumer, sin retry) aunque el archivo ya existiera
+   * en CloudStorage.
    */
   attachTranscript(fileId: string): Result<void> {
-    if (this.state.status !== CallStatus.Ended) {
+    if (this.state.status !== CallStatus.Ended && this.state.status !== CallStatus.Active) {
       return Result.fail(
         makeError('Call.Transcript.InvalidState', `Cannot attach transcript in status ${this.state.status}.`),
       );
@@ -320,6 +415,136 @@ export class Call {
       updatedAtUtc: new Date(),
     };
     return Result.okVoid();
+  }
+
+  // ------------------------------------------------------------------
+  // Recording consent + state machine (Fase Backend 2) — ver docblock
+  // equivalente en meeting.ts. Call no tiene concepto de host: la autorizacion
+  // es simplemente "es caller o callee" (isParticipant), y la policy por
+  // default en Fase Backend 4 sera AllAcceptedRequired (solo 2 partes, sin
+  // ambiguedad de "no respondio").
+  // ------------------------------------------------------------------
+
+  requestRecording(input: {
+    actorUserId: string;
+    existingSession: RecordingSession | null;
+    now?: Date;
+  }): Result<{ session: RecordingSession; participantUserIds: readonly string[] }> {
+    if (!this.isParticipant(input.actorUserId)) {
+      return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
+    }
+    if (input.existingSession !== null) {
+      return Result.fail(
+        makeError('Call.Recording.AlreadyRequested', 'A recording session already exists for this call.'),
+      );
+    }
+    const sessionResult = RecordingSession.request({
+      tenantId: this.state.tenantId,
+      scope: RecordingScope.Call,
+      scopeId: this.state.id,
+      requestedByUserId: input.actorUserId,
+      now: input.now ?? new Date(),
+    });
+    if (!sessionResult.isSuccess) return sessionResult;
+    return Result.ok({
+      session: sessionResult.value,
+      participantUserIds: [this.state.callerUserId, this.state.calleeUserId],
+    });
+  }
+
+  recordConsent(input: {
+    userId: string;
+    response: RecordingConsentEntryStatus;
+    respondedAtUtc?: Date;
+    now?: Date;
+  }): Result<RecordingConsentEntry> {
+    if (!this.isParticipant(input.userId)) {
+      return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
+    }
+    return RecordingConsentEntry.record({
+      tenantId: this.state.tenantId,
+      scope: RecordingScope.Call,
+      scopeId: this.state.id,
+      userId: input.userId,
+      response: input.response,
+      respondedAtUtc: input.respondedAtUtc ?? input.now ?? new Date(),
+      now: input.now ?? new Date(),
+    });
+  }
+
+  private ensureSessionBelongsHere(session: RecordingSession): Result<void> {
+    if (session.scope !== RecordingScope.Call || session.scopeId !== this.state.id) {
+      return Result.fail(makeError('Call.Recording.SessionMismatch', 'Session does not belong to this call.'));
+    }
+    return Result.okVoid();
+  }
+
+  startRecording(input: {
+    actorUserId: string;
+    session: RecordingSession;
+    policyAllows: boolean;
+    now?: Date;
+  }): Result<RecordingSession> {
+    if (!this.isParticipant(input.actorUserId)) {
+      return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
+    }
+    const belongs = this.ensureSessionBelongsHere(input.session);
+    if (!belongs.isSuccess) return belongs;
+    const result = input.session.start({ policyAllows: input.policyAllows, now: input.now ?? new Date() });
+    if (!result.isSuccess) return result;
+    return Result.ok(input.session);
+  }
+
+  stopRecording(input: { actorUserId: string; session: RecordingSession; now?: Date }): Result<RecordingSession> {
+    if (!this.isParticipant(input.actorUserId)) {
+      return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
+    }
+    const belongs = this.ensureSessionBelongsHere(input.session);
+    if (!belongs.isSuccess) return belongs;
+    const result = input.session.stop(input.now);
+    if (!result.isSuccess) return result;
+    return Result.ok(input.session);
+  }
+
+  /**
+   * Stopping -> Processing, disparado por attach-call-recording.ts al recibir
+   * el fileId. Sin chequeo de actor propio — el caller ya valida "es quien
+   * pidio la grabacion" antes de llegar aca (mas estricto que meetings, que
+   * acepta cualquier Host/Cohost).
+   */
+  beginProcessingRecording(input: { session: RecordingSession }): Result<RecordingSession> {
+    const belongs = this.ensureSessionBelongsHere(input.session);
+    if (!belongs.isSuccess) return belongs;
+    const result = input.session.beginProcessing();
+    if (!result.isSuccess) return result;
+    return Result.ok(input.session);
+  }
+
+  /** Sin chequeo de actor — se dispara tanto por un participante como por el sistema (transcript worker, Fase Backend 4). */
+  failRecording(input: { session: RecordingSession; reason: string; now?: Date }): Result<RecordingSession> {
+    const belongs = this.ensureSessionBelongsHere(input.session);
+    if (!belongs.isSuccess) return belongs;
+    const result = input.session.fail({ reason: input.reason, now: input.now ?? new Date() });
+    if (!result.isSuccess) return result;
+    return Result.ok(input.session);
+  }
+
+  /** System-triggered (transcript worker confirma Ready) — sin chequeo de actor. */
+  completeRecording(input: {
+    session: RecordingSession;
+    recordingFileId: string;
+    durationSeconds: number;
+    now?: Date;
+  }): Result<RecordingSession> {
+    const belongs = this.ensureSessionBelongsHere(input.session);
+    if (!belongs.isSuccess) return belongs;
+    const result = input.session.complete({
+      recordingFileId: input.recordingFileId,
+      durationSeconds: input.durationSeconds,
+      now: input.now ?? new Date(),
+    });
+    if (!result.isSuccess) return result;
+    return Result.ok(input.session);
   }
 
   toSnapshot(): CallSnapshot {

@@ -65,8 +65,12 @@ export async function getMessages(
     body: m.isDeleted ? null : m.body,
     attachmentFileId: m.isDeleted ? null : m.attachmentFileId,
     replyToMessageId: m.replyToMessageId,
+    forwardedFromMessageId: m.forwardedFromMessageId,
     isEdited: m.isEdited,
     isDeleted: m.isDeleted,
+    isPinned: m.isPinned,
+    pinnedAtUtc: m.pinnedAtUtc ? m.pinnedAtUtc.toISOString() : null,
+    pinnedByUserId: m.pinnedByUserId,
     createdAtUtc: m.createdAtUtc.toISOString(),
     editedAtUtc: m.editedAtUtc ? m.editedAtUtc.toISOString() : null,
   }));
