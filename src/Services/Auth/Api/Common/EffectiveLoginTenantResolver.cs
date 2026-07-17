@@ -10,20 +10,25 @@ namespace TaxVision.Auth.Api.Common;
 ///
 /// Con EnforceHostResolution=true (staging/producción) el TenantId del body se
 /// descarta siempre: solo cuenta el que TenantHostResolutionMiddleware resolvió del
-/// Host real. Con EnforceHostResolution=false (Development, sin subdominios reales
-/// configurados localmente — ver doc §26.1) se acepta el TenantId explícito del
-/// cliente como excepción de conveniencia para desarrollo.
+/// Host real. Con EnforceHostResolution=false (Development) se acepta el TenantId
+/// explícito del cliente como excepción de conveniencia — pero SOLO cuando el Host
+/// realmente no resolvió a nada. Si el Host sí resolvió (ej. un subdominio local real
+/// registrado en TenantDomains, como demo.localhost apuntando a un tenant real), ese
+/// resultado real siempre gana sobre el body — no tiene sentido preferir un TenantId
+/// manual cuando ya hay uno confiable disponible. Antes de este fix, con
+/// EnforceHostResolution=false, un Host resuelto se descartaba igual y SIEMPRE se
+/// exigía el campo manual — un dev-escape-hatch que nunca contempló que localmente sí
+/// pudiera existir una resolución real.
 /// </summary>
 public static class EffectiveLoginTenantResolver
 {
     public static Result<Guid> Resolve(bool enforceHostResolution, Guid? resolvedTenantId, Guid? requestedTenantId)
     {
+        if (resolvedTenantId is { } tenantId)
+            return Result.Success(tenantId);
+
         if (enforceHostResolution)
-        {
-            return resolvedTenantId is { } tenantId
-                ? Result.Success(tenantId)
-                : Result.Failure<Guid>(new Error("Tenant.NotFound", "Host does not resolve to an active tenant."));
-        }
+            return Result.Failure<Guid>(new Error("Tenant.NotFound", "Host does not resolve to an active tenant."));
 
         return requestedTenantId is { } explicitTenantId
             ? Result.Success(explicitTenantId)

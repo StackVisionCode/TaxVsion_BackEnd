@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
 import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
@@ -16,17 +17,27 @@ import { sendMessage } from '../../../application/use-cases/send-message.js';
 import { editMessage } from '../../../application/use-cases/edit-message.js';
 import { deleteMessage } from '../../../application/use-cases/delete-message.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
+import { addMessageReaction } from '../../../application/use-cases/add-message-reaction.js';
+import { removeMessageReaction } from '../../../application/use-cases/remove-message-reaction.js';
+import { pinMessage } from '../../../application/use-cases/pin-message.js';
+import { unpinMessage } from '../../../application/use-cases/unpin-message.js';
+import { forwardMessage } from '../../../application/use-cases/forward-message.js';
 import {
   ChatSocketEvents,
   AddGroupParticipantPayloadSchema,
+  AddReactionPayloadSchema,
   DeleteMessagePayloadSchema,
   EditMessagePayloadSchema,
+  ForwardMessagePayloadSchema,
   MarkReadPayloadSchema,
+  PinMessagePayloadSchema,
   RemoveGroupParticipantPayloadSchema,
+  RemoveReactionPayloadSchema,
   SendMessagePayloadSchema,
   StartDirectConversationPayloadSchema,
   StartGroupConversationPayloadSchema,
   TypingPayloadSchema,
+  UnpinMessagePayloadSchema,
   type ConversationCreatedDto,
   type ConversationParticipantAddedDto,
   type ConversationParticipantRemovedDto,
@@ -312,8 +323,8 @@ async function wireSocket(
       scope: 'chat.send',
       tenantId,
       userId,
-      maxPerWindow: 30,
-      windowSeconds: 10,
+      maxPerWindow: config.rateLimit.chatSend.maxPerWindow,
+      windowSeconds: config.rateLimit.chatSend.windowSeconds,
     });
     if (!allowed) {
       ack?.({ ok: false, code: 'Chat.RateLimited', message: 'Too many messages, slow down.' });
@@ -361,8 +372,8 @@ async function wireSocket(
       scope: 'chat.edit',
       tenantId,
       userId,
-      maxPerWindow: 20,
-      windowSeconds: 10,
+      maxPerWindow: config.rateLimit.chatEdit.maxPerWindow,
+      windowSeconds: config.rateLimit.chatEdit.windowSeconds,
     });
     if (!allowed) {
       ack?.({ ok: false, code: 'Chat.RateLimited', message: 'Too many edits, slow down.' });
@@ -475,8 +486,8 @@ async function wireSocket(
       scope: 'chat.typing',
       tenantId,
       userId,
-      maxPerWindow: 20,
-      windowSeconds: 10,
+      maxPerWindow: config.rateLimit.chatTyping.maxPerWindow,
+      windowSeconds: config.rateLimit.chatTyping.windowSeconds,
     });
     if (!allowed) return;
     const { conversationId } = parsed.data;
@@ -501,6 +512,142 @@ async function wireSocket(
     if (!parsed.success) return;
     clearTypingTimer(typingKey(tenantId, parsed.data.conversationId, userId));
     emitTypingStopped(parsed.data.conversationId);
+  });
+
+  socket.on(ChatSocketEvents.AddReaction, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ wasNew: boolean }>) => void) : undefined;
+    const parsed = AddReactionPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.ChatReply)) {
+      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.reply.' });
+      return;
+    }
+    const result = await addMessageReaction(
+      {
+        tenantId,
+        correlationId: socket.id,
+        messageId: parsed.data.messageId,
+        userId,
+        emoji: parsed.data.emoji,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(ChatSocketEvents.RemoveReaction, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ wasPresent: boolean }>) => void) : undefined;
+    const parsed = RemoveReactionPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await removeMessageReaction(
+      {
+        tenantId,
+        correlationId: socket.id,
+        messageId: parsed.data.messageId,
+        userId,
+        emoji: parsed.data.emoji,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(ChatSocketEvents.PinMessage, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ wasNew: boolean }>) => void) : undefined;
+    const parsed = PinMessagePayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await pinMessage(
+      {
+        tenantId,
+        correlationId: socket.id,
+        messageId: parsed.data.messageId,
+        actorUserId: userId,
+        actorType: principal.actorType,
+        actorPermissions: principal.permissions,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(ChatSocketEvents.UnpinMessage, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ wasPinned: boolean }>) => void) : undefined;
+    const parsed = UnpinMessagePayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await unpinMessage(
+      {
+        tenantId,
+        correlationId: socket.id,
+        messageId: parsed.data.messageId,
+        actorUserId: userId,
+        actorType: principal.actorType,
+        actorPermissions: principal.permissions,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
+  });
+
+  socket.on(ChatSocketEvents.ForwardMessage, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ message: MessageDto }>) => void) : undefined;
+    const parsed = ForwardMessagePayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+      return;
+    }
+    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.ChatReply)) {
+      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.reply.' });
+      return;
+    }
+    const result = await forwardMessage(
+      {
+        tenantId,
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        originMessageId: parsed.data.originMessageId,
+        targetConversationId: parsed.data.targetConversationId,
+        forwarderUserId: userId,
+      },
+      { ...container, emitter },
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: result.value });
   });
 
   socket.on('disconnect', () => {

@@ -68,4 +68,30 @@ public sealed class EffectiveLoginTenantResolverTests
         Assert.True(result.IsFailure);
         Assert.Equal("Auth.TenantIdRequired", result.Error.Code);
     }
+
+    /// <summary>
+    /// F11 QA gap fix — antes de esto, con EnforceHostResolution=false el body SIEMPRE
+    /// ganaba aunque el Host hubiera resuelto un tenant real (ej. un subdominio local
+    /// tipo demo.localhost registrado en TenantDomains para simular producción en dev).
+    /// Un dev sin campo manual completado nunca podía loguearse aunque el Host
+    /// resolviera bien. Ahora el Host resuelto siempre gana, igual que en modo
+    /// enforced — el body solo se usa como último recurso cuando el Host no resolvió
+    /// nada.
+    /// </summary>
+    [Fact]
+    public void Development_mode_prefers_the_resolved_host_over_the_body_when_both_are_present()
+    {
+        var resolvedTenant = Guid.NewGuid();
+        var bodyTenant = Guid.NewGuid();
+
+        var result = EffectiveLoginTenantResolver.Resolve(
+            enforceHostResolution: false,
+            resolvedTenantId: resolvedTenant,
+            requestedTenantId: bodyTenant
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(resolvedTenant, result.Value);
+        Assert.NotEqual(bodyTenant, result.Value);
+    }
 }

@@ -6,6 +6,7 @@ import type {
 import { Meeting, type MeetingSnapshot } from '../../domain/meetings/meeting.js';
 import {
   MeetingInvitation,
+  isMeetingInviteeKind,
   type MeetingInvitationSnapshot,
 } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingParticipantSnapshot } from '../../domain/meetings/meeting-participant.js';
@@ -26,6 +27,7 @@ export function toDomainMeetingParticipant(row: PrismaParticipant): MeetingParti
     tenantId: row.TenantId,
     userId: row.UserId,
     displayName: row.DisplayName,
+    actorType: row.ActorType,
     role: row.Role,
     status: row.Status,
     joinOrder: row.JoinOrder,
@@ -73,12 +75,18 @@ export function toDomainMeeting(row: PrismaMeeting, participants: PrismaParticip
 }
 
 export function toDomainMeetingInvitation(row: PrismaInvitation): MeetingInvitation {
+  if (!isMeetingInviteeKind(row.InviteeKind)) {
+    throw new Error(`Corrupted meeting invitation inviteeKind '${row.InviteeKind}'`);
+  }
   const snapshot: MeetingInvitationSnapshot = {
     id: row.Id,
     meetingId: row.MeetingId,
     tenantId: row.TenantId,
+    inviteeKind: row.InviteeKind,
     inviteeEmail: row.InviteeEmail,
     inviteeUserId: row.InviteeUserId,
+    inviteeName: row.InviteeName,
+    inviteeExternalPhone: row.InviteeExternalPhone,
     tokenHash: row.TokenHash,
     expiresAtUtc: row.ExpiresAtUtc,
     usedAtUtc: row.UsedAtUtc,

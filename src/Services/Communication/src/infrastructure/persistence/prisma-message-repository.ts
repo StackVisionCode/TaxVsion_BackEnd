@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { Message, type MessageSnapshot } from '../../domain/conversations/message.js';
+import { MessageReaction, type MessageReactionSnapshot } from '../../domain/conversations/message-reaction.js';
 import type { MessageRepository } from '../../application/ports/message-repository.js';
 import { toDomainMessage } from './conversation-mapper.js';
 
@@ -32,9 +33,115 @@ export class PrismaMessageRepository implements MessageRepository {
         EditedAtUtc: snapshot.editedAtUtc,
         IsDeleted: snapshot.isDeleted,
         DeletedAtUtc: snapshot.deletedAtUtc,
+        IsPinned: snapshot.isPinned,
+        PinnedAtUtc: snapshot.pinnedAtUtc,
+        PinnedByUserId: snapshot.pinnedByUserId,
         TenantId: tenantId,
       },
     });
+  }
+
+  async insertForwarded(_tenantId: string, message: Message): Promise<void> {
+    const m = message.toSnapshot();
+    await this.prisma.message.create({
+      data: {
+        Id: m.id,
+        ConversationId: m.conversationId,
+        TenantId: m.tenantId,
+        SenderId: m.senderId,
+        SenderDisplayName: m.senderDisplayName,
+        Kind: m.kind,
+        Body: m.body,
+        AttachmentFileId: m.attachmentFileId,
+        ReplyToMessageId: m.replyToMessageId,
+        ForwardedFromMessageId: m.forwardedFromMessageId,
+        IsEdited: m.isEdited,
+        IsDeleted: m.isDeleted,
+        IsPinned: m.isPinned,
+        PinnedAtUtc: m.pinnedAtUtc,
+        PinnedByUserId: m.pinnedByUserId,
+        DeletedAtUtc: m.deletedAtUtc,
+        CreatedAtUtc: m.createdAtUtc,
+        EditedAtUtc: m.editedAtUtc,
+      },
+    });
+    await this.prisma.conversation.update({
+      where: { Id: m.conversationId },
+      data: { LastMessageAtUtc: m.createdAtUtc, UpdatedAtUtc: m.createdAtUtc },
+    });
+  }
+
+  async addReaction(reaction: MessageReaction): Promise<{ wasNew: boolean }> {
+    const s = reaction.toSnapshot();
+    try {
+      await this.prisma.messageReaction.create({
+        data: {
+          Id: s.id,
+          MessageId: s.messageId,
+          TenantId: s.tenantId,
+          UserId: s.userId,
+          Emoji: s.emoji,
+          CreatedAtUtc: s.createdAtUtc,
+        },
+      });
+      return { wasNew: true };
+    } catch (err) {
+      // P2002 = unique constraint violation → ya existe la reaction. Idempotente.
+      const code = (err as { code?: string }).code;
+      if (code === 'P2002') return { wasNew: false };
+      throw err;
+    }
+  }
+
+  async removeReaction(input: {
+    tenantId: string;
+    messageId: string;
+    userId: string;
+    emoji: string;
+  }): Promise<{ wasPresent: boolean }> {
+    const result = await this.prisma.messageReaction.deleteMany({
+      where: {
+        MessageId: input.messageId,
+        TenantId: input.tenantId,
+        UserId: input.userId,
+        Emoji: input.emoji,
+      },
+    });
+    return { wasPresent: result.count > 0 };
+  }
+
+  async listReactionsByMessage(tenantId: string, messageId: string): Promise<MessageReactionSnapshot[]> {
+    const rows = await this.prisma.messageReaction.findMany({
+      where: { TenantId: tenantId, MessageId: messageId },
+      orderBy: { CreatedAtUtc: 'asc' },
+    });
+    return rows.map((r) => ({
+      id: r.Id,
+      messageId: r.MessageId,
+      tenantId: r.TenantId,
+      userId: r.UserId,
+      emoji: r.Emoji,
+      createdAtUtc: r.CreatedAtUtc,
+    }));
+  }
+
+  async searchByBody(input: {
+    tenantId: string;
+    conversationId: string;
+    query: string;
+    limit: number;
+  }): Promise<MessageSnapshot[]> {
+    const rows = await this.prisma.message.findMany({
+      where: {
+        TenantId: input.tenantId,
+        ConversationId: input.conversationId,
+        IsDeleted: false,
+        Body: { contains: input.query },
+      },
+      orderBy: { CreatedAtUtc: 'desc' },
+      take: input.limit,
+    });
+    return rows.map(toDomainMessage);
   }
 
   async markBatchRead(input: {

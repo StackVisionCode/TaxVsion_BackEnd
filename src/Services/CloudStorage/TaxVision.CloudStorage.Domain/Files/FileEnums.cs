@@ -42,6 +42,15 @@ public enum FolderType
     Avatars,
     Imports,
     Recordings,
+
+    /// <summary>
+    /// Transcripts .txt generados por CommunicationTranscriptWorker (whisper.cpp)
+    /// a partir de una grabacion en Recordings. Folder aparte porque
+    /// RecordingsPolicy() solo permite .webm/.mp4 — subir un .txt ahi lo
+    /// rechazaba siempre por whitelist (UnsupportedType), sin importar que el
+    /// archivo fuera legitimo.
+    /// </summary>
+    Transcripts,
     Backups,
     Other,
 }

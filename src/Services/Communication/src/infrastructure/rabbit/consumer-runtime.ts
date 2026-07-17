@@ -42,6 +42,10 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent': 'auth.user.profile_updated.v1',
   // Customer
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent': 'customer.bulk_imported.v1',
+  // Fase Backend 10 — alimentan CustomerDirectoryEntry (ver customer-consumers.ts).
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerCreatedIntegrationEvent': 'customer.created.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerUpdatedIntegrationEvent': 'customer.updated.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerDeactivatedIntegrationEvent': 'customer.deactivated.v1',
   // Signature
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerInvitedIntegrationEvent': 'signature.signer.invited.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.DocumentSignedIntegrationEvent': 'signature.document.signed.v1',
@@ -77,6 +81,8 @@ export type { ConsumerHandler, IncomingEnvelope };
 
 export class ConsumerRuntime {
   private handlers = new Map<string, ConsumerHandler>();
+  private consumerTag: string | undefined;
+  private inFlightCount = 0;
 
   constructor(private readonly processedEvents: ProcessedEventStore) {}
 
@@ -90,14 +96,57 @@ export class ConsumerRuntime {
   async start(): Promise<void> {
     const rabbit = getRabbitContext();
     await rabbit.channel.prefetch(20);
-    await rabbit.channel.consume(config.rabbitmq.queue, (msg) => {
+    const { consumerTag } = await rabbit.channel.consume(config.rabbitmq.queue, (msg) => {
       if (!msg) return;
       void this.dispatch(msg);
     });
+    this.consumerTag = consumerTag;
     logger.info({ queue: config.rabbitmq.queue, handlers: this.handlers.size }, 'consumer runtime started');
   }
 
+  /**
+   * Fase Backend 11 — graceful drain en SIGTERM. `channel.cancel` deja de
+   * entregar mensajes NUEVOS de inmediato (RabbitMQ los redirige a otro
+   * consumer si hay uno, o los deja en la cola); lo que sigue es esperar a
+   * que los `dispatch()` YA en curso (contados via `inFlightCount`) terminen
+   * de correr su handler y hacer ack/nack, en vez de matarlos a mitad de
+   * camino. Si el timeout se cumple igual, logueamos cuantos quedaron sin
+   * drenar — el proceso va a terminar igual (main.ts sigue con el resto del
+   * shutdown), esos mensajes vuelven a entregarse al reconectar el consumer.
+   */
+  async stop(drainTimeoutMs = 30_000): Promise<void> {
+    if (this.consumerTag) {
+      try {
+        const rabbit = getRabbitContext();
+        await rabbit.channel.cancel(this.consumerTag);
+      } catch (err) {
+        logger.warn({ err: (err as Error).message }, 'ConsumerRuntime.stop: channel.cancel failed');
+      }
+    }
+    const deadline = Date.now() + drainTimeoutMs;
+    while (this.inFlightCount > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (this.inFlightCount > 0) {
+      logger.warn(
+        { inFlight: this.inFlightCount, drainTimeoutMs },
+        'ConsumerRuntime.stop: drain timeout exceeded, messages still in flight',
+      );
+    } else {
+      logger.info('ConsumerRuntime.stop: drained cleanly');
+    }
+  }
+
   private async dispatch(msg: ConsumeMessage): Promise<void> {
+    this.inFlightCount += 1;
+    try {
+      await this.dispatchInner(msg);
+    } finally {
+      this.inFlightCount -= 1;
+    }
+  }
+
+  private async dispatchInner(msg: ConsumeMessage): Promise<void> {
     const rabbit = getRabbitContext();
     const raw = msg.content.toString('utf-8');
     let envelope: IncomingEnvelope;

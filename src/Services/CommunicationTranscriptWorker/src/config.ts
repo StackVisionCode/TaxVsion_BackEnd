@@ -40,7 +40,16 @@ const rawEnv = z
     // a taxvision-temp/transcript/* (ver deploy/docker/minio/policies/transcript-source.json).
     TRANSCRIPT_WORKER_MINIO_ENDPOINT: z.string().min(1),
     TRANSCRIPT_WORKER_MINIO_PORT: z.coerce.number().int().default(9000),
-    TRANSCRIPT_WORKER_MINIO_USE_SSL: z.coerce.boolean().default(false),
+    // z.coerce.boolean() NO parsea "true"/"false" como texto — hace Boolean(valor),
+    // y CUALQUIER string no vacio (incluido literalmente "false") da true. Con
+    // USE_SSL=false en .env eso dejaba useSSL:true en runtime, y el cliente MinIO
+    // intentaba negociar TLS contra el puerto 9000 en HTTP plano (EPROTO "packet
+    // length too long" al subir el transcript). z.string().transform compara el
+    // valor real contra "true".
+    TRANSCRIPT_WORKER_MINIO_USE_SSL: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
     TRANSCRIPT_WORKER_MINIO_ACCESS_KEY: z.string().min(1),
     TRANSCRIPT_WORKER_MINIO_SECRET_KEY: z.string().min(1),
     TRANSCRIPT_WORKER_MINIO_TEMP_BUCKET: z.string().default('taxvision-temp'),
@@ -69,10 +78,26 @@ const rawEnv = z
     // formato original de grabacion (webm/opus tipicamente) antes de invocar
     // whisper-cli. Se instala via apt en el Dockerfile, no via npm.
     TRANSCRIPT_WORKER_FFMPEG_BIN_PATH: z.string().default('ffmpeg'),
+    // Fase Backend 8 — usado ANTES del transcode para detectar si el file
+    // tiene track de audio (bug #245). Se instala junto con ffmpeg apt.
+    TRANSCRIPT_WORKER_FFPROBE_BIN_PATH: z.string().default('ffprobe'),
 
     // Cuantos mensajes RecordingReady procesa en paralelo este proceso — bajo
     // a proposito, whisper es CPU-bound y no queremos saturar el pod.
     TRANSCRIPT_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
+
+    // Fase Transcript 4 — retry con backoff SOLO para download/upload (fallas
+    // transientes reales: HTTP 5xx, blips de red a MinIO). Configurable por
+    // env para poder acortarlo en tests (backoff en ms reales seria
+    // impractico de testear con delays de produccion) sin tocar codigo.
+    // "maxAttempts=4" = intento original + 3 reintentos.
+    TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(4),
+    TRANSCRIPT_WORKER_RETRY_BACKOFF_MS: z.string().default('1000,5000,30000'),
+
+    // Fase Transcript 8 — servidor HTTP minimo (sin framework: este proceso no
+    // tiene ninguna otra ruta) solo para exponer /metrics a Prometheus. Puerto
+    // por defecto = el convencional del ecosistema prom-client para Node.
+    TRANSCRIPT_WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65_535).default(9464),
   })
   .parse(process.env);
 
@@ -123,9 +148,21 @@ export const config = {
 
   ffmpeg: {
     binPath: rawEnv.TRANSCRIPT_WORKER_FFMPEG_BIN_PATH,
+    ffprobeBinPath: rawEnv.TRANSCRIPT_WORKER_FFPROBE_BIN_PATH,
   },
 
   concurrency: rawEnv.TRANSCRIPT_WORKER_CONCURRENCY,
+
+  retry: {
+    maxAttempts: rawEnv.TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS,
+    backoffMs: rawEnv.TRANSCRIPT_WORKER_RETRY_BACKOFF_MS.split(',')
+      .map((s) => Number.parseInt(s.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n >= 0),
+  },
+
+  metrics: {
+    port: rawEnv.TRANSCRIPT_WORKER_METRICS_PORT,
+  },
 } as const;
 
 export type AppConfig = typeof config;

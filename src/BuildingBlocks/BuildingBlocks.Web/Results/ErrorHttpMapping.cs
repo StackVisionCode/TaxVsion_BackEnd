@@ -91,7 +91,8 @@ public static class ErrorHttpMapping
             or "EmailAccount.Conflict"
             or "ShareLink.AlreadyRevoked" => StatusCodes.Status409Conflict,
             "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit" => StatusCodes.Status429TooManyRequests,
-            "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" => StatusCodes.Status413PayloadTooLarge,
+            "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
+                StatusCodes.Status413PayloadTooLarge,
             "File.MultipartCompleteFailed" => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest,
         };

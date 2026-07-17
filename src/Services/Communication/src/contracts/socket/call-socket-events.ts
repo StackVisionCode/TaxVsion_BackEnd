@@ -58,10 +58,39 @@ export const AttachCallRecordingPayloadSchema = z.object({
 });
 export type AttachCallRecordingPayload = z.infer<typeof AttachCallRecordingPayloadSchema>;
 
+// ---------- Recording consent (Fase Backend 4) ----------
+// Policy fija AllAcceptedRequired (solo 2 partes) — ver pending/call-pending-events.ts.
+// clientKey en start/stop por el mismo motivo que en meetings: idempotencia
+// ante reintentos del cliente al disparar integration events.
+
+export const RequestCallRecordingPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  callId: z.string().uuid(),
+});
+export type RequestCallRecordingPayload = z.infer<typeof RequestCallRecordingPayloadSchema>;
+
+export const StopCallRecordingPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  callId: z.string().uuid(),
+});
+export type StopCallRecordingPayload = z.infer<typeof StopCallRecordingPayloadSchema>;
+
+export const RespondCallRecordingConsentPayloadSchema = z.object({
+  callId: z.string().uuid(),
+  response: z.enum(['Accepted', 'Rejected']),
+});
+export type RespondCallRecordingConsentPayload = z.infer<
+  typeof RespondCallRecordingConsentPayloadSchema
+>;
+
 export interface CallTranscriptReadyDto {
   callId: string;
   transcriptFileId: string;
-  language: string | null;
+  detectedLanguage: string | null;
+  /** Fase Transcript 5 — duracion del audio en segundos, derivada por el worker de los timestamps de whisper.cpp. */
+  durationSeconds: number;
+  /** Fase Transcript 5 — conteo de palabras del transcript, para previsualizacion sin descargar el archivo completo. */
+  wordCount: number;
   readyAtUtc: string;
 }
 
@@ -109,6 +138,76 @@ export interface CallMediaStatusDto {
   screenSharing: boolean;
 }
 
+/** Ver docblock de MeetingRecordingState — mismo modelo, para calls. */
+export type CallRecordingState =
+  | 'Idle'
+  | 'Requesting'
+  | 'Recording'
+  | 'Stopping'
+  | 'Processing'
+  | 'Ready'
+  | 'Failed';
+
+export interface CallRecordingConsentRequestedDto {
+  callId: string;
+  requestedByUserId: string;
+  requestedAtUtc: string;
+}
+
+export interface CallRecordingStateChangedDto {
+  callId: string;
+  state: CallRecordingState;
+  updatedAtUtc: string;
+}
+
+/** @since Fase Frontend 4 — ver docblock de MeetingRecordingConsentRecordedDto, mismo criterio para calls. */
+export interface CallRecordingConsentRecordedDto {
+  callId: string;
+  userId: string;
+  response: 'Accepted' | 'Rejected';
+  respondedAtUtc: string;
+}
+
+// ---------- Fase Backend 7 — upgrade + screen share dedicados ----------
+
+export const UpgradeCallToVideoPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  callId: z.string().uuid(),
+});
+export type UpgradeCallToVideoPayload = z.infer<typeof UpgradeCallToVideoPayloadSchema>;
+
+export const StartCallScreenSharePayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  callId: z.string().uuid(),
+});
+export type StartCallScreenSharePayload = z.infer<typeof StartCallScreenSharePayloadSchema>;
+
+export const StopCallScreenSharePayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  callId: z.string().uuid(),
+});
+export type StopCallScreenSharePayload = z.infer<typeof StopCallScreenSharePayloadSchema>;
+
+export interface CallUpgradedToVideoDto {
+  callId: string;
+  upgradedByUserId: string;
+  upgradedAtUtc: string;
+}
+
+export interface CallScreenShareStartedDto {
+  callId: string;
+  sharingUserId: string;
+  startedAtUtc: string;
+}
+
+export interface CallScreenShareStoppedDto {
+  callId: string;
+  sharingUserId: string;
+  startedAtUtc: string;
+  stoppedAtUtc: string;
+  durationSeconds: number;
+}
+
 // ---------- Nombres de eventos ----------
 
 export const CallSocketEvents = {
@@ -122,6 +221,12 @@ export const CallSocketEvents = {
   MediaStatus: 'call.media_status',
   ConnectionQuality: 'call.connection_quality',
   AttachRecording: 'call.recording.attach',
+  RequestRecording: 'call.recording.start_request',
+  StopRecording: 'call.recording.stop',
+  RespondRecordingConsent: 'call.consent.respond',
+  UpgradeToVideo: 'call.upgrade_to_video',
+  ScreenShareStart: 'call.screen_share.start',
+  ScreenShareStop: 'call.screen_share.stop',
   // s -> c
   Incoming: 'call.incoming',
   StateChanged: 'call.state_changed',
@@ -129,4 +234,10 @@ export const CallSocketEvents = {
   SignalFrom: 'call.signal_from',
   MediaStatusChanged: 'call.media_status_changed',
   TranscriptReady: 'call.transcript_ready',
+  RecordingConsentRequested: 'call.recording.consent_requested',
+  RecordingConsentRecorded: 'call.recording.consent_recorded',
+  RecordingStateChanged: 'call.recording.state_changed',
+  UpgradedToVideo: 'call.upgraded_to_video',
+  ScreenShareStarted: 'call.screen_share.started',
+  ScreenShareStopped: 'call.screen_share.stopped',
 } as const;

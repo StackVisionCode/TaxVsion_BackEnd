@@ -19,6 +19,7 @@ export function toDomainCallParticipant(row: PrismaParticipant): CallParticipant
     audioEnabled: row.AudioEnabled,
     videoEnabled: row.VideoEnabled,
     screenSharing: row.ScreenSharing,
+    screenShareStartedAtUtc: row.ScreenShareStartedAtUtc,
     connectionQuality: isConnectionQuality(row.ConnectionQuality) ? row.ConnectionQuality : 'Unknown',
   };
 }

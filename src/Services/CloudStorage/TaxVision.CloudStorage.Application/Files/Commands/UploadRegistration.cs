@@ -48,12 +48,20 @@ internal static class UploadRegistration
             return Result.Failure<FileObject>(QuotaErrors.NotProvisioned);
 
         var policy = config.ResolveUploadPolicy(limit.PlanCode, folderType);
+        if (string.IsNullOrWhiteSpace(originalName) || originalName.Length > 255)
+            return Result.Failure<FileObject>(FileErrors.UnsupportedType);
+
+        // Chequeada aparte de extension/content-type: antes las 3 condiciones caian en
+        // el mismo File.UnsupportedType generico, y un archivo rechazado solo por
+        // tamano (ej. una grabacion de meeting sobre el MaxFileSizeBytes de un plan
+        // "starter") mostraba "tipo de archivo no permitido" — enganoso, llevaba a
+        // debuggear la whitelist de tipos en vez del limite real de tamano del plan.
+        if (sizeBytes > policy.MaxFileSizeBytes)
+            return Result.Failure<FileObject>(FileErrors.FileTooLarge);
+
         if (
-            string.IsNullOrWhiteSpace(originalName)
-            || originalName.Length > 255
-            || !policy.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
+            !policy.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
             || !policy.AllowedContentTypes.Contains(contentType, StringComparer.OrdinalIgnoreCase)
-            || sizeBytes > policy.MaxFileSizeBytes
         )
             return Result.Failure<FileObject>(FileErrors.UnsupportedType);
 

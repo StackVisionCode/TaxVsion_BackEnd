@@ -64,6 +64,67 @@ public sealed class CloudStorageOptionsTests
     }
 
     [Fact]
+    public void ResolveUploadPolicy_uses_the_plan_FolderOverridesBytes_for_Recordings_instead_of_the_generic_MaxFileSizeBytes()
+    {
+        var options = Options();
+        options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".webm", ".mp4"],
+            AllowedContentTypes = ["video/webm", "video/mp4"],
+            FolderOverridesBytes = new(StringComparer.OrdinalIgnoreCase) { ["Recordings"] = 150L * 1024 * 1024 },
+        };
+
+        var recordings = options.ResolveUploadPolicy("starter", FolderType.Recordings);
+        var documents = options.ResolveUploadPolicy("starter", FolderType.Documents);
+
+        Assert.Equal(150L * 1024 * 1024, recordings.MaxFileSizeBytes);
+        Assert.Equal(10L * 1024 * 1024, documents.MaxFileSizeBytes);
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_still_caps_the_FolderOverridesBytes_at_the_FolderType_hard_ceiling()
+    {
+        var options = Options();
+        options.PlanPolicies["enterprise"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 25L * 1024 * 1024,
+            AllowedExtensions = [".webm", ".mp4"],
+            AllowedContentTypes = ["video/webm", "video/mp4"],
+            // Recordings solo permite hasta 500MB por FolderType — un override de plan mas alto no debe saltarselo.
+            FolderOverridesBytes = new(StringComparer.OrdinalIgnoreCase) { ["Recordings"] = 1024L * 1024 * 1024 },
+        };
+
+        var policy = options.ResolveUploadPolicy("enterprise", FolderType.Recordings);
+
+        Assert.Equal(500L * 1024 * 1024, policy.MaxFileSizeBytes);
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_falls_back_to_DefaultMaxRecordingSizeBytes_for_an_unconfigured_plan()
+    {
+        var options = Options();
+
+        var policy = options.ResolveUploadPolicy("unconfigured-plan", FolderType.Recordings);
+
+        Assert.Equal(options.DefaultMaxRecordingSizeBytes, policy.MaxFileSizeBytes);
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_allows_a_txt_transcript_on_the_Transcripts_FolderType()
+    {
+        var options = Options();
+
+        // CommunicationTranscriptWorker sube el .txt de whisper.cpp con FolderType=Transcripts
+        // (antes usaba Recordings por error, y RecordingsPolicy solo permite .webm/.mp4 — el
+        // .txt quedaba rechazado siempre por whitelist, ver save-file-requested-publisher.ts).
+        var policy = options.ResolveUploadPolicy("unconfigured-plan", FolderType.Transcripts);
+
+        Assert.Contains(".txt", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".webm", policy.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ResolveFolderTypePolicy_falls_back_to_Other_when_a_FolderType_has_no_entry()
     {
         var options = Options();

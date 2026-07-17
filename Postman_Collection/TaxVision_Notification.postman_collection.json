@@ -41,6 +41,85 @@
 			"response": []
 		},
 		{
+			"name": "Push Devices",
+			"item": [
+				{
+					"name": "RegisterPushDevice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notifications/push/devices",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"push",
+								"devices"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"platform\": \"Fcm\",\n  \"token\": \"<device push token (FCM/APNs)>\",\n  \"deviceId\": \"device-12345\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Requiere estar autenticado; tenantId y userId salen del JWT, nunca del body. platform (obligatorio): 'Fcm' | 'Apns'. token: push token del dispositivo (FCM/APNs). deviceId: opcional, identificador propio del cliente para distinguir varios dispositivos por usuario."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r = pm.response.json();",
+									"if (r.id) pm.environment.set('pushTokenId', r.id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "RevokePushDevice",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notifications/push/devices/{{pushTokenId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"push",
+								"devices",
+								"{{pushTokenId}}"
+							]
+						},
+						"description": "Requiere estar autenticado; el userId sale del JWT, no del body. tokenId: GUID del PushDeviceToken a revocar (debe pertenecer al usuario autenticado). Responde 204 sin body."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Email",
 			"item": [
 				{

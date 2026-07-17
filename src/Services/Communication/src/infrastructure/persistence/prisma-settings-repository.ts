@@ -5,6 +5,7 @@ import {
 } from '../../domain/settings/tenant-communication-settings.js';
 import type { TenantCommunicationLimitsSnapshot } from '../../domain/settings/tenant-communication-limits.js';
 import type { LimitsRepository, SettingsRepository } from '../../application/ports/settings-repository.js';
+import { RecordingConsentPolicy, isRecordingConsentPolicy } from '../../domain/recording/recording-consent.js';
 
 export class PrismaSettingsRepository implements SettingsRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -36,6 +37,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
         MessageRetentionDays: s.messageRetentionDays,
         RecordingRetentionDays: s.recordingRetentionDays,
         PurgeEnabled: s.purgeEnabled,
+        RecordingConsentPolicy: s.recordingConsentPolicy,
       },
       update: {
         ChatEnabled: s.chatEnabled,
@@ -52,6 +54,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
         MessageRetentionDays: s.messageRetentionDays,
         RecordingRetentionDays: s.recordingRetentionDays,
         PurgeEnabled: s.purgeEnabled,
+        RecordingConsentPolicy: s.recordingConsentPolicy,
       },
     });
   }
@@ -80,6 +83,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
     MessageRetentionDays: number;
     RecordingRetentionDays: number;
     PurgeEnabled: boolean;
+    RecordingConsentPolicy: string;
     CreatedAtUtc: Date;
     UpdatedAtUtc: Date;
   }): TenantCommunicationSettingsSnapshot {
@@ -99,6 +103,9 @@ export class PrismaSettingsRepository implements SettingsRepository {
       messageRetentionDays: row.MessageRetentionDays,
       recordingRetentionDays: row.RecordingRetentionDays,
       purgeEnabled: row.PurgeEnabled,
+      recordingConsentPolicy: isRecordingConsentPolicy(row.RecordingConsentPolicy)
+        ? row.RecordingConsentPolicy
+        : RecordingConsentPolicy.NoRejections,
       createdAtUtc: row.CreatedAtUtc,
       updatedAtUtc: row.UpdatedAtUtc,
     };

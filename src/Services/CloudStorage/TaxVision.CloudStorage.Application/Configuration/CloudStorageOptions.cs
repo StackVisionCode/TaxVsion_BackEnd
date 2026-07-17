@@ -17,6 +17,12 @@ public sealed class CloudStorageOptions
     public long DefaultStorageQuotaBytes { get; set; } = 10L * 1024 * 1024 * 1024;
     public long DefaultMaxFileSizeBytes { get; set; } = 25L * 1024 * 1024;
 
+    /// <summary>
+    /// Fallback para el override de FolderType.Recordings (ver StoragePlanPolicy.FolderOverridesBytes)
+    /// cuando el plan del tenant no tiene una entrada configurada en PlanPolicies.
+    /// </summary>
+    public long DefaultMaxRecordingSizeBytes { get; set; } = 300L * 1024 * 1024;
+
     /// <summary>Fase B2 — cap duro de cantidad de archivos por descarga ZIP (413 si se supera).</summary>
     public int MaxZipFiles { get; set; } = 500;
 
@@ -155,6 +161,7 @@ public sealed class CloudStorageOptions
             [FolderType.Avatars] = AvatarsPolicy(),
             [FolderType.Imports] = ImportsExportsPolicy(),
             [FolderType.Recordings] = RecordingsPolicy(),
+            [FolderType.Transcripts] = TranscriptsPolicy(),
             [FolderType.Backups] = BackupsPolicy(),
             [FolderType.Other] = OtherPolicy(),
         };
@@ -168,6 +175,10 @@ public sealed class CloudStorageOptions
             MaxFileSizeBytes = DefaultMaxFileSizeBytes,
             AllowedExtensions = AllowedExtensions,
             AllowedContentTypes = AllowedContentTypes,
+            FolderOverridesBytes = new(StringComparer.OrdinalIgnoreCase)
+            {
+                [nameof(FolderType.Recordings)] = DefaultMaxRecordingSizeBytes,
+            },
         };
     }
 
@@ -180,6 +191,14 @@ public sealed class CloudStorageOptions
     /// del tenant y lo que permite el FolderType, menos DangerousExtensions
     /// siempre. Ni el plan mas caro ni un FolderType mal configurado pueden
     /// saltarse la blacklist global.
+    ///
+    /// El tope de tamano usa FolderOverridesBytes del plan cuando existe una entrada
+    /// para este FolderType (ej. Recordings) en vez de MaxFileSizeBytes generico —
+    /// una grabacion de meeting de mas de unos minutos siempre superaba el limite
+    /// generico por-archivo del plan (pensado para documentos), aunque el propio
+    /// FolderType.Recordings ya permitia hasta 500MB. Sigue acotado por
+    /// folderPolicy.MaxSizeBytes: ni el override de un plan puede superar el tope
+    /// duro del FolderType.
     /// </summary>
     public EffectiveUploadPolicy ResolveUploadPolicy(string planCode, FolderType folderType)
     {
@@ -194,8 +213,12 @@ public sealed class CloudStorageOptions
             .AllowedContentTypes.Intersect(planPolicy.AllowedContentTypes, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var planMaxSizeBytes = planPolicy.FolderOverridesBytes.TryGetValue(folderType.ToString(), out var overrideBytes)
+            ? overrideBytes
+            : planPolicy.MaxFileSizeBytes;
+
         return new EffectiveUploadPolicy(
-            Math.Min(folderPolicy.MaxSizeBytes, planPolicy.MaxFileSizeBytes),
+            Math.Min(folderPolicy.MaxSizeBytes, planMaxSizeBytes),
             allowedExtensions,
             allowedContentTypes
         );
@@ -302,6 +325,20 @@ public sealed class CloudStorageOptions
             AllowedContentTypes = ["video/webm", "video/mp4"],
         };
 
+    /// <summary>
+    /// Transcripts .txt generados por whisper.cpp a partir de una grabacion.
+    /// Texto plano, chico incluso para audio largo (una transcripcion de 2
+    /// horas ronda unos cientos de KB) — 5MB da margen de sobra sin acercarse
+    /// al costo de una grabacion real.
+    /// </summary>
+    private static StorageFolderTypePolicy TranscriptsPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 5L * 1024 * 1024,
+            AllowedExtensions = [".txt"],
+            AllowedContentTypes = ["text/plain"],
+        };
+
     private static StorageFolderTypePolicy BackupsPolicy() =>
         new()
         {
@@ -335,6 +372,13 @@ public sealed class StoragePlanPolicy
     public long MaxFileSizeBytes { get; set; }
     public string[] AllowedExtensions { get; set; } = [];
     public string[] AllowedContentTypes { get; set; } = [];
+
+    /// <summary>
+    /// Override de MaxFileSizeBytes por FolderType (clave = FolderType.ToString(), ej. "Recordings").
+    /// Cuando existe una entrada para el FolderType del upload, reemplaza MaxFileSizeBytes en
+    /// ResolveUploadPolicy — sigue acotado por el MaxSizeBytes propio del FolderType.
+    /// </summary>
+    public Dictionary<string, long> FolderOverridesBytes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>Fase L1.1 — whitelist de un FolderType puntual, antes de intersectar con el plan del tenant.</summary>

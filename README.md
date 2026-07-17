@@ -2413,6 +2413,26 @@ publicaba ahora se entregan al usuario final.
   alertas de seguridad. Todos hacen `correlation.Push()` del `CorrelationId` del
   evento, de modo que una invitacion se traza de punta a punta
   (Customer/Tenant -> Auth -> Notification) con el mismo id en Loki/Tempo.
+- **Consumers de Communication** (Node.js, Fase F11 QA — antes de esto Communication
+  publicaba `communication.meeting.recording_ready.v1`/`.recording_failed.v1` y sus
+  equivalentes de `call` al bus sin que nadie los escuchara): 4 stubs log-only en
+  `Application/Consumers/Communication/` (`MeetingRecordingReadyConsumer`,
+  `MeetingRecordingFailedConsumer`, `CallRecordingReadyConsumer`,
+  `CallRecordingFailedConsumer`), mismo patron que
+  `MeetingInvitationCreatedConsumer` (§30.5). Registran la notificacion via
+  `NotificationDispatcher.RecordInAppAsync` contra un recipient **simbolico**
+  (`meeting:{meetingId}` / `call:{callId}`, no un usuario real) porque estos 4
+  eventos no traen `userId` ni `tenantId` de un destinatario — Communication
+  nunca resuelve quien deberia verlo antes de publicar. No envian email ni push
+  real; eso requeriria que Communication resuelva y publique el
+  host/organizador del meeting/call primero. Los 4 tipos CLR viven en
+  `BuildingBlocks/Messaging/CommunicationIntegrationEvents/` (nuevos:
+  `MeetingRecordingReadyIntegrationEvent`, `MeetingRecordingFailedIntegrationEvent`,
+  `CallRecordingReadyIntegrationEvent`, `CallRecordingFailedIntegrationEvent`),
+  con `[MessageIdentity]` mapeando el string de evento real que Communication
+  escribe — Wolverine los descubre por convencion (mismo assembly scan que ya
+  usaba `MeetingInvitationCreatedConsumer`), sin registro explicito en
+  `Program.cs`.
 - **Plantillas** de correo en espanol (`EmailTemplates`), HTML con enlaces
   construidos desde `Portal:BaseUrl` y codificacion HTML de los valores de
   usuario para evitar inyeccion.
@@ -2996,10 +3016,29 @@ Reinstated`:
 
 `CloudStorageOptions.FolderTypePolicies` define, por `FolderType`, un whitelist/blacklist de
 extensiones y MIME mas un tope de tamano (p. ej. `Avatars` 5 MB solo jpg/png/webp; `Recordings`
-500 MB solo webm/mp4). Una blacklist global `DangerousExtensions` (ejecutables, imagenes de disco,
-formatos asociados a pirateria, `.torrent`) se resta siempre. La politica efectiva de una subida es
-la interseccion de la politica del `FolderType` con la del plan del tenant, menos la blacklist
-global.
+500 MB solo webm/mp4; `Transcripts` 5 MB solo txt/text-plain). Una blacklist global
+`DangerousExtensions` (ejecutables, imagenes de disco, formatos asociados a pirateria, `.torrent`)
+se resta siempre. La politica efectiva de una subida es la interseccion de la politica del
+`FolderType` con la del plan del tenant, menos la blacklist global; un rechazo por tamano devuelve
+`File.TooLarge` (413) — separado de `File.UnsupportedType` (400, extension/content-type no
+permitidos) desde que un caso real (recording de meeting sobre el limite de tamano de un plan
+"starter") mostraba el mensaje generico "tipo de archivo no permitido" en vez de indicar que el
+problema era el tamano.
+
+`StoragePlanPolicy.FolderOverridesBytes` (dict `FolderType→bytes`, keyed by nombre) reemplaza el
+`MaxFileSizeBytes` generico del plan para un `FolderType` puntual cuando hay una entrada — sigue
+acotado por el `MaxSizeBytes` propio del `FolderType` (nunca lo supera). Existe porque el limite
+generico por-archivo de un plan (pensado para documentos: 10-25 MB) siempre era mas chico que
+cualquier grabacion real de mas de unos minutos, aunque `Recordings` en si permitiera hasta 500 MB —
+`appsettings.json` define un override de `Recordings` tieredo por plan (`starter` 150 MB, `pro`
+300 MB, `enterprise` 500 MB, este ultimo igual al tope duro del `FolderType`).
+
+`FolderType.Transcripts` (dedicado a los `.txt` que sube `CommunicationTranscriptWorker` via
+whisper.cpp) es un folder aparte de `Recordings` a proposito: `RecordingsPolicy` solo permite
+webm/mp4, asi que un transcript etiquetado como `Recordings` era rechazado siempre por whitelist
+(`SaveFileRequested ... rejected by upload policy`), sin importar el tamano — no era una falla
+transitoria, el pipeline de transcripts nunca pudo registrar un archivo en CloudStorage hasta este
+fix.
 
 ## 27.13 Pendientes reales de CloudStorage
 
@@ -4109,8 +4148,14 @@ namespace propio). `meeting.snapshot`/ack de `meeting.join` incluyen
   `.conversation_participant_added.v1`, `.conversation_participant_removed.v1`
   (solo grupos — el alta/baja de chat de meeting NO publica estos, ya la cubre
   `meeting.participant_joined/left.v1`, evita señal duplicada).
-- **Calls**: `.call.started.v1`, `.ended.v1`, `.missed.v1`, `.recording_ready.v1`, `.transcript_ready.v1` (Fase 6).
-- **Meetings**: `.meeting.scheduled.v1`, `.started.v1`, `.ended.v1`, `.invitation_requested.v1`, `.recording_ready.v1`, `.transcript_ready.v1` (Fase 6).
+- **Calls**: `.call.started.v1`, `.ended.v1`, `.missed.v1`, `.recording_ready.v1`,
+  `.recording_failed.v1` (Fase 10, `CallRecordingFailedEvent` en
+  `contracts/events/call-events.ts`), `.transcript_ready.v1` (Fase 6).
+- **Meetings**: `.meeting.scheduled.v1`, `.started.v1`, `.ended.v1`,
+  `.invitation_requested.v1`, `.recording_ready.v1`, `.recording_failed.v1`
+  (Fase 10, `MeetingRecordingFailedEvent`), `.transcript_ready.v1` (Fase 6).
+  Hasta la iteracion F11 QA (§30.11) estos 2 ultimos no tenian **ningun**
+  consumer en el resto de la plataforma — se publicaban al bus y se perdian.
 - **Support**: `.support.opened.v1`, `.claimed.v1`, `.resolved.v1`, `.closed.v1`.
 - **Consumido** (no publicado): `cloudstorage.file.blocked_by_policy.v1` — CloudStorage
   lo emite cuando `IContentScanner` (Fase 7, hoy `NoOpContentScanner`) marca un
@@ -4175,6 +4220,32 @@ COMMUNICATION_TURN_STATIC_AUTH_SECRET=...
 COMMUNICATION_PLATFORM_TENANT_ID=8f58a521-4c25-4d91-9f4e-7ad5df14c001
 COMMUNICATION_CORS_ORIGINS=http://localhost:5173
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+
+# Rate limiting — todos con default = el literal hardcodeado original, cero
+# cambio de comportamiento si no se tocan. Los primeros 5 pares son de Fase
+# Backend 11 (rate limit por socket event); los ultimos 3 pares (HTTP global +
+# los 2 endpoints publicos de join-by-token/by-code) se agregaron en la
+# iteracion F11 QA — antes eran literales `{max: N, timeWindow: '1 minute'}`
+# inline en build-server.ts y meeting-invitations.route.ts pese a que el
+# docblock de esa ruta ya afirmaba (incorrectamente) que salian de config.
+COMMUNICATION_RATE_LIMIT_CALL_INITIATE_MAX=10
+COMMUNICATION_RATE_LIMIT_CALL_INITIATE_WINDOW_SECONDS=30
+COMMUNICATION_RATE_LIMIT_CALL_SIGNAL_MAX=60
+COMMUNICATION_RATE_LIMIT_CALL_SIGNAL_WINDOW_SECONDS=10
+COMMUNICATION_RATE_LIMIT_MEETING_CHAT_SEND_MAX=30
+COMMUNICATION_RATE_LIMIT_MEETING_CHAT_SEND_WINDOW_SECONDS=10
+COMMUNICATION_RATE_LIMIT_CHAT_SEND_MAX=30
+COMMUNICATION_RATE_LIMIT_CHAT_SEND_WINDOW_SECONDS=10
+COMMUNICATION_RATE_LIMIT_CHAT_EDIT_MAX=20
+COMMUNICATION_RATE_LIMIT_CHAT_EDIT_WINDOW_SECONDS=10
+COMMUNICATION_RATE_LIMIT_CHAT_TYPING_MAX=20
+COMMUNICATION_RATE_LIMIT_CHAT_TYPING_WINDOW_SECONDS=10
+COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX=300
+COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_WINDOW_SECONDS=60
+COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_MAX=5
+COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_WINDOW_SECONDS=60
+COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX=20
+COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS=60
 ```
 
 ## 30.9 Reglas de oro (no repetir el legacy)
@@ -4214,7 +4285,12 @@ Sigue pendiente:
 - **Server-side recording** (LiveKit Egress o similar) para calls y meetings. `Call.attachRecording` y `Meeting.attachRecording` existen en el dominio pero **nunca se llaman** — no hay orquestador que suba el resultado a CloudStorage con `OwnerType=Communication`, `FolderType=Recordings`. Recording client-side sigue siendo la unica via.
 - **Backfill / catchup al reconectar**: no hay `chat.sync.since`, `call.resync` ni `meeting.reconnect`. Un cliente que reconecta despues de la desconexion pierde eventos emitidos durante la caida y debe reconstruir via HTTP.
 - **Auto-timeout de typing indicators** — si el cliente pierde la conexion sin emitir `chat.typing.stop`, el otro peer queda con "Escribiendo..." pegado. Fix: TTL server-side en Redis + broadcast automatico al expirar.
-- **Rate limit no aplicado**: `config.rateLimit.*` (typingPerMinute, messagesPerMinute, etc.) existe pero no hay middleware que lo consulte. Requiere un `SocketRateLimiter` con Redis token-bucket.
+- ~~**Rate limit no aplicado**~~ — RESUELTO. Fase Backend 11: rate limit real
+  por socket event via `config.rateLimit.*` + `@fastify/rate-limit`. Iteracion
+  F11 QA (§30.11): cerrados los ultimos 2 puntos que seguian hardcodeados (el
+  limite HTTP global de `build-server.ts` y los 2 endpoints publicos de
+  invitaciones), ver `COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_*` /
+  `_MEETING_JOIN_TOKEN_*` / `_MEETING_JOIN_CODE_*` en §30.8.
 - **Cleanup en disconnect abrupto de calls/meetings**: hoy solo el `missed-call-scheduler` procesa calls Ringing con timeout. Calls Active y meetings con participantes sin heartbeat quedan colgados.
 - **Purge/retention scheduler**: `TenantCommunicationSettings.recordingRetentionDays` y `messageRetentionDays` son configurables pero no hay purgador que ejerza la politica.
 - **Denylist Redis fail-open**: si Redis se cae, `JwtVerifier` sigue aceptando tokens revocados. Feature flag para modo fail-closed pendiente.
@@ -4231,6 +4307,127 @@ Sigue pendiente:
 - **Presence sin broadcast**: `RedisPresenceService` publicaba en `comm:presence:changed:{tenantId}` pero nadie subscribia. Nuevo `presence-changed-watcher.ts` hace `PSUBSCRIBE` al patron y emite `chat.presence.changed` al room del tenant. Ademas se corrigio una race condition en `register` (dos sockets simultaneos del mismo user podian ambos publicar 'online' — ahora SET va primero, count despues).
 - **TURN sin STUN propio**: `HmacTurnCredentialFactory` solo devolvia `stun:stun.l.google.com:19302` (dependencia externa). Ahora deriva `stun:host:port` del propio TURN URL y lo devuelve como primer ICE server (menor latencia). El username del TURN ahora usa SHA-256 truncado de `tenantId:userId` en vez del UUID crudo (no expone identidad en logs de coturn / traza WebRTC).
 - **DLQ no bindeada**: la cola principal se declaraba con `deadLetterExchange: ''` pero sin `deadLetterRoutingKey`, y el consumer runtime hacia `ack` ciego en error. Los failures se descartaban silenciosamente. Fix: `assertQueue` ahora usa `deadLetterExchange: ''` + `deadLetterRoutingKey: <dlq>` (routing al default exchange con la DLQ como target); el consumer runtime hace `nack(requeue=false)` en error y `unmark` la inbox para permitir reproceso manual.
+
+## 30.12 Fixes aplicados en la iteracion F11 QA (checklist final del frontend)
+
+Al correr el checklist final de aceptacion del frontend QA console (`taxvision-communication-frontend`) se encontraron y cerraron 3 gaps reales:
+
+- **Transferir host sin boton en la UI**: `meeting.host.transfer` ya existia en
+  el backend (guard estricto `Meeting.HostOnly` — a diferencia de la mayoria de
+  acciones de host, un cohost NO puede transferir) pero `MeetingRoomPage.tsx`
+  no tenia ningun control para dispararlo. Agregado, gateado a `isHost`
+  (nunca `isHostOrCohost`) y usando `emit()` plano — este evento, junto con
+  `Lock`/`MuteAll`, no manda `ack()`, asi que `emitWithAck()`/el helper
+  `hostAction()` colgarian 10s con un falso timeout.
+- **Notification click no deep-linkea a su recurso**: investigado a fondo, no
+  aplica. Los unicos `kind` que Communication crea hoy
+  (`signature.signer.invited`, `signature.document.signed`,
+  `signature.request.*`, `signature.push_challenge`,
+  `customer.bulk_import_completed`) pertenecen a dominios de OTROS
+  microservicios que tienen su propia UI — este frontend no tiene ruta para
+  ninguno. Forzar un deep-link hubiera significado inventar rutas a recursos
+  que esta app no posee. Documentado como limite de scope, no como bug.
+- **Notification (.NET) sin consumer de recording ready/failed**: cerrado — ver
+  §26.4.
+- **Rate limiters HTTP con literales inline** pese a que un docblock afirmaba
+  lo contrario: cerrado — ver §30.5/§30.8/§30.10.
+
+Adicionalmente, durante la sesion de pruebas manuales del login en local
+(`localhost` sin subdominio real) se encontraron y cerraron 2 bugs mas, fuera
+del checklist original pero bloqueantes para poder loguearse:
+
+- **`EffectiveLoginTenantResolver` (Auth) ignoraba una resolucion de Host
+  real en Development** — ver §33.2 (seccion de Auth) para el detalle
+  completo; el fix vive en Auth, no en Communication, pero el sintoma
+  (login pide `TenantId` a mano) solo aparecia probando este frontend.
+- **`LoginPage.tsx` nunca mandaba `tenantId`**, asumiendo que
+  `EnforceHostResolution=true` corria siempre — roto en local, donde
+  `appsettings.Development.json` de Auth pone esa flag en `false`. Fix
+  temporal: campo manual opcional en el form. Fix definitivo (una vez
+  arreglado el resolver de Auth): el campo se volvio innecesario y se
+  **elimino del formulario** — hoy el login local con un subdominio real
+  registrado (`demo.localhost`, ver §33.11) funciona identico a produccion,
+  sin ningun input extra.
+
+## 30.13 Fixes aplicados durante el QA end-to-end del pipeline de grabacion+transcript
+
+Al probar una grabacion real de meeting de punta a punta (upload → scan →
+transcript worker → attach) aparecieron 5 bugs reales encadenados — cada uno
+tapaba al siguiente, asi que el pipeline nunca habia corrido completo hasta
+esta sesion:
+
+- **`File.UnsupportedType` generico tapaba el limite real de tamano**:
+  `UploadRegistration.ReserveAndRegisterAsync` colapsaba 3 causas de rechazo
+  distintas (nombre invalido, tamano excedido, tipo no permitido) en el mismo
+  error — una grabacion rechazada solo por tamano (plan `starter`,
+  `MaxFileSizeBytes` de 10 MB) mostraba "tipo de archivo no permitido" en vez
+  de senalar el tamano. Fix: nuevo `File.TooLarge` (413) separado de
+  `File.UnsupportedType`, chequeado antes que extension/content-type. Ver
+  §27.12 para el detalle completo del sistema de cuotas por `FolderType`/plan
+  que se toco junto con esto (`FolderOverridesBytes`, tiers de `Recordings`
+  por plan).
+- **Race condition download-vs-scan en el transcript worker**:
+  `attachMeetingRecording`/`attachCallRecording` publican
+  `recording_processing_started.v1` apenas termina el upload, sin esperar el
+  escaneo ClamAV asincronico de CloudStorage. El transcript worker consumia
+  el evento casi al instante y pedia `download-url` mientras el archivo
+  seguia `Scanning` — CloudStorage devolvia `File.NotAvailable` (403), y el
+  worker lo trataba como error fatal (el retry solo cubria `status >= 500`,
+  a proposito, para no reintentar errores reales de permisos). Fix:
+  `DownloadStatusError` ahora lleva el `errorCode` del body de CloudStorage;
+  el worker reintenta especificamente en `File.NotAvailable` (transitorio)
+  pero sigue sin reintentar otros 403 (`File.Forbidden`, mismatch real de
+  scope). Con el backoff de 1s/5s/30s ya configurado
+  (`TRANSCRIPT_WORKER_RETRY_MAX_ATTEMPTS`/`_BACKOFF_MS` en
+  `CommunicationTranscriptWorker/.env`), el primer reintento cubre sobra la
+  carrera tipica de unos cientos de ms.
+- **`z.coerce.boolean()` interpretaba `"false"` como `true`**: Zod no parsea
+  el texto "true"/"false" con `coerce.boolean()` — hace `Boolean(valor)`, y
+  cualquier string no vacio (incluido literalmente `"false"`) da `true`. Con
+  `TRANSCRIPT_WORKER_MINIO_USE_SSL=false` en `.env`, el config parseado
+  quedaba en `useSSL: true`, y el cliente MinIO intentaba negociar TLS contra
+  el puerto 9000 en HTTP plano (`EPROTO ... packet length too long` al subir
+  el transcript). Mismo patron roto encontrado (no activo, la var no esta
+  seteada en ningun `.env` hoy) en `COMMUNICATION_SESSION_DENYLIST_FAIL_CLOSED`
+  de Communication. Fix en ambos: `z.string().default(...).transform(v => v
+  === 'true')` en vez de `z.coerce.boolean()`.
+- **`Meeting.attachTranscript`/`Call.attachTranscript` solo aceptaban `Ended`**:
+  la premisa original ("el transcript siempre llega con el meeting/call ya
+  terminado") no se sostiene — el pipeline de transcripcion
+  (download+ffmpeg+whisper.cpp) es asincronico y puede tardar mas que lo que
+  el host tarda en cerrar la reunion, o el host simplemente segui reunido
+  despues de cortar la grabacion. `TranscriptReady` llegaba con el meeting
+  todavia `Live`/`Active`, `attachMeetingTranscript`/`attachCallTranscript`
+  fallaba con `Meeting.Transcript.InvalidState`/`Call.Transcript.InvalidState`,
+  y el consumer solo logueaba un `warn` y descartaba el evento (sin retry,
+  sin dead-letter) — el transcript quedaba subido en CloudStorage pero
+  **nunca vinculado**, invisible para siempre en el frontend. Fix: mismo
+  criterio que `attachRecording` (`Ended` **o** `Live`/`Active`) en ambos
+  aggregates.
+- **Transcripts rechazados siempre por `FolderType` incorrecto**: el
+  transcript worker subia el `.txt` con `FolderType: 'Recordings'` — el mismo
+  folder que la grabacion de video real — pero `RecordingsPolicy` solo
+  permite `.webm`/`.mp4`. Un `.txt`/`text/plain` etiquetado como `Recordings`
+  era rechazado **siempre** por whitelist (`SaveFileRequested ... rejected by
+  upload policy`), determinístico, no una falla transitoria — el feature de
+  transcripts nunca pudo registrar un archivo en CloudStorage desde que se
+  construyo. Fix: nuevo `FolderType.Transcripts` dedicado (ver §27.12), y el
+  publisher del worker ahora lo usa en vez de `Recordings`.
+
+Ademas, se corrigio un ruido cosmetico (no bloqueante) en
+`cloudstorage.file.available.v1` de Communication: el handler llamaba
+`attachmentTracking.markStatus(...)` para **cualquier** archivo de
+CloudStorage que pasara a `Available` (grabaciones, transcripts, imports,
+firmas...), no solo adjuntos de chat trackeados — el `.update()` de Prisma
+fallaba para archivos no-adjunto y lo logueaba como error (nivel `error`,
+aunque el repo ya lo atrapaba con `.catch(() => null)` y no rompia nada
+funcionalmente). Fix: chequea `findByFileId` primero y no llama `markStatus`
+si el archivo no esta trackeado.
+
+Verificacion: 202 tests en Communication (+7 nuevos de `attachTranscript` /
++2 de `cloudstorage-consumers`), 179 en CloudStorage (+1 nuevo de
+`FolderType.Transcripts`), 30 en CommunicationTranscriptWorker — todos
+verdes, typecheck limpio en los 3 proyectos.
 
 ---
 
@@ -4705,17 +4902,34 @@ sincronica extra en el path critico de cada request (resolver el Host).
   `tenant-resolution/by-email`.
 - **`ITenantResolver`/`TenantResolutionCache`** (`Infrastructure/Tenancy/`):
   cachean en Redis la resolucion Host->TenantId contra la allowlist de hosts
-  `Active` (`ITenantDomainRepository.GetActiveHostsAsync`).
-- **`EffectiveLoginTenantResolver`** (`Api/Common/`, Fase A6): el gap real que
-  hace efectivo el aislamiento de login. Antes de esto, `LoginCommand`/
-  `ForgotPasswordCommand` tomaban el `TenantId` directo del body — un cliente en
-  `tenantB.taxprocore.com` podia mandar el `TenantId` de otro tenant y el
-  subdominio no importaba nada. Con `EnforceHostResolution=true`
-  (staging/produccion) el `TenantId` del body se **descarta siempre**: solo
-  cuenta el que el middleware resolvio del Host real. Con
-  `EnforceHostResolution=false` (Development, sin subdominios reales locales) se
-  acepta el `TenantId` explicito del body como excepcion de conveniencia. Lo usan
-  igual `AuthController.Login` y `CredentialsController.ForgotPassword`.
+  `Active` (`ITenantDomainRepository.GetActiveHostsAsync`). Clave real:
+  `taxvision:tenant-resolution:host:{host}` (el prefijo `taxvision:` lo agrega
+  `AddStackExchangeRedisCache` via `InstanceName`, no es parte de la clave que
+  arma `TenantResolutionCache.Key()`), TTL fijo de 5 minutos
+  (`TenantResolutionCache.Ttl`). Si cambias el `TenantId` de un `TenantDomain`
+  a mano (ej. seed local, ver §33.11) y probas antes de que expire, seguis
+  viendo el mapeo viejo — hay que invalidar la clave a mano (`DEL` en Redis) o
+  esperar el TTL.
+- **`EffectiveLoginTenantResolver`** (`Api/Common/`, Fase A6, revisado en la
+  iteracion F11 QA): el gap real que hace efectivo el aislamiento de login.
+  Antes de Fase A6, `LoginCommand`/`ForgotPasswordCommand` tomaban el
+  `TenantId` directo del body — un cliente en `tenantB.taxprocore.com` podia
+  mandar el `TenantId` de otro tenant y el subdominio no importaba nada. Con
+  `EnforceHostResolution=true` (staging/produccion) el `TenantId` del body se
+  **descarta siempre**: solo cuenta el que el middleware resolvio del Host
+  real. Con `EnforceHostResolution=false` (Development) el body se acepta como
+  excepcion de conveniencia — pero **solo cuando el Host no resolvio nada**.
+  Antes de la revision F11 QA, esto se evaluaba al reves: con
+  `EnforceHostResolution=false` el body ganaba **siempre**, aunque el Host
+  hubiera resuelto un tenant real — un dev-escape-hatch que nunca contemplo
+  que localmente pudiera existir una resolucion Host real (ver §33.11). El fix
+  invierte la prioridad: el Host resuelto gana siempre que exista, en
+  cualquier modo; el body solo es el ultimo recurso cuando el Host no resolvio
+  y `EnforceHostResolution=false`. Cubierto por
+  `EffectiveLoginTenantResolverTests` (`deploy/tests/TaxVision.Auth.Tests/Api/`,
+  el nuevo caso es
+  `Development_mode_prefers_the_resolved_host_over_the_body_when_both_are_present`).
+  Lo usan igual `AuthController.Login` y `CredentialsController.ForgotPassword`.
   Sumado a que `User.Email` es unico solo por `(TenantId, Email)` (nunca
   global), esto cierra el escenario de un mismo email registrado en dos tenants:
   el tenant siempre lo fija el Host antes de tocar la tabla de usuarios, nunca el
@@ -4857,6 +5071,58 @@ events) y aislamiento (`EffectiveLoginTenantResolverTests`,
 - `ChangeSubdomain` no reprovisiona nada en Cloudflare porque los subdominios de
   plataforma no pasan por Cloudflare (certificado wildcard) — solo aplica a
   `DomainType.Subdomain`, nunca a custom hostnames.
+
+## 33.11 Simular produccion en local: subdominio real en dev (`demo.localhost`)
+
+Guia practica para un dev que quiere probar el login/resolucion de tenant
+igual que en produccion (Host real, sin campo manual de `TenantId`) sin tener
+un dominio real apuntando a su maquina. Surgio de un problema real: el
+frontend QA console (`taxvision-communication-frontend`) asumia que Auth
+siempre resuelve por subdominio, y rompia en local porque `localhost` no
+resuelve a ningun `TenantDomain`.
+
+1. **DNS gratis**: `*.localhost` resuelve a `127.0.0.1`/`::1` sin tocar el
+   archivo hosts — tanto Windows como los navegadores basados en Chromium lo
+   implementan nativo (RFC 6761 §6.3, dominio `.localhost` reservado para
+   loopback). Confirmado navegando a `http://demo.localhost:5047/health/live`
+   sin ninguna configuracion previa. Si tu entorno no lo soporta, agrega
+   `127.0.0.1 demo.localhost` al hosts file a mano.
+2. **Registrar el subdominio en `TenantDomains`** apuntando al tenant que
+   queres usar para probar (no hay comando/endpoint que acepte un
+   `BaseDomain` custom como `localhost` — `TenantDomain.CreateSubdomain` solo
+   se invoca con el `BaseDomain` de config, `taxprocore.com` — asi que el seed
+   es un INSERT directo, sin domain events. Aceptable porque es tooling de
+   dev, no un flujo de producto):
+   ```sql
+   INSERT INTO TenantDomains (Id, DomainType, Host, SubdomainSlug, Status, IsPrimary, CreatedByUserId, CreatedAtUtc, TenantId)
+   VALUES (NEWID(), 'Subdomain', 'demo.localhost', 'demo', 'Active', 0, '<un-user-id-existente>', SYSUTCDATETIME(), '<tenant-id>');
+   ```
+   `IsPrimary=0` para no pisar el dominio primario real del tenant
+   (`oficina.taxprocore.com`, backfileado por `TenantDomainBackfillService`) —
+   podes tener los dos apuntando al mismo tenant sin problema, `Host` es lo
+   unico que tiene que ser unico.
+3. **Por que no hace falta tocar CORS**: el Gateway rutea `/auth/{**catch-all}`
+   con el transform `RequestHeaderOriginalHost: true`
+   (`Gateway/TaxVision.Gateway/appsettings.json`) — esto hace que YARP
+   preserve el Host *original* de la request (`demo.localhost:5047`) en vez
+   de reescribirlo al destino (`localhost:5124`), asi que Auth ve el Host real
+   directo en `HttpContext.Request.Host`, sin pasar por
+   `ForwardedHeadersMiddleware`/`ReverseProxyTrust` (§33.2's nota de
+   `ITenantResolver`) — CORS es sobre el `Origin` del navegador
+   (`http://localhost:5173`, la pagina del frontend, que **no cambia**), no
+   sobre el Host al que apunta la request. Alcanza con cambiar
+   `VITE_GATEWAY_URL=http://demo.localhost:5047` en el `.env` del frontend
+   (§30.8-equivalente del lado frontend) — la pagina se sigue sirviendo desde
+   `localhost:5173` sin tocar nada mas.
+4. **Cache**: invalidar `taxvision:tenant-resolution:host:demo.localhost` en
+   Redis si cambiaste el `TenantId` del seed despues de haber probado una vez
+   (TTL 5 min, ver §33.2).
+5. **Reiniciar Auth** — el fix de `EffectiveLoginTenantResolver` (§33.2) y
+   cualquier cambio de codigo no se recargan solos con `dotnet run`.
+
+Con esto, el login (y cualquier otro endpoint gateado por
+`TenantHostResolutionMiddleware`) funciona exactamente igual que en
+produccion: cero campos manuales, el tenant sale del Host real.
 
 # 34. Terminos de servicio (ToS) — aceptacion y gating (Auth)
 

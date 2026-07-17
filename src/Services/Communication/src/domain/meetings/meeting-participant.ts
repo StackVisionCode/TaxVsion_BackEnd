@@ -9,6 +9,12 @@ export interface MeetingParticipantSnapshot {
   readonly tenantId: string;
   readonly userId: string;
   readonly displayName: string;
+  // Espejo libre del claim JWT `actor_type` ("TenantEmployee"|"TenantAdmin"|
+  // "Customer"|...) — Fase Backend 5 agrega "Guest" para invitados sin cuenta
+  // Auth (ver join-meeting.ts). Nunca gatea autorizacion por si solo — eso lo
+  // hace `role` (Host/Cohost/Attendee) + `hasPermission` sobre el principal
+  // del socket, que para un Guest siempre trae permissions=[].
+  readonly actorType: string;
   readonly role: MeetingRole;
   readonly status: ParticipantStatus;
   readonly joinOrder: number;
@@ -35,6 +41,7 @@ export class MeetingParticipant {
     tenantId: string;
     userId: string;
     displayName: string;
+    actorType?: string;
     role: MeetingRole;
     status: ParticipantStatus;
     joinOrder: number;
@@ -48,6 +55,7 @@ export class MeetingParticipant {
       tenantId: input.tenantId,
       userId: input.userId,
       displayName: input.displayName.trim().slice(0, 120),
+      actorType: input.actorType ?? 'TenantEmployee',
       role: input.role,
       status: input.status,
       joinOrder: input.joinOrder,
