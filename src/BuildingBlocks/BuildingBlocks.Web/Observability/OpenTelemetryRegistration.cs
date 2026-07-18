@@ -11,7 +11,8 @@ public static class OpenTelemetryRegistration
     public static IServiceCollection AddTaxVisionOpenTelemetry(
         this IServiceCollection services,
         IConfiguration configuration,
-        string serviceName
+        string serviceName,
+        params string[] additionalMeterNames
     )
     {
         var endpoint = configuration["OpenTelemetry:OtlpEndpoint"];
@@ -43,6 +44,9 @@ public static class OpenTelemetryRegistration
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
                     .AddMeter(serviceName);
+
+                foreach (var meterName in additionalMeterNames)
+                    metrics.AddMeter(meterName);
 
                 if (Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
                     metrics.AddOtlpExporter(options => options.Endpoint = uri);

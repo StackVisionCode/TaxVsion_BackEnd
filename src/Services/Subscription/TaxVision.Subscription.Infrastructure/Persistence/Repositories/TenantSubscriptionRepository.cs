@@ -94,19 +94,6 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantSubscription>> GetWithDuePlanChangeRequestsAsync(
-        DateTime nowUtc,
-        int batchSize,
-        CancellationToken ct = default
-    ) =>
-        await WithRenewals(db.Subscriptions)
-            .Where(s =>
-                s.PlanChangeRequests.Any(r => r.Status == PlanChangeRequestStatus.Pending && r.EffectiveAtUtc <= nowUtc)
-            )
-            .OrderBy(s => s.Id)
-            .Take(batchSize)
-            .ToListAsync(ct);
-
     public async Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
         int page,
         int pageSize,
@@ -126,5 +113,5 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
     }
 
     private static IQueryable<TenantSubscription> WithRenewals(IQueryable<TenantSubscription> query) =>
-        query.Include(s => s.Renewals).Include(s => s.PlanChangeRequests);
+        query.Include(s => s.Renewals).Include(s => s.PlanChangeRequests).Include(s => s.PendingDowngrades);
 }

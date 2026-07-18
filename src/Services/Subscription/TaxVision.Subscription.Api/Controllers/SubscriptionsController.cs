@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Subscription.Application.Subscriptions.Commands.Activate;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Cancel;
 using TaxVision.Subscription.Application.Subscriptions.Commands.CancelPendingPlanChange;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
@@ -34,17 +35,53 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record ChangePlanRequest(string PlanCode);
+    /// <summary><paramref name="BillingCycle"/> es opcional ("Monthly"/"Yearly") — se manda
+    /// junto con el plan en el mismo request. Null mantiene el ciclo actual. Un downgrade (o
+    /// un cambio sin diferencia de precio) aplica inmediato, sin cargo, sin crédito, sin
+    /// reembolso. Un upgrade calcula el prorrateo del período en curso y requiere confirmar el
+    /// cobro antes de aplicarse — la respuesta es 202 con un estado a pollear, no 204: el plan
+    /// NO cambia en esta misma request.</summary>
+    public sealed record ChangePlanRequest(string PlanCode, string? BillingCycle = null);
+
+    public sealed record ChangePlanResponse(string Status, Guid? PlanChangeRequestId);
 
     [HttpPost("change-plan")]
     [Authorize(Roles = "TenantAdmin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ChangePlanResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ChangePlan(ChangePlanRequest request, CancellationToken ct)
     {
         if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new ChangePlanCommand(tenantId, request.PlanCode, userId), ct);
+        var result = await bus.InvokeAsync<Result<ChangePlanResult>>(
+            new ChangePlanCommand(tenantId, request.PlanCode, request.BillingCycle, userId), ct);
+
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        return result.Value.AwaitingPayment
+            ? Accepted(new ChangePlanResponse("PaymentProcessing", result.Value.PlanChangeRequestId))
+            : NoContent();
+    }
+
+    /// <summary><paramref name="BillingCycle"/> opcional ("Monthly"/"Yearly") — elegir el
+    /// ciclo justo al activar. Null mantiene el que ya tenía el trial (Monthly por defecto).
+    /// Self-service: paga ya en vez de esperar a que termine el trial. Solo funciona en
+    /// Trialing — dispara un cobro real vía PaymentApp con el precio del ciclo elegido. Si el
+    /// cobro falla (sin método de pago, tarjeta rechazada, etc.) la suscripción queda en
+    /// PastDue, igual que cualquier renovación fallida.</summary>
+    public sealed record ActivateRequest(string? BillingCycle = null);
+
+    [HttpPost("activate")]
+    [Authorize(Roles = "TenantAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Activate([FromBody] ActivateRequest? request, CancellationToken ct)
+    {
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new ActivateSubscriptionCommand(tenantId, request?.BillingCycle, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

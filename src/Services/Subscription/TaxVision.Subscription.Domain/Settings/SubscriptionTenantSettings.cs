@@ -32,7 +32,6 @@ public sealed class SubscriptionTenantSettings : TenantEntity
     public int NotifyAfterFailedRenewalDays { get; private set; } = 1;
     public AutoRenewCascadeMode AutoRenewCascadeMode { get; private set; } = AutoRenewCascadeMode.None;
     public bool PauseSeatRenewalsWhenBaseSuspended { get; private set; } = true;
-    public PlanChangeEffectiveMode PlanChangeEffective { get; private set; } = PlanChangeEffectiveMode.Immediate;
 
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -202,9 +201,6 @@ public sealed class SubscriptionTenantSettings : TenantEntity
 
         if (patch.PauseSeatRenewalsWhenBaseSuspended is { } pauseSeats)
             PauseSeatRenewalsWhenBaseSuspended = pauseSeats;
-
-        if (patch.PlanChangeEffective is { } planChangeEffective)
-            PlanChangeEffective = planChangeEffective;
     }
 
     private void Touch(Guid actorUserId, DateTime nowUtc)

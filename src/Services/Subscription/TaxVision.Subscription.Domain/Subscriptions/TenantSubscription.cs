@@ -17,6 +17,7 @@ public sealed class TenantSubscription : TenantEntity
 {
     private readonly List<TenantSubscriptionRenewal> _renewals = [];
     private readonly List<PlanChangeRequest> _planChangeRequests = [];
+    private readonly List<PendingDowngrade> _pendingDowngrades = [];
 
     public Guid PlanId { get; private set; }
     public Guid PlanVersionId { get; private set; }
@@ -40,8 +41,18 @@ public sealed class TenantSubscription : TenantEntity
     public Guid CreatedBy { get; private set; }
     public Guid UpdatedBy { get; private set; }
 
+    /// <summary>Token de concurrencia optimista (rowversion SQL Server). Sin esto, dos
+    /// requests concurrentes de RequestUpgrade (p.ej. doble-submit del usuario) pueden pasar
+    /// el guard de "ya hay un AwaitingPayment" en memoria a la vez — cada uno lee la misma
+    /// foto sin el AwaitingPayment del otro, y ambos confirman su cobro por Stripe. Con el
+    /// token, el segundo SaveChangesAsync falla con DbUpdateConcurrencyException en vez de
+    /// commitear; Wolverine reintenta el mensaje (ver Policies.OnException en Program.cs) y en
+    /// el reintento el guard sí ve el AwaitingPayment ya persistido.</summary>
+    public byte[] RowVersion { get; private set; } = [];
+
     public IReadOnlyCollection<TenantSubscriptionRenewal> Renewals => _renewals;
     public IReadOnlyCollection<PlanChangeRequest> PlanChangeRequests => _planChangeRequests;
+    public IReadOnlyCollection<PendingDowngrade> PendingDowngrades => _pendingDowngrades;
 
     private TenantSubscription() { }
 
@@ -124,12 +135,11 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success(subscription);
     }
 
-    public Result ConvertTrialToActive(
-        DateTime periodStartUtc,
-        DateTime periodEndUtc,
-        Guid actorUserId,
-        DateTime nowUtc
-    )
+    /// <summary><paramref name="newBillingCycle"/> es opcional (self-service activation
+    /// puede elegir Monthly/Yearly junto con la activación) — validar que el plan lo soporte
+    /// es responsabilidad del caller (mismo contrato que <see cref="ActivateImmediately"/>),
+    /// esta entidad no conoce <c>SubscriptionPlanVersion</c> acá.</summary>
+    public Result ConvertTrialToActive(DateTime periodStartUtc, DateTime periodEndUtc, BillingCycle? newBillingCycle, Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SubscriptionStatus.Trialing)
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot convert trial from {Status}."));
@@ -142,6 +152,8 @@ public sealed class TenantSubscription : TenantEntity
         CurrentPeriodEndUtc = periodEndUtc;
         NextRenewalAtUtc = periodEndUtc;
         TrialEndsAtUtc = null;
+        if (newBillingCycle is not null)
+            BillingCycle = newBillingCycle.Value;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -157,117 +169,184 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Sin prorrateo: si <paramref name="newBillingCycle"/> viene informado, se
+    /// fija de una — no se recalcula ni se cobra nada por el período en curso. El período
+    /// vigente sigue como estaba (ya pago con el ciclo/precio anteriores); la PRÓXIMA
+    /// renovación es la que arma el intent con el precio del ciclo nuevo (ver
+    /// <see cref="BeginRenewal"/>, que ya resuelve el precio contra <see cref="BillingCycle"/>
+    /// vigente en ese momento).</summary>
     public Result ChangePlan(
-        SubscriptionPlan newPlan,
-        SubscriptionPlanVersion newPlanVersion,
-        Guid actorUserId,
-        DateTime nowUtc
-    )
+        SubscriptionPlan newPlan, SubscriptionPlanVersion newPlanVersion, BillingCycle? newBillingCycle, Guid actorUserId, DateTime nowUtc)
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot change plan from {Status}."));
 
-        if (PlanId == newPlan.Id && PlanVersionId == newPlanVersion.Id)
+        if (newBillingCycle is not null && !newPlanVersion.SupportedBillingCycles.Contains(newBillingCycle.Value))
+        {
+            return Result.Failure(
+                new Error("Subscription.UnsupportedBillingCycle", $"Plan {newPlan.Code.Value} does not support billing cycle {newBillingCycle.Value}."));
+        }
+
+        var cycleChanged = newBillingCycle is not null && newBillingCycle.Value != BillingCycle;
+        if (PlanId == newPlan.Id && PlanVersionId == newPlanVersion.Id && !cycleChanged)
             return Result.Success();
 
         PlanId = newPlan.Id;
         PlanVersionId = newPlanVersion.Id;
         PlanCode = newPlan.Code.Value;
+        if (newBillingCycle is not null)
+            BillingCycle = newBillingCycle.Value;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
 
     /// <summary>
-    /// Solicita un cambio de plan. En modo Immediate lo aplica ya (vía <see cref="ChangePlan"/>)
-    /// y deja el request marcado como Applied para el historial. En modo EndOfPeriod solo
-    /// lo encola — no calcula prorrateo ni cobra nada; el plan nuevo se aplica solo cuando
-    /// termine el período actual (ver <see cref="ApplyPendingPlanChange"/>), y el precio del
-    /// plan nuevo se cobra con normalidad en esa renovación. Reemplaza cualquier solicitud
-    /// pendiente anterior (la más reciente gana).
+    /// Solicita un upgrade: SIEMPRE cobra el precio COMPLETO del plan destino
+    /// (<paramref name="chargeAmountCents"/>) — nunca una diferencia prorrateada, nunca un
+    /// cálculo por días restantes. El plan actual sigue vigente hasta que el pago se confirme:
+    /// esto NO aplica <see cref="ChangePlan"/> — solo crea el request en AwaitingPayment. El
+    /// caller (Application layer) publica el intent de cobro; recién se aplica cuando
+    /// PaymentApp confirma (<see cref="CompleteUpgradeCharge"/>, que también reinicia el ciclo
+    /// de facturación desde hoy) o se descarta si falla (<see cref="FailUpgradeCharge"/>).
+    /// Rechaza si ya hay un upgrade AwaitingPayment (evita doble cobro por un segundo submit
+    /// mientras el primero está en vuelo); si había un downgrade agendado, lo cancela — un
+    /// upgrade reemplaza cualquier cambio pendiente.
     /// </summary>
-    public Result RequestPlanChange(
-        SubscriptionPlan newPlan,
-        SubscriptionPlanVersion newPlanVersion,
-        PlanChangeEffectiveMode mode,
-        Guid actorUserId,
-        DateTime nowUtc
-    )
+    public Result RequestUpgrade(
+        SubscriptionPlan newPlan, SubscriptionPlanVersion newPlanVersion, BillingCycle? newBillingCycle,
+        long chargeAmountCents, string chargeCurrency, string paymentIdempotencyKey, Guid actorUserId, DateTime nowUtc)
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
             return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot change plan from {Status}."));
 
-        if (PlanId == newPlan.Id && PlanVersionId == newPlanVersion.Id)
-            return Result.Success();
+        if (newBillingCycle is not null && !newPlanVersion.SupportedBillingCycles.Contains(newBillingCycle.Value))
+        {
+            return Result.Failure(
+                new Error("Subscription.UnsupportedBillingCycle", $"Plan {newPlan.Code.Value} does not support billing cycle {newBillingCycle.Value}."));
+        }
 
-        var supersedeResult = SupersedePendingPlanChangeRequest(nowUtc);
-        if (supersedeResult.IsFailure)
-            return supersedeResult;
+        if (_planChangeRequests.Any(r => r.Status == PlanChangeRequestStatus.AwaitingPayment))
+            return Result.Failure(new Error("PlanChangeRequest.PaymentInProgress", "A plan change payment is already being processed."));
 
-        var effectiveAtUtc = mode == PlanChangeEffectiveMode.Immediate ? nowUtc : CurrentPeriodEndUtc;
+        var cancelDowngradeResult = CancelScheduledDowngradeIfAny(nowUtc);
+        if (cancelDowngradeResult.IsFailure)
+            return cancelDowngradeResult;
+
         var requestResult = PlanChangeRequest.Create(
-            Id,
-            TenantId,
-            PlanId,
-            PlanVersionId,
-            PlanCode,
-            newPlan.Id,
-            newPlanVersion.Id,
-            newPlan.Code.Value,
-            mode,
-            actorUserId,
-            effectiveAtUtc,
-            nowUtc
-        );
+            Id, TenantId, PlanId, PlanVersionId, PlanCode, newPlan.Id, newPlanVersion.Id, newPlan.Code.Value,
+            newBillingCycle, actorUserId, nowUtc, chargeAmountCents, chargeCurrency, paymentIdempotencyKey);
         if (requestResult.IsFailure)
             return Result.Failure(requestResult.Error);
 
-        var request = requestResult.Value;
-        _planChangeRequests.Add(request);
+        _planChangeRequests.Add(requestResult.Value);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
 
-        if (mode != PlanChangeEffectiveMode.Immediate)
+    /// <summary>PaymentApp confirmó el cobro completo del upgrade — recién acá se aplica el
+    /// cambio de plan (<see cref="ChangePlan"/>) Y se reinicia el ciclo de facturación desde
+    /// ahora: es un ciclo completamente nuevo, no una continuación del anterior.</summary>
+    public Result CompleteUpgradeCharge(
+        Guid requestId, SubscriptionPlan toPlan, SubscriptionPlanVersion toPlanVersion, Guid saaSPaymentId, Guid actorUserId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        var switchResult = ChangePlan(toPlan, toPlanVersion, request.ToBillingCycle, actorUserId, nowUtc);
+        if (switchResult.IsFailure)
+            return switchResult;
+
+        var effectiveCycle = request.ToBillingCycle ?? BillingCycle;
+        CurrentPeriodStartUtc = nowUtc;
+        CurrentPeriodEndUtc = effectiveCycle.CalculateNext(nowUtc);
+        NextRenewalAtUtc = CurrentPeriodEndUtc;
+
+        return request.MarkPaymentSucceeded(saaSPaymentId, nowUtc);
+    }
+
+    /// <summary>El cobro del upgrade falló — el plan se queda como estaba, no hay nada que
+    /// revertir porque <see cref="ChangePlan"/> nunca se llamó para este request.</summary>
+    public Result FailUpgradeCharge(Guid requestId, Guid saaSPaymentId, DateTime nowUtc)
+    {
+        var request = FindPlanChangeRequestById(requestId);
+        if (request is null)
+            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        return request.MarkPaymentFailed(saaSPaymentId, nowUtc);
+    }
+
+    /// <summary>
+    /// Programa un downgrade para el fin del período actual. NUNCA cobra, NUNCA prorratea,
+    /// NUNCA genera crédito ni reembolso — el cliente sigue disfrutando el plan actual hasta
+    /// la próxima renovación, momento en el que el job de renovación aplica el downgrade (ver
+    /// <see cref="ApplyPendingDowngrade"/>) antes de facturar, así que la renovación cobra
+    /// normalmente el precio del plan nuevo. Reemplaza cualquier downgrade ya agendado (el más
+    /// reciente gana). Rechaza si hay un upgrade AwaitingPayment (evita una carrera entre un
+    /// cobro en vuelo y un downgrade).
+    /// </summary>
+    public Result RequestDowngrade(
+        SubscriptionPlan newPlan, SubscriptionPlanVersion newPlanVersion, BillingCycle? newBillingCycle, Guid actorUserId, DateTime nowUtc)
+    {
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot change plan from {Status}."));
+
+        if (newBillingCycle is not null && !newPlanVersion.SupportedBillingCycles.Contains(newBillingCycle.Value))
+        {
+            return Result.Failure(
+                new Error("Subscription.UnsupportedBillingCycle", $"Plan {newPlan.Code.Value} does not support billing cycle {newBillingCycle.Value}."));
+        }
+
+        var cycleChanged = newBillingCycle is not null && newBillingCycle.Value != BillingCycle;
+        if (PlanId == newPlan.Id && PlanVersionId == newPlanVersion.Id && !cycleChanged)
             return Result.Success();
 
-        var switchResult = ChangePlan(newPlan, newPlanVersion, actorUserId, nowUtc);
+        if (_planChangeRequests.Any(r => r.Status == PlanChangeRequestStatus.AwaitingPayment))
+            return Result.Failure(new Error("PlanChangeRequest.PaymentInProgress", "A plan change payment is already being processed."));
+
+        var cancelResult = CancelScheduledDowngradeIfAny(nowUtc);
+        if (cancelResult.IsFailure)
+            return cancelResult;
+
+        var requestResult = PendingDowngrade.Create(
+            Id, TenantId, PlanId, PlanVersionId, PlanCode, newPlan.Id, newPlanVersion.Id, newPlan.Code.Value,
+            newBillingCycle, actorUserId, CurrentPeriodEndUtc, nowUtc);
+        if (requestResult.IsFailure)
+            return Result.Failure(requestResult.Error);
+
+        _pendingDowngrades.Add(requestResult.Value);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Aplica un downgrade agendado cuyo período ya terminó. La llama el job de
+    /// renovación, ANTES de resolver el precio y facturar — así la renovación cobra el precio
+    /// del plan nuevo con normalidad. Nunca se dispara sola.</summary>
+    public Result ApplyPendingDowngrade(
+        Guid pendingDowngradeId, SubscriptionPlan toPlan, SubscriptionPlanVersion toPlanVersion, Guid actorUserId, DateTime nowUtc)
+    {
+        var pending = FindPendingDowngradeById(pendingDowngradeId);
+        if (pending is null)
+            return Result.Failure(new Error("PendingDowngrade.NotFound", "Pending downgrade does not exist."));
+
+        if (pending.Status != PendingDowngradeStatus.Scheduled)
+            return Result.Failure(new Error("PendingDowngrade.InvalidTransition", $"Cannot apply from {pending.Status}."));
+
+        var switchResult = ChangePlan(toPlan, toPlanVersion, pending.ToBillingCycle, actorUserId, nowUtc);
         if (switchResult.IsFailure)
             return switchResult;
 
-        return request.MarkApplied(nowUtc);
+        return pending.MarkApplied(nowUtc);
     }
 
-    /// <summary>Aplica una solicitud de cambio de plan diferida cuyo período ya terminó.
-    /// La llama el job de renovación, no un caller directo — nunca se dispara sola.</summary>
-    public Result ApplyPendingPlanChange(
-        Guid requestId,
-        SubscriptionPlan toPlan,
-        SubscriptionPlanVersion toPlanVersion,
-        Guid actorUserId,
-        DateTime nowUtc
-    )
+    /// <summary>Cancela un downgrade agendado antes de que se aplique.</summary>
+    public Result CancelPendingDowngrade(Guid pendingDowngradeId, Guid actorUserId, DateTime nowUtc)
     {
-        var request = FindPlanChangeRequestById(requestId);
-        if (request is null)
-            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+        var pending = FindPendingDowngradeById(pendingDowngradeId);
+        if (pending is null)
+            return Result.Failure(new Error("PendingDowngrade.NotFound", "Pending downgrade does not exist."));
 
-        if (request.Status != PlanChangeRequestStatus.Pending)
-            return Result.Failure(
-                new Error("PlanChangeRequest.InvalidTransition", $"Cannot apply from {request.Status}.")
-            );
-
-        var switchResult = ChangePlan(toPlan, toPlanVersion, actorUserId, nowUtc);
-        if (switchResult.IsFailure)
-            return switchResult;
-
-        return request.MarkApplied(nowUtc);
-    }
-
-    /// <summary>Cancela una solicitud de cambio de plan diferida antes de que se aplique.</summary>
-    public Result CancelPendingPlanChange(Guid requestId, Guid actorUserId, DateTime nowUtc)
-    {
-        var request = FindPlanChangeRequestById(requestId);
-        if (request is null)
-            return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
-
-        var result = request.MarkCancelled(nowUtc);
+        var result = pending.MarkCancelled(nowUtc);
         if (result.IsFailure)
             return result;
 
@@ -275,18 +354,29 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
-    private Result SupersedePendingPlanChangeRequest(DateTime nowUtc)
+    private Result CancelScheduledDowngradeIfAny(DateTime nowUtc)
     {
-        var pending = FindPendingPlanChangeRequest();
-        return pending is null ? Result.Success() : pending.MarkCancelled(nowUtc);
+        var scheduled = FindScheduledDowngrade();
+        return scheduled is null ? Result.Success() : scheduled.MarkCancelled(nowUtc);
     }
 
-    private PlanChangeRequest? FindPendingPlanChangeRequest()
+    private PendingDowngrade? FindScheduledDowngrade()
     {
-        foreach (var request in _planChangeRequests)
+        foreach (var pending in _pendingDowngrades)
         {
-            if (request.Status == PlanChangeRequestStatus.Pending)
-                return request;
+            if (pending.Status == PendingDowngradeStatus.Scheduled)
+                return pending;
+        }
+
+        return null;
+    }
+
+    private PendingDowngrade? FindPendingDowngradeById(Guid pendingDowngradeId)
+    {
+        foreach (var pending in _pendingDowngrades)
+        {
+            if (pending.Id == pendingDowngradeId)
+                return pending;
         }
 
         return null;
@@ -462,14 +552,31 @@ public sealed class TenantSubscription : TenantEntity
             return Result.Success();
 
         var newPeriodEndUtc = BillingCycle.CalculateNext(CurrentPeriodEndUtc);
+        var renewalResult = TenantSubscriptionRenewal.Schedule(Id, TenantId, idempotencyKey, CurrentPeriodEndUtc, newPeriodEndUtc, nowUtc);
+        if (renewalResult.IsFailure)
+            return Result.Failure(renewalResult.Error);
+
+        _renewals.Add(renewalResult.Value);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Programa el primer cobro real de una suscripción recién convertida de
+    /// Trialing a Active (activación self-service, antes de que termine el trial). A
+    /// diferencia de <see cref="BeginRenewal"/> (que avanza a un período NUEVO a partir de
+    /// uno ya vigente), esto cobra por el período que <see cref="ConvertTrialToActive"/>
+    /// acaba de fijar como vigente — llamar a este método sin haber convertido antes el
+    /// trial deja el período mal facturado.</summary>
+    public Result BeginActivationCharge(string idempotencyKey, Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status != SubscriptionStatus.Active)
+            return Result.Failure(new Error("Subscription.InvalidTransition", $"Cannot begin activation charge from {Status}."));
+
+        if (FindRenewalByKey(idempotencyKey) is not null)
+            return Result.Success();
+
         var renewalResult = TenantSubscriptionRenewal.Schedule(
-            Id,
-            TenantId,
-            idempotencyKey,
-            CurrentPeriodEndUtc,
-            newPeriodEndUtc,
-            nowUtc
-        );
+            Id, TenantId, idempotencyKey, CurrentPeriodStartUtc, CurrentPeriodEndUtc, nowUtc);
         if (renewalResult.IsFailure)
             return Result.Failure(renewalResult.Error);
 
@@ -500,8 +607,26 @@ public sealed class TenantSubscription : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Cantidad máxima de reintentos de renovación que este agregado tolera antes de
+    /// forzar PastDue por cuenta propia, sin importar lo que PaymentApp reporte en
+    /// <c>WillRetry</c>. PaymentApp puede reportarlo en true indefinidamente para fallos que
+    /// nunca llegan a Processing (p.ej. sin payment method guardado), así que este cap actúa
+    /// como red de seguridad para no quedar Active para siempre.</summary>
+    private const int MaxRenewalRetryAttempts = 3;
+
+    /// <summary>FailureCodes que PaymentApp puede devolver y que son permanentes (no tiene
+    /// sentido reintentar): fuerzan PastDue en el primer intento fallido, sin esperar el cap
+    /// de <see cref="MaxRenewalRetryAttempts"/>.</summary>
+    private static readonly HashSet<string> PermanentRenewalFailureCodes =
+        new(StringComparer.OrdinalIgnoreCase) { "requires_payment_method" };
+
     /// <summary>Registra el fallo de una renovación. Si <paramref name="willRetry"/> es
-    /// false agota los reintentos y transiciona la suscripción a PastDue.</summary>
+    /// false agota los reintentos y transiciona la suscripción a PastDue.
+    ///
+    /// No confía ciegamente en <paramref name="willRetry"/>: se lo sobreescribe a false (y por
+    /// lo tanto se fuerza PastDue) cuando el failureCode es conocido como permanente, o cuando
+    /// el renewal ya agotó <see cref="MaxRenewalRetryAttempts"/> reintentos propios — esto
+    /// cubre el caso en que PaymentApp reporta WillRetry=true de forma incorrecta.</summary>
     public Result FailRenewal(
         Guid renewalId,
         string failureCode,
@@ -516,18 +641,16 @@ public sealed class TenantSubscription : TenantEntity
         if (renewal is null)
             return Result.Failure(new Error("Subscription.RenewalNotFound", "Renewal does not exist."));
 
+        var effectiveWillRetry = willRetry
+            && renewal.RetryCount < MaxRenewalRetryAttempts
+            && !PermanentRenewalFailureCodes.Contains(failureCode);
+
         var markResult = MarkRenewalAttemptFailed(
-            renewal,
-            failureCode,
-            failureReason,
-            willRetry,
-            nextRetryAtUtc,
-            nowUtc
-        );
+            renewal, failureCode, failureReason, effectiveWillRetry, effectiveWillRetry ? nextRetryAtUtc : null, nowUtc);
         if (markResult.IsFailure)
             return markResult;
 
-        return willRetry ? Result.Success() : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
+        return effectiveWillRetry ? Result.Success() : MarkPastDueBecauseRenewalFailed(failureCode, actorUserId, nowUtc);
     }
 
     private static Result CompleteRenewalAttempt(

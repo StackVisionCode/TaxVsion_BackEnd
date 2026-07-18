@@ -7,6 +7,8 @@ public sealed record PlanResponse(
     string Description,
     string Tier,
     decimal MonthlyPriceUsd,
+    IReadOnlyList<string> SupportedBillingCycles,
+    IReadOnlyDictionary<string, decimal> PricesUsdByCycle,
     int MaxUsers,
     int MaxPendingInvitations,
     long StorageQuotaBytes,

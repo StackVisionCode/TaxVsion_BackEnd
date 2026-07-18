@@ -24,19 +24,18 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.ToPlanId).IsRequired();
         builder.Property(request => request.ToPlanVersionId).IsRequired();
         builder.Property(request => request.ToPlanCode).HasMaxLength(50).IsRequired();
-        builder.Property(request => request.EffectiveMode).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(request => request.ToBillingCycle).HasConversion<string>().HasMaxLength(20);
         builder.Property(request => request.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(request => request.RequestedByUserId).IsRequired();
         builder.Property(request => request.RequestedAtUtc).IsRequired();
-        builder.Property(request => request.EffectiveAtUtc).IsRequired();
 
-        builder
-            .HasIndex(request => new { request.TenantSubscriptionId, request.Status })
+        // Precio completo del plan destino — nunca una diferencia prorrateada.
+        builder.Property(request => request.ChargeAmountCents).IsRequired();
+        builder.Property(request => request.ChargeCurrency).HasMaxLength(3).IsRequired();
+        builder.Property(request => request.PaymentIdempotencyKey).HasMaxLength(200).IsRequired();
+        builder.Property(request => request.SaaSPaymentId);
+
+        builder.HasIndex(request => new { request.TenantSubscriptionId, request.Status })
             .HasDatabaseName("IX_PlanChangeRequests_TenantSubscriptionId_Status");
-
-        builder
-            .HasIndex(request => request.EffectiveAtUtc)
-            .HasFilter("[Status] = 'Pending'")
-            .HasDatabaseName("IX_PlanChangeRequests_EffectiveAtUtc_Pending");
     }
 }

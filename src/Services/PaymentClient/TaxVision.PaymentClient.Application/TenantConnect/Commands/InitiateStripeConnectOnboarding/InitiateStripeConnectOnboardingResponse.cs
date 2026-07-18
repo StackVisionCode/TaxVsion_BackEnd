@@ -1,0 +1,3 @@
+namespace TaxVision.PaymentClient.Application.TenantConnect.Commands.InitiateStripeConnectOnboarding;
+
+public sealed record InitiateStripeConnectOnboardingResponse(Guid TenantConnectAccountId, string OnboardingUrl);

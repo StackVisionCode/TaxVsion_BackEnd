@@ -46,7 +46,17 @@ public static class ErrorHttpMapping
             or "SentMessage.NotFound"
             or "TenantEmailProvider.NotFound"
             or "SystemEmailProvider.NotFound"
-            or "SuppressionListEntry.NotFound" => StatusCodes.Status404NotFound,
+            or "SuppressionListEntry.NotFound"
+            or "SaaSPayment.NotFound"
+            or "TenantProviderCustomer.NotFound"
+            or "TenantProviderCustomer.MethodNotFound"
+            or "TenantPaymentConfig.NotFound"
+            or "TenantPayment.NotFound"
+            or "PaymentLink.NotFound"
+            or "TenantConnectAccount.NotFound"
+            or "PayoutSchedule.NotFound"
+            or "TenantRecurringPayment.NotFound"
+            or "TenantRecurringPayment.ScheduleNotFound" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -134,6 +144,7 @@ public static class ErrorHttpMapping
             or "Auth.InvalidClient" => StatusCodes.Status401Unauthorized,
             "Auth.Inactive"
             or "Tenant.Inactive"
+            or "TenantPaymentConfig.NotActive"
             or "Invitation.Forbidden"
             or "Session.Forbidden"
             or "Mfa.RequiredByPolicy"
@@ -166,8 +177,13 @@ public static class ErrorHttpMapping
             or "EmailTemplate.KeyConflict"
             or "EmailLayout.NameConflict"
             or "EmailAccount.Conflict"
-            or "ShareLink.AlreadyRevoked" => StatusCodes.Status409Conflict,
-            "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit" => StatusCodes.Status429TooManyRequests,
+            or "ShareLink.AlreadyRevoked"
+            or "TenantPaymentConfig.AlreadyExists" => StatusCodes.Status409Conflict,
+            "Auth.LockedOut"
+            or "Auth.OtpThrottled"
+            or "Invitation.ResendLimit"
+            or "PaymentApp.AdminActionThrottled"
+            or "PaymentLink.RedemptionThrottled" => StatusCodes.Status429TooManyRequests,
             "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
                 StatusCodes.Status413PayloadTooLarge,
             "File.MultipartCompleteFailed"

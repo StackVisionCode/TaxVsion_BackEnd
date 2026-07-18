@@ -82,4 +82,16 @@ apply_migration \
   "src/Services/Correspondence/TaxVision.Correspondence.Api/TaxVision.Correspondence.Api.csproj" \
   "$CORRESPONDENCE_DB_CONNECTION"
 
+apply_migration \
+  "PaymentApp" \
+  "src/Services/PaymentApp/TaxVision.PaymentApp.Infrastructure/TaxVision.PaymentApp.Infrastructure.csproj" \
+  "src/Services/PaymentApp/TaxVision.PaymentApp.Api/TaxVision.PaymentApp.Api.csproj" \
+  "$PAYMENTAPP_DB_CONNECTION"
+
+apply_migration \
+  "PaymentClient" \
+  "src/Services/PaymentClient/TaxVision.PaymentClient.Infrastructure/TaxVision.PaymentClient.Infrastructure.csproj" \
+  "src/Services/PaymentClient/TaxVision.PaymentClient.Api/TaxVision.PaymentClient.Api.csproj" \
+  "$PAYMENTCLIENT_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

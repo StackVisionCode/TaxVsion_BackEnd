@@ -35,11 +35,6 @@ public sealed class SubscriptionTenantSettingsConfiguration : IEntityTypeConfigu
             .HasMaxLength(30)
             .IsRequired();
         builder.Property(settings => settings.PauseSeatRenewalsWhenBaseSuspended).IsRequired();
-        builder
-            .Property(settings => settings.PlanChangeEffective)
-            .HasConversion<string>()
-            .HasMaxLength(30)
-            .IsRequired();
 
         builder
             .Property(settings => settings.TenantSubscriptionGracePeriod)

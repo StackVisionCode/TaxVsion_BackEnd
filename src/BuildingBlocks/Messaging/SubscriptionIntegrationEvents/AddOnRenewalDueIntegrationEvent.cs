@@ -9,4 +9,9 @@ public sealed record AddOnRenewalDueIntegrationEvent : IntegrationEvent
     public required DateTime PeriodStartUtc { get; init; }
     public required DateTime PeriodEndUtc { get; init; }
     public required string IdempotencyKey { get; init; }
+
+    /// <summary>Precio estampado en el add-on al momento de su contratación (fuente de
+    /// verdad del pricing) — PaymentApp nunca calcula precios.</summary>
+    public required long AmountCents { get; init; }
+    public required string Currency { get; init; }
 }

@@ -1,0 +1,40 @@
+namespace TaxVision.PaymentClient.Domain.Audit;
+
+/// <summary>Acción auditada sobre un aggregate de PaymentClient. Persistida como string
+/// (HasConversion&lt;string&gt;) — el enum solo aporta type-safety en código.</summary>
+public enum PaymentAuditAction
+{
+    TenantPaymentCreated = 1,
+    TenantPaymentMarkedProcessing = 2,
+    TenantPaymentRequiresAction = 3,
+    TenantPaymentSucceeded = 4,
+    TenantPaymentFailed = 5,
+    TenantPaymentCancelled = 6,
+    TenantPaymentRefundedPartial = 7,
+    TenantPaymentRefundedFull = 8,
+    TenantPaymentChargedBack = 9,
+    TenantPaymentLegalHoldSet = 10,
+    TenantPaymentLegalHoldCleared = 11,
+    TenantPaymentConfigCreated = 12,
+    TenantPaymentConfigSecretsUpdated = 13,
+    TenantPaymentConfigActivated = 14,
+    TenantPaymentConfigDeactivated = 15,
+    PaymentLinkCreated = 16,
+    PaymentLinkRevoked = 17,
+    PaymentLinkExpired = 18,
+    PaymentLinkUsed = 19,
+    TenantConnectAccountCreated = 20,
+    TenantConnectAccountOnboardingInitiated = 21,
+    TenantConnectAccountUpdated = 22,
+    TenantConnectAccountDeactivated = 23,
+    PayoutScheduleCreated = 24,
+    PayoutScheduleUpdated = 25,
+    TenantRecurringPaymentCreated = 26,
+    TenantRecurringPaymentExecutionSucceeded = 27,
+    TenantRecurringPaymentExecutionFailed = 28,
+    TenantRecurringPaymentPaused = 29,
+    TenantRecurringPaymentResumed = 30,
+    TenantRecurringPaymentSuspended = 31,
+    TenantRecurringPaymentCompleted = 32,
+    TenantRecurringPaymentCancelled = 33,
+}

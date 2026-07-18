@@ -39,6 +39,8 @@ public static class GetPlansHandler
             plan.Description,
             plan.Tier.ToString(),
             PlanVersionEntitlements.GetMonthlyPriceUsd(version),
+            version.SupportedBillingCycles.Select(cycle => cycle.ToString()).ToArray(),
+            PlanVersionEntitlements.GetPricesUsdByCycle(version),
             PlanVersionEntitlements.GetInt(version, "seats.max", fallback: 0),
             PlanVersionEntitlements.GetInt(version, "invitations.max_pending", fallback: 0),
             PlanVersionEntitlements.GetLong(version, "storage.max_bytes", fallback: 0),

@@ -36,6 +36,20 @@
     <Project Path="src/Services/Subscription/TaxVision.Subscription.Domain/TaxVision.Subscription.Domain.csproj" />
     <Project Path="src/Services/Subscription/TaxVision.Subscription.Infrastructure/TaxVision.Subscription.Infrastructure.csproj" />
   </Folder>
+  <!-- PaymentAppService -->
+  <Folder Name="/src/Services/PaymentApp/">
+    <Project Path="src/Services/PaymentApp/TaxVision.PaymentApp.Api/TaxVision.PaymentApp.Api.csproj" />
+    <Project Path="src/Services/PaymentApp/TaxVision.PaymentApp.Application/TaxVision.PaymentApp.Application.csproj" />
+    <Project Path="src/Services/PaymentApp/TaxVision.PaymentApp.Domain/TaxVision.PaymentApp.Domain.csproj" />
+    <Project Path="src/Services/PaymentApp/TaxVision.PaymentApp.Infrastructure/TaxVision.PaymentApp.Infrastructure.csproj" />
+  </Folder>
+  <!-- PaymentClientService -->
+  <Folder Name="/src/Services/PaymentClient/">
+    <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Api/TaxVision.PaymentClient.Api.csproj" />
+    <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Application/TaxVision.PaymentClient.Application.csproj" />
+    <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Domain/TaxVision.PaymentClient.Domain.csproj" />
+    <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Infrastructure/TaxVision.PaymentClient.Infrastructure.csproj" />
+  </Folder>
   <!-- NotificationService -->
   <Folder Name="/src/Services/Notification/">
     <Project Path="src/Services/Notification/TaxVision.Notification.Api/TaxVision.Notification.Api.csproj" />
@@ -92,6 +106,8 @@
     <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.PaymentApp.Tests/TaxVision.PaymentApp.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.PaymentClient.Tests/TaxVision.PaymentClient.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Postmaster.Tests/TaxVision.Postmaster.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Scribe.Tests/TaxVision.Scribe.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Signature.Tests/TaxVision.Signature.Tests.csproj" />
