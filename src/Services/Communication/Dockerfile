@@ -37,6 +37,12 @@ COPY --from=build /app/prisma ./prisma
 
 RUN groupadd -r taxvision && useradd -r -g taxvision taxvision \
     && chown -R taxvision:taxvision /app
+# useradd -r no crea /home/taxvision — cualquier herramienta que escriba en
+# $HOME (ej. npx en el paso de "prisma migrate deploy" del deploy, que corre
+# este mismo runtime con el CMD overrideado) revienta con EACCES al no poder
+# hacer mkdir ahi. /app ya es de taxvision, asi que HOME apunta ahi en vez de
+# a un directorio que no existe.
+ENV HOME=/app
 USER taxvision
 
 EXPOSE 5350
