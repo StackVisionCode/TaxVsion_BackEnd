@@ -206,7 +206,7 @@ jobs:
       - name: Healthcheck
         run: |
           domain="${{ secrets.TAXVISION_DOMAIN }}"
-          domain="${domain:-api.taxprocore.com}"
+          domain="${domain:-taxprocore.com}"
           for i in $(seq 1 20); do
             if curl -sf "https://${domain}/health/ready" >/dev/null; then
               echo "Gateway healthy after ${i} intentos."
