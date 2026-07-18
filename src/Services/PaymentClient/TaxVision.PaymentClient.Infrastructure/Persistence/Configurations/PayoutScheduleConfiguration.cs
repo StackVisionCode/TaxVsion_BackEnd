@@ -20,11 +20,13 @@ public sealed class PayoutScheduleConfiguration : IEntityTypeConfiguration<Payou
         builder.Property(schedule => schedule.UpdatedAtUtc).IsRequired();
         builder.Property(schedule => schedule.UpdatedBy).IsRequired();
 
-        builder.HasIndex(schedule => schedule.TenantConnectAccountId)
+        builder
+            .HasIndex(schedule => schedule.TenantConnectAccountId)
             .IsUnique()
             .HasDatabaseName("UX_PayoutSchedules_TenantConnectAccountId");
 
-        builder.HasMany(schedule => schedule.Items)
+        builder
+            .HasMany(schedule => schedule.Items)
             .WithOne()
             .HasForeignKey(item => item.PayoutScheduleId)
             .OnDelete(DeleteBehavior.Cascade);

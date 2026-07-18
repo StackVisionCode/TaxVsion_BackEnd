@@ -36,13 +36,23 @@ public sealed class TenantPaymentConfig : TenantEntity
     private TenantPaymentConfig() { }
 
     public static Result<TenantPaymentConfig> Create(
-        Guid tenantId, PaymentProviderCode providerCode, TenantPaymentMode mode, string publishableKey, StatementDescriptor descriptor, DateTime nowUtc)
+        Guid tenantId,
+        PaymentProviderCode providerCode,
+        TenantPaymentMode mode,
+        string publishableKey,
+        StatementDescriptor descriptor,
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<TenantPaymentConfig>(new Error("TenantPaymentConfig.InvalidTenant", "TenantId is required."));
+            return Result.Failure<TenantPaymentConfig>(
+                new Error("TenantPaymentConfig.InvalidTenant", "TenantId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(publishableKey))
-            return Result.Failure<TenantPaymentConfig>(new Error("TenantPaymentConfig.InvalidPublishableKey", "PublishableKey is required."));
+            return Result.Failure<TenantPaymentConfig>(
+                new Error("TenantPaymentConfig.InvalidPublishableKey", "PublishableKey is required.")
+            );
 
         var config = new TenantPaymentConfig
         {
@@ -58,10 +68,20 @@ public sealed class TenantPaymentConfig : TenantEntity
         return Result.Success(config);
     }
 
-    public Result UpdateSecrets(EncryptedSecret secretKey, EncryptedSecret webhookSecret, Guid actorUserId, DateTime nowUtc)
+    public Result UpdateSecrets(
+        EncryptedSecret secretKey,
+        EncryptedSecret webhookSecret,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (Mode != TenantPaymentMode.DirectApiKeys)
-            return Result.Failure(new Error("TenantPaymentConfig.WrongMode", "Secrets only apply to DirectApiKeys mode; a Connect config activates via the Connect account."));
+            return Result.Failure(
+                new Error(
+                    "TenantPaymentConfig.WrongMode",
+                    "Secrets only apply to DirectApiKeys mode; a Connect config activates via the Connect account."
+                )
+            );
 
         SecretKeyEncrypted = secretKey;
         WebhookSecretEncrypted = webhookSecret;
@@ -86,10 +106,14 @@ public sealed class TenantPaymentConfig : TenantEntity
     public Result MarkActive(Guid actorUserId, DateTime nowUtc)
     {
         if (Mode != TenantPaymentMode.DirectApiKeys)
-            return Result.Failure(new Error("TenantPaymentConfig.WrongMode", "Use MarkActiveViaConnect for a Connect-mode config."));
+            return Result.Failure(
+                new Error("TenantPaymentConfig.WrongMode", "Use MarkActiveViaConnect for a Connect-mode config.")
+            );
 
         if (SecretKeyEncrypted is null || WebhookSecretEncrypted is null)
-            return Result.Failure(new Error("TenantPaymentConfig.SecretsMissing", "Cannot activate a config with no secrets loaded."));
+            return Result.Failure(
+                new Error("TenantPaymentConfig.SecretsMissing", "Cannot activate a config with no secrets loaded.")
+            );
 
         IsActive = true;
         SettledAtUtc ??= nowUtc;
@@ -105,7 +129,9 @@ public sealed class TenantPaymentConfig : TenantEntity
     public Result MarkActiveViaConnect(Guid actorUserId, DateTime nowUtc)
     {
         if (Mode != TenantPaymentMode.Connect)
-            return Result.Failure(new Error("TenantPaymentConfig.WrongMode", "Use MarkActive for a DirectApiKeys-mode config."));
+            return Result.Failure(
+                new Error("TenantPaymentConfig.WrongMode", "Use MarkActive for a DirectApiKeys-mode config.")
+            );
 
         IsActive = true;
         SettledAtUtc ??= nowUtc;
@@ -144,7 +170,9 @@ public sealed class TenantPaymentConfig : TenantEntity
             }
         }
 
-        return Result.Failure(new Error("TenantPaymentConfig.WebhookEndpointNotFound", "Webhook endpoint does not exist."));
+        return Result.Failure(
+            new Error("TenantPaymentConfig.WebhookEndpointNotFound", "Webhook endpoint does not exist.")
+        );
     }
 
     private void Touch(Guid actorUserId, DateTime nowUtc)

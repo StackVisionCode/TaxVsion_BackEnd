@@ -13,9 +13,18 @@ public interface IPaymentLinkRepository
     Task<PaymentLink?> GetByRelatedTenantPaymentIdAsync(Guid tenantPaymentId, CancellationToken ct = default);
 
     Task<IReadOnlyList<PaymentLink>> SearchByTenantAsync(
-        Guid tenantId, PaymentLinkStatus? status, int page, int pageSize, CancellationToken ct = default);
+        Guid tenantId,
+        PaymentLinkStatus? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    );
 
-    Task<IReadOnlyList<PaymentLink>> GetActiveExpiredBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<PaymentLink>> GetActiveExpiredBeforeAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
 
     Task AddAsync(PaymentLink link, CancellationToken ct = default);
 }

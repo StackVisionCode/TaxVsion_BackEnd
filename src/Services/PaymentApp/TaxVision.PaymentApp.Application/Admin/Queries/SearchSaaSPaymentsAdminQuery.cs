@@ -8,4 +8,11 @@ namespace TaxVision.PaymentApp.Application.Admin.Queries;
 /// tenant-scoped.
 /// </summary>
 public sealed record SearchSaaSPaymentsAdminQuery(
-    Guid? TenantId, PaymentStatus? Status, SaaSPaymentType? Type, DateTime? From, DateTime? To, int Page, int PageSize);
+    Guid? TenantId,
+    PaymentStatus? Status,
+    SaaSPaymentType? Type,
+    DateTime? From,
+    DateTime? To,
+    int Page,
+    int PageSize
+);

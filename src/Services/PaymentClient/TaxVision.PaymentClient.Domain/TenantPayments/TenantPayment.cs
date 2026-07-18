@@ -62,13 +62,16 @@ public sealed class TenantPayment : TenantEntity
         PaymentProviderCode provider,
         StatementDescriptor descriptor,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<TenantPayment>(new Error("TenantPayment.InvalidTenant", "TenantId is required."));
 
         if (amount.AmountCents <= 0)
-            return Result.Failure<TenantPayment>(new Error("TenantPayment.InvalidAmount", "Amount must be greater than zero."));
+            return Result.Failure<TenantPayment>(
+                new Error("TenantPayment.InvalidAmount", "Amount must be greater than zero.")
+            );
 
         var payment = new TenantPayment
         {
@@ -88,14 +91,31 @@ public sealed class TenantPayment : TenantEntity
         return Result.Success(payment);
     }
 
-    public Result MarkProcessing(ExternalPaymentReference reference, string? providerResponseCode, string? providerResponseBody, Guid actorUserId, DateTime nowUtc)
+    public Result MarkProcessing(
+        ExternalPaymentReference reference,
+        string? providerResponseCode,
+        string? providerResponseBody,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (Status != PaymentStatus.Pending)
-            return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot mark processing from {Status}."));
+            return Result.Failure(
+                new Error("TenantPayment.InvalidTransition", $"Cannot mark processing from {Status}.")
+            );
 
         ExternalChargeReference = reference;
         Status = PaymentStatus.Processing;
-        _attempts.Add(TenantPaymentAttempt.Record(Id, TenantId, _attempts.Count + 1, providerResponseCode, providerResponseBody, nowUtc));
+        _attempts.Add(
+            TenantPaymentAttempt.Record(
+                Id,
+                TenantId,
+                _attempts.Count + 1,
+                providerResponseCode,
+                providerResponseBody,
+                nowUtc
+            )
+        );
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -106,21 +126,42 @@ public sealed class TenantPayment : TenantEntity
     /// <see cref="ExternalChargeReference"/>. Hace cumplir el invariante §21.2.6: el split
     /// (tenant + platform fee) debe sumar exactamente <see cref="Amount"/>.</summary>
     public Result MarkProcessingViaConnect(
-        string providerChargeReferenceOnConnect, SplitPaymentBreakdown split, string? providerResponseCode, string? providerResponseBody, Guid actorUserId, DateTime nowUtc)
+        string providerChargeReferenceOnConnect,
+        SplitPaymentBreakdown split,
+        string? providerResponseCode,
+        string? providerResponseBody,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (Status != PaymentStatus.Pending)
-            return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot mark processing from {Status}."));
+            return Result.Failure(
+                new Error("TenantPayment.InvalidTransition", $"Cannot mark processing from {Status}.")
+            );
 
         if (string.IsNullOrWhiteSpace(providerChargeReferenceOnConnect))
-            return Result.Failure(new Error("TenantPayment.InvalidReference", "ProviderChargeReferenceOnConnect is required."));
+            return Result.Failure(
+                new Error("TenantPayment.InvalidReference", "ProviderChargeReferenceOnConnect is required.")
+            );
 
         if (split.TenantAmountCents + split.PlatformFeeAmountCents != Amount.AmountCents)
-            return Result.Failure(new Error("TenantPayment.SplitMismatch", "Split total must equal the payment amount."));
+            return Result.Failure(
+                new Error("TenantPayment.SplitMismatch", "Split total must equal the payment amount.")
+            );
 
         ProviderChargeReferenceOnConnect = providerChargeReferenceOnConnect;
         SplitPayment = split;
         Status = PaymentStatus.Processing;
-        _attempts.Add(TenantPaymentAttempt.Record(Id, TenantId, _attempts.Count + 1, providerResponseCode, providerResponseBody, nowUtc));
+        _attempts.Add(
+            TenantPaymentAttempt.Record(
+                Id,
+                TenantId,
+                _attempts.Count + 1,
+                providerResponseCode,
+                providerResponseBody,
+                nowUtc
+            )
+        );
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -128,7 +169,9 @@ public sealed class TenantPayment : TenantEntity
     public Result MarkRequiresAction(string nextActionType, string nextActionUrl, Guid actorUserId, DateTime nowUtc)
     {
         if (Status is not (PaymentStatus.Pending or PaymentStatus.Processing))
-            return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot require action from {Status}."));
+            return Result.Failure(
+                new Error("TenantPayment.InvalidTransition", $"Cannot require action from {Status}.")
+            );
 
         if (string.IsNullOrWhiteSpace(nextActionType))
             return Result.Failure(new Error("TenantPayment.InvalidNextAction", "NextActionType is required."));
@@ -143,7 +186,9 @@ public sealed class TenantPayment : TenantEntity
     public Result MarkSucceeded(DateTime paidAtUtc, Guid actorUserId)
     {
         if (Status is not (PaymentStatus.Processing or PaymentStatus.RequiresAction))
-            return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot mark succeeded from {Status}."));
+            return Result.Failure(
+                new Error("TenantPayment.InvalidTransition", $"Cannot mark succeeded from {Status}.")
+            );
 
         Status = PaymentStatus.Succeeded;
         PaidAtUtc = paidAtUtc;
@@ -154,9 +199,22 @@ public sealed class TenantPayment : TenantEntity
     }
 
     public Result MarkFailed(
-        string failureCode, string failureReason, bool willRetry, DateTime? nextRetryAtUtc, Guid actorUserId, DateTime nowUtc)
+        string failureCode,
+        string failureReason,
+        bool willRetry,
+        DateTime? nextRetryAtUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
-        if (Status is PaymentStatus.Succeeded or PaymentStatus.Refunded or PaymentStatus.PartiallyRefunded or PaymentStatus.Cancelled or PaymentStatus.ChargedBack)
+        if (
+            Status
+            is PaymentStatus.Succeeded
+                or PaymentStatus.Refunded
+                or PaymentStatus.PartiallyRefunded
+                or PaymentStatus.Cancelled
+                or PaymentStatus.ChargedBack
+        )
             return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot mark failed from {Status}."));
 
         if (string.IsNullOrWhiteSpace(failureCode))
@@ -181,7 +239,9 @@ public sealed class TenantPayment : TenantEntity
             return Result.Failure(new Error("TenantPayment.NoRetryScheduled", "This payment has no retry scheduled."));
 
         if (nowUtc < NextRetryAtUtc)
-            return Result.Failure(new Error("TenantPayment.RetryNotDue", "The scheduled retry time has not arrived yet."));
+            return Result.Failure(
+                new Error("TenantPayment.RetryNotDue", "The scheduled retry time has not arrived yet.")
+            );
 
         Status = PaymentStatus.Pending;
         FailureCode = null;
@@ -194,9 +254,19 @@ public sealed class TenantPayment : TenantEntity
     public Result CancelByAdmin(string reason, Guid actorUserId, DateTime nowUtc)
     {
         if (IsLegalHeld)
-            return Result.Failure(new Error("Payment.LegalHeld", "Payment is under legal hold and cannot be cancelled."));
+            return Result.Failure(
+                new Error("Payment.LegalHeld", "Payment is under legal hold and cannot be cancelled.")
+            );
 
-        if (Status is not (PaymentStatus.Pending or PaymentStatus.Processing or PaymentStatus.RequiresAction or PaymentStatus.Failed))
+        if (
+            Status
+            is not (
+                PaymentStatus.Pending
+                or PaymentStatus.Processing
+                or PaymentStatus.RequiresAction
+                or PaymentStatus.Failed
+            )
+        )
             return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot cancel from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -211,26 +281,33 @@ public sealed class TenantPayment : TenantEntity
     public Result RefundPartial(Money refundAmount, string reason, Guid actorUserId, DateTime nowUtc)
     {
         if (IsLegalHeld)
-            return Result.Failure(new Error("Payment.LegalHeld", "Payment is under legal hold and cannot be refunded."));
+            return Result.Failure(
+                new Error("Payment.LegalHeld", "Payment is under legal hold and cannot be refunded.")
+            );
 
         if (Status is not (PaymentStatus.Succeeded or PaymentStatus.PartiallyRefunded))
             return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot refund from {Status}."));
 
         if (refundAmount.Currency != Amount.Currency)
-            return Result.Failure(new Error("TenantPayment.CurrencyMismatch", "Refund currency must match the original payment currency."));
+            return Result.Failure(
+                new Error("TenantPayment.CurrencyMismatch", "Refund currency must match the original payment currency.")
+            );
 
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("TenantPayment.InvalidReason", "Reason is required."));
 
         var totalRefunded = SumOfRefunds();
         if (totalRefunded + refundAmount.AmountCents > Amount.AmountCents)
-            return Result.Failure(new Error("TenantPayment.RefundExceedsPrincipal", "Refund amount exceeds the original payment amount."));
+            return Result.Failure(
+                new Error("TenantPayment.RefundExceedsPrincipal", "Refund amount exceeds the original payment amount.")
+            );
 
         _refunds.Add(RefundLine.Create(Id, TenantId, refundAmount, reason, actorUserId, nowUtc));
 
-        Status = totalRefunded + refundAmount.AmountCents == Amount.AmountCents
-            ? PaymentStatus.Refunded
-            : PaymentStatus.PartiallyRefunded;
+        Status =
+            totalRefunded + refundAmount.AmountCents == Amount.AmountCents
+                ? PaymentStatus.Refunded
+                : PaymentStatus.PartiallyRefunded;
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -247,7 +324,9 @@ public sealed class TenantPayment : TenantEntity
     public Result MarkChargedBack(DateTime chargedBackAtUtc, string reason, Guid actorUserId)
     {
         if (Status is not (PaymentStatus.Succeeded or PaymentStatus.PartiallyRefunded))
-            return Result.Failure(new Error("TenantPayment.InvalidTransition", $"Cannot mark charged back from {Status}."));
+            return Result.Failure(
+                new Error("TenantPayment.InvalidTransition", $"Cannot mark charged back from {Status}.")
+            );
 
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("TenantPayment.InvalidReason", "Reason is required."));

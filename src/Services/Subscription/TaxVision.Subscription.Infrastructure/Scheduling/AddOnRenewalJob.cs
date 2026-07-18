@@ -47,17 +47,19 @@ public sealed class AddOnRenewalJob(
 
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.PublishAsync(new AddOnRenewalDueIntegrationEvent
-            {
-                TenantId = addOn.TenantId,
-                TenantAddOnId = addOn.Id,
-                AddOnCode = addOn.AddOnCode,
-                PeriodStartUtc = addOn.CurrentPeriodEndUtc,
-                PeriodEndUtc = addOn.BillingCycle.CalculateNext(addOn.CurrentPeriodEndUtc),
-                IdempotencyKey = idempotencyKey,
-                AmountCents = (long)Math.Round(addOn.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
-                Currency = addOn.UnitPrice.Currency,
-            });
+            await bus.PublishAsync(
+                new AddOnRenewalDueIntegrationEvent
+                {
+                    TenantId = addOn.TenantId,
+                    TenantAddOnId = addOn.Id,
+                    AddOnCode = addOn.AddOnCode,
+                    PeriodStartUtc = addOn.CurrentPeriodEndUtc,
+                    PeriodEndUtc = addOn.BillingCycle.CalculateNext(addOn.CurrentPeriodEndUtc),
+                    IdempotencyKey = idempotencyKey,
+                    AmountCents = (long)Math.Round(addOn.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
+                    Currency = addOn.UnitPrice.Currency,
+                }
+            );
         }
 
         if (due.Count > 0)

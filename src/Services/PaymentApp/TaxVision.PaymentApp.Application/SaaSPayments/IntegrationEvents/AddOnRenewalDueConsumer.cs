@@ -18,9 +18,16 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 public static class AddOnRenewalDueConsumer
 {
     public static async Task Handle(
-        AddOnRenewalDueIntegrationEvent evt, IMessageBus bus, ICorrelationContext correlation, ILogger<SaaSPayment> logger, CancellationToken ct)
+        AddOnRenewalDueIntegrationEvent evt,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ILogger<SaaSPayment> logger,
+        CancellationToken ct
+    )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -34,14 +41,18 @@ public static class AddOnRenewalDueConsumer
                 Provider: PaymentProviderCode.Stripe,
                 PayerEmail: SyntheticPayer.EmailFor(evt.TenantId),
                 PayerName: null,
-                RequestedByUserId: Guid.Empty);
+                RequestedByUserId: Guid.Empty
+            );
 
             var result = await bus.InvokeAsync<Result<Guid>>(command, ct);
             if (result.IsFailure)
             {
                 logger.LogError(
                     "ChargeSaaSPayment failed for renewal of add-on {TenantAddOnId}: {ErrorCode} — {ErrorMessage}",
-                    evt.TenantAddOnId, result.Error.Code, result.Error.Message);
+                    evt.TenantAddOnId,
+                    result.Error.Code,
+                    result.Error.Message
+                );
             }
         }
     }

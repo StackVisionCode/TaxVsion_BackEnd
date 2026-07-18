@@ -23,7 +23,13 @@ public sealed class PaymentAuditEntryConfiguration : IEntityTypeConfiguration<Pa
         builder.Property(entry => entry.AfterPayload).HasColumnType("nvarchar(max)");
         builder.Property(entry => entry.Reason).HasMaxLength(500);
 
-        builder.HasIndex(entry => new { entry.TenantId, entry.AggregateType, entry.AggregateId })
+        builder
+            .HasIndex(entry => new
+            {
+                entry.TenantId,
+                entry.AggregateType,
+                entry.AggregateId,
+            })
             .HasDatabaseName("IX_PaymentAuditEntries_TenantId_Aggregate");
     }
 }

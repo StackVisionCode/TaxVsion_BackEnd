@@ -32,7 +32,9 @@ public sealed class StripeWebhookController(IMessageBus bus) : ControllerBase
         var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
 
         var result = await bus.InvokeAsync<Result>(
-            new ProcessTenantWebhookCommand(tenantId, PaymentProviderCode.Stripe, rawPayload, signatureHeader), ct);
+            new ProcessTenantWebhookCommand(tenantId, PaymentProviderCode.Stripe, rawPayload, signatureHeader),
+            ct
+        );
 
         return result.IsSuccess ? Ok() : BadRequest(new { result.Error.Code, result.Error.Message });
     }

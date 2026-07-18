@@ -40,7 +40,15 @@ public static class TenantCreatedConsumer
             var kind = Enum.TryParse<TenantKind>(evt.Kind, true, out var parsedKind) ? parsedKind : TenantKind.Customer;
             var nowUtc = DateTime.UtcNow;
 
-            await tenants.UpsertCreatedAsync(evt.NewTenantId, evt.Name, evt.SubDomain, kind, evt.DefaultTimeZoneId, nowUtc, ct);
+            await tenants.UpsertCreatedAsync(
+                evt.NewTenantId,
+                evt.Name,
+                evt.SubDomain,
+                kind,
+                evt.DefaultTimeZoneId,
+                nowUtc,
+                ct
+            );
 
             if (kind == TenantKind.Customer)
                 await ProvisionStripeCustomerAsync(evt, customers, providerFactory, logger, nowUtc, ct);
@@ -58,7 +66,8 @@ public static class TenantCreatedConsumer
         IPaymentAdapterFactory providerFactory,
         ILogger logger,
         DateTime nowUtc,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var existing = await customers.GetByTenantAndProviderAsync(evt.NewTenantId, PaymentProviderCode.Stripe, ct);
         if (existing is not null)
@@ -70,7 +79,9 @@ public static class TenantCreatedConsumer
         {
             logger.LogWarning(
                 "Could not eager-provision Stripe customer for tenant {TenantId}: {Error}. Will retry lazily on first payment method attach.",
-                evt.NewTenantId, tokenResult.Error.Message);
+                evt.NewTenantId,
+                tokenResult.Error.Message
+            );
             return;
         }
 
@@ -78,7 +89,13 @@ public static class TenantCreatedConsumer
         if (referenceResult.IsFailure)
             return;
 
-        var registerResult = TenantProviderCustomer.Register(evt.NewTenantId, PaymentProviderCode.Stripe, referenceResult.Value, evt.AdminEmail, nowUtc);
+        var registerResult = TenantProviderCustomer.Register(
+            evt.NewTenantId,
+            PaymentProviderCode.Stripe,
+            referenceResult.Value,
+            evt.AdminEmail,
+            nowUtc
+        );
         if (registerResult.IsFailure)
             return;
 

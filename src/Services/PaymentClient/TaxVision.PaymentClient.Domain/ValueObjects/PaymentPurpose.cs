@@ -19,7 +19,9 @@ public sealed record PaymentPurpose
     public static Result<PaymentPurpose> Create(PaymentPurposeKind kind, string? externalReferenceId)
     {
         if (externalReferenceId is { Length: > 200 })
-            return Result.Failure<PaymentPurpose>(new Error("PaymentPurpose.ReferenceTooLong", "ExternalReferenceId must be 200 characters or fewer."));
+            return Result.Failure<PaymentPurpose>(
+                new Error("PaymentPurpose.ReferenceTooLong", "ExternalReferenceId must be 200 characters or fewer.")
+            );
 
         return Result.Success(new PaymentPurpose(kind, externalReferenceId?.Trim()));
     }

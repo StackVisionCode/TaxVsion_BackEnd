@@ -28,7 +28,13 @@ public sealed class Tenant : BaseEntity
     private Tenant() { }
 
     public static Result<Tenant> Register(
-        Guid id, string name, string subDomain, TenantKind kind, string defaultTimeZoneId, DateTime nowUtc)
+        Guid id,
+        string name,
+        string subDomain,
+        TenantKind kind,
+        string defaultTimeZoneId,
+        DateTime nowUtc
+    )
     {
         if (id == Guid.Empty)
             return Result.Failure<Tenant>(new Error("Tenant.InvalidId", "Tenant id is required."));
@@ -40,20 +46,24 @@ public sealed class Tenant : BaseEntity
             return Result.Failure<Tenant>(new Error("Tenant.InvalidSubDomain", "Tenant subdomain is required."));
 
         if (!IanaTimeZone.TryNormalize(defaultTimeZoneId, out var normalizedTimeZoneId))
-            return Result.Failure<Tenant>(new Error("Tenant.InvalidTimeZone", "Tenant default time zone must be a valid IANA identifier."));
+            return Result.Failure<Tenant>(
+                new Error("Tenant.InvalidTimeZone", "Tenant default time zone must be a valid IANA identifier.")
+            );
 
-        return Result.Success(new Tenant
-        {
-            Id = id,
-            Name = name.Trim(),
-            SubDomain = subDomain.Trim().ToLowerInvariant(),
-            Kind = kind,
-            DefaultTimeZoneId = normalizedTimeZoneId,
-            Status = "Active",
-            IsActive = true,
-            CreatedAtUtc = nowUtc,
-            UpdatedAtUtc = nowUtc,
-        });
+        return Result.Success(
+            new Tenant
+            {
+                Id = id,
+                Name = name.Trim(),
+                SubDomain = subDomain.Trim().ToLowerInvariant(),
+                Kind = kind,
+                DefaultTimeZoneId = normalizedTimeZoneId,
+                Status = "Active",
+                IsActive = true,
+                CreatedAtUtc = nowUtc,
+                UpdatedAtUtc = nowUtc,
+            }
+        );
     }
 
     public void ApplyStatusChange(string status, bool isActive, DateTime nowUtc)

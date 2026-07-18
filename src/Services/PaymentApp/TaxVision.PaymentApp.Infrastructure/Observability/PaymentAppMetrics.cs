@@ -47,32 +47,48 @@ public sealed class PaymentAppMetrics : IPaymentAppMetrics, IDisposable
     }
 
     public void RecordAttempted(string provider, string type) =>
-        _attemptedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider), new KeyValuePair<string, object?>("type", type));
+        _attemptedTotal.Add(
+            1,
+            new KeyValuePair<string, object?>("provider", provider),
+            new KeyValuePair<string, object?>("type", type)
+        );
 
     public void RecordSucceeded(string provider, string type) =>
-        _succeededTotal.Add(1, new KeyValuePair<string, object?>("provider", provider), new KeyValuePair<string, object?>("type", type));
+        _succeededTotal.Add(
+            1,
+            new KeyValuePair<string, object?>("provider", provider),
+            new KeyValuePair<string, object?>("type", type)
+        );
 
     public void RecordFailed(string provider, string type, string failureCode) =>
         _failedTotal.Add(
             1,
             new KeyValuePair<string, object?>("provider", provider),
             new KeyValuePair<string, object?>("type", type),
-            new KeyValuePair<string, object?>("failure_code", failureCode));
+            new KeyValuePair<string, object?>("failure_code", failureCode)
+        );
 
-    public void RecordRefunded(string provider) => _refundedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+    public void RecordRefunded(string provider) =>
+        _refundedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
-    public void RecordChargedBack(string provider) => _chargebackTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+    public void RecordChargedBack(string provider) =>
+        _chargebackTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
-    public void RecordWebhookReceived(string provider) => _webhookReceivedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+    public void RecordWebhookReceived(string provider) =>
+        _webhookReceivedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
-    public void RecordWebhookDuplicate(string provider) => _webhookDuplicateTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+    public void RecordWebhookDuplicate(string provider) =>
+        _webhookDuplicateTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
     public void RecordWebhookSignatureFailed(string provider) =>
         _webhookSignatureFailedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
     public void RecordProviderLatency(double milliseconds, string provider, string method) =>
         _providerLatencyMs.Record(
-            milliseconds, new KeyValuePair<string, object?>("provider", provider), new KeyValuePair<string, object?>("method", method));
+            milliseconds,
+            new KeyValuePair<string, object?>("provider", provider),
+            new KeyValuePair<string, object?>("method", method)
+        );
 
     private static long ComputeDunningQueueDepth(IServiceScopeFactory scopeFactory)
     {
@@ -89,8 +105,14 @@ public sealed class PaymentAppMetrics : IPaymentAppMetrics, IDisposable
     {
         using var scope = scopeFactory.CreateScope();
         var payments = scope.ServiceProvider.GetRequiredService<ISaaSPaymentRepository>();
-        var cents = payments.SumSucceededAmountCentsAsync(SaaSPaymentType.SubscriptionRenewal, DateTime.UtcNow.AddDays(-30), CancellationToken.None)
-            .GetAwaiter().GetResult();
+        var cents = payments
+            .SumSucceededAmountCentsAsync(
+                SaaSPaymentType.SubscriptionRenewal,
+                DateTime.UtcNow.AddDays(-30),
+                CancellationToken.None
+            )
+            .GetAwaiter()
+            .GetResult();
         return cents / 100.0;
     }
 

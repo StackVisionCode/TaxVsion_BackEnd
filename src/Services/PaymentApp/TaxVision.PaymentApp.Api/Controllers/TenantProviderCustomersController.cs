@@ -28,7 +28,10 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<TenantProviderCustomerResponse>>(new GetTenantProviderCustomerQuery(tenantId, provider), ct);
+        var result = await bus.InvokeAsync<Result<TenantProviderCustomerResponse>>(
+            new GetTenantProviderCustomerQuery(tenantId, provider),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -40,13 +43,25 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
     [HttpPost("{provider}/methods")]
     [HasPermission(PaymentAppPermissions.ProviderCustomerManage)]
     [ProducesResponseType<Guid>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> AttachMethod(PaymentProviderCode provider, AttachPaymentMethodRequest request, CancellationToken ct)
+    public async Task<IActionResult> AttachMethod(
+        PaymentProviderCode provider,
+        AttachPaymentMethodRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<Guid>>(
-            new AttachPaymentMethodCommand(tenantId, provider, request.PaymentMethodReference, request.SetAsDefault, userId), ct);
+            new AttachPaymentMethodCommand(
+                tenantId,
+                provider,
+                request.PaymentMethodReference,
+                request.SetAsDefault,
+                userId
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -60,7 +75,9 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new DetachPaymentMethodCommand(tenantId, tenantProviderCustomerId, methodId, userId), ct);
+            new DetachPaymentMethodCommand(tenantId, tenantProviderCustomerId, methodId, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -68,13 +85,19 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
     [HttpPost("{tenantProviderCustomerId:guid}/methods/{methodId:guid}/default")]
     [HasPermission(PaymentAppPermissions.ProviderCustomerManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> SetDefaultMethod(Guid tenantProviderCustomerId, Guid methodId, CancellationToken ct)
+    public async Task<IActionResult> SetDefaultMethod(
+        Guid tenantProviderCustomerId,
+        Guid methodId,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new SetDefaultPaymentMethodCommand(tenantId, tenantProviderCustomerId, methodId, userId), ct);
+            new SetDefaultPaymentMethodCommand(tenantId, tenantProviderCustomerId, methodId, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

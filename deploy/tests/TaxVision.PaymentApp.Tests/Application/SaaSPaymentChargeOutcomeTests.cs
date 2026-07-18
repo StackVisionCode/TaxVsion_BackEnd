@@ -30,14 +30,17 @@ public sealed class SaaSPaymentChargeOutcomeTests
     }
 
     private static SaaSPayment CreatePayment(SaaSPaymentType type) =>
-        SaaSPayment.Create(
-            Guid.NewGuid(),
-            IdempotencyKey.Create("key-1").Value,
-            Money.Create(1999, "USD").Value,
-            type,
-            Guid.NewGuid(),
-            PaymentProviderCode.Stripe,
-            StatementDescriptor.Create("TAXVISION SAAS").Value,
-            Guid.Empty,
-            DateTime.UtcNow).Value;
+        SaaSPayment
+            .Create(
+                Guid.NewGuid(),
+                IdempotencyKey.Create("key-1").Value,
+                Money.Create(1999, "USD").Value,
+                type,
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
 }

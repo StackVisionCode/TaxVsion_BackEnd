@@ -17,7 +17,8 @@ public static class CreateTenantRecurringPaymentHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var amountResult = Money.Create(command.AmountCents, command.Currency);
         if (amountResult.IsFailure)
@@ -44,7 +45,8 @@ public static class CreateTenantRecurringPaymentHandler
             command.PlatformFeeAmountCents,
             command.PlatformFeeReference,
             command.ActorUserId,
-            nowUtc);
+            nowUtc
+        );
         if (createResult.IsFailure)
             return Result.Failure<Guid>(createResult.Error);
 
@@ -56,11 +58,25 @@ public static class CreateTenantRecurringPaymentHandler
         await plans.AddAsync(plan, ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(TenantRecurringPayment), plan.Id, PaymentAuditAction.TenantRecurringPaymentCreated,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(TenantRecurringPayment),
+            plan.Id,
+            PaymentAuditAction.TenantRecurringPaymentCreated,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { plan.Amount.AmountCents, plan.Amount.Currency, plan.BillingCycle, plan.StartDate },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                plan.Amount.AmountCents,
+                plan.Amount.Currency,
+                plan.BillingCycle,
+                plan.StartDate,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

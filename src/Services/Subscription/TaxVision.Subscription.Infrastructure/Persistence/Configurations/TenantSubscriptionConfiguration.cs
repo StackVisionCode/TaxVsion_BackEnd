@@ -61,12 +61,17 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
             .WithOne()
             .HasForeignKey(request => request.TenantSubscriptionId)
             .OnDelete(DeleteBehavior.Cascade);
-        builder.Navigation(subscription => subscription.PlanChangeRequests).UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder
+            .Navigation(subscription => subscription.PlanChangeRequests)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasMany(subscription => subscription.PendingDowngrades)
+        builder
+            .HasMany(subscription => subscription.PendingDowngrades)
             .WithOne()
             .HasForeignKey(pending => pending.TenantSubscriptionId)
             .OnDelete(DeleteBehavior.Cascade);
-        builder.Navigation(subscription => subscription.PendingDowngrades).UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder
+            .Navigation(subscription => subscription.PendingDowngrades)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

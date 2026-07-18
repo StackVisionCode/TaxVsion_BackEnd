@@ -30,14 +30,17 @@ public static class ActivateSubscriptionHandler
         ICorrelationContext correlation,
         ISubscriptionAuditLogWriter audit,
         ILogger<TenantSubscription> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
             return Result.Failure(new Error("Subscription.NotFound", "Subscription does not exist."));
 
         if (subscription.Status != SubscriptionStatus.Trialing)
-            return Result.Failure(new Error("Subscription.NotTrialing", "Only a trialing subscription can be activated early."));
+            return Result.Failure(
+                new Error("Subscription.NotTrialing", "Only a trialing subscription can be activated early.")
+            );
 
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
@@ -45,23 +48,40 @@ public static class ActivateSubscriptionHandler
             return Result.Failure(new Error("Plan.NoPublishedVersion", "Plan has no matching version."));
 
         if (!PlanPricing.TryParseBillingCycle(command.BillingCycle, out var requestedCycle))
-            return Result.Failure(new Error("Subscription.InvalidBillingCycle", $"'{command.BillingCycle}' is not a valid billing cycle."));
+            return Result.Failure(
+                new Error("Subscription.InvalidBillingCycle", $"'{command.BillingCycle}' is not a valid billing cycle.")
+            );
 
         var effectiveCycle = requestedCycle ?? subscription.BillingCycle;
         if (!planVersion.SupportedBillingCycles.Contains(effectiveCycle))
         {
             return Result.Failure(
-                new Error("Subscription.UnsupportedBillingCycle", $"Plan {subscription.PlanCode} does not support billing cycle {effectiveCycle}."));
+                new Error(
+                    "Subscription.UnsupportedBillingCycle",
+                    $"Plan {subscription.PlanCode} does not support billing cycle {effectiveCycle}."
+                )
+            );
         }
 
         var price = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, effectiveCycle);
         if (price is null)
-            return Result.Failure(new Error("Plan.NoPriceTier", $"Plan {subscription.PlanCode} has no price for billing cycle {effectiveCycle}."));
+            return Result.Failure(
+                new Error(
+                    "Plan.NoPriceTier",
+                    $"Plan {subscription.PlanCode} has no price for billing cycle {effectiveCycle}."
+                )
+            );
 
         var nowUtc = DateTime.UtcNow;
         var periodEndUtc = effectiveCycle.CalculateNext(nowUtc);
 
-        var convertResult = subscription.ConvertTrialToActive(nowUtc, periodEndUtc, requestedCycle, command.ActorUserId, nowUtc);
+        var convertResult = subscription.ConvertTrialToActive(
+            nowUtc,
+            periodEndUtc,
+            requestedCycle,
+            command.ActorUserId,
+            nowUtc
+        );
         if (convertResult.IsFailure)
             return convertResult;
 
@@ -73,27 +93,44 @@ public static class ActivateSubscriptionHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.ActivatedEarly",
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.ActivatedEarly",
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: new { Status = "Trialing" },
-            after: new { Status = "Active", subscription.CurrentPeriodStartUtc, subscription.CurrentPeriodEndUtc },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                Status = "Active",
+                subscription.CurrentPeriodStartUtc,
+                subscription.CurrentPeriodEndUtc,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
-        await bus.PublishAsync(new SubscriptionRenewalDueIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            TenantSubscriptionId = subscription.Id,
-            PlanCode = subscription.PlanCode,
-            PeriodStartUtc = subscription.CurrentPeriodStartUtc,
-            PeriodEndUtc = subscription.CurrentPeriodEndUtc,
-            IdempotencyKey = idempotencyKey,
-            AmountCents = price.Value.AmountCents,
-            Currency = price.Value.Currency,
-        });
+        await bus.PublishAsync(
+            new SubscriptionRenewalDueIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                TenantSubscriptionId = subscription.Id,
+                PlanCode = subscription.PlanCode,
+                PeriodStartUtc = subscription.CurrentPeriodStartUtc,
+                PeriodEndUtc = subscription.CurrentPeriodEndUtc,
+                IdempotencyKey = idempotencyKey,
+                AmountCents = price.Value.AmountCents,
+                Currency = price.Value.Currency,
+            }
+        );
 
         logger.LogInformation(
             "Tenant {TenantId} activated its subscription early from trial (requested by {UserId}); charge intent published.",
-            command.TenantId, command.ActorUserId);
+            command.TenantId,
+            command.ActorUserId
+        );
 
         return Result.Success();
     }

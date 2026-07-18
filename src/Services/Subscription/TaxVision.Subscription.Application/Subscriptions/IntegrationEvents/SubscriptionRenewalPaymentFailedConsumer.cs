@@ -22,14 +22,19 @@ public static class SubscriptionRenewalPaymentFailedConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
             var subscription = await subscriptions.GetByTenantIdAsync(evt.TenantId, ct);
             if (subscription is null || subscription.Id != evt.TenantSubscriptionId)
             {
-                logger.LogWarning("SubscriptionRenewalPaymentFailed for unknown subscription {TenantSubscriptionId}.", evt.TenantSubscriptionId);
+                logger.LogWarning(
+                    "SubscriptionRenewalPaymentFailed for unknown subscription {TenantSubscriptionId}.",
+                    evt.TenantSubscriptionId
+                );
                 return;
             }
 
@@ -38,16 +43,28 @@ public static class SubscriptionRenewalPaymentFailedConsumer
             {
                 logger.LogWarning(
                     "SubscriptionRenewalPaymentFailed for {TenantSubscriptionId} has no matching renewal for key {Key}.",
-                    evt.TenantSubscriptionId, evt.IdempotencyKey);
+                    evt.TenantSubscriptionId,
+                    evt.IdempotencyKey
+                );
                 return;
             }
 
             var result = subscription.FailRenewal(
-                renewal.Id, evt.FailureCode, evt.FailureReason, evt.WillRetry, evt.NextRetryAtUtc, actorUserId: Guid.Empty, DateTime.UtcNow);
+                renewal.Id,
+                evt.FailureCode,
+                evt.FailureReason,
+                evt.WillRetry,
+                evt.NextRetryAtUtc,
+                actorUserId: Guid.Empty,
+                DateTime.UtcNow
+            );
             if (result.IsFailure)
             {
                 logger.LogWarning(
-                    "Could not record failed renewal for subscription {TenantSubscriptionId}: {Code}.", subscription.Id, result.Error.Code);
+                    "Could not record failed renewal for subscription {TenantSubscriptionId}: {Code}.",
+                    subscription.Id,
+                    result.Error.Code
+                );
                 return;
             }
 

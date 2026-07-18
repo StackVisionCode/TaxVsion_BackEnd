@@ -9,9 +9,10 @@ namespace TaxVision.PaymentApp.Infrastructure.Providers;
 /// (no soporta HMAC — ver §44.9); Manual tampoco tiene webhooks.</summary>
 public sealed class ProviderWebhookSecrets(IOptions<StripeOptions> stripeOptions) : IProviderWebhookSecrets
 {
-    public string? GetWebhookSecret(PaymentProviderCode code) => code switch
-    {
-        PaymentProviderCode.Stripe => stripeOptions.Value.WebhookSecret,
-        _ => null,
-    };
+    public string? GetWebhookSecret(PaymentProviderCode code) =>
+        code switch
+        {
+            PaymentProviderCode.Stripe => stripeOptions.Value.WebhookSecret,
+            _ => null,
+        };
 }

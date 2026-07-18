@@ -28,12 +28,14 @@ public sealed class TenantSavedPaymentMethodConfiguration : IEntityTypeConfigura
 
         // Filtrado a activos: un método detached puede volver a adjuntarse (misma tarjeta,
         // nuevo ciclo de vida) sin chocar con el registro histórico.
-        builder.HasIndex(method => new { method.TenantProviderCustomerId, method.MethodReference })
+        builder
+            .HasIndex(method => new { method.TenantProviderCustomerId, method.MethodReference })
             .IsUnique()
             .HasFilter("[IsDetached] = 0")
             .HasDatabaseName("UX_TenantSavedPaymentMethods_Customer_MethodReference_Active");
 
-        builder.HasIndex(method => new { method.ExpYear, method.ExpMonth })
+        builder
+            .HasIndex(method => new { method.ExpYear, method.ExpMonth })
             .HasFilter("[IsDetached] = 0")
             .HasDatabaseName("IX_TenantSavedPaymentMethods_Expiration");
     }

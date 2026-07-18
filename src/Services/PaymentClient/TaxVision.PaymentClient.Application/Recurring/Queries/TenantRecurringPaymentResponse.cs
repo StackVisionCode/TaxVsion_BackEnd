@@ -1,7 +1,15 @@
 namespace TaxVision.PaymentClient.Application.Recurring.Queries;
 
 public sealed record RecurringScheduleResponse(
-    Guid Id, DateTime ScheduledDate, string Status, long AmountCents, string Currency, Guid? TenantPaymentId, int RetryCount, DateTime? NextRetryAtUtc);
+    Guid Id,
+    DateTime ScheduledDate,
+    string Status,
+    long AmountCents,
+    string Currency,
+    Guid? TenantPaymentId,
+    int RetryCount,
+    DateTime? NextRetryAtUtc
+);
 
 public sealed record TenantRecurringPaymentResponse(
     Guid Id,

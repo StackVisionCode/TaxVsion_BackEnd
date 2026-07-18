@@ -31,21 +31,29 @@ public static class ChargeTenantPaymentHandler
         IPaymentClientMetrics metrics,
         ICorrelationContext correlation,
         ILogger<TenantPayment> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var existing = await payments.GetByIdempotencyKeyAsync(command.TenantId, command.IdempotencyKey, ct);
         if (existing is not null)
         {
-            logger.LogInformation("TenantPayment already exists for IdempotencyKey {Key}; skipping (idempotent).", command.IdempotencyKey);
+            logger.LogInformation(
+                "TenantPayment already exists for IdempotencyKey {Key}; skipping (idempotent).",
+                command.IdempotencyKey
+            );
             return Result.Success(existing.Id);
         }
 
         var config = await configs.GetByTenantAndProviderAsync(command.TenantId, command.ProviderCode, ct);
         if (config is null)
-            return Result.Failure<Guid>(new Error("TenantPaymentConfig.NotFound", "TenantPaymentConfig does not exist."));
+            return Result.Failure<Guid>(
+                new Error("TenantPaymentConfig.NotFound", "TenantPaymentConfig does not exist.")
+            );
 
         if (!config.IsActive)
-            return Result.Failure<Guid>(new Error("TenantPaymentConfig.NotActive", "TenantPaymentConfig is not active."));
+            return Result.Failure<Guid>(
+                new Error("TenantPaymentConfig.NotActive", "TenantPaymentConfig is not active.")
+            );
 
         var preparedResult = PrepareNewPayment(command, config.StatementDescriptor);
         if (preparedResult.IsFailure)
@@ -55,7 +63,15 @@ public static class ChargeTenantPaymentHandler
         await payments.AddAsync(payment, ct);
 
         if (config.Mode == TenantPaymentMode.Connect)
-            await ExecuteConnectChargeAsync(payment, config, command, connectAccounts, providerFactory, platformCredentials.Value, ct);
+            await ExecuteConnectChargeAsync(
+                payment,
+                config,
+                command,
+                connectAccounts,
+                providerFactory,
+                platformCredentials.Value,
+                ct
+            );
         else
             await ExecuteDirectChargeAsync(payment, config, command, providerFactory, secretProtector, ct);
 
@@ -67,29 +83,53 @@ public static class ChargeTenantPaymentHandler
         }
 
         await AuditEntryFactory.AppendAsync(
-            audit, payment.TenantId, nameof(TenantPayment), payment.Id, TenantPaymentChargeOutcome.MapAuditAction(payment.Status),
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            payment.TenantId,
+            nameof(TenantPayment),
+            payment.Id,
+            TenantPaymentChargeOutcome.MapAuditAction(payment.Status),
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { payment.Status, payment.FailureCode, payment.FailureReason },
-            reason: null, DateTime.UtcNow, ct);
+            after: new
+            {
+                payment.Status,
+                payment.FailureCode,
+                payment.FailureReason,
+            },
+            reason: null,
+            DateTime.UtcNow,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(
             "TenantPayment {TenantPaymentId} for tenant {TenantId} finished with status {Status}.",
-            payment.Id, payment.TenantId, payment.Status);
+            payment.Id,
+            payment.TenantId,
+            payment.Status
+        );
 
         return Result.Success(payment.Id);
     }
 
     private static async Task ExecuteDirectChargeAsync(
-        TenantPayment payment, TenantPaymentConfig config, ChargeTenantPaymentCommand command,
-        IPaymentAdapterFactory providerFactory, ISecretProtector secretProtector, CancellationToken ct)
+        TenantPayment payment,
+        TenantPaymentConfig config,
+        ChargeTenantPaymentCommand command,
+        IPaymentAdapterFactory providerFactory,
+        ISecretProtector secretProtector,
+        CancellationToken ct
+    )
     {
         if (config.SecretKeyEncrypted is null)
         {
             TenantPaymentChargeOutcome.FailPayment(
-                payment, new Error("TenantPaymentConfig.SecretUnreadable", "No provider secret is configured for this tenant."), command.ActorUserId);
+                payment,
+                new Error("TenantPaymentConfig.SecretUnreadable", "No provider secret is configured for this tenant."),
+                command.ActorUserId
+            );
             return;
         }
 
@@ -97,7 +137,10 @@ public static class ChargeTenantPaymentHandler
         if (string.IsNullOrEmpty(secretKey))
         {
             TenantPaymentChargeOutcome.FailPayment(
-                payment, new Error("TenantPaymentConfig.SecretUnreadable", "Stored provider secret could not be decrypted."), command.ActorUserId);
+                payment,
+                new Error("TenantPaymentConfig.SecretUnreadable", "Stored provider secret could not be decrypted."),
+                command.ActorUserId
+            );
             return;
         }
 
@@ -120,25 +163,48 @@ public static class ChargeTenantPaymentHandler
     /// no existe uno en modo Connect (§21.2.3: sin <c>CanCharge=true</c>, ni siquiera se
     /// intenta).</summary>
     private static async Task ExecuteConnectChargeAsync(
-        TenantPayment payment, TenantPaymentConfig config, ChargeTenantPaymentCommand command,
-        ITenantConnectAccountRepository connectAccounts, IPaymentAdapterFactory providerFactory, PlatformStripeCredentials platformCredentials, CancellationToken ct)
+        TenantPayment payment,
+        TenantPaymentConfig config,
+        ChargeTenantPaymentCommand command,
+        ITenantConnectAccountRepository connectAccounts,
+        IPaymentAdapterFactory providerFactory,
+        PlatformStripeCredentials platformCredentials,
+        CancellationToken ct
+    )
     {
-        var connectAccount = await connectAccounts.GetByTenantAndProviderAsync(command.TenantId, config.ProviderCode, ct);
+        var connectAccount = await connectAccounts.GetByTenantAndProviderAsync(
+            command.TenantId,
+            config.ProviderCode,
+            ct
+        );
         if (connectAccount is null || !connectAccount.CanCharge)
         {
             TenantPaymentChargeOutcome.FailPayment(
-                payment, new Error("Connect.NotChargeReady", "Tenant's Connect account cannot accept charges yet."), command.ActorUserId);
+                payment,
+                new Error("Connect.NotChargeReady", "Tenant's Connect account cannot accept charges yet."),
+                command.ActorUserId
+            );
             return;
         }
 
         if (command.PlatformFeeAmountCents is not { } feeCents || feeCents < 0 || feeCents > command.AmountCents)
         {
             TenantPaymentChargeOutcome.FailPayment(
-                payment, new Error("TenantPayment.InvalidPlatformFee", "A valid PlatformFeeAmountCents is required for Connect-mode charges."), command.ActorUserId);
+                payment,
+                new Error(
+                    "TenantPayment.InvalidPlatformFee",
+                    "A valid PlatformFeeAmountCents is required for Connect-mode charges."
+                ),
+                command.ActorUserId
+            );
             return;
         }
 
-        var splitResult = SplitPaymentBreakdown.Create(command.AmountCents - feeCents, feeCents, command.PlatformFeeReference);
+        var splitResult = SplitPaymentBreakdown.Create(
+            command.AmountCents - feeCents,
+            feeCents,
+            command.PlatformFeeReference
+        );
         if (splitResult.IsFailure)
         {
             TenantPaymentChargeOutcome.FailPayment(payment, splitResult.Error, command.ActorUserId);
@@ -148,9 +214,11 @@ public static class ChargeTenantPaymentHandler
         var credentials = new TenantProviderCredentials(platformCredentials.PlatformSecretKey, WebhookSecret: null);
         var adapter = providerFactory.Resolve(config.ProviderCode);
         var chargeRequest = BuildChargeRequest(
-            payment, command,
+            payment,
+            command,
             onBehalfOf: connectAccount.StripeConnectAccountId.Value,
-            applicationFee: Money.Create(feeCents, payment.Amount.Currency).Value);
+            applicationFee: Money.Create(feeCents, payment.Amount.Currency).Value
+        );
 
         var chargeResult = await adapter.AuthorizeChargeAsync(credentials, chargeRequest, ct);
         if (chargeResult.IsFailure)
@@ -159,11 +227,20 @@ public static class ChargeTenantPaymentHandler
             return;
         }
 
-        TenantPaymentChargeOutcome.ApplyChargeOutcomeViaConnect(payment, chargeResult.Value, splitResult.Value, command.ActorUserId);
+        TenantPaymentChargeOutcome.ApplyChargeOutcomeViaConnect(
+            payment,
+            chargeResult.Value,
+            splitResult.Value,
+            command.ActorUserId
+        );
     }
 
     private static ChargeAuthorizationRequest BuildChargeRequest(
-        TenantPayment payment, ChargeTenantPaymentCommand command, string? onBehalfOf, Money? applicationFee) =>
+        TenantPayment payment,
+        ChargeTenantPaymentCommand command,
+        string? onBehalfOf,
+        Money? applicationFee
+    ) =>
         new(
             PaymentMethod: new PaymentMethodToken(command.PaymentMethodReference),
             Amount: payment.Amount,
@@ -176,9 +253,13 @@ public static class ChargeTenantPaymentHandler
                 ["tenantPaymentId"] = payment.Id.ToString("N"),
             },
             OnBehalfOf: onBehalfOf,
-            ApplicationFee: applicationFee);
+            ApplicationFee: applicationFee
+        );
 
-    private static Result<TenantPayment> PrepareNewPayment(ChargeTenantPaymentCommand command, StatementDescriptor descriptor)
+    private static Result<TenantPayment> PrepareNewPayment(
+        ChargeTenantPaymentCommand command,
+        StatementDescriptor descriptor
+    )
     {
         var keyResult = IdempotencyKey.Create(command.IdempotencyKey);
         if (keyResult.IsFailure)
@@ -201,6 +282,7 @@ public static class ChargeTenantPaymentHandler
             command.ProviderCode,
             descriptor,
             command.ActorUserId,
-            DateTime.UtcNow);
+            DateTime.UtcNow
+        );
     }
 }

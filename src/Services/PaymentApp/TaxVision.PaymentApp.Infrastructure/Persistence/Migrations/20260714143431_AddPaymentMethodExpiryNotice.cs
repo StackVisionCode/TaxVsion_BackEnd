@@ -15,15 +15,14 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                 name: "ExpiryNoticeSentAtUtc",
                 table: "TenantSavedPaymentMethods",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ExpiryNoticeSentAtUtc",
-                table: "TenantSavedPaymentMethods");
+            migrationBuilder.DropColumn(name: "ExpiryNoticeSentAtUtc", table: "TenantSavedPaymentMethods");
         }
     }
 }

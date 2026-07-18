@@ -13,7 +13,14 @@ public sealed class TenantTests
     [Fact]
     public void Register_with_an_empty_id_fails()
     {
-        var result = Tenant.Register(Guid.Empty, "Acme Tax", "acme", TenantKind.Customer, "America/New_York", DateTime.UtcNow);
+        var result = Tenant.Register(
+            Guid.Empty,
+            "Acme Tax",
+            "acme",
+            TenantKind.Customer,
+            "America/New_York",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Tenant.InvalidId", result.Error.Code);
@@ -22,7 +29,14 @@ public sealed class TenantTests
     [Fact]
     public void Register_with_an_invalid_time_zone_fails()
     {
-        var result = Tenant.Register(Guid.NewGuid(), "Acme Tax", "acme", TenantKind.Customer, "Not/A/TimeZone", DateTime.UtcNow);
+        var result = Tenant.Register(
+            Guid.NewGuid(),
+            "Acme Tax",
+            "acme",
+            TenantKind.Customer,
+            "Not/A/TimeZone",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Tenant.InvalidTimeZone", result.Error.Code);
@@ -60,7 +74,13 @@ public sealed class TenantTests
     public void The_platform_tenant_can_never_operate_even_if_marked_active()
     {
         var result = Tenant.Register(
-            PlatformTenant.Id, PlatformTenant.Name, PlatformTenant.SubDomain, TenantKind.Platform, "UTC", DateTime.UtcNow);
+            PlatformTenant.Id,
+            PlatformTenant.Name,
+            PlatformTenant.SubDomain,
+            TenantKind.Platform,
+            "UTC",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.CanOperate());
@@ -78,5 +98,7 @@ public sealed class TenantTests
     }
 
     private static Tenant CreateCustomerTenant() =>
-        Tenant.Register(Guid.NewGuid(), "Acme Tax", "acme", TenantKind.Customer, "America/New_York", DateTime.UtcNow).Value;
+        Tenant
+            .Register(Guid.NewGuid(), "Acme Tax", "acme", TenantKind.Customer, "America/New_York", DateTime.UtcNow)
+            .Value;
 }

@@ -21,7 +21,12 @@ public sealed class PayoutScheduleItem : BaseEntity
     private PayoutScheduleItem() { }
 
     public static PayoutScheduleItem RecordPaid(
-        Guid payoutScheduleId, Guid tenantId, string providerPayoutReference, Money amount, DateTime occurredAtUtc) =>
+        Guid payoutScheduleId,
+        Guid tenantId,
+        string providerPayoutReference,
+        Money amount,
+        DateTime occurredAtUtc
+    ) =>
         new()
         {
             PayoutScheduleId = payoutScheduleId,
@@ -33,7 +38,13 @@ public sealed class PayoutScheduleItem : BaseEntity
         };
 
     public static PayoutScheduleItem RecordFailed(
-        Guid payoutScheduleId, Guid tenantId, string providerPayoutReference, Money amount, string failureReason, DateTime occurredAtUtc) =>
+        Guid payoutScheduleId,
+        Guid tenantId,
+        string providerPayoutReference,
+        Money amount,
+        string failureReason,
+        DateTime occurredAtUtc
+    ) =>
         new()
         {
             PayoutScheduleId = payoutScheduleId,

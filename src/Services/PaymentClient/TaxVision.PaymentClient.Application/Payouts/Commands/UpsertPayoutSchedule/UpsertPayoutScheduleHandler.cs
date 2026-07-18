@@ -18,11 +18,18 @@ public static class UpsertPayoutScheduleHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
-        var connectAccount = await connectAccounts.GetByTenantAndProviderAsync(command.TenantId, PaymentProviderCode.Stripe, ct);
+        var connectAccount = await connectAccounts.GetByTenantAndProviderAsync(
+            command.TenantId,
+            PaymentProviderCode.Stripe,
+            ct
+        );
         if (connectAccount is null)
-            return Result.Failure<Guid>(new Error("TenantConnectAccount.NotFound", "TenantConnectAccount does not exist."));
+            return Result.Failure<Guid>(
+                new Error("TenantConnectAccount.NotFound", "TenantConnectAccount does not exist.")
+            );
 
         var nowUtc = DateTime.UtcNow;
         var existing = await schedules.GetByTenantConnectAccountIdAsync(connectAccount.Id, ct);
@@ -34,17 +41,33 @@ public static class UpsertPayoutScheduleHandler
                 return Result.Failure<Guid>(updateResult.Error);
 
             await AuditEntryFactory.AppendAsync(
-                audit, command.TenantId, nameof(PayoutSchedule), existing.Id, PaymentAuditAction.PayoutScheduleUpdated,
-                command.ActorUserId, correlation.CorrelationId,
+                audit,
+                command.TenantId,
+                nameof(PayoutSchedule),
+                existing.Id,
+                PaymentAuditAction.PayoutScheduleUpdated,
+                command.ActorUserId,
+                correlation.CorrelationId,
                 before: (object?)null,
                 after: new { command.Frequency, command.Anchor },
-                reason: null, nowUtc, ct);
+                reason: null,
+                nowUtc,
+                ct
+            );
 
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Success(existing.Id);
         }
 
-        var createResult = PayoutSchedule.Create(command.TenantId, connectAccount.Id, command.Frequency, command.Anchor, command.Currency, command.ActorUserId, nowUtc);
+        var createResult = PayoutSchedule.Create(
+            command.TenantId,
+            connectAccount.Id,
+            command.Frequency,
+            command.Anchor,
+            command.Currency,
+            command.ActorUserId,
+            nowUtc
+        );
         if (createResult.IsFailure)
             return Result.Failure<Guid>(createResult.Error);
 
@@ -52,11 +75,24 @@ public static class UpsertPayoutScheduleHandler
         await schedules.AddAsync(schedule, ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(PayoutSchedule), schedule.Id, PaymentAuditAction.PayoutScheduleCreated,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(PayoutSchedule),
+            schedule.Id,
+            PaymentAuditAction.PayoutScheduleCreated,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { command.Frequency, command.Anchor, command.Currency },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                command.Frequency,
+                command.Anchor,
+                command.Currency,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

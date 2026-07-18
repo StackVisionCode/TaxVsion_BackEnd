@@ -19,10 +19,20 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
     // el límite de segmento correctamente — con barra nunca matchea el path real (bug real
     // encontrado probando el equivalente en PaymentApp con un PlatformAdmin).
     private static readonly string[] ExemptPathPrefixes =
-        ["/health/live", "/health/ready", "/payments-client/webhooks", "/payments-client/checkout", "/payments-client/admin"];
+    [
+        "/health/live",
+        "/health/ready",
+        "/payments-client/webhooks",
+        "/payments-client/checkout",
+        "/payments-client/admin",
+    ];
 
     public async Task InvokeAsync(
-        HttpContext ctx, ITenantContext tenantContext, ITenantRegistry tenants, ILogger<TenantStatusGateMiddleware> logger)
+        HttpContext ctx,
+        ITenantContext tenantContext,
+        ITenantRegistry tenants,
+        ILogger<TenantStatusGateMiddleware> logger
+    )
     {
         if (IsExempt(ctx.Request.Path))
         {
@@ -46,7 +56,11 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
 
         if (!tenant.CanOperate())
         {
-            logger.LogInformation("Request for tenant {TenantId} rejected because status is {Status}.", tenant.Id, tenant.Status);
+            logger.LogInformation(
+                "Request for tenant {TenantId} rejected because status is {Status}.",
+                tenant.Id,
+                tenant.Status
+            );
             await WriteForbiddenAsync(ctx, "Tenant.Inactive", "Tenant is not in a state that permits operations.");
             return;
         }
@@ -68,6 +82,13 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
     private static Task WriteForbiddenAsync(HttpContext ctx, string code, string message)
     {
         ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-        return ctx.Response.WriteAsJsonAsync(new { code, message, correlationId = ctx.TraceIdentifier });
+        return ctx.Response.WriteAsJsonAsync(
+            new
+            {
+                code,
+                message,
+                correlationId = ctx.TraceIdentifier,
+            }
+        );
     }
 }

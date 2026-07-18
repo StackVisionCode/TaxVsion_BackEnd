@@ -40,13 +40,21 @@ public static class ProcessConnectWebhookHandler
         IPaymentClientMetrics metrics,
         ICorrelationContext correlation,
         ILogger<WebhookEvent> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var verificationResult = await gateway.VerifyAndParseConnectWebhookAsync(
-            command.RawPayload, command.SignatureHeader, platformCredentials.Value.ConnectWebhookSecret, ct);
+            command.RawPayload,
+            command.SignatureHeader,
+            platformCredentials.Value.ConnectWebhookSecret,
+            ct
+        );
         if (verificationResult.IsFailure)
         {
-            logger.LogWarning("Rejected Stripe Connect webhook with invalid signature: {Error}", verificationResult.Error.Message);
+            logger.LogWarning(
+                "Rejected Stripe Connect webhook with invalid signature: {Error}",
+                verificationResult.Error.Message
+            );
             return Result.Failure(verificationResult.Error);
         }
 
@@ -56,21 +64,38 @@ public static class ProcessConnectWebhookHandler
         if (connectAccount is null)
         {
             logger.LogWarning(
-                "Stripe Connect webhook {ProviderEventId} references unknown account {Account}; rejecting.", evt.ProviderEventId, evt.StripeConnectAccountId);
+                "Stripe Connect webhook {ProviderEventId} references unknown account {Account}; rejecting.",
+                evt.ProviderEventId,
+                evt.StripeConnectAccountId
+            );
             return Result.Success();
         }
 
-        var alreadyReceived = await webhookEvents.ExistsAsync(connectAccount.TenantId, PaymentProviderCode.Stripe, evt.ProviderEventId, ct);
+        var alreadyReceived = await webhookEvents.ExistsAsync(
+            connectAccount.TenantId,
+            PaymentProviderCode.Stripe,
+            evt.ProviderEventId,
+            ct
+        );
         if (alreadyReceived)
         {
-            logger.LogInformation("Stripe Connect webhook {ProviderEventId} already processed; skipping (idempotent).", evt.ProviderEventId);
+            logger.LogInformation(
+                "Stripe Connect webhook {ProviderEventId} already processed; skipping (idempotent).",
+                evt.ProviderEventId
+            );
             return Result.Success();
         }
 
         var nowUtc = DateTime.UtcNow;
         var receiveResult = WebhookEvent.Receive(
-            connectAccount.TenantId, PaymentProviderCode.Stripe, evt.ProviderEventId, evt.EventType,
-            command.RawPayload, command.SignatureHeader, nowUtc);
+            connectAccount.TenantId,
+            PaymentProviderCode.Stripe,
+            evt.ProviderEventId,
+            evt.EventType,
+            command.RawPayload,
+            command.SignatureHeader,
+            nowUtc
+        );
         if (receiveResult.IsFailure)
             return Result.Failure(receiveResult.Error);
 
@@ -80,11 +105,30 @@ public static class ProcessConnectWebhookHandler
 
         var applyResult = evt.EventType switch
         {
-            "account.updated" or "capability.updated" =>
-                await ApplyAccountEventAsync(evt, connectAccount, configs, audit, bus, metrics, correlation, nowUtc, ct),
-            "payout.paid" or "payout.failed" =>
-                await ApplyPayoutEventAsync(evt, connectAccount, payoutSchedules, audit, bus, correlation, nowUtc, ct),
-            _ => Result.Failure(new Error("StripeConnect.Webhook.UnsupportedEventType", $"Event type '{evt.EventType}' is not handled.")),
+            "account.updated" or "capability.updated" => await ApplyAccountEventAsync(
+                evt,
+                connectAccount,
+                configs,
+                audit,
+                bus,
+                metrics,
+                correlation,
+                nowUtc,
+                ct
+            ),
+            "payout.paid" or "payout.failed" => await ApplyPayoutEventAsync(
+                evt,
+                connectAccount,
+                payoutSchedules,
+                audit,
+                bus,
+                correlation,
+                nowUtc,
+                ct
+            ),
+            _ => Result.Failure(
+                new Error("StripeConnect.Webhook.UnsupportedEventType", $"Event type '{evt.EventType}' is not handled.")
+            ),
         };
 
         if (applyResult.IsFailure)
@@ -99,26 +143,55 @@ public static class ProcessConnectWebhookHandler
 
         logger.LogInformation(
             "Stripe Connect webhook {EventType} ({ProviderEventId}) applied for tenant {TenantId}.",
-            evt.EventType, evt.ProviderEventId, connectAccount.TenantId);
+            evt.EventType,
+            evt.ProviderEventId,
+            connectAccount.TenantId
+        );
 
         return Result.Success();
     }
 
     private static async Task<Result> ApplyAccountEventAsync(
-        ConnectWebhookEvent evt, TenantConnectAccount account, ITenantPaymentConfigRepository configs,
-        IPaymentAuditLogWriter audit, IMessageBus bus, IPaymentClientMetrics metrics, ICorrelationContext correlation, DateTime nowUtc, CancellationToken ct)
+        ConnectWebhookEvent evt,
+        TenantConnectAccount account,
+        ITenantPaymentConfigRepository configs,
+        IPaymentAuditLogWriter audit,
+        IMessageBus bus,
+        IPaymentClientMetrics metrics,
+        ICorrelationContext correlation,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
     {
         var statusBeforeWebhook = account.Status;
-        var updateResult = account.UpdateFromWebhook(evt.ChargesEnabled ?? false, evt.PayoutsEnabled ?? false, evt.RequirementsCurrentlyDue ?? [], nowUtc);
+        var updateResult = account.UpdateFromWebhook(
+            evt.ChargesEnabled ?? false,
+            evt.PayoutsEnabled ?? false,
+            evt.RequirementsCurrentlyDue ?? [],
+            nowUtc
+        );
         if (updateResult.IsFailure)
             return updateResult;
 
         await AuditEntryFactory.AppendAsync(
-            audit, account.TenantId, nameof(TenantConnectAccount), account.Id, PaymentAuditAction.TenantConnectAccountUpdated,
-            actorUserId: Guid.Empty, correlation.CorrelationId,
+            audit,
+            account.TenantId,
+            nameof(TenantConnectAccount),
+            account.Id,
+            PaymentAuditAction.TenantConnectAccountUpdated,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { account.Status, account.CanCharge, account.CanReceivePayouts },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                account.Status,
+                account.CanCharge,
+                account.CanReceivePayouts,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         if (account.Status == ConnectAccountStatus.Enabled)
         {
@@ -129,38 +202,59 @@ public static class ProcessConnectWebhookHandler
             if (config is { Mode: TenantPaymentMode.Connect, IsActive: false })
                 config.MarkActiveViaConnect(Guid.Empty, nowUtc);
 
-            await bus.PublishAsync(new TenantConnectAccountEnabledIntegrationEvent
-            {
-                TenantId = account.TenantId, TenantConnectAccountId = account.Id, CorrelationId = correlation.CorrelationId,
-            });
+            await bus.PublishAsync(
+                new TenantConnectAccountEnabledIntegrationEvent
+                {
+                    TenantId = account.TenantId,
+                    TenantConnectAccountId = account.Id,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
         }
         else if (account.Status == ConnectAccountStatus.Restricted)
         {
-            await bus.PublishAsync(new TenantConnectAccountRestrictedIntegrationEvent
-            {
-                TenantId = account.TenantId, TenantConnectAccountId = account.Id,
-                RequirementsCurrentlyDue = account.RequirementsCurrentlyDue, CorrelationId = correlation.CorrelationId,
-            });
+            await bus.PublishAsync(
+                new TenantConnectAccountRestrictedIntegrationEvent
+                {
+                    TenantId = account.TenantId,
+                    TenantConnectAccountId = account.Id,
+                    RequirementsCurrentlyDue = account.RequirementsCurrentlyDue,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
         }
         else if (account.RequirementsCurrentlyDue.Count > 0)
         {
-            await bus.PublishAsync(new TenantConnectAccountOnboardingRequiredIntegrationEvent
-            {
-                TenantId = account.TenantId, TenantConnectAccountId = account.Id,
-                RequirementsCurrentlyDue = account.RequirementsCurrentlyDue, CorrelationId = correlation.CorrelationId,
-            });
+            await bus.PublishAsync(
+                new TenantConnectAccountOnboardingRequiredIntegrationEvent
+                {
+                    TenantId = account.TenantId,
+                    TenantConnectAccountId = account.Id,
+                    RequirementsCurrentlyDue = account.RequirementsCurrentlyDue,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
         }
 
         return Result.Success();
     }
 
     private static async Task<Result> ApplyPayoutEventAsync(
-        ConnectWebhookEvent evt, TenantConnectAccount account, IPayoutScheduleRepository payoutSchedules,
-        IPaymentAuditLogWriter audit, IMessageBus bus, ICorrelationContext correlation, DateTime nowUtc, CancellationToken ct)
+        ConnectWebhookEvent evt,
+        TenantConnectAccount account,
+        IPayoutScheduleRepository payoutSchedules,
+        IPaymentAuditLogWriter audit,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
     {
         var schedule = await payoutSchedules.GetByTenantConnectAccountIdAsync(account.Id, ct);
         if (schedule is null)
-            return Result.Failure(new Error("PayoutSchedule.NotFound", "No PayoutSchedule exists for this Connect account yet."));
+            return Result.Failure(
+                new Error("PayoutSchedule.NotFound", "No PayoutSchedule exists for this Connect account yet.")
+            );
 
         var amountResult = Money.Create(evt.PayoutAmountCents ?? 0, evt.PayoutCurrency ?? schedule.Currency);
         if (amountResult.IsFailure)
@@ -168,34 +262,65 @@ public static class ProcessConnectWebhookHandler
 
         var failed = evt.EventType == "payout.failed";
         if (failed)
-            schedule.RecordPayoutFailed(evt.PayoutReference!, amountResult.Value, evt.PayoutFailureReason ?? "Payout failed.", nowUtc);
+            schedule.RecordPayoutFailed(
+                evt.PayoutReference!,
+                amountResult.Value,
+                evt.PayoutFailureReason ?? "Payout failed.",
+                nowUtc
+            );
         else
             schedule.RecordPayoutPaid(evt.PayoutReference!, amountResult.Value, nowUtc);
 
         await AuditEntryFactory.AppendAsync(
-            audit, account.TenantId, nameof(PayoutSchedule), schedule.Id, PaymentAuditAction.PayoutScheduleUpdated,
-            actorUserId: Guid.Empty, correlation.CorrelationId,
+            audit,
+            account.TenantId,
+            nameof(PayoutSchedule),
+            schedule.Id,
+            PaymentAuditAction.PayoutScheduleUpdated,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { evt.PayoutReference, evt.PayoutAmountCents, Failed = failed },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                evt.PayoutReference,
+                evt.PayoutAmountCents,
+                Failed = failed,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         if (failed)
         {
-            await bus.PublishAsync(new PayoutFailedIntegrationEvent
-            {
-                TenantId = account.TenantId, PayoutScheduleId = schedule.Id, ProviderPayoutReference = evt.PayoutReference!,
-                AmountCents = amountResult.Value.AmountCents, Currency = amountResult.Value.Currency,
-                FailureReason = evt.PayoutFailureReason ?? "Payout failed.", FailedAtUtc = nowUtc, CorrelationId = correlation.CorrelationId,
-            });
+            await bus.PublishAsync(
+                new PayoutFailedIntegrationEvent
+                {
+                    TenantId = account.TenantId,
+                    PayoutScheduleId = schedule.Id,
+                    ProviderPayoutReference = evt.PayoutReference!,
+                    AmountCents = amountResult.Value.AmountCents,
+                    Currency = amountResult.Value.Currency,
+                    FailureReason = evt.PayoutFailureReason ?? "Payout failed.",
+                    FailedAtUtc = nowUtc,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
         }
         else
         {
-            await bus.PublishAsync(new PayoutCompletedIntegrationEvent
-            {
-                TenantId = account.TenantId, PayoutScheduleId = schedule.Id, ProviderPayoutReference = evt.PayoutReference!,
-                AmountCents = amountResult.Value.AmountCents, Currency = amountResult.Value.Currency,
-                PaidAtUtc = nowUtc, CorrelationId = correlation.CorrelationId,
-            });
+            await bus.PublishAsync(
+                new PayoutCompletedIntegrationEvent
+                {
+                    TenantId = account.TenantId,
+                    PayoutScheduleId = schedule.Id,
+                    ProviderPayoutReference = evt.PayoutReference!,
+                    AmountCents = amountResult.Value.AmountCents,
+                    Currency = amountResult.Value.Currency,
+                    PaidAtUtc = nowUtc,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
         }
 
         return Result.Success();

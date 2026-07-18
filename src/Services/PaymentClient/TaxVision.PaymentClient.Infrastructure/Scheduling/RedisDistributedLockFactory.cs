@@ -19,7 +19,6 @@ public sealed class RedisDistributedLockFactory(IConnectionMultiplexer redis) : 
 
     private sealed class RedisLockHandle(IDatabase db, RedisKey key, string token) : IAsyncDisposable
     {
-        public async ValueTask DisposeAsync() =>
-            await db.ScriptEvaluateAsync(ReleaseIfOwnerScript, [key], [token]);
+        public async ValueTask DisposeAsync() => await db.ScriptEvaluateAsync(ReleaseIfOwnerScript, [key], [token]);
     }
 }

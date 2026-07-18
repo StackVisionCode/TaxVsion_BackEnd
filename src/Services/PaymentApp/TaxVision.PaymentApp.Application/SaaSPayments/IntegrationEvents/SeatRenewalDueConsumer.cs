@@ -19,9 +19,16 @@ namespace TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 public static class SeatRenewalDueConsumer
 {
     public static async Task Handle(
-        SeatRenewalDueIntegrationEvent evt, IMessageBus bus, ICorrelationContext correlation, ILogger<SaaSPayment> logger, CancellationToken ct)
+        SeatRenewalDueIntegrationEvent evt,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        ILogger<SaaSPayment> logger,
+        CancellationToken ct
+    )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -35,14 +42,18 @@ public static class SeatRenewalDueConsumer
                 Provider: PaymentProviderCode.Stripe,
                 PayerEmail: SyntheticPayer.EmailFor(evt.TenantId),
                 PayerName: null,
-                RequestedByUserId: Guid.Empty);
+                RequestedByUserId: Guid.Empty
+            );
 
             var result = await bus.InvokeAsync<Result<Guid>>(command, ct);
             if (result.IsFailure)
             {
                 logger.LogError(
                     "ChargeSaaSPayment failed for renewal of seat {SeatId}: {ErrorCode} — {ErrorMessage}",
-                    evt.SeatId, result.Error.Code, result.Error.Message);
+                    evt.SeatId,
+                    result.Error.Code,
+                    result.Error.Message
+                );
             }
         }
     }

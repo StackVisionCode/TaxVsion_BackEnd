@@ -16,7 +16,8 @@ public sealed class TenantConnectAccountConfiguration : IEntityTypeConfiguration
         builder.Property(account => account.TenantId).IsRequired();
         builder.Property(account => account.ProviderCode).HasConversion<string>().HasMaxLength(30).IsRequired();
 
-        builder.Property(account => account.StripeConnectAccountId)
+        builder
+            .Property(account => account.StripeConnectAccountId)
             .HasConversion(id => id.Value, value => StripeConnectAccountId.Create(value).Value)
             .HasColumnName("StripeConnectAccountId")
             .HasMaxLength(255)
@@ -30,13 +31,16 @@ public sealed class TenantConnectAccountConfiguration : IEntityTypeConfiguration
 
         var requirementsConverter = new ValueConverter<IReadOnlyList<string>, string>(
             requirements => string.Join(',', requirements),
-            csv => ParseRequirements(csv));
+            csv => ParseRequirements(csv)
+        );
         var requirementsComparer = new ValueComparer<IReadOnlyList<string>>(
             (a, b) => (a ?? new List<string>()).SequenceEqual(b ?? new List<string>()),
             list => list.Aggregate(0, (hash, requirement) => HashCode.Combine(hash, requirement)),
-            list => list.ToList());
+            list => list.ToList()
+        );
 
-        builder.Property(account => account.RequirementsCurrentlyDue)
+        builder
+            .Property(account => account.RequirementsCurrentlyDue)
             .HasColumnName("RequirementsCurrentlyDue")
             .HasConversion(requirementsConverter)
             .HasMaxLength(2000)
@@ -45,11 +49,13 @@ public sealed class TenantConnectAccountConfiguration : IEntityTypeConfiguration
         builder.Property(account => account.CreatedAtUtc).IsRequired();
         builder.Property(account => account.UpdatedAtUtc).IsRequired();
 
-        builder.HasIndex(account => new { account.TenantId, account.ProviderCode })
+        builder
+            .HasIndex(account => new { account.TenantId, account.ProviderCode })
             .IsUnique()
             .HasDatabaseName("UX_TenantConnectAccounts_TenantId_ProviderCode");
 
-        builder.HasIndex(account => account.StripeConnectAccountId)
+        builder
+            .HasIndex(account => account.StripeConnectAccountId)
             .IsUnique()
             .HasDatabaseName("UX_TenantConnectAccounts_StripeConnectAccountId");
     }

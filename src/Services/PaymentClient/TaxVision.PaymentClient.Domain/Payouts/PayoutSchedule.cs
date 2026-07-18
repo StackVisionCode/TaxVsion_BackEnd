@@ -30,16 +30,27 @@ public sealed class PayoutSchedule : TenantEntity
     private PayoutSchedule() { }
 
     public static Result<PayoutSchedule> Create(
-        Guid tenantId, Guid tenantConnectAccountId, PayoutFrequency frequency, int? anchor, string currency, Guid actorUserId, DateTime nowUtc)
+        Guid tenantId,
+        Guid tenantConnectAccountId,
+        PayoutFrequency frequency,
+        int? anchor,
+        string currency,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<PayoutSchedule>(new Error("PayoutSchedule.InvalidTenant", "TenantId is required."));
 
         if (tenantConnectAccountId == Guid.Empty)
-            return Result.Failure<PayoutSchedule>(new Error("PayoutSchedule.InvalidConnectAccount", "TenantConnectAccountId is required."));
+            return Result.Failure<PayoutSchedule>(
+                new Error("PayoutSchedule.InvalidConnectAccount", "TenantConnectAccountId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(currency) || currency.Trim().Length != 3)
-            return Result.Failure<PayoutSchedule>(new Error("PayoutSchedule.InvalidCurrency", "Currency must be a 3-letter ISO-4217 code."));
+            return Result.Failure<PayoutSchedule>(
+                new Error("PayoutSchedule.InvalidCurrency", "Currency must be a 3-letter ISO-4217 code.")
+            );
 
         var anchorResult = ValidateAnchor(frequency, anchor);
         if (anchorResult.IsFailure)
@@ -75,17 +86,31 @@ public sealed class PayoutSchedule : TenantEntity
     public void RecordPayoutPaid(string providerPayoutReference, Money amount, DateTime occurredAtUtc) =>
         _items.Add(PayoutScheduleItem.RecordPaid(Id, TenantId, providerPayoutReference, amount, occurredAtUtc));
 
-    public void RecordPayoutFailed(string providerPayoutReference, Money amount, string failureReason, DateTime occurredAtUtc) =>
-        _items.Add(PayoutScheduleItem.RecordFailed(Id, TenantId, providerPayoutReference, amount, failureReason, occurredAtUtc));
+    public void RecordPayoutFailed(
+        string providerPayoutReference,
+        Money amount,
+        string failureReason,
+        DateTime occurredAtUtc
+    ) =>
+        _items.Add(
+            PayoutScheduleItem.RecordFailed(Id, TenantId, providerPayoutReference, amount, failureReason, occurredAtUtc)
+        );
 
-    private static Result ValidateAnchor(PayoutFrequency frequency, int? anchor) => frequency switch
-    {
-        PayoutFrequency.Weekly when anchor is null or < 0 or > 6 =>
-            Result.Failure(new Error("PayoutSchedule.InvalidAnchor", "Weekly schedules require an anchor between 0 (Sunday) and 6 (Saturday).")),
-        PayoutFrequency.Monthly when anchor is null or < 1 or > 31 =>
-            Result.Failure(new Error("PayoutSchedule.InvalidAnchor", "Monthly schedules require an anchor between 1 and 31.")),
-        PayoutFrequency.Manual or PayoutFrequency.Daily when anchor is not null =>
-            Result.Failure(new Error("PayoutSchedule.InvalidAnchor", "Manual and Daily schedules cannot have an anchor.")),
-        _ => Result.Success(),
-    };
+    private static Result ValidateAnchor(PayoutFrequency frequency, int? anchor) =>
+        frequency switch
+        {
+            PayoutFrequency.Weekly when anchor is null or < 0 or > 6 => Result.Failure(
+                new Error(
+                    "PayoutSchedule.InvalidAnchor",
+                    "Weekly schedules require an anchor between 0 (Sunday) and 6 (Saturday)."
+                )
+            ),
+            PayoutFrequency.Monthly when anchor is null or < 1 or > 31 => Result.Failure(
+                new Error("PayoutSchedule.InvalidAnchor", "Monthly schedules require an anchor between 1 and 31.")
+            ),
+            PayoutFrequency.Manual or PayoutFrequency.Daily when anchor is not null => Result.Failure(
+                new Error("PayoutSchedule.InvalidAnchor", "Manual and Daily schedules cannot have an anchor.")
+            ),
+            _ => Result.Success(),
+        };
 }

@@ -15,8 +15,11 @@ namespace TaxVision.PaymentClient.Infrastructure.Scheduling;
 /// timing de tenant timezone a que el caller de <c>CreateTenantRecurringPaymentCommand</c> ya
 /// haya calculado <c>StartDate</c>/<c>ScheduledDate</c> en UTC correctamente.
 /// </summary>
-public sealed class TenantRecurringExecutionJob(IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<TenantRecurringExecutionJob> logger)
-    : PeriodicPaymentClientJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
+public sealed class TenantRecurringExecutionJob(
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<TenantRecurringExecutionJob> logger
+) : PeriodicPaymentClientJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
 
@@ -33,16 +36,27 @@ public sealed class TenantRecurringExecutionJob(IServiceScopeFactory scopeFactor
 
         foreach (var plan in due)
         {
-            foreach (var schedule in plan.Schedules.Where(s => s.Status == RecurringScheduleStatus.Pending && s.ScheduledDate <= DateTime.UtcNow))
+            foreach (
+                var schedule in plan.Schedules.Where(s =>
+                    s.Status == RecurringScheduleStatus.Pending && s.ScheduledDate <= DateTime.UtcNow
+                )
+            )
             {
-                var result = await bus.InvokeAsync<Result>(new ExecuteRecurringScheduleCommand(plan.TenantId, plan.Id, schedule.Id), ct);
+                var result = await bus.InvokeAsync<Result>(
+                    new ExecuteRecurringScheduleCommand(plan.TenantId, plan.Id, schedule.Id),
+                    ct
+                );
                 processed++;
 
                 if (result.IsFailure)
                 {
                     logger.LogWarning(
                         "TenantRecurringExecutionJob failed to execute schedule {ScheduleId} of plan {PlanId}: {Code} — {Message}",
-                        schedule.Id, plan.Id, result.Error.Code, result.Error.Message);
+                        schedule.Id,
+                        plan.Id,
+                        result.Error.Code,
+                        result.Error.Message
+                    );
                 }
             }
         }

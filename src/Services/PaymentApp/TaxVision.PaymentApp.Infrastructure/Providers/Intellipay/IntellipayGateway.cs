@@ -17,17 +17,29 @@ namespace TaxVision.PaymentApp.Infrastructure.Providers.Intellipay;
 /// <see cref="IntellipayChargeRequest.IdempotencyKey"/> devuelve la respuesta cacheada sin
 /// volver a golpear el provider.
 /// </summary>
-public sealed class IntellipayGateway(HttpClient http, IOptions<IntellipayOptions> options, ICacheService cache, ILogger<IntellipayGateway> logger)
+public sealed class IntellipayGateway(
+    HttpClient http,
+    IOptions<IntellipayOptions> options,
+    ICacheService cache,
+    ILogger<IntellipayGateway> logger
+)
 {
     private IntellipayOptions Options => options.Value;
 
-    public Task<IntellipayResponse> CreateCustomerAsync(IntellipayCreateCustomerRequest request, CancellationToken ct) =>
-        PostAsync("create_customer", new Dictionary<string, string>
-        {
-            ["account"] = request.Account,
-            ["email"] = request.Email,
-            ["firstname"] = request.FirstName,
-        }, ct);
+    public Task<IntellipayResponse> CreateCustomerAsync(
+        IntellipayCreateCustomerRequest request,
+        CancellationToken ct
+    ) =>
+        PostAsync(
+            "create_customer",
+            new Dictionary<string, string>
+            {
+                ["account"] = request.Account,
+                ["email"] = request.Email,
+                ["firstname"] = request.FirstName,
+            },
+            ct
+        );
 
     public async Task<IntellipayResponse> ChargeCardAsync(IntellipayChargeRequest request, CancellationToken ct)
     {
@@ -37,25 +49,37 @@ public sealed class IntellipayGateway(HttpClient http, IOptions<IntellipayOption
             cacheKey,
             async innerCt =>
             {
-                logger.LogInformation("Intellipay charge_card dispatched. IdempotencyKey={IdempotencyKey}", request.IdempotencyKey);
-                return await PostAsync("charge_card", new Dictionary<string, string>
-                {
-                    ["customerid"] = request.CustomerId,
-                    ["amount"] = (request.AmountCents / 100m).ToString("F2"),
-                    ["description"] = request.Description,
-                }, innerCt);
+                logger.LogInformation(
+                    "Intellipay charge_card dispatched. IdempotencyKey={IdempotencyKey}",
+                    request.IdempotencyKey
+                );
+                return await PostAsync(
+                    "charge_card",
+                    new Dictionary<string, string>
+                    {
+                        ["customerid"] = request.CustomerId,
+                        ["amount"] = (request.AmountCents / 100m).ToString("F2"),
+                        ["description"] = request.Description,
+                    },
+                    innerCt
+                );
             },
             Options.IdempotencyCacheTtl,
-            ct);
+            ct
+        );
     }
 
     public Task<IntellipayResponse> RefundAsync(IntellipayRefundRequest request, CancellationToken ct) =>
-        PostAsync("refund", new Dictionary<string, string>
-        {
-            ["transactionid"] = request.TransactionId,
-            ["amount"] = (request.AmountCents / 100m).ToString("F2"),
-            ["reason"] = request.Reason,
-        }, ct);
+        PostAsync(
+            "refund",
+            new Dictionary<string, string>
+            {
+                ["transactionid"] = request.TransactionId,
+                ["amount"] = (request.AmountCents / 100m).ToString("F2"),
+                ["reason"] = request.Reason,
+            },
+            ct
+        );
 
     /// <summary>Consulta el status de una transacción como confirmación out-of-band — usado
     /// por el validador de IPN (§44.9) para rechazar callbacks spoofed, no por
@@ -63,7 +87,11 @@ public sealed class IntellipayGateway(HttpClient http, IOptions<IntellipayOption
     public Task<IntellipayResponse> GetTransactionStatusAsync(string transactionId, CancellationToken ct) =>
         PostAsync("get_transaction_status", new Dictionary<string, string> { ["transactionid"] = transactionId }, ct);
 
-    private async Task<IntellipayResponse> PostAsync(string method, Dictionary<string, string> fields, CancellationToken ct)
+    private async Task<IntellipayResponse> PostAsync(
+        string method,
+        Dictionary<string, string> fields,
+        CancellationToken ct
+    )
     {
         fields["method"] = method;
         fields["merchantkey"] = Options.MerchantKey;
@@ -74,10 +102,21 @@ public sealed class IntellipayGateway(HttpClient http, IOptions<IntellipayOption
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("Intellipay {Method} returned HTTP {StatusCode}", method, (int)response.StatusCode);
-            return new IntellipayResponse { Status = "0", Response = "http_error", Message = $"HTTP {(int)response.StatusCode}" };
+            return new IntellipayResponse
+            {
+                Status = "0",
+                Response = "http_error",
+                Message = $"HTTP {(int)response.StatusCode}",
+            };
         }
 
         var parsed = await response.Content.ReadFromJsonAsync<IntellipayResponse>(ct);
-        return parsed ?? new IntellipayResponse { Status = "0", Response = "parse_error", Message = "Empty or invalid Intellipay response." };
+        return parsed
+            ?? new IntellipayResponse
+            {
+                Status = "0",
+                Response = "parse_error",
+                Message = "Empty or invalid Intellipay response.",
+            };
     }
 }

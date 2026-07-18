@@ -29,24 +29,34 @@ public sealed class WebhookEvent : BaseEntity
     private WebhookEvent() { }
 
     public static Result<WebhookEvent> Receive(
-        PaymentProviderCode providerCode, string providerEventId, string eventType, string rawPayload, string signatureHeader, DateTime nowUtc)
+        PaymentProviderCode providerCode,
+        string providerEventId,
+        string eventType,
+        string rawPayload,
+        string signatureHeader,
+        DateTime nowUtc
+    )
     {
         if (string.IsNullOrWhiteSpace(providerEventId))
-            return Result.Failure<WebhookEvent>(new Error("WebhookEvent.InvalidProviderEventId", "ProviderEventId is required."));
+            return Result.Failure<WebhookEvent>(
+                new Error("WebhookEvent.InvalidProviderEventId", "ProviderEventId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(eventType))
             return Result.Failure<WebhookEvent>(new Error("WebhookEvent.InvalidEventType", "EventType is required."));
 
-        return Result.Success(new WebhookEvent
-        {
-            ProviderCode = providerCode,
-            ProviderEventId = providerEventId,
-            EventType = eventType,
-            ReceivedAtUtc = nowUtc,
-            RawPayload = rawPayload,
-            SignatureHeader = signatureHeader,
-            Status = WebhookEventStatus.Received,
-        });
+        return Result.Success(
+            new WebhookEvent
+            {
+                ProviderCode = providerCode,
+                ProviderEventId = providerEventId,
+                EventType = eventType,
+                ReceivedAtUtc = nowUtc,
+                RawPayload = rawPayload,
+                SignatureHeader = signatureHeader,
+                Status = WebhookEventStatus.Received,
+            }
+        );
     }
 
     public Result MarkProcessing(DateTime nowUtc)

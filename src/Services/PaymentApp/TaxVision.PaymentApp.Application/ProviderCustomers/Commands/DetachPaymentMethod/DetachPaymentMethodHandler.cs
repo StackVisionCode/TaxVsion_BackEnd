@@ -20,15 +20,23 @@ public static class DetachPaymentMethodHandler
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         ILogger<TenantProviderCustomer> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var customer = await customers.GetByIdAsync(command.TenantProviderCustomerId, command.TenantId, ct);
         if (customer is null)
-            return Result.Failure(new Error("TenantProviderCustomer.NotFound", "TenantProviderCustomer does not exist."));
+            return Result.Failure(
+                new Error("TenantProviderCustomer.NotFound", "TenantProviderCustomer does not exist.")
+            );
 
         var method = FindMethod(customer, command.PaymentMethodId);
         if (method is null)
-            return Result.Failure(new Error("TenantProviderCustomer.MethodNotFound", "Payment method does not exist or was already detached."));
+            return Result.Failure(
+                new Error(
+                    "TenantProviderCustomer.MethodNotFound",
+                    "Payment method does not exist or was already detached."
+                )
+            );
 
         var nowUtc = DateTime.UtcNow;
         var domainResult = customer.DetachPaymentMethod(command.PaymentMethodId, nowUtc);
@@ -41,19 +49,33 @@ public static class DetachPaymentMethodHandler
         {
             logger.LogWarning(
                 "Local detach succeeded but provider detach failed for method {MethodId}: {Error}. Provider state may drift.",
-                command.PaymentMethodId, providerResult.Error.Message);
+                command.PaymentMethodId,
+                providerResult.Error.Message
+            );
         }
 
         await AuditEntryFactory.AppendAsync(
-            audit, customer.TenantId, nameof(TenantProviderCustomer), customer.Id, PaymentAuditAction.PaymentMethodDetached,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            customer.TenantId,
+            nameof(TenantProviderCustomer),
+            customer.Id,
+            PaymentAuditAction.PaymentMethodDetached,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
             after: new { method.Brand, method.Last4 },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogInformation("Payment method {MethodId} detached for tenant {TenantId}.", command.PaymentMethodId, command.TenantId);
+        logger.LogInformation(
+            "Payment method {MethodId} detached for tenant {TenantId}.",
+            command.PaymentMethodId,
+            command.TenantId
+        );
 
         return Result.Success();
     }

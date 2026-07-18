@@ -177,6 +177,37 @@ public static class PermissionCatalog
     public const string CommunicationSettingsManage = CommunicationPermissions.SettingsManage;
     public const string CommunicationAnalyticsRead = CommunicationPermissions.AnalyticsRead;
 
+    // PaymentApp / PaymentClient — pagos SaaS de plataforma y pagos que un tenant cobra a sus
+    // propios clientes (bounded contexts propios, ver microservicios PaymentApp/PaymentClient).
+    // Sembrados junto con el merge que trajo ambos servicios (2026-07-18): sus
+    // ClaimsPrincipalExtensions.HasPermission ya traían el mismo bypass de rol
+    // ("TenantAdmin" pasa siempre) que se retiró de los otros 9 servicios en esta misma
+    // auditoría — se corrige acá antes de que llegue a producción, no después. AdminCrossTenant
+    // (ambos) es PlatformOnly: true — su propio controller (PaymentAppAdminController /
+    // PaymentClientAdminController) documenta que el tenant es un filtro OPCIONAL, no una
+    // restricción, así que sin PlatformOnly cualquier TenantAdmin vería pagos de cualquier
+    // otro tenant por defecto.
+    public const string PaymentAppSaaSPaymentRead = PaymentAppPermissions.SaaSPaymentRead;
+    public const string PaymentAppSaaSPaymentRefund = PaymentAppPermissions.SaaSPaymentRefund;
+    public const string PaymentAppProviderCustomerRead = PaymentAppPermissions.ProviderCustomerRead;
+    public const string PaymentAppProviderCustomerManage = PaymentAppPermissions.ProviderCustomerManage;
+    public const string PaymentAppAdminCrossTenant = PaymentAppPermissions.AdminCrossTenant;
+
+    public const string PaymentClientConfigRead = PaymentClientPermissions.ConfigRead;
+    public const string PaymentClientConfigManage = PaymentClientPermissions.ConfigManage;
+    public const string PaymentClientPaymentRead = PaymentClientPermissions.PaymentRead;
+    public const string PaymentClientPaymentCharge = PaymentClientPermissions.PaymentCharge;
+    public const string PaymentClientPaymentRefund = PaymentClientPermissions.PaymentRefund;
+    public const string PaymentClientPaymentLinkRead = PaymentClientPermissions.PaymentLinkRead;
+    public const string PaymentClientPaymentLinkManage = PaymentClientPermissions.PaymentLinkManage;
+    public const string PaymentClientConnectAccountRead = PaymentClientPermissions.ConnectAccountRead;
+    public const string PaymentClientConnectAccountOnboard = PaymentClientPermissions.ConnectAccountOnboard;
+    public const string PaymentClientPayoutRead = PaymentClientPermissions.PayoutRead;
+    public const string PaymentClientPayoutManage = PaymentClientPermissions.PayoutManage;
+    public const string PaymentClientRecurringRead = PaymentClientPermissions.RecurringRead;
+    public const string PaymentClientRecurringManage = PaymentClientPermissions.RecurringManage;
+    public const string PaymentClientAdminCrossTenant = PaymentClientPermissions.AdminCrossTenant;
+
     public sealed record PermissionDefinition(
         Guid Id,
         string Code,
@@ -976,6 +1007,145 @@ public static class PermissionCatalog
             "Ver logs de auditoría de Notification del tenant (reservado, sin controller aún)",
             false
         ),
+        // PaymentApp (ver comentario junto a los const de arriba).
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000103"),
+            PaymentAppSaaSPaymentRead,
+            "payment_app",
+            "Ver los pagos SaaS (suscripción/seats/add-ons) del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000104"),
+            PaymentAppSaaSPaymentRefund,
+            "payment_app",
+            "Reembolsar un pago SaaS del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000105"),
+            PaymentAppProviderCustomerRead,
+            "payment_app",
+            "Ver el método de pago guardado (provider customer) del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000106"),
+            PaymentAppProviderCustomerManage,
+            "payment_app",
+            "Gestionar el método de pago guardado del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000107"),
+            PaymentAppAdminCrossTenant,
+            "payment_app",
+            "Ver pagos SaaS de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        // PaymentClient (ver comentario junto a los const de arriba).
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000108"),
+            PaymentClientConfigRead,
+            "payment_client",
+            "Ver la configuración de cobro (Stripe DirectApiKeys/Connect) del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000109"),
+            PaymentClientConfigManage,
+            "payment_client",
+            "Configurar el modo/credenciales de cobro del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000110"),
+            PaymentClientPaymentRead,
+            "payment_client",
+            "Ver los pagos que el tenant cobró a sus propios clientes",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000111"),
+            PaymentClientPaymentCharge,
+            "payment_client",
+            "Cobrar un pago a un cliente del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000112"),
+            PaymentClientPaymentRefund,
+            "payment_client",
+            "Reembolsar un pago cobrado a un cliente del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000113"),
+            PaymentClientPaymentLinkRead,
+            "payment_client",
+            "Ver los links de pago del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000114"),
+            PaymentClientPaymentLinkManage,
+            "payment_client",
+            "Crear y gestionar links de pago del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000115"),
+            PaymentClientConnectAccountRead,
+            "payment_client",
+            "Ver el estado de la cuenta Stripe Connect del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000116"),
+            PaymentClientConnectAccountOnboard,
+            "payment_client",
+            "Iniciar el onboarding de la cuenta Stripe Connect del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000117"),
+            PaymentClientPayoutRead,
+            "payment_client",
+            "Ver los payouts programados del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000118"),
+            PaymentClientPayoutManage,
+            "payment_client",
+            "Gestionar el calendario de payouts del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000119"),
+            PaymentClientRecurringRead,
+            "payment_client",
+            "Ver los pagos recurrentes configurados del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000120"),
+            PaymentClientRecurringManage,
+            "payment_client",
+            "Crear y gestionar pagos recurrentes del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000121"),
+            PaymentClientAdminCrossTenant,
+            "payment_client",
+            "Ver pagos de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -1076,6 +1246,20 @@ public static class PermissionCatalog
                 // campaign.view/manage (sin controller real todavía, ver PermissionDefinition).
                 NotificationEmailView,
                 NotificationTemplateView,
+                // PaymentApp/PaymentClient: el empleado consulta pagos/config/links/payouts/
+                // recurrentes del propio tenant para atender consultas de clientes — no incluye
+                // refund/charge/manage/onboard (mover dinero o cambiar configuración de cobro es
+                // una acción reservada a TenantAdmin por defecto, mismo criterio que
+                // ConnectorsAccountsWrite/CloudStorageSettingsManage) ni admin.cross_tenant
+                // (PlatformOnly, ni siquiera TenantAdmin lo recibe).
+                PaymentAppSaaSPaymentRead,
+                PaymentAppProviderCustomerRead,
+                PaymentClientConfigRead,
+                PaymentClientPaymentRead,
+                PaymentClientPaymentLinkRead,
+                PaymentClientConnectAccountRead,
+                PaymentClientPayoutRead,
+                PaymentClientRecurringRead,
             ],
             Role.SystemCustomerPortal =>
             [

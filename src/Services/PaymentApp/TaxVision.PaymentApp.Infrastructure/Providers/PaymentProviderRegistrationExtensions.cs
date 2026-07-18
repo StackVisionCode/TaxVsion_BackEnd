@@ -13,7 +13,9 @@ public static class PaymentProviderRegistrationExtensions
 {
     public static IServiceCollection AddPaymentProviders(this IServiceCollection services)
     {
-        var providerTypes = Assembly.GetExecutingAssembly().GetTypes()
+        var providerTypes = Assembly
+            .GetExecutingAssembly()
+            .GetTypes()
             .Where(type => !type.IsAbstract && typeof(IPaymentProvider).IsAssignableFrom(type));
 
         foreach (var providerType in providerTypes)

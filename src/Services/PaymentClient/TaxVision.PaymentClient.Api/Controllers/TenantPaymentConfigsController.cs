@@ -29,12 +29,20 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<TenantPaymentConfigResponse>>(new GetTenantPaymentConfigQuery(tenantId, provider), ct);
+        var result = await bus.InvokeAsync<Result<TenantPaymentConfigResponse>>(
+            new GetTenantPaymentConfigQuery(tenantId, provider),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    public sealed record CreateConfigRequest(PaymentProviderCode ProviderCode, TenantPaymentMode Mode, string PublishableKey, string StatementDescriptor);
+    public sealed record CreateConfigRequest(
+        PaymentProviderCode ProviderCode,
+        TenantPaymentMode Mode,
+        string PublishableKey,
+        string StatementDescriptor
+    );
 
     [HttpPost]
     [HasPermission(PaymentClientPermissions.ConfigManage)]
@@ -45,7 +53,16 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<Guid>>(
-            new CreateTenantPaymentConfigCommand(tenantId, request.ProviderCode, request.Mode, request.PublishableKey, request.StatementDescriptor, userId), ct);
+            new CreateTenantPaymentConfigCommand(
+                tenantId,
+                request.ProviderCode,
+                request.Mode,
+                request.PublishableKey,
+                request.StatementDescriptor,
+                userId
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -57,13 +74,25 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
     [HttpPut("{provider}/secrets")]
     [HasPermission(PaymentClientPermissions.ConfigManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> UpdateSecrets(PaymentProviderCode provider, UpdateSecretsRequest request, CancellationToken ct)
+    public async Task<IActionResult> UpdateSecrets(
+        PaymentProviderCode provider,
+        UpdateSecretsRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new UpdateTenantPaymentConfigSecretsCommand(tenantId, provider, request.SecretKey, request.WebhookSecret, userId), ct);
+            new UpdateTenantPaymentConfigSecretsCommand(
+                tenantId,
+                provider,
+                request.SecretKey,
+                request.WebhookSecret,
+                userId
+            ),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -73,13 +102,19 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
     [HttpPost("{provider}/deactivate")]
     [HasPermission(PaymentClientPermissions.ConfigManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Deactivate(PaymentProviderCode provider, DeactivateConfigRequest request, CancellationToken ct)
+    public async Task<IActionResult> Deactivate(
+        PaymentProviderCode provider,
+        DeactivateConfigRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new DeactivateTenantPaymentConfigCommand(tenantId, provider, request.Reason, userId), ct);
+            new DeactivateTenantPaymentConfigCommand(tenantId, provider, request.Reason, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

@@ -18,7 +18,10 @@ namespace TaxVision.PaymentClient.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddPaymentClientInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddPaymentClientInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration
+    )
     {
         var connectionString =
             configuration.GetConnectionString("Default")
@@ -45,7 +48,8 @@ public static class DependencyInjection
         services.AddSingleton<IStripeConnectGateway, StripeConnectGateway>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379"));
+            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
+        );
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
 
         services.AddSingleton<IPaymentClientMetrics, PaymentClientMetrics>();

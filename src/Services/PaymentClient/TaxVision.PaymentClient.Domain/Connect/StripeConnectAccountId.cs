@@ -15,7 +15,9 @@ public sealed record StripeConnectAccountId
     public static Result<StripeConnectAccountId> Create(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return Result.Failure<StripeConnectAccountId>(new Error("StripeConnectAccountId.Empty", "StripeConnectAccountId is required."));
+            return Result.Failure<StripeConnectAccountId>(
+                new Error("StripeConnectAccountId.Empty", "StripeConnectAccountId is required.")
+            );
 
         return Result.Success(new StripeConnectAccountId(value.Trim()));
     }

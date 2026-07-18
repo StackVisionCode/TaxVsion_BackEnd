@@ -21,5 +21,11 @@ public interface ITenantRegistry
         CancellationToken ct = default
     );
 
-    Task UpdateStatusAsync(Guid tenantId, string status, bool isActive, DateTime nowUtc, CancellationToken ct = default);
+    Task UpdateStatusAsync(
+        Guid tenantId,
+        string status,
+        bool isActive,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    );
 }

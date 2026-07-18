@@ -47,4 +47,5 @@ public sealed record WebhookEventPayload(
     PaymentStatus Status,
     string? FailureCode,
     string? FailureMessage,
-    long? RefundedAmountCents);
+    long? RefundedAmountCents
+);

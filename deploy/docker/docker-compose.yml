@@ -240,7 +240,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
@@ -274,7 +274,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
@@ -290,6 +290,10 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Dominio base para componer subdominios de tenant (oficina1.taxprocore.com).
+      # Explicito en vez de confiar en el default de TenantDomainOptions.cs — mismo
+      # valor que usa Caddy para el certificado wildcard (TAXVISION_BASE_DOMAIN).
+      TenantDomains__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
       # Clave de cifrado de secretos de MFA (AesGcmSecretProtector.cs). Antes caia
       # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
       # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.
@@ -382,7 +386,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -431,7 +435,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
@@ -467,7 +471,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -528,7 +532,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${POSTMASTER_DB_CONNECTION:?Set POSTMASTER_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -569,7 +573,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SCRIBE_DB_CONNECTION:?Set SCRIBE_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -617,7 +621,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -678,7 +682,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -731,7 +735,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -782,7 +786,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
@@ -840,7 +844,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
@@ -880,7 +884,7 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
@@ -948,8 +952,31 @@ services:
       # que falla esa validacion y tumba el arranque, a diferencia de TURN_URL/
       # TURN_STATIC_AUTH_SECRET arriba que son string().optional() (vacio es valido).
       COMMUNICATION_TURN_TTL_SECONDS: ${COMMUNICATION_TURN_TTL_SECONDS:-300}
-      # Temporal (pedido explicito): mismo criterio que Cors__Origins del gateway.
-      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-http://localhost:5173,http://localhost:4200}
+      # app.taxprocore.com = CRM/staff, client.taxprocore.com = portal de clientes;
+      # + localhost para poder seguir probando contra produccion desde un frontend
+      # local (mismo criterio que Cors__Origins del gateway).
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxprocore.com,https://client.taxprocore.com,http://localhost:5173,http://localhost:4200}
+      # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
+      # shortLivedJoinTicket de guests sin cuenta uniendose a un meeting via link
+      # de invitacion (Fase Backend 5) — z.string().min(32) en config.ts, requerido,
+      # el proceso no bootea sin esto. Faltaba en este compose desde esa misma fase.
+      COMMUNICATION_JOIN_TICKET_SECRET: ${COMMUNICATION_JOIN_TICKET_SECRET:?Set COMMUNICATION_JOIN_TICKET_SECRET in .env}
+      # M2M contra Auth/CloudStorage para validar metadata de grabaciones al hacer
+      # attach (Fase Backend 8) — z.string().min(1) en config.ts, requerido, faltaba
+      # en este compose desde esa fase. Reusa DELIBERADAMENTE el mismo client-id/
+      # secret que TranscriptWorker (tal como documenta el comentario en config.ts) —
+      # es el unico client M2M de Communication ya registrado en Auth
+      # (ServiceAuth__Clients__1 en auth-api); un "communication-worker" separado
+      # nunca se registro ahi y hubiera fallado con invalid_client.
+      COMMUNICATION_SERVICE_AUTH_CLIENT_ID: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
+      COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET:?Set COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET in .env}
+      # DNS interno del contenedor — los defaults de config.ts (localhost:5124/:5330)
+      # son de dev local y quedan inalcanzables desde dentro de este contenedor.
+      COMMUNICATION_AUTH_BASE_URL: http://auth-api:8080
+      COMMUNICATION_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      # Portal de clientes — a donde apunta el link corto de invitacion a un
+      # meeting para un guest sin cuenta (Fase Backend 5/9e).
+      COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxprocore.com}
       # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
       # esta apagado salvo que se prenda a proposito; el mesh WebRTC actual usa
       # TURN (arriba) para NAT traversal, no esto. Si en el futuro se activa el
@@ -1097,18 +1124,20 @@ services:
     expose:
       - "8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
-      # Temporal (pedido explicito): permite pegarle a la API de produccion desde
-      # los frontends React/Angular corriendo en localhost durante desarrollo.
-      # Sacar estos 2 origins cuando el frontend tenga su dominio real.
-      Cors__Origins__0: http://localhost:5173
-      Cors__Origins__1: http://localhost:4200
+      # Origins reales de produccion (app = CRM/staff, client = portal de clientes)
+      # + localhost para poder seguir probando contra la API de produccion desde
+      # un frontend corrido local durante desarrollo (pedido explicito).
+      Cors__Origins__0: https://app.taxprocore.com
+      Cors__Origins__1: https://client.taxprocore.com
+      Cors__Origins__2: http://localhost:5173
+      Cors__Origins__3: http://localhost:4200
       ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
       ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
       ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/

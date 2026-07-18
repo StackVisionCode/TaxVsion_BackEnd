@@ -17,8 +17,12 @@ public static class StripeCapabilities
         SupportsWebhookSignatureVerification = true,
         SupportedMethods = new HashSet<PaymentMethodKind>
         {
-            PaymentMethodKind.Card, PaymentMethodKind.ApplePay, PaymentMethodKind.GooglePay,
-            PaymentMethodKind.AchDebit, PaymentMethodKind.SepaDebit, PaymentMethodKind.Bnpl,
+            PaymentMethodKind.Card,
+            PaymentMethodKind.ApplePay,
+            PaymentMethodKind.GooglePay,
+            PaymentMethodKind.AchDebit,
+            PaymentMethodKind.SepaDebit,
+            PaymentMethodKind.Bnpl,
         },
         SupportsPartialRefund = true,
         Supports3DSecure = true,

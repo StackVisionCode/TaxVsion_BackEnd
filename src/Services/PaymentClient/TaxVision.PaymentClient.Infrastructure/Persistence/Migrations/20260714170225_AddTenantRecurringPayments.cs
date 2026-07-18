@@ -18,11 +18,19 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TaxpayerId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ProviderCode = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    PaymentMethodReference = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    PaymentMethodReference = table.Column<string>(
+                        type: "nvarchar(255)",
+                        maxLength: 255,
+                        nullable: false
+                    ),
                     AmountCents = table.Column<long>(type: "bigint", nullable: false),
                     Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                     PurposeKind = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    PurposeExternalReferenceId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    PurposeExternalReferenceId = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: true
+                    ),
                     BillingCycle = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     CustomIntervalDays = table.Column<int>(type: "int", nullable: true),
                     StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -41,12 +49,13 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TenantRecurringPayments", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "RecurringPaymentExecutions",
@@ -60,7 +69,7 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     AmountCents = table.Column<long>(type: "bigint", nullable: false),
                     Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                     Succeeded = table.Column<bool>(type: "bit", nullable: false),
-                    ProviderResponse = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true)
+                    ProviderResponse = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                 },
                 constraints: table =>
                 {
@@ -70,8 +79,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         column: x => x.TenantRecurringPaymentId,
                         principalTable: "TenantRecurringPayments",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "RecurringSchedules",
@@ -87,7 +98,7 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     TenantPaymentId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     ProviderResponse = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     RetryCount = table.Column<int>(type: "int", nullable: false),
-                    NextRetryAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    NextRetryAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -97,56 +108,62 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         column: x => x.TenantRecurringPaymentId,
                         principalTable: "TenantRecurringPayments",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_RecurringPaymentExecutions_RecurringScheduleId",
                 table: "RecurringPaymentExecutions",
-                column: "RecurringScheduleId");
+                column: "RecurringScheduleId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_RecurringPaymentExecutions_TenantRecurringPaymentId",
                 table: "RecurringPaymentExecutions",
-                column: "TenantRecurringPaymentId");
+                column: "TenantRecurringPaymentId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_RecurringSchedules_Status_NextRetryAtUtc",
                 table: "RecurringSchedules",
-                columns: new[] { "Status", "NextRetryAtUtc" });
+                columns: new[] { "Status", "NextRetryAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_RecurringSchedules_Status_ScheduledDate",
                 table: "RecurringSchedules",
-                columns: new[] { "Status", "ScheduledDate" });
+                columns: new[] { "Status", "ScheduledDate" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_RecurringSchedules_TenantRecurringPaymentId",
                 table: "RecurringSchedules",
-                column: "TenantRecurringPaymentId");
+                column: "TenantRecurringPaymentId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantRecurringPayments_TenantId_Status",
                 table: "TenantRecurringPayments",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TenantRecurringPayments_TenantId_TaxpayerId",
                 table: "TenantRecurringPayments",
-                columns: new[] { "TenantId", "TaxpayerId" });
+                columns: new[] { "TenantId", "TaxpayerId" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "RecurringPaymentExecutions");
+            migrationBuilder.DropTable(name: "RecurringPaymentExecutions");
 
-            migrationBuilder.DropTable(
-                name: "RecurringSchedules");
+            migrationBuilder.DropTable(name: "RecurringSchedules");
 
-            migrationBuilder.DropTable(
-                name: "TenantRecurringPayments");
+            migrationBuilder.DropTable(name: "TenantRecurringPayments");
         }
     }
 }

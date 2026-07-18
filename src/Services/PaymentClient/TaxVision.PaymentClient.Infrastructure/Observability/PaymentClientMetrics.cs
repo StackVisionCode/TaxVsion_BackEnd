@@ -31,7 +31,9 @@ public sealed class PaymentClientMetrics : IPaymentClientMetrics, IDisposable
         _gmvCents = _meter.CreateCounter<long>("paymentclient.tenant_payments.gmv_cents");
         _paymentCountTotal = _meter.CreateCounter<long>("paymentclient.tenant_payments.count_total");
         _platformFeeCentsTotal = _meter.CreateCounter<long>("paymentclient.platform_fee_cents_total");
-        _connectOnboardingCompletedTotal = _meter.CreateCounter<long>("paymentclient.connect.onboarding_completed_total");
+        _connectOnboardingCompletedTotal = _meter.CreateCounter<long>(
+            "paymentclient.connect.onboarding_completed_total"
+        );
         _paymentLinksCreatedTotal = _meter.CreateCounter<long>("paymentclient.payment_links.created_total");
         _paymentLinksUsedTotal = _meter.CreateCounter<long>("paymentclient.payment_links.used_total");
         _refundTotal = _meter.CreateCounter<long>("paymentclient.refund_total");
@@ -55,11 +57,14 @@ public sealed class PaymentClientMetrics : IPaymentClientMetrics, IDisposable
 
     public void RecordPaymentLinkUsed() => _paymentLinksUsedTotal.Add(1);
 
-    public void RecordRefund(string provider) => _refundTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+    public void RecordRefund(string provider) =>
+        _refundTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
-    public void RecordWebhookReceived(string provider) => _webhookReceivedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+    public void RecordWebhookReceived(string provider) =>
+        _webhookReceivedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
-    public void RecordWebhookDuplicate(string provider) => _webhookDuplicateTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
+    public void RecordWebhookDuplicate(string provider) =>
+        _webhookDuplicateTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));
 
     public void RecordWebhookSignatureFailed(string provider) =>
         _webhookSignatureFailedTotal.Add(1, new KeyValuePair<string, object?>("provider", provider));

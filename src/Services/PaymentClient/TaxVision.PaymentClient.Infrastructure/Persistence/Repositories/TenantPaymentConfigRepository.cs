@@ -7,15 +7,26 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 
 public sealed class TenantPaymentConfigRepository(PaymentClientDbContext db) : ITenantPaymentConfigRepository
 {
-    public Task<TenantPaymentConfig?> GetByTenantAndProviderAsync(Guid tenantId, PaymentProviderCode code, CancellationToken ct = default) =>
+    public Task<TenantPaymentConfig?> GetByTenantAndProviderAsync(
+        Guid tenantId,
+        PaymentProviderCode code,
+        CancellationToken ct = default
+    ) =>
         WithEndpoints(db.TenantPaymentConfigs)
             .FirstOrDefaultAsync(config => config.TenantId == tenantId && config.ProviderCode == code, ct);
 
-    public Task<TenantPaymentConfig?> GetByIdAsync(Guid tenantPaymentConfigId, Guid tenantId, CancellationToken ct = default) =>
+    public Task<TenantPaymentConfig?> GetByIdAsync(
+        Guid tenantPaymentConfigId,
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
         WithEndpoints(db.TenantPaymentConfigs)
             .FirstOrDefaultAsync(config => config.Id == tenantPaymentConfigId && config.TenantId == tenantId, ct);
 
-    public async Task<IReadOnlyList<TenantPaymentConfig>> GetActiveByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<TenantPaymentConfig>> GetActiveByTenantAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
         await WithEndpoints(db.TenantPaymentConfigs)
             .Where(config => config.TenantId == tenantId && config.IsActive)
             .ToListAsync(ct);

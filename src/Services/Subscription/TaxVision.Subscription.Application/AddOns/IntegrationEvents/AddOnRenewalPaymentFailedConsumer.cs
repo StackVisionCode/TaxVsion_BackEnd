@@ -18,7 +18,9 @@ public static class AddOnRenewalPaymentFailedConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -33,15 +35,29 @@ public static class AddOnRenewalPaymentFailedConsumer
             if (renewal is null)
             {
                 logger.LogWarning(
-                    "AddOnRenewalPaymentFailed for {TenantAddOnId} has no matching renewal for key {Key}.", evt.TenantAddOnId, evt.IdempotencyKey);
+                    "AddOnRenewalPaymentFailed for {TenantAddOnId} has no matching renewal for key {Key}.",
+                    evt.TenantAddOnId,
+                    evt.IdempotencyKey
+                );
                 return;
             }
 
             var result = addOn.FailRenewal(
-                renewal.Id, evt.FailureCode, evt.FailureReason, evt.WillRetry, evt.NextRetryAtUtc, actorUserId: Guid.Empty, DateTime.UtcNow);
+                renewal.Id,
+                evt.FailureCode,
+                evt.FailureReason,
+                evt.WillRetry,
+                evt.NextRetryAtUtc,
+                actorUserId: Guid.Empty,
+                DateTime.UtcNow
+            );
             if (result.IsFailure)
             {
-                logger.LogWarning("Could not record failed renewal for add-on {TenantAddOnId}: {Code}.", addOn.Id, result.Error.Code);
+                logger.LogWarning(
+                    "Could not record failed renewal for add-on {TenantAddOnId}: {Code}.",
+                    addOn.Id,
+                    result.Error.Code
+                );
                 return;
             }
 

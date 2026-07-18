@@ -22,11 +22,13 @@ public sealed class PendingDowngrade : BaseEntity
     public Guid ToPlanId { get; private set; }
     public Guid ToPlanVersionId { get; private set; }
     public string ToPlanCode { get; private set; } = default!;
+
     /// <summary>Null = mantener el ciclo de facturación actual, no se pidió cambiarlo.</summary>
     public BillingCycle? ToBillingCycle { get; private set; }
     public PendingDowngradeStatus Status { get; private set; }
     public Guid RequestedByUserId { get; private set; }
     public DateTime RequestedAtUtc { get; private set; }
+
     /// <summary>Fin del período vigente al momento de la solicitud — cuándo se aplicará.</summary>
     public DateTime EffectiveAtUtc { get; private set; }
     public DateTime? AppliedAtUtc { get; private set; }
@@ -46,33 +48,42 @@ public sealed class PendingDowngrade : BaseEntity
         BillingCycle? toBillingCycle,
         Guid requestedByUserId,
         DateTime effectiveAtUtc,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (tenantSubscriptionId == Guid.Empty)
-            return Result.Failure<PendingDowngrade>(new Error("PendingDowngrade.InvalidSubscription", "TenantSubscriptionId is required."));
+            return Result.Failure<PendingDowngrade>(
+                new Error("PendingDowngrade.InvalidSubscription", "TenantSubscriptionId is required.")
+            );
 
         if (tenantId == Guid.Empty)
-            return Result.Failure<PendingDowngrade>(new Error("PendingDowngrade.InvalidTenant", "TenantId is required."));
+            return Result.Failure<PendingDowngrade>(
+                new Error("PendingDowngrade.InvalidTenant", "TenantId is required.")
+            );
 
         if (fromPlanId == toPlanId && fromPlanVersionId == toPlanVersionId && toBillingCycle is null)
-            return Result.Failure<PendingDowngrade>(new Error("PendingDowngrade.SamePlan", "Target plan is the same as the current plan."));
+            return Result.Failure<PendingDowngrade>(
+                new Error("PendingDowngrade.SamePlan", "Target plan is the same as the current plan.")
+            );
 
-        return Result.Success(new PendingDowngrade
-        {
-            TenantSubscriptionId = tenantSubscriptionId,
-            TenantId = tenantId,
-            FromPlanId = fromPlanId,
-            FromPlanVersionId = fromPlanVersionId,
-            FromPlanCode = fromPlanCode,
-            ToPlanId = toPlanId,
-            ToPlanVersionId = toPlanVersionId,
-            ToPlanCode = toPlanCode,
-            ToBillingCycle = toBillingCycle,
-            Status = PendingDowngradeStatus.Scheduled,
-            RequestedByUserId = requestedByUserId,
-            RequestedAtUtc = nowUtc,
-            EffectiveAtUtc = effectiveAtUtc,
-        });
+        return Result.Success(
+            new PendingDowngrade
+            {
+                TenantSubscriptionId = tenantSubscriptionId,
+                TenantId = tenantId,
+                FromPlanId = fromPlanId,
+                FromPlanVersionId = fromPlanVersionId,
+                FromPlanCode = fromPlanCode,
+                ToPlanId = toPlanId,
+                ToPlanVersionId = toPlanVersionId,
+                ToPlanCode = toPlanCode,
+                ToBillingCycle = toBillingCycle,
+                Status = PendingDowngradeStatus.Scheduled,
+                RequestedByUserId = requestedByUserId,
+                RequestedAtUtc = nowUtc,
+                EffectiveAtUtc = effectiveAtUtc,
+            }
+        );
     }
 
     public Result MarkApplied(DateTime nowUtc)

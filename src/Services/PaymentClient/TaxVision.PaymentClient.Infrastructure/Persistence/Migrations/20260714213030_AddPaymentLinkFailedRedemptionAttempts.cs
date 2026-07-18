@@ -15,15 +15,14 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 table: "PaymentLinks",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "FailedRedemptionAttempts",
-                table: "PaymentLinks");
+            migrationBuilder.DropColumn(name: "FailedRedemptionAttempts", table: "PaymentLinks");
         }
     }
 }

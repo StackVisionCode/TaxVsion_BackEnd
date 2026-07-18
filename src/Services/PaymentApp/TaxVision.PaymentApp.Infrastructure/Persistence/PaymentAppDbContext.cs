@@ -11,9 +11,7 @@ using TaxVision.PaymentApp.Domain.Webhooks;
 
 namespace TaxVision.PaymentApp.Infrastructure.Persistence;
 
-public sealed class PaymentAppDbContext(DbContextOptions<PaymentAppDbContext> options)
-    : DbContext(options),
-        IUnitOfWork
+public sealed class PaymentAppDbContext(DbContextOptions<PaymentAppDbContext> options) : DbContext(options), IUnitOfWork
 {
     public DbSet<SaaSPayment> SaaSPayments => Set<SaaSPayment>();
     public DbSet<Tenant> Tenants => Set<Tenant>();

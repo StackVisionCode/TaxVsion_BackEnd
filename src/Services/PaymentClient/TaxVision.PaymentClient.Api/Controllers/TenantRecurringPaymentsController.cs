@@ -35,7 +35,8 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
         DateTime? EndDate,
         int? MaxExecutions,
         long? PlatformFeeAmountCents,
-        string? PlatformFeeReference);
+        string? PlatformFeeReference
+    );
 
     [HttpPost]
     [HasPermission(PaymentClientPermissions.RecurringManage)]
@@ -47,11 +48,25 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
 
         var result = await bus.InvokeAsync<Result<Guid>>(
             new CreateTenantRecurringPaymentCommand(
-                tenantId, request.TaxpayerId, request.ProviderCode, request.PaymentMethodReference,
-                request.AmountCents, request.Currency, request.PurposeKind, request.PurposeExternalReferenceId,
-                request.BillingCycle, request.CustomIntervalDays, request.StartDate, request.EndDate,
-                request.MaxExecutions, request.PlatformFeeAmountCents, request.PlatformFeeReference, userId),
-            ct);
+                tenantId,
+                request.TaxpayerId,
+                request.ProviderCode,
+                request.PaymentMethodReference,
+                request.AmountCents,
+                request.Currency,
+                request.PurposeKind,
+                request.PurposeExternalReferenceId,
+                request.BillingCycle,
+                request.CustomIntervalDays,
+                request.StartDate,
+                request.EndDate,
+                request.MaxExecutions,
+                request.PlatformFeeAmountCents,
+                request.PlatformFeeReference,
+                userId
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -60,13 +75,26 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     [HasPermission(PaymentClientPermissions.RecurringRead)]
     [ProducesResponseType<IReadOnlyList<TenantRecurringPaymentResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
-        [FromQuery] Guid? taxpayerId, [FromQuery] RecurringStatus? status, [FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct)
+        [FromQuery] Guid? taxpayerId,
+        [FromQuery] RecurringStatus? status,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<IReadOnlyList<TenantRecurringPaymentResponse>>>(
-            new SearchTenantRecurringPaymentsQuery(tenantId, taxpayerId, status, page <= 0 ? 1 : page, pageSize <= 0 ? 20 : pageSize), ct);
+            new SearchTenantRecurringPaymentsQuery(
+                tenantId,
+                taxpayerId,
+                status,
+                page <= 0 ? 1 : page,
+                pageSize <= 0 ? 20 : pageSize
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -81,7 +109,9 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<TenantRecurringPaymentResponse>>(
-            new GetTenantRecurringPaymentByIdQuery(tenantId, tenantRecurringPaymentId), ct);
+            new GetTenantRecurringPaymentByIdQuery(tenantId, tenantRecurringPaymentId),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -94,7 +124,10 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new PauseTenantRecurringPaymentCommand(tenantId, tenantRecurringPaymentId, userId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new PauseTenantRecurringPaymentCommand(tenantId, tenantRecurringPaymentId, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -107,7 +140,10 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new ResumeTenantRecurringPaymentCommand(tenantId, tenantRecurringPaymentId, userId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new ResumeTenantRecurringPaymentCommand(tenantId, tenantRecurringPaymentId, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -117,12 +153,19 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     [HttpPost("{tenantRecurringPaymentId:guid}/cancel")]
     [HasPermission(PaymentClientPermissions.RecurringManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Cancel(Guid tenantRecurringPaymentId, CancelRecurringPaymentRequest request, CancellationToken ct)
+    public async Task<IActionResult> Cancel(
+        Guid tenantRecurringPaymentId,
+        CancelRecurringPaymentRequest request,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new CancelTenantRecurringPaymentCommand(tenantId, tenantRecurringPaymentId, request.Reason, userId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new CancelTenantRecurringPaymentCommand(tenantId, tenantRecurringPaymentId, request.Reason, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

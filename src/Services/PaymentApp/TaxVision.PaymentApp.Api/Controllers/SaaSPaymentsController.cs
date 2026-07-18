@@ -43,7 +43,9 @@ public sealed class SaaSPaymentsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new RefundSaaSPaymentCommand(tenantId, id, request.RefundAmountCents, request.Reason, userId), ct);
+            new RefundSaaSPaymentCommand(tenantId, id, request.RefundAmountCents, request.Reason, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

@@ -19,7 +19,8 @@ public static class ExpirePaymentLinkHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var link = await links.GetByIdAsync(command.PaymentLinkId, command.TenantId, ct);
         if (link is null)
@@ -31,18 +32,28 @@ public static class ExpirePaymentLinkHandler
             return expireResult;
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(PaymentLink), link.Id, PaymentAuditAction.PaymentLinkExpired,
-            actorUserId: Guid.Empty, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(PaymentLink),
+            link.Id,
+            PaymentAuditAction.PaymentLinkExpired,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
             before: (object?)null,
             after: (object?)null,
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
-        await bus.PublishAsync(new PaymentLinkExpiredIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            PaymentLinkId = link.Id,
-            CorrelationId = correlation.CorrelationId,
-        });
+        await bus.PublishAsync(
+            new PaymentLinkExpiredIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                PaymentLinkId = link.Id,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

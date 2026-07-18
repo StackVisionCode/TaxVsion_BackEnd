@@ -14,8 +14,10 @@ namespace TaxVision.PaymentApp.Infrastructure.Scheduling;
 /// nunca se repite en corridas siguientes.
 /// </summary>
 public sealed class ExpiringPaymentMethodsJob(
-    IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<ExpiringPaymentMethodsJob> logger)
-    : PeriodicPaymentAppJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(24), TimeSpan.FromMinutes(30))
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<ExpiringPaymentMethodsJob> logger
+) : PeriodicPaymentAppJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(24), TimeSpan.FromMinutes(30))
 {
     private const int BatchSize = 200;
     private static readonly TimeSpan NoticeWindow = TimeSpan.FromDays(30);
@@ -40,17 +42,19 @@ public sealed class ExpiringPaymentMethodsJob(
                 if (method.IsDetached || method.ExpiryNoticeSentAtUtc is not null || !method.ExpiresBefore(cutoffUtc))
                     continue;
 
-                await bus.PublishAsync(new SaaSPaymentMethodExpiringSoonIntegrationEvent
-                {
-                    TenantId = customer.TenantId,
-                    TenantProviderCustomerId = customer.Id,
-                    PaymentMethodId = method.Id,
-                    Brand = method.Brand,
-                    Last4 = method.Last4,
-                    ExpMonth = method.ExpMonth,
-                    ExpYear = method.ExpYear,
-                    IsDefault = method.IsDefault,
-                });
+                await bus.PublishAsync(
+                    new SaaSPaymentMethodExpiringSoonIntegrationEvent
+                    {
+                        TenantId = customer.TenantId,
+                        TenantProviderCustomerId = customer.Id,
+                        PaymentMethodId = method.Id,
+                        Brand = method.Brand,
+                        Last4 = method.Last4,
+                        ExpMonth = method.ExpMonth,
+                        ExpYear = method.ExpYear,
+                        IsDefault = method.IsDefault,
+                    }
+                );
 
                 method.MarkExpiryNoticeSent(DateTime.UtcNow);
                 noticeCount++;

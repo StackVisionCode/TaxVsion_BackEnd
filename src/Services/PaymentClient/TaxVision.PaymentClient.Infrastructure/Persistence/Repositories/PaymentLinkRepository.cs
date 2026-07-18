@@ -25,7 +25,12 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
         db.PaymentLinks.FirstOrDefaultAsync(link => link.RelatedTenantPaymentId == tenantPaymentId, ct);
 
     public async Task<IReadOnlyList<PaymentLink>> SearchByTenantAsync(
-        Guid tenantId, PaymentLinkStatus? status, int page, int pageSize, CancellationToken ct = default)
+        Guid tenantId,
+        PaymentLinkStatus? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
         var query = db.PaymentLinks.AsNoTracking().Where(link => link.TenantId == tenantId);
 
@@ -39,9 +44,13 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
             .ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<PaymentLink>> GetActiveExpiredBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default) =>
-        await db.PaymentLinks
-            .Where(link => link.Status == PaymentLinkStatus.Active && link.ExpiresAtUtc <= cutoffUtc)
+    public async Task<IReadOnlyList<PaymentLink>> GetActiveExpiredBeforeAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .PaymentLinks.Where(link => link.Status == PaymentLinkStatus.Active && link.ExpiresAtUtc <= cutoffUtc)
             .OrderBy(link => link.ExpiresAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);

@@ -18,17 +18,31 @@ public sealed class TenantRecurringPaymentConfiguration : IEntityTypeConfigurati
         builder.Property(plan => plan.ProviderCode).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(plan => plan.PaymentMethodReference).HasMaxLength(255).IsRequired();
 
-        builder.OwnsOne(plan => plan.Amount, money =>
-        {
-            money.Property(m => m.AmountCents).HasColumnName("AmountCents").IsRequired();
-            money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
-        });
+        builder.OwnsOne(
+            plan => plan.Amount,
+            money =>
+            {
+                money.Property(m => m.AmountCents).HasColumnName("AmountCents").IsRequired();
+                money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
+            }
+        );
 
-        builder.OwnsOne(plan => plan.Purpose, purpose =>
-        {
-            purpose.Property(p => p.Kind).HasColumnName("PurposeKind").HasConversion<string>().HasMaxLength(30).IsRequired();
-            purpose.Property(p => p.ExternalReferenceId).HasColumnName("PurposeExternalReferenceId").HasMaxLength(200);
-        });
+        builder.OwnsOne(
+            plan => plan.Purpose,
+            purpose =>
+            {
+                purpose
+                    .Property(p => p.Kind)
+                    .HasColumnName("PurposeKind")
+                    .HasConversion<string>()
+                    .HasMaxLength(30)
+                    .IsRequired();
+                purpose
+                    .Property(p => p.ExternalReferenceId)
+                    .HasColumnName("PurposeExternalReferenceId")
+                    .HasMaxLength(200);
+            }
+        );
 
         builder.Property(plan => plan.BillingCycle).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(plan => plan.CustomIntervalDays);
@@ -42,21 +56,27 @@ public sealed class TenantRecurringPaymentConfiguration : IEntityTypeConfigurati
 
         var backoffsConverter = new ValueConverter<IReadOnlyList<TimeSpan>, string>(
             backoffs => string.Join(',', backoffs.Select(b => b.Ticks)),
-            csv => ParseBackoffs(csv));
+            csv => ParseBackoffs(csv)
+        );
         var backoffsComparer = new ValueComparer<IReadOnlyList<TimeSpan>>(
             (a, b) => (a ?? new List<TimeSpan>()).SequenceEqual(b ?? new List<TimeSpan>()),
             list => list.Aggregate(0, (hash, backoff) => HashCode.Combine(hash, backoff)),
-            list => list.ToList());
+            list => list.ToList()
+        );
 
-        builder.OwnsOne(plan => plan.RetryPolicy, retryPolicy =>
-        {
-            retryPolicy.Property(r => r.MaxFailures).HasColumnName("RetryMaxFailures").IsRequired();
-            retryPolicy.Property(r => r.Backoffs)
-                .HasColumnName("RetryBackoffs")
-                .HasConversion(backoffsConverter)
-                .HasMaxLength(500)
-                .Metadata.SetValueComparer(backoffsComparer);
-        });
+        builder.OwnsOne(
+            plan => plan.RetryPolicy,
+            retryPolicy =>
+            {
+                retryPolicy.Property(r => r.MaxFailures).HasColumnName("RetryMaxFailures").IsRequired();
+                retryPolicy
+                    .Property(r => r.Backoffs)
+                    .HasColumnName("RetryBackoffs")
+                    .HasConversion(backoffsConverter)
+                    .HasMaxLength(500)
+                    .Metadata.SetValueComparer(backoffsComparer);
+            }
+        );
 
         builder.Property(plan => plan.PlatformFeeAmountCents);
         builder.Property(plan => plan.PlatformFeeReference).HasMaxLength(200);
@@ -67,19 +87,23 @@ public sealed class TenantRecurringPaymentConfiguration : IEntityTypeConfigurati
         builder.Property(plan => plan.UpdatedBy).IsRequired();
         builder.Property(plan => plan.RowVersion).IsRowVersion();
 
-        builder.HasIndex(plan => new { plan.TenantId, plan.Status })
+        builder
+            .HasIndex(plan => new { plan.TenantId, plan.Status })
             .HasDatabaseName("IX_TenantRecurringPayments_TenantId_Status");
 
-        builder.HasIndex(plan => new { plan.TenantId, plan.TaxpayerId })
+        builder
+            .HasIndex(plan => new { plan.TenantId, plan.TaxpayerId })
             .HasDatabaseName("IX_TenantRecurringPayments_TenantId_TaxpayerId");
 
-        builder.HasMany(plan => plan.Schedules)
+        builder
+            .HasMany(plan => plan.Schedules)
             .WithOne()
             .HasForeignKey(schedule => schedule.TenantRecurringPaymentId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(plan => plan.Schedules).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasMany(plan => plan.Executions)
+        builder
+            .HasMany(plan => plan.Executions)
             .WithOne()
             .HasForeignKey(execution => execution.TenantRecurringPaymentId)
             .OnDelete(DeleteBehavior.Cascade);
@@ -87,5 +111,7 @@ public sealed class TenantRecurringPaymentConfiguration : IEntityTypeConfigurati
     }
 
     private static List<TimeSpan> ParseBackoffs(string csv) =>
-        string.IsNullOrEmpty(csv) ? [] : csv.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => new TimeSpan(long.Parse(t))).ToList();
+        string.IsNullOrEmpty(csv)
+            ? []
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => new TimeSpan(long.Parse(t))).ToList();
 }

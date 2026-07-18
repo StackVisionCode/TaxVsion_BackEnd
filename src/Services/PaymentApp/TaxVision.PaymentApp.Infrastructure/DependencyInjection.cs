@@ -18,7 +18,10 @@ namespace TaxVision.PaymentApp.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddPaymentAppInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddPaymentAppInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration
+    )
     {
         var connectionString =
             configuration.GetConnectionString("Default")
@@ -43,7 +46,8 @@ public static class DependencyInjection
         services.AddScoped<IProviderWebhookSecrets, ProviderWebhookSecrets>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379"));
+            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
+        );
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
 
         services.AddSingleton<IPaymentAppMetrics, PaymentAppMetrics>();

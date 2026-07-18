@@ -19,7 +19,14 @@ public sealed class RecurringPaymentExecution : BaseEntity
     private RecurringPaymentExecution() { }
 
     public static RecurringPaymentExecution Record(
-        Guid tenantRecurringPaymentId, Guid recurringScheduleId, Guid tenantId, Money amountCharged, bool succeeded, string? providerResponse, DateTime executedAtUtc) =>
+        Guid tenantRecurringPaymentId,
+        Guid recurringScheduleId,
+        Guid tenantId,
+        Money amountCharged,
+        bool succeeded,
+        string? providerResponse,
+        DateTime executedAtUtc
+    ) =>
         new()
         {
             TenantRecurringPaymentId = tenantRecurringPaymentId,

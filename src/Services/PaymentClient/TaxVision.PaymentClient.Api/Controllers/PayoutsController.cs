@@ -44,7 +44,9 @@ public sealed class PayoutsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<Guid>>(
-            new UpsertPayoutScheduleCommand(tenantId, request.Frequency, request.Anchor, request.Currency, userId), ct);
+            new UpsertPayoutScheduleCommand(tenantId, request.Frequency, request.Anchor, request.Currency, userId),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

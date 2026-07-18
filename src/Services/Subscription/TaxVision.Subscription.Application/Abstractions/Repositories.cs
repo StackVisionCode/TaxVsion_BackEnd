@@ -21,12 +21,37 @@ public interface ISubscriptionRepository
 
     /// <summary>Active subscriptions whose NextRenewalAtUtc has passed. Batch job query —
     /// crosses tenants intentionally (only the scheduler calls this, never a tenant-scoped handler).</summary>
-    Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
-    Task<IReadOnlyList<TenantSubscription>> GetExpiredTrialsAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
-    Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
-    Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default);
-    Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default);
-    Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(DateTime fromUtc, DateTime toUtc, int batchSize, CancellationToken ct = default);
+    Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<TenantSubscription>> GetExpiredTrialsAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<TenantSubscription>> GetPastGracePeriodAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<TenantSubscription>> GetSuspendedBeforeAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<TenantSubscription>> GetCancelledPastPeriodEndAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<TenantSubscription>> GetRenewingBetweenAsync(
+        DateTime fromUtc,
+        DateTime toUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
 
     /// <summary>Admin cross-tenant query — only PlatformAdmin endpoints call this.</summary>
     Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(

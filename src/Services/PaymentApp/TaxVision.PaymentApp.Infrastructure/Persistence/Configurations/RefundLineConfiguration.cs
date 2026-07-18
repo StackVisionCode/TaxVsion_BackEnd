@@ -19,11 +19,14 @@ public sealed class RefundLineConfiguration : IEntityTypeConfiguration<RefundLin
         builder.Property(refund => refund.SaaSPaymentId).IsRequired();
         builder.Property(refund => refund.TenantId).IsRequired();
 
-        builder.OwnsOne(refund => refund.Amount, money =>
-        {
-            money.Property(m => m.AmountCents).HasColumnName("AmountCents").IsRequired();
-            money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
-        });
+        builder.OwnsOne(
+            refund => refund.Amount,
+            money =>
+            {
+                money.Property(m => m.AmountCents).HasColumnName("AmountCents").IsRequired();
+                money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
+            }
+        );
 
         builder.Property(refund => refund.Reason).HasMaxLength(1000).IsRequired();
         builder.Property(refund => refund.ExternalRefundReference).HasMaxLength(200);

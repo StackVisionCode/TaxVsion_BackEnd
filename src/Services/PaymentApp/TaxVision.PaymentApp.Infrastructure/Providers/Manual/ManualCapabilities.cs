@@ -15,7 +15,12 @@ public static class ManualCapabilities
         SupportsHostedCheckoutRedirect = false,
         SupportsInlineElements = false,
         SupportsWebhookSignatureVerification = false,
-        SupportedMethods = new HashSet<PaymentMethodKind> { PaymentMethodKind.Manual, PaymentMethodKind.Bank, PaymentMethodKind.Cash },
+        SupportedMethods = new HashSet<PaymentMethodKind>
+        {
+            PaymentMethodKind.Manual,
+            PaymentMethodKind.Bank,
+            PaymentMethodKind.Cash,
+        },
         SupportsPartialRefund = true,
         Supports3DSecure = false,
         SupportsSavedPaymentMethods = false,

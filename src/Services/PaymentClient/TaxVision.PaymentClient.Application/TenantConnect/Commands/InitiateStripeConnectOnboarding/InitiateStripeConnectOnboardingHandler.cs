@@ -25,10 +25,15 @@ public static class InitiateStripeConnectOnboardingHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var nowUtc = DateTime.UtcNow;
-        var account = await connectAccounts.GetByTenantAndProviderAsync(command.TenantId, PaymentProviderCode.Stripe, ct);
+        var account = await connectAccounts.GetByTenantAndProviderAsync(
+            command.TenantId,
+            PaymentProviderCode.Stripe,
+            ct
+        );
         var isNewAccount = account is null;
 
         if (account is null)
@@ -42,7 +47,12 @@ public static class InitiateStripeConnectOnboardingHandler
                 return Result.Failure<InitiateStripeConnectOnboardingResponse>(stripeAccountIdResult.Error);
 
             var accountResult = TenantConnectAccount.Create(
-                command.TenantId, PaymentProviderCode.Stripe, command.Type, stripeAccountIdResult.Value, nowUtc);
+                command.TenantId,
+                PaymentProviderCode.Stripe,
+                command.Type,
+                stripeAccountIdResult.Value,
+                nowUtc
+            );
             if (accountResult.IsFailure)
                 return Result.Failure<InitiateStripeConnectOnboardingResponse>(accountResult.Error);
 
@@ -50,7 +60,12 @@ public static class InitiateStripeConnectOnboardingHandler
             await connectAccounts.AddAsync(account, ct);
         }
 
-        var linkResult = await gateway.CreateOnboardingLinkAsync(account.StripeConnectAccountId.Value, command.RefreshUrl, command.ReturnUrl, ct);
+        var linkResult = await gateway.CreateOnboardingLinkAsync(
+            account.StripeConnectAccountId.Value,
+            command.RefreshUrl,
+            command.ReturnUrl,
+            ct
+        );
         if (linkResult.IsFailure)
             return Result.Failure<InitiateStripeConnectOnboardingResponse>(linkResult.Error);
 
@@ -59,12 +74,21 @@ public static class InitiateStripeConnectOnboardingHandler
             return Result.Failure<InitiateStripeConnectOnboardingResponse>(onboardResult.Error);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(TenantConnectAccount), account.Id,
-            isNewAccount ? PaymentAuditAction.TenantConnectAccountCreated : PaymentAuditAction.TenantConnectAccountOnboardingInitiated,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(TenantConnectAccount),
+            account.Id,
+            isNewAccount
+                ? PaymentAuditAction.TenantConnectAccountCreated
+                : PaymentAuditAction.TenantConnectAccountOnboardingInitiated,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
             after: new { account.StripeConnectAccountId.Value, command.Type },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

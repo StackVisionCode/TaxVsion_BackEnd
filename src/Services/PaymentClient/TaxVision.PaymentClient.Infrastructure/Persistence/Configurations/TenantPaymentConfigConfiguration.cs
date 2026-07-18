@@ -17,21 +17,26 @@ public sealed class TenantPaymentConfigConfiguration : IEntityTypeConfiguration<
         builder.Property(config => config.Mode).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(config => config.PublishableKey).HasMaxLength(500).IsRequired();
 
-        builder.Property(config => config.SecretKeyEncrypted)
+        builder
+            .Property(config => config.SecretKeyEncrypted)
             .HasConversion(
                 secret => secret == null ? null : secret.CipherText,
-                value => value == null ? null : EncryptedSecret.Create(value).Value)
+                value => value == null ? null : EncryptedSecret.Create(value).Value
+            )
             .HasColumnName("SecretKeyEncrypted")
             .HasColumnType("nvarchar(max)");
 
-        builder.Property(config => config.WebhookSecretEncrypted)
+        builder
+            .Property(config => config.WebhookSecretEncrypted)
             .HasConversion(
                 secret => secret == null ? null : secret.CipherText,
-                value => value == null ? null : EncryptedSecret.Create(value).Value)
+                value => value == null ? null : EncryptedSecret.Create(value).Value
+            )
             .HasColumnName("WebhookSecretEncrypted")
             .HasColumnType("nvarchar(max)");
 
-        builder.Property(config => config.StatementDescriptor)
+        builder
+            .Property(config => config.StatementDescriptor)
             .HasConversion(descriptor => descriptor.Value, value => StatementDescriptor.Create(value).Value)
             .HasColumnName("StatementDescriptor")
             .HasMaxLength(22)
@@ -39,11 +44,13 @@ public sealed class TenantPaymentConfigConfiguration : IEntityTypeConfiguration<
 
         builder.Property(config => config.IsActive).IsRequired();
 
-        builder.HasIndex(config => new { config.TenantId, config.ProviderCode })
+        builder
+            .HasIndex(config => new { config.TenantId, config.ProviderCode })
             .IsUnique()
             .HasDatabaseName("UX_TenantPaymentConfigs_TenantId_ProviderCode");
 
-        builder.HasMany(config => config.WebhookEndpoints)
+        builder
+            .HasMany(config => config.WebhookEndpoints)
             .WithOne()
             .HasForeignKey(endpoint => endpoint.TenantPaymentConfigId)
             .OnDelete(DeleteBehavior.Cascade);

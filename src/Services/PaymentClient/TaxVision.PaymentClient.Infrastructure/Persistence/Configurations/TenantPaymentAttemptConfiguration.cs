@@ -21,6 +21,8 @@ public sealed class TenantPaymentAttemptConfiguration : IEntityTypeConfiguration
         builder.Property(attempt => attempt.ProviderResponseCode).HasMaxLength(100);
         builder.Property(attempt => attempt.ProviderResponseBody).HasColumnType("nvarchar(max)");
 
-        builder.HasIndex(attempt => attempt.TenantPaymentId).HasDatabaseName("IX_TenantPaymentAttempts_TenantPaymentId");
+        builder
+            .HasIndex(attempt => attempt.TenantPaymentId)
+            .HasDatabaseName("IX_TenantPaymentAttempts_TenantPaymentId");
     }
 }

@@ -34,7 +34,8 @@ public sealed class TenantSavedPaymentMethod : BaseEntity
         int expMonth,
         int expYear,
         bool isDefault,
-        DateTime nowUtc) =>
+        DateTime nowUtc
+    ) =>
         new()
         {
             TenantProviderCustomerId = tenantProviderCustomerId,

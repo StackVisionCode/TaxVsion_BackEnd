@@ -28,4 +28,5 @@ public sealed record SubscriptionSettingsPatch(
     IReadOnlyCollection<int>? NotifyBeforeRenewalDays = null,
     int? NotifyAfterFailedRenewalDays = null,
     AutoRenewCascadeMode? AutoRenewCascadeMode = null,
-    bool? PauseSeatRenewalsWhenBaseSuspended = null);
+    bool? PauseSeatRenewalsWhenBaseSuspended = null
+);

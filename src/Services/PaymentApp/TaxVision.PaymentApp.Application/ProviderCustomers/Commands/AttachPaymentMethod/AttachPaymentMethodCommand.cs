@@ -7,4 +7,9 @@ namespace TaxVision.PaymentApp.Application.ProviderCustomers.Commands.AttachPaym
 /// datos crudos de tarjeta. El backend confirma brand/last4/expiración directo con el
 /// provider, nunca confía en lo que el cliente afirma.</summary>
 public sealed record AttachPaymentMethodCommand(
-    Guid TenantId, PaymentProviderCode Provider, string PaymentMethodReference, bool SetAsDefault, Guid ActorUserId);
+    Guid TenantId,
+    PaymentProviderCode Provider,
+    string PaymentMethodReference,
+    bool SetAsDefault,
+    Guid ActorUserId
+);

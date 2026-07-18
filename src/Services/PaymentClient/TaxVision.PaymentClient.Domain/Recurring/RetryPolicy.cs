@@ -23,10 +23,14 @@ public sealed record RetryPolicy
     public static Result<RetryPolicy> Create(int maxFailures, IReadOnlyList<TimeSpan> backoffs)
     {
         if (maxFailures <= 0)
-            return Result.Failure<RetryPolicy>(new Error("RetryPolicy.InvalidMaxFailures", "MaxFailures must be greater than zero."));
+            return Result.Failure<RetryPolicy>(
+                new Error("RetryPolicy.InvalidMaxFailures", "MaxFailures must be greater than zero.")
+            );
 
         if (backoffs.Count == 0 || backoffs.Any(backoff => backoff <= TimeSpan.Zero))
-            return Result.Failure<RetryPolicy>(new Error("RetryPolicy.InvalidBackoffs", "Backoffs must be a non-empty list of positive durations."));
+            return Result.Failure<RetryPolicy>(
+                new Error("RetryPolicy.InvalidBackoffs", "Backoffs must be a non-empty list of positive durations.")
+            );
 
         return Result.Success(new RetryPolicy(maxFailures, backoffs));
     }

@@ -21,14 +21,19 @@ public static class SubscriptionRenewalPaymentSucceededConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
             var subscription = await subscriptions.GetByTenantIdAsync(evt.TenantId, ct);
             if (subscription is null || subscription.Id != evt.TenantSubscriptionId)
             {
-                logger.LogWarning("SubscriptionRenewalPaymentSucceeded for unknown subscription {TenantSubscriptionId}.", evt.TenantSubscriptionId);
+                logger.LogWarning(
+                    "SubscriptionRenewalPaymentSucceeded for unknown subscription {TenantSubscriptionId}.",
+                    evt.TenantSubscriptionId
+                );
                 return;
             }
 
@@ -37,15 +42,25 @@ public static class SubscriptionRenewalPaymentSucceededConsumer
             {
                 logger.LogWarning(
                     "SubscriptionRenewalPaymentSucceeded for {TenantSubscriptionId} has no matching renewal for key {Key}.",
-                    evt.TenantSubscriptionId, evt.IdempotencyKey);
+                    evt.TenantSubscriptionId,
+                    evt.IdempotencyKey
+                );
                 return;
             }
 
-            var result = subscription.CompleteRenewal(renewal.Id, evt.ExternalPaymentReference, actorUserId: Guid.Empty, evt.PaidAtUtc);
+            var result = subscription.CompleteRenewal(
+                renewal.Id,
+                evt.ExternalPaymentReference,
+                actorUserId: Guid.Empty,
+                evt.PaidAtUtc
+            );
             if (result.IsFailure)
             {
                 logger.LogWarning(
-                    "Could not complete renewal for subscription {TenantSubscriptionId}: {Code}.", subscription.Id, result.Error.Code);
+                    "Could not complete renewal for subscription {TenantSubscriptionId}: {Code}.",
+                    subscription.Id,
+                    result.Error.Code
+                );
                 return;
             }
 

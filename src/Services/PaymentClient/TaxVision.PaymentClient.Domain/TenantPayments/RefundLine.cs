@@ -20,7 +20,13 @@ public sealed class RefundLine : BaseEntity
     private RefundLine() { }
 
     public static RefundLine Create(
-        Guid tenantPaymentId, Guid tenantId, Money amount, string reason, Guid requestedByUserId, DateTime nowUtc) =>
+        Guid tenantPaymentId,
+        Guid tenantId,
+        Money amount,
+        string reason,
+        Guid requestedByUserId,
+        DateTime nowUtc
+    ) =>
         new()
         {
             TenantPaymentId = tenantPaymentId,

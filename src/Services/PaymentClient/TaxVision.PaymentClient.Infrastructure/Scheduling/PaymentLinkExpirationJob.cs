@@ -14,8 +14,11 @@ namespace TaxVision.PaymentClient.Infrastructure.Scheduling;
 /// <see cref="Domain.PaymentLinks.PaymentLink.IsRedeemable"/> ya lo bloquea, este job solo
 /// mantiene el estado persistido honesto para las queries del tenant).
 /// </summary>
-public sealed class PaymentLinkExpirationJob(IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<PaymentLinkExpirationJob> logger)
-    : PeriodicPaymentClientJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(10))
+public sealed class PaymentLinkExpirationJob(
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<PaymentLinkExpirationJob> logger
+) : PeriodicPaymentClientJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(10))
 {
     private const int BatchSize = 200;
 
@@ -37,7 +40,10 @@ public sealed class PaymentLinkExpirationJob(IServiceScopeFactory scopeFactory, 
             {
                 logger.LogWarning(
                     "PaymentLinkExpirationJob failed to expire PaymentLink {PaymentLinkId}: {Code} — {Message}",
-                    link.Id, result.Error.Code, result.Error.Message);
+                    link.Id,
+                    result.Error.Code,
+                    result.Error.Message
+                );
             }
         }
 

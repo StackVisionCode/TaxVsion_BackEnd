@@ -38,16 +38,21 @@ public sealed class PaymentLink : TenantEntity
         PaymentLinkToken token,
         TimeSpan expiration,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<PaymentLink>(new Error("PaymentLink.InvalidTenant", "TenantId is required."));
 
         if (amount.AmountCents <= 0)
-            return Result.Failure<PaymentLink>(new Error("PaymentLink.InvalidAmount", "Amount must be greater than zero."));
+            return Result.Failure<PaymentLink>(
+                new Error("PaymentLink.InvalidAmount", "Amount must be greater than zero.")
+            );
 
         if (expiration <= TimeSpan.Zero || expiration > TimeSpan.FromDays(30))
-            return Result.Failure<PaymentLink>(new Error("PaymentLink.InvalidExpiration", "Expiration must be between 1 second and 30 days."));
+            return Result.Failure<PaymentLink>(
+                new Error("PaymentLink.InvalidExpiration", "Expiration must be between 1 second and 30 days.")
+            );
 
         var link = new PaymentLink
         {
@@ -72,7 +77,9 @@ public sealed class PaymentLink : TenantEntity
     public Result AttachPaymentAttempt(Guid tenantPaymentId, DateTime nowUtc)
     {
         if (!IsRedeemable(nowUtc))
-            return Result.Failure(new Error("PaymentLink.NotRedeemable", $"Cannot attach a payment attempt while link is {Status}."));
+            return Result.Failure(
+                new Error("PaymentLink.NotRedeemable", $"Cannot attach a payment attempt while link is {Status}.")
+            );
 
         RelatedTenantPaymentId = tenantPaymentId;
         return Result.Success();
@@ -84,7 +91,9 @@ public sealed class PaymentLink : TenantEntity
             return Result.Failure(new Error("PaymentLink.InvalidTransition", $"Cannot mark used from {Status}."));
 
         if (RelatedTenantPaymentId is null)
-            return Result.Failure(new Error("PaymentLink.NoPaymentAttempt", "No payment attempt is attached to this link."));
+            return Result.Failure(
+                new Error("PaymentLink.NoPaymentAttempt", "No payment attempt is attached to this link.")
+            );
 
         Status = PaymentLinkStatus.Used;
         UsedAtUtc = nowUtc;

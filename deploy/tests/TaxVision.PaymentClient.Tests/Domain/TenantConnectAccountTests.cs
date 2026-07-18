@@ -11,7 +11,12 @@ public sealed class TenantConnectAccountTests
     public void Create_with_an_empty_tenant_fails()
     {
         var result = TenantConnectAccount.Create(
-            Guid.Empty, PaymentProviderCode.Stripe, ConnectAccountType.Standard, AccountId("acct_1"), NowUtc);
+            Guid.Empty,
+            PaymentProviderCode.Stripe,
+            ConnectAccountType.Standard,
+            AccountId("acct_1"),
+            NowUtc
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantConnectAccount.InvalidTenant", result.Error.Code);
@@ -45,7 +50,12 @@ public sealed class TenantConnectAccountTests
         var account = CreateAccount();
         account.InitiateOnboarding(NowUtc);
 
-        var result = account.UpdateFromWebhook(chargesEnabled: true, payoutsEnabled: true, requirementsCurrentlyDue: [], NowUtc);
+        var result = account.UpdateFromWebhook(
+            chargesEnabled: true,
+            payoutsEnabled: true,
+            requirementsCurrentlyDue: [],
+            NowUtc
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ConnectAccountStatus.Enabled, account.Status);
@@ -59,7 +69,12 @@ public sealed class TenantConnectAccountTests
         var account = CreateAccount();
         account.InitiateOnboarding(NowUtc);
 
-        var result = account.UpdateFromWebhook(chargesEnabled: true, payoutsEnabled: false, requirementsCurrentlyDue: ["individual.verification.document"], NowUtc);
+        var result = account.UpdateFromWebhook(
+            chargesEnabled: true,
+            payoutsEnabled: false,
+            requirementsCurrentlyDue: ["individual.verification.document"],
+            NowUtc
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ConnectAccountStatus.InProgress, account.Status);
@@ -72,7 +87,12 @@ public sealed class TenantConnectAccountTests
         account.InitiateOnboarding(NowUtc);
         account.UpdateFromWebhook(true, true, [], NowUtc);
 
-        var result = account.UpdateFromWebhook(chargesEnabled: false, payoutsEnabled: true, requirementsCurrentlyDue: ["individual.verification.document"], NowUtc);
+        var result = account.UpdateFromWebhook(
+            chargesEnabled: false,
+            payoutsEnabled: true,
+            requirementsCurrentlyDue: ["individual.verification.document"],
+            NowUtc
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ConnectAccountStatus.Restricted, account.Status);
@@ -87,7 +107,12 @@ public sealed class TenantConnectAccountTests
         account.UpdateFromWebhook(true, true, [], NowUtc);
         account.UpdateFromWebhook(false, true, ["individual.verification.document"], NowUtc);
 
-        var result = account.UpdateFromWebhook(chargesEnabled: true, payoutsEnabled: true, requirementsCurrentlyDue: [], NowUtc);
+        var result = account.UpdateFromWebhook(
+            chargesEnabled: true,
+            payoutsEnabled: true,
+            requirementsCurrentlyDue: [],
+            NowUtc
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ConnectAccountStatus.Enabled, account.Status);
@@ -133,5 +158,13 @@ public sealed class TenantConnectAccountTests
     private static StripeConnectAccountId AccountId(string value) => StripeConnectAccountId.Create(value).Value;
 
     private static TenantConnectAccount CreateAccount() =>
-        TenantConnectAccount.Create(Guid.NewGuid(), PaymentProviderCode.Stripe, ConnectAccountType.Standard, AccountId("acct_1"), NowUtc).Value;
+        TenantConnectAccount
+            .Create(
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                ConnectAccountType.Standard,
+                AccountId("acct_1"),
+                NowUtc
+            )
+            .Value;
 }

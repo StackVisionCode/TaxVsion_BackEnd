@@ -16,7 +16,8 @@ public static class DeactivateTenantPaymentConfigHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var config = await configs.GetByTenantAndProviderAsync(command.TenantId, command.ProviderCode, ct);
         if (config is null)
@@ -28,11 +29,19 @@ public static class DeactivateTenantPaymentConfigHandler
             return deactivateResult;
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(TenantPaymentConfig), config.Id, PaymentAuditAction.TenantPaymentConfigDeactivated,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(TenantPaymentConfig),
+            config.Id,
+            PaymentAuditAction.TenantPaymentConfigDeactivated,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
             after: (object?)null,
-            reason: command.Reason, nowUtc, ct);
+            reason: command.Reason,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

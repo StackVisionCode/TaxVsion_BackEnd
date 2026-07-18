@@ -27,7 +27,15 @@ public static class TenantCreatedConsumer
             var kind = Enum.TryParse<TenantKind>(evt.Kind, true, out var parsedKind) ? parsedKind : TenantKind.Customer;
             var nowUtc = DateTime.UtcNow;
 
-            await tenants.UpsertCreatedAsync(evt.NewTenantId, evt.Name, evt.SubDomain, kind, evt.DefaultTimeZoneId, nowUtc, ct);
+            await tenants.UpsertCreatedAsync(
+                evt.NewTenantId,
+                evt.Name,
+                evt.SubDomain,
+                kind,
+                evt.DefaultTimeZoneId,
+                nowUtc,
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

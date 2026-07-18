@@ -115,7 +115,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SeatRenewalPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnRenewalPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnRenewalPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SubscriptionPlanChangePaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<SubscriptionPlanChangePaymentSucceededIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionPlanChangePaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SaaSPaymentMethodExpiringSoonIntegrationEvent>().ToRabbitExchange("taxvision-events");
 

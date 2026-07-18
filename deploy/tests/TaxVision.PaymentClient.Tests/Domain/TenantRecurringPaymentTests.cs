@@ -11,8 +11,23 @@ public sealed class TenantRecurringPaymentTests
     public void Create_with_a_zero_amount_fails()
     {
         var result = TenantRecurringPayment.Create(
-            Guid.NewGuid(), Guid.NewGuid(), PaymentProviderCode.Stripe, "pm_123", Money.Zero("USD"), Purpose(),
-            BillingCycle.Monthly, null, StartDate, null, null, RetryPolicy.Default, null, null, Guid.Empty, StartDate);
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            "pm_123",
+            Money.Zero("USD"),
+            Purpose(),
+            BillingCycle.Monthly,
+            null,
+            StartDate,
+            null,
+            null,
+            RetryPolicy.Default,
+            null,
+            null,
+            Guid.Empty,
+            StartDate
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantRecurringPayment.InvalidAmount", result.Error.Code);
@@ -22,8 +37,23 @@ public sealed class TenantRecurringPaymentTests
     public void Create_Custom_cycle_without_an_interval_fails()
     {
         var result = TenantRecurringPayment.Create(
-            Guid.NewGuid(), Guid.NewGuid(), PaymentProviderCode.Stripe, "pm_123", Money.Create(1999, "USD").Value, Purpose(),
-            BillingCycle.Custom, null, StartDate, null, null, RetryPolicy.Default, null, null, Guid.Empty, StartDate);
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            "pm_123",
+            Money.Create(1999, "USD").Value,
+            Purpose(),
+            BillingCycle.Custom,
+            null,
+            StartDate,
+            null,
+            null,
+            RetryPolicy.Default,
+            null,
+            null,
+            Guid.Empty,
+            StartDate
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantRecurringPayment.InvalidInterval", result.Error.Code);
@@ -33,8 +63,23 @@ public sealed class TenantRecurringPaymentTests
     public void Create_with_an_EndDate_before_StartDate_fails()
     {
         var result = TenantRecurringPayment.Create(
-            Guid.NewGuid(), Guid.NewGuid(), PaymentProviderCode.Stripe, "pm_123", Money.Create(1999, "USD").Value, Purpose(),
-            BillingCycle.Monthly, null, StartDate, StartDate.AddDays(-1), null, RetryPolicy.Default, null, null, Guid.Empty, StartDate);
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            "pm_123",
+            Money.Create(1999, "USD").Value,
+            Purpose(),
+            BillingCycle.Monthly,
+            null,
+            StartDate,
+            StartDate.AddDays(-1),
+            null,
+            RetryPolicy.Default,
+            null,
+            null,
+            Guid.Empty,
+            StartDate
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantRecurringPayment.InvalidEndDate", result.Error.Code);
@@ -258,10 +303,28 @@ public sealed class TenantRecurringPaymentTests
         }
     }
 
-    private static PaymentPurpose Purpose() => PaymentPurpose.Create(PaymentPurposeKind.RetainerPayment, "plan-001").Value;
+    private static PaymentPurpose Purpose() =>
+        PaymentPurpose.Create(PaymentPurposeKind.RetainerPayment, "plan-001").Value;
 
     private static TenantRecurringPayment CreateMonthlyPlan(DateTime? endDate = null, int? maxExecutions = null) =>
-        TenantRecurringPayment.Create(
-            Guid.NewGuid(), Guid.NewGuid(), PaymentProviderCode.Stripe, "pm_123", Money.Create(1999, "USD").Value, Purpose(),
-            BillingCycle.Monthly, null, StartDate, endDate, maxExecutions, RetryPolicy.Default, null, null, Guid.Empty, StartDate).Value;
+        TenantRecurringPayment
+            .Create(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                "pm_123",
+                Money.Create(1999, "USD").Value,
+                Purpose(),
+                BillingCycle.Monthly,
+                null,
+                StartDate,
+                endDate,
+                maxExecutions,
+                RetryPolicy.Default,
+                null,
+                null,
+                Guid.Empty,
+                StartDate
+            )
+            .Value;
 }

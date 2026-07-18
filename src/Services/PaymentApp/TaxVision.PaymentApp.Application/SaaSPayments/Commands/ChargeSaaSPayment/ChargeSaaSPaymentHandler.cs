@@ -29,12 +29,16 @@ public static class ChargeSaaSPaymentHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var existing = await payments.GetByIdempotencyKeyAsync(command.IdempotencyKey, ct);
         if (existing is not null)
         {
-            logger.LogInformation("SaaSPayment already exists for IdempotencyKey {Key}; skipping (idempotent).", command.IdempotencyKey);
+            logger.LogInformation(
+                "SaaSPayment already exists for IdempotencyKey {Key}; skipping (idempotent).",
+                command.IdempotencyKey
+            );
             return Result.Success(existing.Id);
         }
 
@@ -51,11 +55,24 @@ public static class ChargeSaaSPaymentHandler
         await ExecuteChargeAsync(payment, adapter, providerCustomers, command, metrics, ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, payment.TenantId, nameof(SaaSPayment), payment.Id, SaaSPaymentChargeOutcome.MapAuditAction(payment.Status),
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            payment.TenantId,
+            nameof(SaaSPayment),
+            payment.Id,
+            SaaSPaymentChargeOutcome.MapAuditAction(payment.Status),
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { payment.Status, payment.FailureCode, payment.FailureReason },
-            reason: null, DateTime.UtcNow, ct);
+            after: new
+            {
+                payment.Status,
+                payment.FailureCode,
+                payment.FailureReason,
+            },
+            reason: null,
+            DateTime.UtcNow,
+            ct
+        );
 
         await SaaSPaymentChargeOutcome.PublishResultAsync(payment, bus, correlation, ct);
 
@@ -63,7 +80,10 @@ public static class ChargeSaaSPaymentHandler
 
         logger.LogInformation(
             "SaaSPayment {SaaSPaymentId} for tenant {TenantId} finished with status {Status}.",
-            payment.Id, payment.TenantId, payment.Status);
+            payment.Id,
+            payment.TenantId,
+            payment.Status
+        );
 
         return Result.Success(payment.Id);
     }
@@ -91,19 +111,38 @@ public static class ChargeSaaSPaymentHandler
             command.Provider,
             descriptorResult.Value,
             command.RequestedByUserId,
-            DateTime.UtcNow);
+            DateTime.UtcNow
+        );
     }
 
     private static async Task ExecuteChargeAsync(
-        SaaSPayment payment, IPaymentProvider adapter, ITenantProviderCustomerRepository providerCustomers, ChargeSaaSPaymentCommand command, IPaymentAppMetrics metrics, CancellationToken ct)
+        SaaSPayment payment,
+        IPaymentProvider adapter,
+        ITenantProviderCustomerRepository providerCustomers,
+        ChargeSaaSPaymentCommand command,
+        IPaymentAppMetrics metrics,
+        CancellationToken ct
+    )
     {
         var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow);
 
         var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
-            command.TenantId, command.PayerEmail, command.PayerName, providerCustomers, adapter, ct);
+            command.TenantId,
+            command.PayerEmail,
+            command.PayerName,
+            providerCustomers,
+            adapter,
+            ct
+        );
         if (payerResult.IsFailure)
         {
-            SaaSPaymentChargeOutcome.FailPayment(payment, payerResult.Error, command.RequestedByUserId, nextRetryAtUtc, metrics);
+            SaaSPaymentChargeOutcome.FailPayment(
+                payment,
+                payerResult.Error,
+                command.RequestedByUserId,
+                nextRetryAtUtc,
+                metrics
+            );
             return;
         }
 
@@ -117,15 +156,28 @@ public static class ChargeSaaSPaymentHandler
                 ["tenantId"] = command.TenantId.ToString("N"),
                 ["saaSPaymentId"] = payment.Id.ToString("N"),
             },
-            SpecificPaymentMethod: payerResult.Value.Method);
+            SpecificPaymentMethod: payerResult.Value.Method
+        );
 
         var chargeResult = await adapter.AuthorizeChargeAsync(chargeRequest, ct);
         if (chargeResult.IsFailure)
         {
-            SaaSPaymentChargeOutcome.FailPayment(payment, chargeResult.Error, command.RequestedByUserId, nextRetryAtUtc, metrics);
+            SaaSPaymentChargeOutcome.FailPayment(
+                payment,
+                chargeResult.Error,
+                command.RequestedByUserId,
+                nextRetryAtUtc,
+                metrics
+            );
             return;
         }
 
-        SaaSPaymentChargeOutcome.ApplyChargeOutcome(payment, chargeResult.Value, command.RequestedByUserId, nextRetryAtUtc, metrics);
+        SaaSPaymentChargeOutcome.ApplyChargeOutcome(
+            payment,
+            chargeResult.Value,
+            command.RequestedByUserId,
+            nextRetryAtUtc,
+            metrics
+        );
     }
 }

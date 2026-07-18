@@ -17,11 +17,14 @@ public static class CreateTenantPaymentConfigHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var existing = await configs.GetByTenantAndProviderAsync(command.TenantId, command.ProviderCode, ct);
         if (existing is not null)
-            return Result.Failure<Guid>(new Error("TenantPaymentConfig.AlreadyExists", "A config for this tenant and provider already exists."));
+            return Result.Failure<Guid>(
+                new Error("TenantPaymentConfig.AlreadyExists", "A config for this tenant and provider already exists.")
+            );
 
         var descriptorResult = StatementDescriptor.Create(command.StatementDescriptor);
         if (descriptorResult.IsFailure)
@@ -29,7 +32,13 @@ public static class CreateTenantPaymentConfigHandler
 
         var nowUtc = DateTime.UtcNow;
         var createResult = TenantPaymentConfig.Create(
-            command.TenantId, command.ProviderCode, command.Mode, command.PublishableKey, descriptorResult.Value, nowUtc);
+            command.TenantId,
+            command.ProviderCode,
+            command.Mode,
+            command.PublishableKey,
+            descriptorResult.Value,
+            nowUtc
+        );
         if (createResult.IsFailure)
             return Result.Failure<Guid>(createResult.Error);
 
@@ -37,11 +46,24 @@ public static class CreateTenantPaymentConfigHandler
         await configs.AddAsync(config, ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(TenantPaymentConfig), config.Id, PaymentAuditAction.TenantPaymentConfigCreated,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(TenantPaymentConfig),
+            config.Id,
+            PaymentAuditAction.TenantPaymentConfigCreated,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { command.ProviderCode, command.Mode, config.PublishableKey },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                command.ProviderCode,
+                command.Mode,
+                config.PublishableKey,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

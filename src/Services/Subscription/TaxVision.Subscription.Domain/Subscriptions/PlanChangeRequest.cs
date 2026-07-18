@@ -24,6 +24,7 @@ public sealed class PlanChangeRequest : BaseEntity
     public Guid ToPlanId { get; private set; }
     public Guid ToPlanVersionId { get; private set; }
     public string ToPlanCode { get; private set; } = default!;
+
     /// <summary>Null = mantener el ciclo de facturación actual, no se pidió cambiarlo.</summary>
     public BillingCycle? ToBillingCycle { get; private set; }
     public PlanChangeRequestStatus Status { get; private set; }
@@ -59,7 +60,8 @@ public sealed class PlanChangeRequest : BaseEntity
         DateTime nowUtc,
         long chargeAmountCents,
         string chargeCurrency,
-        string paymentIdempotencyKey)
+        string paymentIdempotencyKey
+    )
     {
         if (tenantSubscriptionId == Guid.Empty)
             return Result.Failure<PlanChangeRequest>(
@@ -72,35 +74,45 @@ public sealed class PlanChangeRequest : BaseEntity
             );
 
         if (fromPlanId == toPlanId && fromPlanVersionId == toPlanVersionId && toBillingCycle is null)
-            return Result.Failure<PlanChangeRequest>(new Error("PlanChangeRequest.SamePlan", "Target plan is the same as the current plan."));
+            return Result.Failure<PlanChangeRequest>(
+                new Error("PlanChangeRequest.SamePlan", "Target plan is the same as the current plan.")
+            );
 
         if (chargeAmountCents <= 0)
-            return Result.Failure<PlanChangeRequest>(new Error("PlanChangeRequest.InvalidChargeAmount", "An upgrade must charge a positive amount."));
+            return Result.Failure<PlanChangeRequest>(
+                new Error("PlanChangeRequest.InvalidChargeAmount", "An upgrade must charge a positive amount.")
+            );
 
         if (string.IsNullOrWhiteSpace(chargeCurrency))
-            return Result.Failure<PlanChangeRequest>(new Error("PlanChangeRequest.InvalidCurrency", "Currency is required."));
+            return Result.Failure<PlanChangeRequest>(
+                new Error("PlanChangeRequest.InvalidCurrency", "Currency is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(paymentIdempotencyKey))
-            return Result.Failure<PlanChangeRequest>(new Error("PlanChangeRequest.MissingIdempotencyKey", "An idempotency key is required."));
+            return Result.Failure<PlanChangeRequest>(
+                new Error("PlanChangeRequest.MissingIdempotencyKey", "An idempotency key is required.")
+            );
 
-        return Result.Success(new PlanChangeRequest
-        {
-            TenantSubscriptionId = tenantSubscriptionId,
-            TenantId = tenantId,
-            FromPlanId = fromPlanId,
-            FromPlanVersionId = fromPlanVersionId,
-            FromPlanCode = fromPlanCode,
-            ToPlanId = toPlanId,
-            ToPlanVersionId = toPlanVersionId,
-            ToPlanCode = toPlanCode,
-            ToBillingCycle = toBillingCycle,
-            Status = PlanChangeRequestStatus.AwaitingPayment,
-            RequestedByUserId = requestedByUserId,
-            RequestedAtUtc = nowUtc,
-            ChargeAmountCents = chargeAmountCents,
-            ChargeCurrency = chargeCurrency,
-            PaymentIdempotencyKey = paymentIdempotencyKey,
-        });
+        return Result.Success(
+            new PlanChangeRequest
+            {
+                TenantSubscriptionId = tenantSubscriptionId,
+                TenantId = tenantId,
+                FromPlanId = fromPlanId,
+                FromPlanVersionId = fromPlanVersionId,
+                FromPlanCode = fromPlanCode,
+                ToPlanId = toPlanId,
+                ToPlanVersionId = toPlanVersionId,
+                ToPlanCode = toPlanCode,
+                ToBillingCycle = toBillingCycle,
+                Status = PlanChangeRequestStatus.AwaitingPayment,
+                RequestedByUserId = requestedByUserId,
+                RequestedAtUtc = nowUtc,
+                ChargeAmountCents = chargeAmountCents,
+                ChargeCurrency = chargeCurrency,
+                PaymentIdempotencyKey = paymentIdempotencyKey,
+            }
+        );
     }
 
     /// <summary>PaymentApp confirmó el cobro — el caller (TenantSubscription) ya aplicó

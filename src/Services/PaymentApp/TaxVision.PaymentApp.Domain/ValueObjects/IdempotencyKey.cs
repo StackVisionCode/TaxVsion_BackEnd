@@ -19,7 +19,9 @@ public sealed record IdempotencyKey
             return Result.Failure<IdempotencyKey>(new Error("IdempotencyKey.Empty", "IdempotencyKey is required."));
 
         if (value.Length > 200)
-            return Result.Failure<IdempotencyKey>(new Error("IdempotencyKey.TooLong", "IdempotencyKey must be 200 characters or fewer."));
+            return Result.Failure<IdempotencyKey>(
+                new Error("IdempotencyKey.TooLong", "IdempotencyKey must be 200 characters or fewer.")
+            );
 
         return Result.Success(new IdempotencyKey(value.Trim()));
     }

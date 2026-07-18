@@ -11,7 +11,14 @@ public sealed class TenantRegistry(PaymentClientDbContext db) : ITenantRegistry
         db.Tenants.FirstOrDefaultAsync(tenant => tenant.Id == tenantId, ct);
 
     public async Task UpsertCreatedAsync(
-        Guid tenantId, string name, string subDomain, TenantKind kind, string defaultTimeZoneId, DateTime nowUtc, CancellationToken ct = default)
+        Guid tenantId,
+        string name,
+        string subDomain,
+        TenantKind kind,
+        string defaultTimeZoneId,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
     {
         var existing = await db.Tenants.FirstOrDefaultAsync(tenant => tenant.Id == tenantId, ct);
         if (existing is not null)
@@ -24,7 +31,13 @@ public sealed class TenantRegistry(PaymentClientDbContext db) : ITenantRegistry
         await db.Tenants.AddAsync(result.Value, ct);
     }
 
-    public async Task UpdateStatusAsync(Guid tenantId, string status, bool isActive, DateTime nowUtc, CancellationToken ct = default)
+    public async Task UpdateStatusAsync(
+        Guid tenantId,
+        string status,
+        bool isActive,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
     {
         var tenant = await db.Tenants.FirstOrDefaultAsync(value => value.Id == tenantId, ct);
         tenant?.ApplyStatusChange(status, isActive, nowUtc);

@@ -104,7 +104,14 @@ public sealed class TenantSubscriptionRenewalTests
         var renewalId = subscription.Renewals.First().Id;
 
         var result = subscription.FailRenewal(
-            renewalId, "requires_payment_method", "No payment method on file", willRetry: true, DateTime.UtcNow.AddHours(1), Guid.Empty, DateTime.UtcNow);
+            renewalId,
+            "requires_payment_method",
+            "No payment method on file",
+            willRetry: true,
+            DateTime.UtcNow.AddHours(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SubscriptionStatus.PastDue, subscription.Status);
@@ -124,13 +131,27 @@ public sealed class TenantSubscriptionRenewalTests
         for (var attempt = 0; attempt < 3; attempt++)
         {
             var retryResult = subscription.FailRenewal(
-                renewalId, "temporary_failure", "Try again later", willRetry: true, DateTime.UtcNow.AddHours(1), Guid.Empty, DateTime.UtcNow);
+                renewalId,
+                "temporary_failure",
+                "Try again later",
+                willRetry: true,
+                DateTime.UtcNow.AddHours(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            );
             Assert.True(retryResult.IsSuccess);
             Assert.Equal(SubscriptionStatus.Active, subscription.Status);
         }
 
         var finalResult = subscription.FailRenewal(
-            renewalId, "temporary_failure", "Try again later", willRetry: true, DateTime.UtcNow.AddHours(1), Guid.Empty, DateTime.UtcNow);
+            renewalId,
+            "temporary_failure",
+            "Try again later",
+            willRetry: true,
+            DateTime.UtcNow.AddHours(1),
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(finalResult.IsSuccess);
         Assert.Equal(SubscriptionStatus.PastDue, subscription.Status);

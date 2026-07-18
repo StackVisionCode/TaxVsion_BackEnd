@@ -15,15 +15,14 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 table: "PlanChangeRequests",
                 type: "nvarchar(20)",
                 maxLength: 20,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ToBillingCycle",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "ToBillingCycle", table: "PlanChangeRequests");
         }
     }
 }

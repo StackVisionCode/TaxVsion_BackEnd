@@ -11,7 +11,15 @@ public sealed class PaymentLinkTests
     public void Create_with_a_zero_amount_fails()
     {
         var result = PaymentLink.Create(
-            Guid.NewGuid(), null, Money.Zero("USD"), Purpose(), PaymentLinkToken.Generate(), TimeSpan.FromDays(1), Guid.Empty, NowUtc);
+            Guid.NewGuid(),
+            null,
+            Money.Zero("USD"),
+            Purpose(),
+            PaymentLinkToken.Generate(),
+            TimeSpan.FromDays(1),
+            Guid.Empty,
+            NowUtc
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("PaymentLink.InvalidAmount", result.Error.Code);
@@ -24,7 +32,15 @@ public sealed class PaymentLinkTests
     public void Create_with_an_invalid_expiration_fails(int days)
     {
         var result = PaymentLink.Create(
-            Guid.NewGuid(), null, Money.Create(1999, "USD").Value, Purpose(), PaymentLinkToken.Generate(), TimeSpan.FromDays(days), Guid.Empty, NowUtc);
+            Guid.NewGuid(),
+            null,
+            Money.Create(1999, "USD").Value,
+            Purpose(),
+            PaymentLinkToken.Generate(),
+            TimeSpan.FromDays(days),
+            Guid.Empty,
+            NowUtc
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("PaymentLink.InvalidExpiration", result.Error.Code);
@@ -197,10 +213,20 @@ public sealed class PaymentLinkTests
         Assert.Equal(PaymentLinkStatus.Revoked, link.Status);
     }
 
-    private static PaymentPurpose Purpose() => PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, "inv-001").Value;
+    private static PaymentPurpose Purpose() =>
+        PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, "inv-001").Value;
 
     private static PaymentLink CreateActiveLink(TimeSpan? expiration = null) =>
-        PaymentLink.Create(
-            Guid.NewGuid(), null, Money.Create(1999, "USD").Value, Purpose(), PaymentLinkToken.Generate(),
-            expiration ?? TimeSpan.FromDays(7), Guid.Empty, NowUtc).Value;
+        PaymentLink
+            .Create(
+                Guid.NewGuid(),
+                null,
+                Money.Create(1999, "USD").Value,
+                Purpose(),
+                PaymentLinkToken.Generate(),
+                expiration ?? TimeSpan.FromDays(7),
+                Guid.Empty,
+                NowUtc
+            )
+            .Value;
 }

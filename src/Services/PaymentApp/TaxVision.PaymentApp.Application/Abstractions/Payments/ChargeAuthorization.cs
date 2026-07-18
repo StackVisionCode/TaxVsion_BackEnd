@@ -44,8 +44,15 @@ public sealed record WebhookEventPayload(
     PaymentStatus Status,
     string? FailureCode,
     string? FailureMessage,
-    long? RefundedAmountCents);
+    long? RefundedAmountCents
+);
 
 /// <summary>Metadata autoritativa de un método de pago tal como el provider la confirma —
 /// nunca lo que el cliente afirma en el request.</summary>
-public sealed record SavedPaymentMethodInfo(string MethodReference, string Brand, string Last4, int ExpMonth, int ExpYear);
+public sealed record SavedPaymentMethodInfo(
+    string MethodReference,
+    string Brand,
+    string Last4,
+    int ExpMonth,
+    int ExpYear
+);

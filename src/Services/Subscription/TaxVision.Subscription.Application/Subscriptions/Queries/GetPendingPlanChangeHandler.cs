@@ -22,16 +22,20 @@ public static class GetPendingPlanChangeHandler
         // un downgrade agendado. Si no hay nada accionable, mostrar el fallo de upgrade más
         // reciente una vez, para que el front pueda avisar que no se aplicó y haga falta otro
         // método de pago.
-        var awaitingPayment = subscription.PlanChangeRequests.FirstOrDefault(r => r.Status == PlanChangeRequestStatus.AwaitingPayment);
+        var awaitingPayment = subscription.PlanChangeRequests.FirstOrDefault(r =>
+            r.Status == PlanChangeRequestStatus.AwaitingPayment
+        );
         if (awaitingPayment is not null)
             return Result.Success<PendingPlanChangeResponse?>(FromUpgrade(awaitingPayment));
 
-        var scheduledDowngrade = subscription.PendingDowngrades.FirstOrDefault(d => d.Status == PendingDowngradeStatus.Scheduled);
+        var scheduledDowngrade = subscription.PendingDowngrades.FirstOrDefault(d =>
+            d.Status == PendingDowngradeStatus.Scheduled
+        );
         if (scheduledDowngrade is not null)
             return Result.Success<PendingPlanChangeResponse?>(FromDowngrade(scheduledDowngrade));
 
-        var lastFailedUpgrade = subscription.PlanChangeRequests
-            .Where(r => r.Status == PlanChangeRequestStatus.PaymentFailed)
+        var lastFailedUpgrade = subscription
+            .PlanChangeRequests.Where(r => r.Status == PlanChangeRequestStatus.PaymentFailed)
             .OrderByDescending(r => r.RequestedAtUtc)
             .FirstOrDefault();
 

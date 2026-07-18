@@ -57,8 +57,10 @@ public sealed class TenantPaymentsController(IMessageBus bus) : ControllerBase
                 request.IdempotencyKey,
                 userId,
                 request.PlatformFeeAmountCents,
-                request.PlatformFeeReference),
-            ct);
+                request.PlatformFeeReference
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -72,7 +74,10 @@ public sealed class TenantPaymentsController(IMessageBus bus) : ControllerBase
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<TenantPaymentResponse>>(new GetTenantPaymentByIdQuery(tenantId, tenantPaymentId), ct);
+        var result = await bus.InvokeAsync<Result<TenantPaymentResponse>>(
+            new GetTenantPaymentByIdQuery(tenantId, tenantPaymentId),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

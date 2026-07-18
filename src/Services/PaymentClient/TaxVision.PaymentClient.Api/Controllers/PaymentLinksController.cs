@@ -25,7 +25,8 @@ public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
         string Currency,
         PaymentPurposeKind PurposeKind,
         string? PurposeExternalReferenceId,
-        TimeSpan Expiration);
+        TimeSpan Expiration
+    );
 
     [HttpPost]
     [HasPermission(PaymentClientPermissions.PaymentLinkManage)]
@@ -37,9 +38,17 @@ public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
 
         var result = await bus.InvokeAsync<Result<CreatePaymentLinkResponse>>(
             new CreatePaymentLinkCommand(
-                tenantId, request.TaxpayerId, request.AmountCents, request.Currency,
-                request.PurposeKind, request.PurposeExternalReferenceId, request.Expiration, userId),
-            ct);
+                tenantId,
+                request.TaxpayerId,
+                request.AmountCents,
+                request.Currency,
+                request.PurposeKind,
+                request.PurposeExternalReferenceId,
+                request.Expiration,
+                userId
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -48,13 +57,19 @@ public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
     [HasPermission(PaymentClientPermissions.PaymentLinkRead)]
     [ProducesResponseType<IReadOnlyList<PaymentLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
-        [FromQuery] PaymentLinkStatus? status, [FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct)
+        [FromQuery] PaymentLinkStatus? status,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<IReadOnlyList<PaymentLinkResponse>>>(
-            new SearchPaymentLinksQuery(tenantId, status, page <= 0 ? 1 : page, pageSize <= 0 ? 20 : pageSize), ct);
+            new SearchPaymentLinksQuery(tenantId, status, page <= 0 ? 1 : page, pageSize <= 0 ? 20 : pageSize),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -70,7 +85,9 @@ public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
-            new RevokePaymentLinkCommand(tenantId, paymentLinkId, request.Reason, userId), ct);
+            new RevokePaymentLinkCommand(tenantId, paymentLinkId, request.Reason, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

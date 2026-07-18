@@ -25,7 +25,10 @@ public static class PlanPricing
         return null;
     }
 
-    public static (long AmountCents, string Currency)? ResolveBaseSubscriptionPrice(SubscriptionPlanVersion version, BillingCycle billingCycle)
+    public static (long AmountCents, string Currency)? ResolveBaseSubscriptionPrice(
+        SubscriptionPlanVersion version,
+        BillingCycle billingCycle
+    )
     {
         foreach (var tier in version.PriceTiers)
         {
@@ -34,7 +37,10 @@ public static class PlanPricing
             if (tier.MaxQuantity is not null && tier.MaxQuantity < 1)
                 continue;
 
-            return ((long)Math.Round(tier.UnitAmount.Amount * 100m, MidpointRounding.AwayFromZero), tier.UnitAmount.Currency);
+            return (
+                (long)Math.Round(tier.UnitAmount.Amount * 100m, MidpointRounding.AwayFromZero),
+                tier.UnitAmount.Currency
+            );
         }
 
         return null;

@@ -17,7 +17,8 @@ public static class GetPaymentLinkByTokenHandler
         IPaymentLinkRepository links,
         ITenantPaymentConfigRepository configs,
         ITenantRegistry tenants,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var notFound = new Error("PaymentLink.NotFound", "PaymentLink does not exist.");
 
@@ -33,13 +34,16 @@ public static class GetPaymentLinkByTokenHandler
         if (tenant is null)
             return Result.Failure<PaymentLinkCheckoutResponse>(notFound);
 
-        return Result.Success(new PaymentLinkCheckoutResponse(
-            link.Amount.AmountCents,
-            link.Amount.Currency,
-            link.Purpose.Kind.ToString(),
-            link.Purpose.ExternalReferenceId,
-            tenant.Name,
-            config.StatementDescriptor.Value,
-            config.PublishableKey));
+        return Result.Success(
+            new PaymentLinkCheckoutResponse(
+                link.Amount.AmountCents,
+                link.Amount.Currency,
+                link.Purpose.Kind.ToString(),
+                link.Purpose.ExternalReferenceId,
+                tenant.Name,
+                config.StatementDescriptor.Value,
+                config.PublishableKey
+            )
+        );
     }
 }

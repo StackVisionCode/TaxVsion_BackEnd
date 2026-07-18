@@ -16,8 +16,11 @@ namespace TaxVision.PaymentApp.Infrastructure.Scheduling;
 /// pago simplemente deja de aparecer en la próxima corrida — Subscription se entera del
 /// abandono definitivo por el <c>*PaymentFailedIntegrationEvent</c> con <c>WillRetry = false</c>.
 /// </summary>
-public sealed class DunningJob(IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<DunningJob> logger)
-    : PeriodicPaymentAppJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(10))
+public sealed class DunningJob(
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<DunningJob> logger
+) : PeriodicPaymentAppJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(10))
 {
     private const int BatchSize = 100;
 
@@ -34,13 +37,18 @@ public sealed class DunningJob(IServiceScopeFactory scopeFactory, IDistributedLo
         foreach (var payment in due)
         {
             var result = await bus.InvokeAsync<Result>(
-                new RetrySaaSPaymentCommand(payment.TenantId, payment.Id, Guid.Empty), ct);
+                new RetrySaaSPaymentCommand(payment.TenantId, payment.Id, Guid.Empty),
+                ct
+            );
 
             if (result.IsFailure)
             {
                 logger.LogWarning(
                     "DunningJob retry failed for SaaSPayment {SaaSPaymentId}: {Code} — {Message}",
-                    payment.Id, result.Error.Code, result.Error.Message);
+                    payment.Id,
+                    result.Error.Code,
+                    result.Error.Message
+                );
             }
         }
 

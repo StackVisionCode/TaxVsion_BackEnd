@@ -21,7 +21,12 @@ public sealed class RecurringSchedule : BaseEntity
 
     private RecurringSchedule() { }
 
-    public static RecurringSchedule Create(Guid tenantRecurringPaymentId, Guid tenantId, DateTime scheduledDate, Money amount) =>
+    public static RecurringSchedule Create(
+        Guid tenantRecurringPaymentId,
+        Guid tenantId,
+        DateTime scheduledDate,
+        Money amount
+    ) =>
         new()
         {
             TenantRecurringPaymentId = tenantRecurringPaymentId,
@@ -54,7 +59,9 @@ public sealed class RecurringSchedule : BaseEntity
     public Result MarkRetryPending(DateTime nextRetryAtUtc, string? providerResponse)
     {
         if (Status != RecurringScheduleStatus.Processing)
-            return Result.Failure(new Error("RecurringSchedule.InvalidTransition", $"Cannot schedule a retry from {Status}."));
+            return Result.Failure(
+                new Error("RecurringSchedule.InvalidTransition", $"Cannot schedule a retry from {Status}.")
+            );
 
         Status = RecurringScheduleStatus.RetryPending;
         RetryCount++;

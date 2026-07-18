@@ -15,27 +15,31 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 name: "PlatformFeeAmountCents",
                 table: "TenantPayments",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "PlatformFeeReference",
                 table: "TenantPayments",
                 type: "nvarchar(200)",
                 maxLength: 200,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "ProviderChargeReferenceOnConnect",
                 table: "TenantPayments",
                 type: "nvarchar(200)",
                 maxLength: 200,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "TenantAmountCents",
                 table: "TenantPayments",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             // Backfill: todo config existente fue creado antes de que Mode existiera (Fase
             // E/F, endpoint sin flujo Connect) — por definición era DirectApiKeys.
@@ -45,7 +49,8 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 type: "nvarchar(20)",
                 maxLength: 20,
                 nullable: false,
-                defaultValue: "DirectApiKeys");
+                defaultValue: "DirectApiKeys"
+            );
 
             migrationBuilder.CreateTable(
                 name: "PayoutSchedules",
@@ -59,12 +64,13 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PayoutSchedules", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TenantConnectAccounts",
@@ -72,21 +78,30 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ProviderCode = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    StripeConnectAccountId = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    StripeConnectAccountId = table.Column<string>(
+                        type: "nvarchar(255)",
+                        maxLength: 255,
+                        nullable: false
+                    ),
                     AccountType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     OnboardingStep = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     CanCharge = table.Column<bool>(type: "bit", nullable: false),
                     CanReceivePayouts = table.Column<bool>(type: "bit", nullable: false),
-                    RequirementsCurrentlyDue = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: false),
+                    RequirementsCurrentlyDue = table.Column<string>(
+                        type: "nvarchar(2000)",
+                        maxLength: 2000,
+                        nullable: false
+                    ),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TenantConnectAccounts", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "PayoutScheduleItems",
@@ -95,12 +110,16 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     PayoutScheduleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ProviderPayoutReference = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    ProviderPayoutReference = table.Column<string>(
+                        type: "nvarchar(255)",
+                        maxLength: 255,
+                        nullable: false
+                    ),
                     AmountCents = table.Column<long>(type: "bigint", nullable: false),
                     Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     FailureReason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    OccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    OccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -110,65 +129,58 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         column: x => x.PayoutScheduleId,
                         principalTable: "PayoutSchedules",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_PayoutScheduleItems_ScheduleId_ProviderReference",
                 table: "PayoutScheduleItems",
                 columns: new[] { "PayoutScheduleId", "ProviderPayoutReference" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_PayoutSchedules_TenantConnectAccountId",
                 table: "PayoutSchedules",
                 column: "TenantConnectAccountId",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_TenantConnectAccounts_StripeConnectAccountId",
                 table: "TenantConnectAccounts",
                 column: "StripeConnectAccountId",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_TenantConnectAccounts_TenantId_ProviderCode",
                 table: "TenantConnectAccounts",
                 columns: new[] { "TenantId", "ProviderCode" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PayoutScheduleItems");
+            migrationBuilder.DropTable(name: "PayoutScheduleItems");
 
-            migrationBuilder.DropTable(
-                name: "TenantConnectAccounts");
+            migrationBuilder.DropTable(name: "TenantConnectAccounts");
 
-            migrationBuilder.DropTable(
-                name: "PayoutSchedules");
+            migrationBuilder.DropTable(name: "PayoutSchedules");
 
-            migrationBuilder.DropColumn(
-                name: "PlatformFeeAmountCents",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "PlatformFeeAmountCents", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "PlatformFeeReference",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "PlatformFeeReference", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "ProviderChargeReferenceOnConnect",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "ProviderChargeReferenceOnConnect", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "TenantAmountCents",
-                table: "TenantPayments");
+            migrationBuilder.DropColumn(name: "TenantAmountCents", table: "TenantPayments");
 
-            migrationBuilder.DropColumn(
-                name: "Mode",
-                table: "TenantPaymentConfigs");
+            migrationBuilder.DropColumn(name: "Mode", table: "TenantPaymentConfigs");
         }
     }
 }

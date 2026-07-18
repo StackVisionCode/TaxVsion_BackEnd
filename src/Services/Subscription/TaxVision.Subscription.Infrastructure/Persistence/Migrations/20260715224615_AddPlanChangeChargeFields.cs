@@ -15,47 +15,43 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 name: "ChargeAmountCents",
                 table: "PlanChangeRequests",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "ChargeCurrency",
                 table: "PlanChangeRequests",
                 type: "nvarchar(3)",
                 maxLength: 3,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "PaymentIdempotencyKey",
                 table: "PlanChangeRequests",
                 type: "nvarchar(200)",
                 maxLength: 200,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "SaaSPaymentId",
                 table: "PlanChangeRequests",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ChargeAmountCents",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "ChargeAmountCents", table: "PlanChangeRequests");
 
-            migrationBuilder.DropColumn(
-                name: "ChargeCurrency",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "ChargeCurrency", table: "PlanChangeRequests");
 
-            migrationBuilder.DropColumn(
-                name: "PaymentIdempotencyKey",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "PaymentIdempotencyKey", table: "PlanChangeRequests");
 
-            migrationBuilder.DropColumn(
-                name: "SaaSPaymentId",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "SaaSPaymentId", table: "PlanChangeRequests");
         }
     }
 }

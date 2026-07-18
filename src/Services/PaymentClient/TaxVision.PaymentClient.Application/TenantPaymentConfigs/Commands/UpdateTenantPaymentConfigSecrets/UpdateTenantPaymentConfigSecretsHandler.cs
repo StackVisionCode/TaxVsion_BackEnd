@@ -24,7 +24,8 @@ public static class UpdateTenantPaymentConfigSecretsHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var config = await configs.GetByTenantAndProviderAsync(command.TenantId, command.ProviderCode, ct);
         if (config is null)
@@ -39,26 +40,47 @@ public static class UpdateTenantPaymentConfigSecretsHandler
             return Result.Failure(webhookSecretResult.Error);
 
         var nowUtc = DateTime.UtcNow;
-        var updateResult = config.UpdateSecrets(secretKeyResult.Value, webhookSecretResult.Value, command.ActorUserId, nowUtc);
+        var updateResult = config.UpdateSecrets(
+            secretKeyResult.Value,
+            webhookSecretResult.Value,
+            command.ActorUserId,
+            nowUtc
+        );
         if (updateResult.IsFailure)
             return updateResult;
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(TenantPaymentConfig), config.Id, PaymentAuditAction.TenantPaymentConfigSecretsUpdated,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(TenantPaymentConfig),
+            config.Id,
+            PaymentAuditAction.TenantPaymentConfigSecretsUpdated,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
             after: (object?)null,
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         var activateResult = config.MarkActive(command.ActorUserId, nowUtc);
         if (activateResult.IsSuccess)
         {
             await AuditEntryFactory.AppendAsync(
-                audit, command.TenantId, nameof(TenantPaymentConfig), config.Id, PaymentAuditAction.TenantPaymentConfigActivated,
-                command.ActorUserId, correlation.CorrelationId,
+                audit,
+                command.TenantId,
+                nameof(TenantPaymentConfig),
+                config.Id,
+                PaymentAuditAction.TenantPaymentConfigActivated,
+                command.ActorUserId,
+                correlation.CorrelationId,
                 before: (object?)null,
                 after: (object?)null,
-                reason: null, nowUtc, ct);
+                reason: null,
+                nowUtc,
+                ct
+            );
         }
 
         await unitOfWork.SaveChangesAsync(ct);

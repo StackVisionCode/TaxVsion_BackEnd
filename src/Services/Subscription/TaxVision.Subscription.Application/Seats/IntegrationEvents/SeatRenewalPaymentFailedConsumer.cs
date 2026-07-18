@@ -18,7 +18,9 @@ public static class SeatRenewalPaymentFailedConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -32,15 +34,30 @@ public static class SeatRenewalPaymentFailedConsumer
             var renewal = FindRenewalByKey(seat, evt.IdempotencyKey);
             if (renewal is null)
             {
-                logger.LogWarning("SeatRenewalPaymentFailed for {SeatId} has no matching renewal for key {Key}.", evt.SeatId, evt.IdempotencyKey);
+                logger.LogWarning(
+                    "SeatRenewalPaymentFailed for {SeatId} has no matching renewal for key {Key}.",
+                    evt.SeatId,
+                    evt.IdempotencyKey
+                );
                 return;
             }
 
             var result = seat.FailRenewal(
-                renewal.Id, evt.FailureCode, evt.FailureReason, evt.WillRetry, evt.NextRetryAtUtc, actorUserId: Guid.Empty, DateTime.UtcNow);
+                renewal.Id,
+                evt.FailureCode,
+                evt.FailureReason,
+                evt.WillRetry,
+                evt.NextRetryAtUtc,
+                actorUserId: Guid.Empty,
+                DateTime.UtcNow
+            );
             if (result.IsFailure)
             {
-                logger.LogWarning("Could not record failed renewal for seat {SeatId}: {Code}.", seat.Id, result.Error.Code);
+                logger.LogWarning(
+                    "Could not record failed renewal for seat {SeatId}: {Code}.",
+                    seat.Id,
+                    result.Error.Code
+                );
                 return;
             }
 

@@ -9,8 +9,16 @@ public sealed class TenantPaymentTests
     public void Create_with_a_zero_amount_fails()
     {
         var result = TenantPayment.Create(
-            Guid.NewGuid(), IdempotencyKey.Create("key-1").Value, Money.Zero("USD"), TaxpayerId(),
-            Purpose(), PaymentProviderCode.Stripe, StatementDescriptor.Create("ACME TAX SVC").Value, Guid.Empty, DateTime.UtcNow);
+            Guid.NewGuid(),
+            IdempotencyKey.Create("key-1").Value,
+            Money.Zero("USD"),
+            TaxpayerId(),
+            Purpose(),
+            PaymentProviderCode.Stripe,
+            StatementDescriptor.Create("ACME TAX SVC").Value,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantPayment.InvalidAmount", result.Error.Code);
@@ -29,9 +37,19 @@ public sealed class TenantPaymentTests
     [Fact]
     public void Create_allows_a_null_taxpayer_for_guest_checkout()
     {
-        var payment = TenantPayment.Create(
-            Guid.NewGuid(), IdempotencyKey.Create("key-1").Value, Money.Create(1999, "USD").Value, taxpayerId: null,
-            Purpose(), PaymentProviderCode.Stripe, StatementDescriptor.Create("ACME TAX SVC").Value, Guid.Empty, DateTime.UtcNow).Value;
+        var payment = TenantPayment
+            .Create(
+                Guid.NewGuid(),
+                IdempotencyKey.Create("key-1").Value,
+                Money.Create(1999, "USD").Value,
+                taxpayerId: null,
+                Purpose(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("ACME TAX SVC").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
 
         Assert.Null(payment.TaxpayerId);
     }
@@ -58,7 +76,14 @@ public sealed class TenantPaymentTests
     {
         var payment = CreatePendingPayment();
 
-        var result = payment.MarkFailed("card_declined", "The card was declined.", willRetry: false, nextRetryAtUtc: null, Guid.Empty, DateTime.UtcNow);
+        var result = payment.MarkFailed(
+            "card_declined",
+            "The card was declined.",
+            willRetry: false,
+            nextRetryAtUtc: null,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Failed, payment.Status);
@@ -98,7 +123,12 @@ public sealed class TenantPaymentTests
     {
         var payment = CreateSucceededPayment(); // 1999 cents
 
-        var result = payment.RefundPartial(Money.Create(2000, "USD").Value, "customer request", Guid.Empty, DateTime.UtcNow);
+        var result = payment.RefundPartial(
+            Money.Create(2000, "USD").Value,
+            "customer request",
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantPayment.RefundExceedsPrincipal", result.Error.Code);
@@ -181,22 +211,26 @@ public sealed class TenantPaymentTests
         Assert.Null(payment.FailureCode);
     }
 
-    private static PaymentPurpose Purpose() => PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, "inv-001").Value;
+    private static PaymentPurpose Purpose() =>
+        PaymentPurpose.Create(PaymentPurposeKind.InvoicePayment, "inv-001").Value;
 
     private static Guid TaxpayerId() => Guid.NewGuid();
 
     private static TenantPayment CreatePendingPayment(string idempotencyKey = "key-1")
     {
-        return TenantPayment.Create(
-            Guid.NewGuid(),
-            IdempotencyKey.Create(idempotencyKey).Value,
-            Money.Create(1999, "USD").Value,
-            TaxpayerId(),
-            Purpose(),
-            PaymentProviderCode.Stripe,
-            StatementDescriptor.Create("ACME TAX SVC").Value,
-            Guid.Empty,
-            DateTime.UtcNow).Value;
+        return TenantPayment
+            .Create(
+                Guid.NewGuid(),
+                IdempotencyKey.Create(idempotencyKey).Value,
+                Money.Create(1999, "USD").Value,
+                TaxpayerId(),
+                Purpose(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("ACME TAX SVC").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
     }
 
     private static TenantPayment CreateSucceededPayment()

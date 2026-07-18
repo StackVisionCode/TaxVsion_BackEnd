@@ -28,8 +28,11 @@ public static class ClaimsPrincipalExtensions
 
     public static bool IsPlatformAdmin(this ClaimsPrincipal principal) => principal.IsInRole("PlatformAdmin");
 
+    // TenantAdmin ya no pasa por rol solo — debe traer el claim "perm" real, que Auth le
+    // otorga por defecto vía PermissionCatalog.SystemRoleDefaults al emitir el JWT (salvo
+    // permisos PlatformOnly, como AdminCrossTenant). Mismo hallazgo/fix que los otros 9
+    // servicios (auditoría PlatformAdmin-only vs TenantAdmin, 2026-07-18) — el bypass de rol
+    // dejaba pasar cualquier permiso, incluso uno 100% exclusivo de plataforma.
     public static bool HasPermission(this ClaimsPrincipal principal, string permission) =>
-        principal.HasClaim("perm", permission)
-        || principal.IsInRole("TenantAdmin")
-        || principal.IsInRole("PlatformAdmin");
+        principal.HasClaim("perm", permission) || principal.IsInRole("PlatformAdmin");
 }

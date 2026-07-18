@@ -91,14 +91,26 @@ public sealed class TenantSubscriptionTests
         // confirme el cobro del precio completo.
         var (starter, starterVersion) = CreatePublishedPlan("starter");
         var (pro, proVersion) = CreatePublishedPlan("pro");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                starter,
+                starterVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
 
         var result = subscription.RequestUpgrade(
-            
             pro,
             proVersion,
-            null, chargeAmountCents: 8000, "usd", "plan-change-token-1",
+            null,
+            chargeAmountCents: 8000,
+            "usd",
+            "plan-change-token-1",
             Guid.Empty,
             DateTime.UtcNow
         );
@@ -118,12 +130,39 @@ public sealed class TenantSubscriptionTests
         var (starter, starterVersion) = CreatePublishedPlan("starter");
         var (pro, proVersion) = CreatePublishedPlan("pro");
         var (enterprise, enterpriseVersion) = CreatePublishedPlan("enterprise");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
-        subscription.RequestUpgrade(pro, proVersion, null, chargeAmountCents: 8000, "usd", "plan-change-token-1", Guid.Empty, DateTime.UtcNow);
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                starter,
+                starterVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+        subscription.RequestUpgrade(
+            pro,
+            proVersion,
+            null,
+            chargeAmountCents: 8000,
+            "usd",
+            "plan-change-token-1",
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         var result = subscription.RequestUpgrade(
-            enterprise, enterpriseVersion, null, chargeAmountCents: 20000, "usd", "plan-change-token-2", Guid.Empty, DateTime.UtcNow);
+            enterprise,
+            enterpriseVersion,
+            null,
+            chargeAmountCents: 20000,
+            "usd",
+            "plan-change-token-2",
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("PlanChangeRequest.PaymentInProgress", result.Error.Code);
@@ -139,14 +178,40 @@ public sealed class TenantSubscriptionTests
         var (pro, proVersion) = CreatePublishedPlan("pro");
         var originalPeriodStart = DateTime.UtcNow.AddDays(-20);
         var originalPeriodEnd = originalPeriodStart.AddMonths(1);
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, originalPeriodStart, originalPeriodEnd, Guid.Empty, originalPeriodStart).Value;
-        subscription.RequestUpgrade(pro, proVersion, null, chargeAmountCents: 8000, "usd", "plan-change-token-1", Guid.Empty, DateTime.UtcNow);
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                starter,
+                starterVersion,
+                BillingCycle.Monthly,
+                originalPeriodStart,
+                originalPeriodEnd,
+                Guid.Empty,
+                originalPeriodStart
+            )
+            .Value;
+        subscription.RequestUpgrade(
+            pro,
+            proVersion,
+            null,
+            chargeAmountCents: 8000,
+            "usd",
+            "plan-change-token-1",
+            Guid.Empty,
+            DateTime.UtcNow
+        );
         var request = Assert.Single(subscription.PlanChangeRequests);
         var saaSPaymentId = Guid.NewGuid();
         var paidAtUtc = DateTime.UtcNow;
 
-        var result = subscription.CompleteUpgradeCharge(request.Id, pro, proVersion, saaSPaymentId, Guid.Empty, paidAtUtc);
+        var result = subscription.CompleteUpgradeCharge(
+            request.Id,
+            pro,
+            proVersion,
+            saaSPaymentId,
+            Guid.Empty,
+            paidAtUtc
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("pro", subscription.PlanCode);
@@ -164,9 +229,28 @@ public sealed class TenantSubscriptionTests
         // nunca se llamó para este request.
         var (starter, starterVersion) = CreatePublishedPlan("starter");
         var (pro, proVersion) = CreatePublishedPlan("pro");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
-        subscription.RequestUpgrade(pro, proVersion, null, chargeAmountCents: 8000, "usd", "plan-change-token-1", Guid.Empty, DateTime.UtcNow);
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                starter,
+                starterVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+        subscription.RequestUpgrade(
+            pro,
+            proVersion,
+            null,
+            chargeAmountCents: 8000,
+            "usd",
+            "plan-change-token-1",
+            Guid.Empty,
+            DateTime.UtcNow
+        );
         var request = Assert.Single(subscription.PlanChangeRequests);
         var saaSPaymentId = Guid.NewGuid();
 
@@ -185,8 +269,18 @@ public sealed class TenantSubscriptionTests
         // fin del período actual (equivalente a proration_behavior=none).
         var (pro, proVersion) = CreatePublishedPlan("pro");
         var (starter, starterVersion) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), pro, proVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                pro,
+                proVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
 
         var result = subscription.RequestDowngrade(starter, starterVersion, null, Guid.Empty, DateTime.UtcNow);
 
@@ -203,8 +297,18 @@ public sealed class TenantSubscriptionTests
     {
         var (pro, proVersion) = CreatePublishedPlan("pro");
         var (starter, starterVersion) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), pro, proVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                pro,
+                proVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
         subscription.RequestDowngrade(starter, starterVersion, null, Guid.Empty, DateTime.UtcNow);
         var pending = Assert.Single(subscription.PendingDowngrades);
 
@@ -220,12 +324,28 @@ public sealed class TenantSubscriptionTests
     {
         var (pro, proVersion) = CreatePublishedPlan("pro");
         var (starter, starterVersion) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), pro, proVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                pro,
+                proVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
         subscription.RequestDowngrade(starter, starterVersion, null, Guid.Empty, DateTime.UtcNow);
         var pending = Assert.Single(subscription.PendingDowngrades);
 
-        var result = subscription.ApplyPendingDowngrade(pending.Id, starter, starterVersion, Guid.Empty, DateTime.UtcNow);
+        var result = subscription.ApplyPendingDowngrade(
+            pending.Id,
+            starter,
+            starterVersion,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("starter", subscription.PlanCode);
@@ -238,26 +358,58 @@ public sealed class TenantSubscriptionTests
         var (enterprise, enterpriseVersion) = CreatePublishedPlan("enterprise");
         var (pro, proVersion) = CreatePublishedPlan("pro");
         var (starter, starterVersion) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), enterprise, enterpriseVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                enterprise,
+                enterpriseVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
         subscription.RequestDowngrade(pro, proVersion, null, Guid.Empty, DateTime.UtcNow);
 
         var result = subscription.RequestDowngrade(starter, starterVersion, null, Guid.Empty, DateTime.UtcNow);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, subscription.PendingDowngrades.Count);
-        Assert.Contains(subscription.PendingDowngrades, d => d.ToPlanCode == "pro" && d.Status == PendingDowngradeStatus.Cancelled);
-        Assert.Contains(subscription.PendingDowngrades, d => d.ToPlanCode == "starter" && d.Status == PendingDowngradeStatus.Scheduled);
+        Assert.Contains(
+            subscription.PendingDowngrades,
+            d => d.ToPlanCode == "pro" && d.Status == PendingDowngradeStatus.Cancelled
+        );
+        Assert.Contains(
+            subscription.PendingDowngrades,
+            d => d.ToPlanCode == "starter" && d.Status == PendingDowngradeStatus.Scheduled
+        );
     }
 
     [Fact]
     public void RequestDowngrade_with_only_billing_cycle_change_queues_a_request()
     {
         var (starter, starterVersion) = CreatePublishedPlan("starter", [BillingCycle.Monthly, BillingCycle.Yearly]);
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                starter,
+                starterVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
 
-        var result = subscription.RequestDowngrade(starter, starterVersion, BillingCycle.Yearly, Guid.Empty, DateTime.UtcNow);
+        var result = subscription.RequestDowngrade(
+            starter,
+            starterVersion,
+            BillingCycle.Yearly,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(BillingCycle.Monthly, subscription.BillingCycle);
@@ -270,12 +422,28 @@ public sealed class TenantSubscriptionTests
     public void ApplyPendingDowngrade_applies_the_requested_billing_cycle_from_the_pending_request()
     {
         var (starter, starterVersion) = CreatePublishedPlan("starter", [BillingCycle.Monthly, BillingCycle.Yearly]);
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), starter, starterVersion, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                starter,
+                starterVersion,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
         subscription.RequestDowngrade(starter, starterVersion, BillingCycle.Yearly, Guid.Empty, DateTime.UtcNow);
         var pending = Assert.Single(subscription.PendingDowngrades);
 
-        var result = subscription.ApplyPendingDowngrade(pending.Id, starter, starterVersion, Guid.Empty, DateTime.UtcNow);
+        var result = subscription.ApplyPendingDowngrade(
+            pending.Id,
+            starter,
+            starterVersion,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(BillingCycle.Yearly, subscription.BillingCycle);
@@ -286,7 +454,9 @@ public sealed class TenantSubscriptionTests
     public void ConvertTrialToActive_moves_from_Trialing_to_Active_and_clears_TrialEndsAtUtc()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
         var nowUtc = DateTime.UtcNow;
         var periodEndUtc = nowUtc.AddMonths(1);
 
@@ -304,10 +474,26 @@ public sealed class TenantSubscriptionTests
     public void ConvertTrialToActive_on_an_already_Active_subscription_fails()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.ActivateImmediately(
-            Guid.NewGuid(), plan, version, BillingCycle.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .ActivateImmediately(
+                Guid.NewGuid(),
+                plan,
+                version,
+                BillingCycle.Monthly,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddMonths(1),
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
 
-        var result = subscription.ConvertTrialToActive(DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), null, Guid.Empty, DateTime.UtcNow);
+        var result = subscription.ConvertTrialToActive(
+            DateTime.UtcNow,
+            DateTime.UtcNow.AddMonths(1),
+            null,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Subscription.InvalidTransition", result.Error.Code);
@@ -317,7 +503,9 @@ public sealed class TenantSubscriptionTests
     public void BeginActivationCharge_schedules_a_renewal_for_the_period_already_set_by_ConvertTrialToActive()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
         var nowUtc = DateTime.UtcNow;
         var periodEndUtc = nowUtc.AddMonths(1);
         subscription.ConvertTrialToActive(nowUtc, periodEndUtc, null, Guid.Empty, nowUtc);
@@ -334,7 +522,9 @@ public sealed class TenantSubscriptionTests
     public void BeginActivationCharge_requires_Active_status()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
 
         var result = subscription.BeginActivationCharge("activation-key-1", Guid.Empty, DateTime.UtcNow);
 
@@ -346,7 +536,9 @@ public sealed class TenantSubscriptionTests
     public void BeginActivationCharge_is_idempotent_by_key()
     {
         var (plan, version) = CreatePublishedPlan("starter");
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
         var nowUtc = DateTime.UtcNow;
         subscription.ConvertTrialToActive(nowUtc, nowUtc.AddMonths(1), null, Guid.Empty, nowUtc);
         subscription.BeginActivationCharge("activation-key-1", Guid.Empty, nowUtc);
@@ -361,7 +553,9 @@ public sealed class TenantSubscriptionTests
     public void ChangePlan_switching_only_billing_cycle_updates_cycle_and_keeps_plan()
     {
         var (starter, starterVersion) = CreatePublishedPlan("starter", [BillingCycle.Monthly, BillingCycle.Yearly]);
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
         Assert.Equal(BillingCycle.Monthly, subscription.BillingCycle);
 
         var result = subscription.ChangePlan(starter, starterVersion, BillingCycle.Yearly, Guid.Empty, DateTime.UtcNow);
@@ -375,7 +569,9 @@ public sealed class TenantSubscriptionTests
     public void ChangePlan_rejects_a_billing_cycle_the_plan_version_does_not_support()
     {
         var (starter, starterVersion) = CreatePublishedPlan("starter", [BillingCycle.Monthly]);
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), starter, starterVersion, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
 
         var result = subscription.ChangePlan(starter, starterVersion, BillingCycle.Yearly, Guid.Empty, DateTime.UtcNow);
 
@@ -388,7 +584,9 @@ public sealed class TenantSubscriptionTests
     public void ConvertTrialToActive_with_requested_billing_cycle_switches_the_cycle()
     {
         var (plan, version) = CreatePublishedPlan("starter", [BillingCycle.Monthly, BillingCycle.Yearly]);
-        var subscription = TenantSubscription.StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow).Value;
+        var subscription = TenantSubscription
+            .StartTrial(Guid.NewGuid(), plan, version, 14, Guid.Empty, DateTime.UtcNow)
+            .Value;
         var nowUtc = DateTime.UtcNow;
         var periodEndUtc = nowUtc.AddYears(1);
 
@@ -402,9 +600,13 @@ public sealed class TenantSubscriptionTests
         CreatePublishedPlan(code, [BillingCycle.Monthly]);
 
     private static (SubscriptionPlan Plan, SubscriptionPlanVersion Version) CreatePublishedPlan(
-        string code, IReadOnlyCollection<BillingCycle> supportedBillingCycles)
+        string code,
+        IReadOnlyCollection<BillingCycle> supportedBillingCycles
+    )
     {
-        var plan = SubscriptionPlan.Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow).Value;
+        var plan = SubscriptionPlan
+            .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
+            .Value;
         var version = SubscriptionPlanVersion.Create(plan.Id, 1, trialDaysDefault: 14, supportedBillingCycles).Value;
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);

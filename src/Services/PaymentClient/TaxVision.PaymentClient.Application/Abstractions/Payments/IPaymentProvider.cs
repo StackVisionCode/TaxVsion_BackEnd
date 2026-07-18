@@ -21,13 +21,25 @@ public interface IPaymentProvider
     PaymentProviderCode Code { get; }
 
     Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
-        TenantProviderCredentials credentials, ChargeAuthorizationRequest request, CancellationToken ct);
+        TenantProviderCredentials credentials,
+        ChargeAuthorizationRequest request,
+        CancellationToken ct
+    );
 
     Task<Result<RefundResult>> RefundAsync(
-        TenantProviderCredentials credentials, string providerChargeReference, Money amount, string reason, CancellationToken ct);
+        TenantProviderCredentials credentials,
+        string providerChargeReference,
+        Money amount,
+        string reason,
+        CancellationToken ct
+    );
 
     Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-        string rawPayload, string signatureHeader, string webhookSecret, CancellationToken ct);
+        string rawPayload,
+        string signatureHeader,
+        string webhookSecret,
+        CancellationToken ct
+    );
 
     /// <summary>Traduce un webhook YA verificado (<see cref="VerifyWebhookSignatureAsync"/>) a
     /// datos canónicos que <c>TenantPayment</c> puede aplicar. Solo el adapter conoce el

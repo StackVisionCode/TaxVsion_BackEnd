@@ -15,8 +15,11 @@ namespace TaxVision.PaymentClient.Infrastructure.Scheduling;
 /// pero corre cada 24h y toma schedules <c>RetryPending</c> cuyo <c>NextRetryAtUtc</c> ya
 /// venció, en vez de <c>Pending</c> por <c>ScheduledDate</c>.
 /// </summary>
-public sealed class TenantRecurringRetryJob(IServiceScopeFactory scopeFactory, IDistributedLockFactory lockFactory, ILogger<TenantRecurringRetryJob> logger)
-    : PeriodicPaymentClientJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(24), TimeSpan.FromHours(1))
+public sealed class TenantRecurringRetryJob(
+    IServiceScopeFactory scopeFactory,
+    IDistributedLockFactory lockFactory,
+    ILogger<TenantRecurringRetryJob> logger
+) : PeriodicPaymentClientJob(scopeFactory, lockFactory, logger, TimeSpan.FromHours(24), TimeSpan.FromHours(1))
 {
     private const int BatchSize = 50;
 
@@ -28,21 +31,37 @@ public sealed class TenantRecurringRetryJob(IServiceScopeFactory scopeFactory, I
         var bus = services.GetRequiredService<IMessageBus>();
         var logger = services.GetRequiredService<ILogger<TenantRecurringRetryJob>>();
 
-        var due = await plans.GetWithDueSchedulesAsync(RecurringScheduleStatus.RetryPending, DateTime.UtcNow, BatchSize, ct);
+        var due = await plans.GetWithDueSchedulesAsync(
+            RecurringScheduleStatus.RetryPending,
+            DateTime.UtcNow,
+            BatchSize,
+            ct
+        );
         var processed = 0;
 
         foreach (var plan in due)
         {
-            foreach (var schedule in plan.Schedules.Where(s => s.Status == RecurringScheduleStatus.RetryPending && s.NextRetryAtUtc <= DateTime.UtcNow))
+            foreach (
+                var schedule in plan.Schedules.Where(s =>
+                    s.Status == RecurringScheduleStatus.RetryPending && s.NextRetryAtUtc <= DateTime.UtcNow
+                )
+            )
             {
-                var result = await bus.InvokeAsync<Result>(new ExecuteRecurringScheduleCommand(plan.TenantId, plan.Id, schedule.Id), ct);
+                var result = await bus.InvokeAsync<Result>(
+                    new ExecuteRecurringScheduleCommand(plan.TenantId, plan.Id, schedule.Id),
+                    ct
+                );
                 processed++;
 
                 if (result.IsFailure)
                 {
                     logger.LogWarning(
                         "TenantRecurringRetryJob failed to retry schedule {ScheduleId} of plan {PlanId}: {Code} — {Message}",
-                        schedule.Id, plan.Id, result.Error.Code, result.Error.Message);
+                        schedule.Id,
+                        plan.Id,
+                        result.Error.Code,
+                        result.Error.Message
+                    );
                 }
             }
         }

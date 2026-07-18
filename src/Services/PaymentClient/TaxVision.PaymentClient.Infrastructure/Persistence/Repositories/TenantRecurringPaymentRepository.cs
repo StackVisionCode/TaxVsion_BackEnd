@@ -6,15 +6,28 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 
 public sealed class TenantRecurringPaymentRepository(PaymentClientDbContext db) : ITenantRecurringPaymentRepository
 {
-    public Task<TenantRecurringPayment?> GetByIdAsync(Guid tenantRecurringPaymentId, Guid tenantId, CancellationToken ct = default) =>
-        db.TenantRecurringPayments
-            .Include(plan => plan.Schedules)
+    public Task<TenantRecurringPayment?> GetByIdAsync(
+        Guid tenantRecurringPaymentId,
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .TenantRecurringPayments.Include(plan => plan.Schedules)
             .FirstOrDefaultAsync(plan => plan.Id == tenantRecurringPaymentId && plan.TenantId == tenantId, ct);
 
     public async Task<IReadOnlyList<TenantRecurringPayment>> SearchByTenantAsync(
-        Guid tenantId, Guid? taxpayerId, RecurringStatus? status, int page, int pageSize, CancellationToken ct = default)
+        Guid tenantId,
+        Guid? taxpayerId,
+        RecurringStatus? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
-        var query = db.TenantRecurringPayments.AsNoTracking().Include(plan => plan.Schedules).Where(plan => plan.TenantId == tenantId);
+        var query = db
+            .TenantRecurringPayments.AsNoTracking()
+            .Include(plan => plan.Schedules)
+            .Where(plan => plan.TenantId == tenantId);
 
         if (taxpayerId is not null)
             query = query.Where(plan => plan.TaxpayerId == taxpayerId);
@@ -30,20 +43,29 @@ public sealed class TenantRecurringPaymentRepository(PaymentClientDbContext db) 
     }
 
     public async Task<IReadOnlyList<TenantRecurringPayment>> GetWithDueSchedulesAsync(
-        RecurringScheduleStatus scheduleStatus, DateTime cutoffUtc, int batchSize, CancellationToken ct = default)
+        RecurringScheduleStatus scheduleStatus,
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    )
     {
         var dueScheduleIds = await db.Set<RecurringSchedule>()
             .Where(schedule =>
                 schedule.Status == scheduleStatus
-                && (scheduleStatus == RecurringScheduleStatus.Pending ? schedule.ScheduledDate <= cutoffUtc : schedule.NextRetryAtUtc <= cutoffUtc))
+                && (
+                    scheduleStatus == RecurringScheduleStatus.Pending
+                        ? schedule.ScheduledDate <= cutoffUtc
+                        : schedule.NextRetryAtUtc <= cutoffUtc
+                )
+            )
             .OrderBy(schedule => schedule.ScheduledDate)
             .Select(schedule => schedule.TenantRecurringPaymentId)
             .Distinct()
             .Take(batchSize)
             .ToListAsync(ct);
 
-        return await db.TenantRecurringPayments
-            .Include(plan => plan.Schedules)
+        return await db
+            .TenantRecurringPayments.Include(plan => plan.Schedules)
             .Where(plan => plan.Status == RecurringStatus.Active && dueScheduleIds.Contains(plan.Id))
             .ToListAsync(ct);
     }

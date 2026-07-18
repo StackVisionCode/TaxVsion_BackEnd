@@ -10,7 +10,13 @@ public sealed class TenantProviderCustomerTests
     {
         var reference = ProviderCustomerReference.Create(PaymentProviderCode.Stripe, "cus_123").Value;
 
-        var result = TenantProviderCustomer.Register(Guid.NewGuid(), PaymentProviderCode.Stripe, reference, "  ", DateTime.UtcNow);
+        var result = TenantProviderCustomer.Register(
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            reference,
+            "  ",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantProviderCustomer.InvalidEmail", result.Error.Code);
@@ -21,7 +27,15 @@ public sealed class TenantProviderCustomerTests
     {
         var customer = CreateCustomer();
 
-        var result = customer.AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow);
+        var result = customer.AttachPaymentMethod(
+            "pm_123",
+            "visa",
+            "4242",
+            12,
+            2030,
+            setAsDefault: false,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(customer.GetDefaultMethod());
@@ -57,7 +71,15 @@ public sealed class TenantProviderCustomerTests
         var customer = CreateCustomer();
         customer.AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow);
 
-        var result = customer.AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow);
+        var result = customer.AttachPaymentMethod(
+            "pm_123",
+            "visa",
+            "4242",
+            12,
+            2030,
+            setAsDefault: false,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantProviderCustomer.MethodAlreadyAttached", result.Error.Code);
@@ -67,7 +89,9 @@ public sealed class TenantProviderCustomerTests
     public void Detaching_the_default_method_promotes_another_active_method()
     {
         var customer = CreateCustomer();
-        var first = customer.AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow).Value;
+        var first = customer
+            .AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow)
+            .Value;
         customer.AttachPaymentMethod("pm_456", "mastercard", "4444", 6, 2031, setAsDefault: false, DateTime.UtcNow);
 
         var result = customer.DetachPaymentMethod(first, DateTime.UtcNow);
@@ -80,7 +104,9 @@ public sealed class TenantProviderCustomerTests
     public void Detaching_the_only_method_leaves_no_default()
     {
         var customer = CreateCustomer();
-        var methodId = customer.AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow).Value;
+        var methodId = customer
+            .AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow)
+            .Value;
 
         customer.DetachPaymentMethod(methodId, DateTime.UtcNow);
 
@@ -103,7 +129,9 @@ public sealed class TenantProviderCustomerTests
     {
         var customer = CreateCustomer();
         customer.AttachPaymentMethod("pm_123", "visa", "4242", 12, 2030, setAsDefault: false, DateTime.UtcNow);
-        var second = customer.AttachPaymentMethod("pm_456", "mastercard", "4444", 6, 2031, setAsDefault: false, DateTime.UtcNow).Value;
+        var second = customer
+            .AttachPaymentMethod("pm_456", "mastercard", "4444", 6, 2031, setAsDefault: false, DateTime.UtcNow)
+            .Value;
 
         var result = customer.MarkPaymentMethodAsDefault(second, DateTime.UtcNow);
 
@@ -114,7 +142,17 @@ public sealed class TenantProviderCustomerTests
     [Fact]
     public void ExpiresBefore_returns_true_once_the_expiration_month_has_passed()
     {
-        var method = TenantSavedPaymentMethod.Create(Guid.NewGuid(), Guid.NewGuid(), "pm_123", "visa", "4242", 6, 2026, true, DateTime.UtcNow);
+        var method = TenantSavedPaymentMethod.Create(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "pm_123",
+            "visa",
+            "4242",
+            6,
+            2026,
+            true,
+            DateTime.UtcNow
+        );
 
         Assert.True(method.ExpiresBefore(new DateTime(2026, 7, 1)));
         Assert.False(method.ExpiresBefore(new DateTime(2026, 6, 15)));
@@ -123,6 +161,8 @@ public sealed class TenantProviderCustomerTests
     private static TenantProviderCustomer CreateCustomer()
     {
         var reference = ProviderCustomerReference.Create(PaymentProviderCode.Stripe, "cus_123").Value;
-        return TenantProviderCustomer.Register(Guid.NewGuid(), PaymentProviderCode.Stripe, reference, "admin@acme.test", DateTime.UtcNow).Value;
+        return TenantProviderCustomer
+            .Register(Guid.NewGuid(), PaymentProviderCode.Stripe, reference, "admin@acme.test", DateTime.UtcNow)
+            .Value;
     }
 }

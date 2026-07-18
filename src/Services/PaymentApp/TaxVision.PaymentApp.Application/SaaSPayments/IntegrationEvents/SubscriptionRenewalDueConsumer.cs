@@ -24,7 +24,8 @@ public static class SubscriptionRenewalDueConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
             ? evt.EventId.ToString("N")
@@ -42,14 +43,18 @@ public static class SubscriptionRenewalDueConsumer
                 Provider: PaymentProviderCode.Stripe,
                 PayerEmail: SyntheticPayer.EmailFor(evt.TenantId),
                 PayerName: null,
-                RequestedByUserId: Guid.Empty);
+                RequestedByUserId: Guid.Empty
+            );
 
             var result = await bus.InvokeAsync<Result<Guid>>(command, ct);
             if (result.IsFailure)
             {
                 logger.LogError(
                     "ChargeSaaSPayment failed for renewal of subscription {TenantSubscriptionId}: {ErrorCode} — {ErrorMessage}",
-                    evt.TenantSubscriptionId, result.Error.Code, result.Error.Message);
+                    evt.TenantSubscriptionId,
+                    result.Error.Code,
+                    result.Error.Message
+                );
             }
         }
     }

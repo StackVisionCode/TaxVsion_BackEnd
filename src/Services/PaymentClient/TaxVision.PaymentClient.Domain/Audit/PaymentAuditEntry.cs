@@ -36,31 +36,40 @@ public sealed class PaymentAuditEntry : BaseEntity
         Guid? causationId,
         string? beforePayload,
         string? afterPayload,
-        string? reason)
+        string? reason
+    )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<PaymentAuditEntry>(new Error("PaymentAuditEntry.InvalidTenant", "TenantId is required."));
+            return Result.Failure<PaymentAuditEntry>(
+                new Error("PaymentAuditEntry.InvalidTenant", "TenantId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(aggregateType))
-            return Result.Failure<PaymentAuditEntry>(new Error("PaymentAuditEntry.InvalidAggregateType", "AggregateType is required."));
+            return Result.Failure<PaymentAuditEntry>(
+                new Error("PaymentAuditEntry.InvalidAggregateType", "AggregateType is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(actorType))
-            return Result.Failure<PaymentAuditEntry>(new Error("PaymentAuditEntry.InvalidActorType", "ActorType is required."));
+            return Result.Failure<PaymentAuditEntry>(
+                new Error("PaymentAuditEntry.InvalidActorType", "ActorType is required.")
+            );
 
-        return Result.Success(new PaymentAuditEntry
-        {
-            TenantId = tenantId,
-            AggregateType = aggregateType,
-            AggregateId = aggregateId,
-            Action = action,
-            ActorUserId = actorUserId,
-            ActorType = actorType,
-            OccurredAtUtc = occurredAtUtc,
-            CorrelationId = correlationId,
-            CausationId = causationId,
-            BeforePayload = beforePayload,
-            AfterPayload = afterPayload,
-            Reason = reason?.Length > 500 ? reason[..500] : reason,
-        });
+        return Result.Success(
+            new PaymentAuditEntry
+            {
+                TenantId = tenantId,
+                AggregateType = aggregateType,
+                AggregateId = aggregateId,
+                Action = action,
+                ActorUserId = actorUserId,
+                ActorType = actorType,
+                OccurredAtUtc = occurredAtUtc,
+                CorrelationId = correlationId,
+                CausationId = causationId,
+                BeforePayload = beforePayload,
+                AfterPayload = afterPayload,
+                Reason = reason?.Length > 500 ? reason[..500] : reason,
+            }
+        );
     }
 }

@@ -20,7 +20,9 @@ public static class SeatRenewalPaymentSucceededConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -34,11 +36,20 @@ public static class SeatRenewalPaymentSucceededConsumer
             var renewal = FindRenewalByKey(seat, evt.IdempotencyKey);
             if (renewal is null)
             {
-                logger.LogWarning("SeatRenewalPaymentSucceeded for {SeatId} has no matching renewal for key {Key}.", evt.SeatId, evt.IdempotencyKey);
+                logger.LogWarning(
+                    "SeatRenewalPaymentSucceeded for {SeatId} has no matching renewal for key {Key}.",
+                    evt.SeatId,
+                    evt.IdempotencyKey
+                );
                 return;
             }
 
-            var result = seat.CompleteRenewal(renewal.Id, evt.ExternalPaymentReference, actorUserId: Guid.Empty, evt.PaidAtUtc);
+            var result = seat.CompleteRenewal(
+                renewal.Id,
+                evt.ExternalPaymentReference,
+                actorUserId: Guid.Empty,
+                evt.PaidAtUtc
+            );
             if (result.IsFailure)
             {
                 logger.LogWarning("Could not complete renewal for seat {SeatId}: {Code}.", seat.Id, result.Error.Code);

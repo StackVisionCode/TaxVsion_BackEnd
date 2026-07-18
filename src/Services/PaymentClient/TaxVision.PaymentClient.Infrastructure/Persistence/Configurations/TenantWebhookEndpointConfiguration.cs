@@ -19,7 +19,8 @@ public sealed class TenantWebhookEndpointConfiguration : IEntityTypeConfiguratio
         builder.Property(endpoint => endpoint.TenantId).IsRequired();
         builder.Property(endpoint => endpoint.Url).HasMaxLength(2000).IsRequired();
 
-        builder.Property(endpoint => endpoint.SigningSecret)
+        builder
+            .Property(endpoint => endpoint.SigningSecret)
             .HasConversion(secret => secret.CipherText, value => EncryptedSecret.Create(value).Value)
             .HasColumnName("SigningSecretEncrypted")
             .HasColumnType("nvarchar(max)")
@@ -27,6 +28,8 @@ public sealed class TenantWebhookEndpointConfiguration : IEntityTypeConfiguratio
 
         builder.Property(endpoint => endpoint.IsActive).IsRequired();
 
-        builder.HasIndex(endpoint => endpoint.TenantPaymentConfigId).HasDatabaseName("IX_TenantWebhookEndpoints_TenantPaymentConfigId");
+        builder
+            .HasIndex(endpoint => endpoint.TenantPaymentConfigId)
+            .HasDatabaseName("IX_TenantWebhookEndpoints_TenantPaymentConfigId");
     }
 }

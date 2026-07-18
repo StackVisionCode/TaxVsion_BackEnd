@@ -64,31 +64,57 @@ public sealed class TenantRecurringPayment : TenantEntity
         long? platformFeeAmountCents,
         string? platformFeeReference,
         Guid actorUserId,
-        DateTime nowUtc)
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidTenant", "TenantId is required."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error("TenantRecurringPayment.InvalidTenant", "TenantId is required.")
+            );
 
         if (taxpayerId == Guid.Empty)
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidTaxpayer", "TaxpayerId is required."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error("TenantRecurringPayment.InvalidTaxpayer", "TaxpayerId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(paymentMethodReference))
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidPaymentMethod", "PaymentMethodReference is required."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error("TenantRecurringPayment.InvalidPaymentMethod", "PaymentMethodReference is required.")
+            );
 
         if (amount.AmountCents <= 0)
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidAmount", "Amount must be greater than zero."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error("TenantRecurringPayment.InvalidAmount", "Amount must be greater than zero.")
+            );
 
         if (billingCycle == BillingCycle.Custom && customIntervalDays is null or <= 0)
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidInterval", "CustomIntervalDays is required and must be positive for a Custom billing cycle."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error(
+                    "TenantRecurringPayment.InvalidInterval",
+                    "CustomIntervalDays is required and must be positive for a Custom billing cycle."
+                )
+            );
 
         if (endDate is not null && endDate <= startDate)
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidEndDate", "EndDate must be after StartDate."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error("TenantRecurringPayment.InvalidEndDate", "EndDate must be after StartDate.")
+            );
 
         if (maxExecutions is <= 0)
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidMaxExecutions", "MaxExecutions must be greater than zero when provided."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error(
+                    "TenantRecurringPayment.InvalidMaxExecutions",
+                    "MaxExecutions must be greater than zero when provided."
+                )
+            );
 
         if (platformFeeAmountCents is { } fee && (fee < 0 || fee > amount.AmountCents))
-            return Result.Failure<TenantRecurringPayment>(new Error("TenantRecurringPayment.InvalidPlatformFee", "PlatformFeeAmountCents must be between zero and the plan amount."));
+            return Result.Failure<TenantRecurringPayment>(
+                new Error(
+                    "TenantRecurringPayment.InvalidPlatformFee",
+                    "PlatformFeeAmountCents must be between zero and the plan amount."
+                )
+            );
 
         var plan = new TenantRecurringPayment
         {
@@ -124,10 +150,14 @@ public sealed class TenantRecurringPayment : TenantEntity
     public Result<IReadOnlyList<Guid>> GenerateSchedules(int count, DateTime nowUtc)
     {
         if (Status != RecurringStatus.Active)
-            return Result.Failure<IReadOnlyList<Guid>>(new Error("TenantRecurringPayment.NotActive", $"Cannot generate schedules while {Status}."));
+            return Result.Failure<IReadOnlyList<Guid>>(
+                new Error("TenantRecurringPayment.NotActive", $"Cannot generate schedules while {Status}.")
+            );
 
         if (count <= 0)
-            return Result.Failure<IReadOnlyList<Guid>>(new Error("TenantRecurringPayment.InvalidCount", "Count must be greater than zero."));
+            return Result.Failure<IReadOnlyList<Guid>>(
+                new Error("TenantRecurringPayment.InvalidCount", "Count must be greater than zero.")
+            );
 
         var created = new List<Guid>();
         var nextDate = NextExecutionDate ?? StartDate;
@@ -137,7 +167,11 @@ public sealed class TenantRecurringPayment : TenantEntity
             if (EndDate is not null && nextDate > EndDate)
                 break;
 
-            var alreadyCommitted = ExecutionCount + _schedules.Count(s => s.Status is not (RecurringScheduleStatus.Failed or RecurringScheduleStatus.Skipped));
+            var alreadyCommitted =
+                ExecutionCount
+                + _schedules.Count(s =>
+                    s.Status is not (RecurringScheduleStatus.Failed or RecurringScheduleStatus.Skipped)
+                );
             if (MaxExecutions is not null && alreadyCommitted >= MaxExecutions)
                 break;
 
@@ -153,14 +187,15 @@ public sealed class TenantRecurringPayment : TenantEntity
         return Result.Success<IReadOnlyList<Guid>>(created);
     }
 
-    private DateTime Advance(DateTime date) => BillingCycle switch
-    {
-        BillingCycle.Monthly => date.AddMonths(1),
-        BillingCycle.Quarterly => date.AddMonths(3),
-        BillingCycle.Yearly => date.AddYears(1),
-        BillingCycle.Custom => date.AddDays(CustomIntervalDays!.Value),
-        _ => date.AddMonths(1),
-    };
+    private DateTime Advance(DateTime date) =>
+        BillingCycle switch
+        {
+            BillingCycle.Monthly => date.AddMonths(1),
+            BillingCycle.Quarterly => date.AddMonths(3),
+            BillingCycle.Yearly => date.AddYears(1),
+            BillingCycle.Custom => date.AddDays(CustomIntervalDays!.Value),
+            _ => date.AddMonths(1),
+        };
 
     /// <summary>Reserva el schedule antes de disparar el cobro — lo saca de
     /// <c>Pending</c>/<c>RetryPending</c> para que una segunda pasada del job (p.ej. dos
@@ -170,7 +205,9 @@ public sealed class TenantRecurringPayment : TenantEntity
     {
         var schedule = FindSchedule(scheduleId);
         if (schedule is null)
-            return Result.Failure(new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist.")
+            );
 
         var result = schedule.MarkProcessing();
         if (result.IsFailure)
@@ -180,17 +217,35 @@ public sealed class TenantRecurringPayment : TenantEntity
         return Result.Success();
     }
 
-    public Result RecordSuccess(Guid scheduleId, Guid tenantPaymentId, string? providerResponse, Guid actorUserId, DateTime nowUtc)
+    public Result RecordSuccess(
+        Guid scheduleId,
+        Guid tenantPaymentId,
+        string? providerResponse,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
     {
         var schedule = FindSchedule(scheduleId);
         if (schedule is null)
-            return Result.Failure(new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist.")
+            );
 
         var markResult = schedule.MarkExecuted(tenantPaymentId, providerResponse);
         if (markResult.IsFailure)
             return markResult;
 
-        _executions.Add(RecurringPaymentExecution.Record(Id, schedule.Id, TenantId, schedule.Amount, succeeded: true, providerResponse, nowUtc));
+        _executions.Add(
+            RecurringPaymentExecution.Record(
+                Id,
+                schedule.Id,
+                TenantId,
+                schedule.Amount,
+                succeeded: true,
+                providerResponse,
+                nowUtc
+            )
+        );
 
         ExecutionCount++;
         FailureCount = 0;
@@ -206,9 +261,21 @@ public sealed class TenantRecurringPayment : TenantEntity
     {
         var schedule = FindSchedule(scheduleId);
         if (schedule is null)
-            return Result.Failure(new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist.")
+            );
 
-        _executions.Add(RecurringPaymentExecution.Record(Id, schedule.Id, TenantId, schedule.Amount, succeeded: false, providerResponse, nowUtc));
+        _executions.Add(
+            RecurringPaymentExecution.Record(
+                Id,
+                schedule.Id,
+                TenantId,
+                schedule.Amount,
+                succeeded: false,
+                providerResponse,
+                nowUtc
+            )
+        );
 
         if (schedule.RetryCount < RetryPolicy.Backoffs.Count)
         {
@@ -241,7 +308,9 @@ public sealed class TenantRecurringPayment : TenantEntity
 
         var schedule = FindSchedule(scheduleId);
         if (schedule is null)
-            return Result.Failure(new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.ScheduleNotFound", "RecurringSchedule does not exist.")
+            );
 
         var result = schedule.MarkSkipped();
         if (result.IsFailure)
@@ -254,7 +323,9 @@ public sealed class TenantRecurringPayment : TenantEntity
     public Result Pause(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != RecurringStatus.Active)
-            return Result.Failure(new Error("TenantRecurringPayment.InvalidTransition", $"Cannot pause from {Status}."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.InvalidTransition", $"Cannot pause from {Status}.")
+            );
 
         Status = RecurringStatus.Paused;
         Touch(actorUserId, nowUtc);
@@ -268,7 +339,9 @@ public sealed class TenantRecurringPayment : TenantEntity
     public Result Resume(Guid actorUserId, DateTime nowUtc)
     {
         if (Status is not (RecurringStatus.Paused or RecurringStatus.Suspended))
-            return Result.Failure(new Error("TenantRecurringPayment.InvalidTransition", $"Cannot resume from {Status}."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.InvalidTransition", $"Cannot resume from {Status}.")
+            );
 
         Status = RecurringStatus.Active;
         FailureCount = 0;
@@ -282,7 +355,9 @@ public sealed class TenantRecurringPayment : TenantEntity
             return Result.Failure(new Error("TenantRecurringPayment.InvalidReason", "Reason is required."));
 
         if (Status is not (RecurringStatus.Active or RecurringStatus.Paused))
-            return Result.Failure(new Error("TenantRecurringPayment.InvalidTransition", $"Cannot suspend from {Status}."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.InvalidTransition", $"Cannot suspend from {Status}.")
+            );
 
         Status = RecurringStatus.Suspended;
         Touch(actorUserId, nowUtc);
@@ -301,7 +376,9 @@ public sealed class TenantRecurringPayment : TenantEntity
             return Result.Failure(new Error("TenantRecurringPayment.InvalidReason", "Reason is required."));
 
         if (Status is RecurringStatus.Completed or RecurringStatus.Cancelled)
-            return Result.Failure(new Error("TenantRecurringPayment.InvalidTransition", $"Cannot cancel from {Status}."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.InvalidTransition", $"Cannot cancel from {Status}.")
+            );
 
         Status = RecurringStatus.Cancelled;
         Touch(actorUserId, nowUtc);

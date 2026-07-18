@@ -27,14 +27,19 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
             var subscription = await subscriptions.GetByTenantIdAsync(evt.TenantId, ct);
             if (subscription is null)
             {
-                logger.LogWarning("SubscriptionPlanChangePaymentSucceeded for unknown tenant {TenantId}.", evt.TenantId);
+                logger.LogWarning(
+                    "SubscriptionPlanChangePaymentSucceeded for unknown tenant {TenantId}.",
+                    evt.TenantId
+                );
                 return;
             }
 
@@ -43,7 +48,9 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
             {
                 logger.LogWarning(
                     "SubscriptionPlanChangePaymentSucceeded for tenant {TenantId} has no matching PlanChangeRequest {PlanChangeRequestId}.",
-                    evt.TenantId, evt.PlanChangeRequestId);
+                    evt.TenantId,
+                    evt.PlanChangeRequestId
+                );
                 return;
             }
 
@@ -53,16 +60,27 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
             {
                 logger.LogWarning(
                     "Could not apply plan change {PlanChangeRequestId} for subscription {SubscriptionId}: target plan/version no longer exists.",
-                    request.Id, subscription.Id);
+                    request.Id,
+                    subscription.Id
+                );
                 return;
             }
 
             var result = subscription.CompleteUpgradeCharge(
-                request.Id, toPlan, toPlanVersion, evt.SaaSPaymentId, actorUserId: Guid.Empty, evt.PaidAtUtc);
+                request.Id,
+                toPlan,
+                toPlanVersion,
+                evt.SaaSPaymentId,
+                actorUserId: Guid.Empty,
+                evt.PaidAtUtc
+            );
             if (result.IsFailure)
             {
                 logger.LogWarning(
-                    "Could not complete plan change charge for subscription {TenantSubscriptionId}: {Code}.", subscription.Id, result.Error.Code);
+                    "Could not complete plan change charge for subscription {TenantSubscriptionId}: {Code}.",
+                    subscription.Id,
+                    result.Error.Code
+                );
                 return;
             }
 

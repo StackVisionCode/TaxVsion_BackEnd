@@ -19,7 +19,12 @@ public static class TenantPaymentChargeOutcome
 
         if (outcome.Status == PaymentStatus.Failed)
         {
-            FailPayment(payment, outcome.FailureCode ?? "Provider.Unknown", outcome.FailureMessage ?? "The provider declined the charge.", actorUserId);
+            FailPayment(
+                payment,
+                outcome.FailureCode ?? "Provider.Unknown",
+                outcome.FailureMessage ?? "The provider declined the charge.",
+                actorUserId
+            );
             return;
         }
 
@@ -30,7 +35,13 @@ public static class TenantPaymentChargeOutcome
             return;
         }
 
-        payment.MarkProcessing(referenceResult.Value, outcome.Status.ToString(), providerResponseBody: null, actorUserId, nowUtc);
+        payment.MarkProcessing(
+            referenceResult.Value,
+            outcome.Status.ToString(),
+            providerResponseBody: null,
+            actorUserId,
+            nowUtc
+        );
 
         if (outcome.Status == PaymentStatus.Succeeded)
         {
@@ -38,7 +49,12 @@ public static class TenantPaymentChargeOutcome
         }
         else if (outcome.Status == PaymentStatus.RequiresAction)
         {
-            payment.MarkRequiresAction(outcome.NextActionType ?? "unknown", outcome.NextActionUrl ?? string.Empty, actorUserId, nowUtc);
+            payment.MarkRequiresAction(
+                outcome.NextActionType ?? "unknown",
+                outcome.NextActionUrl ?? string.Empty,
+                actorUserId,
+                nowUtc
+            );
         }
     }
 
@@ -46,24 +62,45 @@ public static class TenantPaymentChargeOutcome
     /// <see cref="TaxVision.PaymentClient.Domain.TenantPaymentConfigs.TenantPaymentMode.Connect"/>
     /// — usa <c>TenantPayment.MarkProcessingViaConnect</c> en vez de <c>MarkProcessing</c> para
     /// poblar <c>ProviderChargeReferenceOnConnect</c>/<c>SplitPayment</c>.</summary>
-    public static void ApplyChargeOutcomeViaConnect(TenantPayment payment, ChargeAuthorizationResult outcome, SplitPaymentBreakdown split, Guid actorUserId)
+    public static void ApplyChargeOutcomeViaConnect(
+        TenantPayment payment,
+        ChargeAuthorizationResult outcome,
+        SplitPaymentBreakdown split,
+        Guid actorUserId
+    )
     {
         var nowUtc = DateTime.UtcNow;
 
         if (outcome.Status == PaymentStatus.Failed)
         {
-            FailPayment(payment, outcome.FailureCode ?? "Provider.Unknown", outcome.FailureMessage ?? "The provider declined the charge.", actorUserId);
+            FailPayment(
+                payment,
+                outcome.FailureCode ?? "Provider.Unknown",
+                outcome.FailureMessage ?? "The provider declined the charge.",
+                actorUserId
+            );
             return;
         }
 
         if (string.IsNullOrWhiteSpace(outcome.ProviderChargeReference))
         {
-            FailPayment(payment, "Provider.InvalidReference", "Provider did not return a charge reference.", actorUserId);
+            FailPayment(
+                payment,
+                "Provider.InvalidReference",
+                "Provider did not return a charge reference.",
+                actorUserId
+            );
             return;
         }
 
         var processingResult = payment.MarkProcessingViaConnect(
-            outcome.ProviderChargeReference, split, outcome.Status.ToString(), providerResponseBody: null, actorUserId, nowUtc);
+            outcome.ProviderChargeReference,
+            split,
+            outcome.Status.ToString(),
+            providerResponseBody: null,
+            actorUserId,
+            nowUtc
+        );
         if (processingResult.IsFailure)
         {
             FailPayment(payment, processingResult.Error, actorUserId);
@@ -76,7 +113,12 @@ public static class TenantPaymentChargeOutcome
         }
         else if (outcome.Status == PaymentStatus.RequiresAction)
         {
-            payment.MarkRequiresAction(outcome.NextActionType ?? "unknown", outcome.NextActionUrl ?? string.Empty, actorUserId, nowUtc);
+            payment.MarkRequiresAction(
+                outcome.NextActionType ?? "unknown",
+                outcome.NextActionUrl ?? string.Empty,
+                actorUserId,
+                nowUtc
+            );
         }
     }
 
@@ -86,12 +128,13 @@ public static class TenantPaymentChargeOutcome
     private static void FailPayment(TenantPayment payment, string code, string message, Guid actorUserId) =>
         payment.MarkFailed(code, message, willRetry: false, nextRetryAtUtc: null, actorUserId, DateTime.UtcNow);
 
-    public static PaymentAuditAction MapAuditAction(PaymentStatus status) => status switch
-    {
-        PaymentStatus.Succeeded => PaymentAuditAction.TenantPaymentSucceeded,
-        PaymentStatus.Failed => PaymentAuditAction.TenantPaymentFailed,
-        PaymentStatus.RequiresAction => PaymentAuditAction.TenantPaymentRequiresAction,
-        PaymentStatus.Processing => PaymentAuditAction.TenantPaymentMarkedProcessing,
-        _ => PaymentAuditAction.TenantPaymentCreated,
-    };
+    public static PaymentAuditAction MapAuditAction(PaymentStatus status) =>
+        status switch
+        {
+            PaymentStatus.Succeeded => PaymentAuditAction.TenantPaymentSucceeded,
+            PaymentStatus.Failed => PaymentAuditAction.TenantPaymentFailed,
+            PaymentStatus.RequiresAction => PaymentAuditAction.TenantPaymentRequiresAction,
+            PaymentStatus.Processing => PaymentAuditAction.TenantPaymentMarkedProcessing,
+            _ => PaymentAuditAction.TenantPaymentCreated,
+        };
 }

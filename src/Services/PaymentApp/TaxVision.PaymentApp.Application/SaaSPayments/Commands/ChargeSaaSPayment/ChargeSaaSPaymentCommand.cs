@@ -17,4 +17,5 @@ public sealed record ChargeSaaSPaymentCommand(
     PaymentProviderCode Provider,
     string PayerEmail,
     string? PayerName,
-    Guid RequestedByUserId);
+    Guid RequestedByUserId
+);

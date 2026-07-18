@@ -18,7 +18,8 @@ public static class AuditEntryFactory
         TAfter? after,
         string? reason,
         DateTime nowUtc,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var actorType = actorUserId == Guid.Empty ? "System" : "User";
 
@@ -34,7 +35,8 @@ public static class AuditEntryFactory
             causationId: null,
             beforePayload: before is null ? null : JsonSerializer.Serialize(before),
             afterPayload: after is null ? null : JsonSerializer.Serialize(after),
-            reason);
+            reason
+        );
 
         if (entryResult.IsSuccess)
             await writer.AppendAsync(entryResult.Value, ct);

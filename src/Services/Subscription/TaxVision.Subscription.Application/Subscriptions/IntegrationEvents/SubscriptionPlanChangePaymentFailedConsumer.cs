@@ -22,7 +22,9 @@ public static class SubscriptionPlanChangePaymentFailedConsumer
         CancellationToken ct
     )
     {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
+        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
+            ? evt.EventId.ToString("N")
+            : evt.CorrelationId;
 
         using (correlation.Push(correlationId))
         {
@@ -37,7 +39,10 @@ public static class SubscriptionPlanChangePaymentFailedConsumer
             if (result.IsFailure)
             {
                 logger.LogWarning(
-                    "Could not record failed plan change charge for subscription {TenantSubscriptionId}: {Code}.", subscription.Id, result.Error.Code);
+                    "Could not record failed plan change charge for subscription {TenantSubscriptionId}: {Code}.",
+                    subscription.Id,
+                    result.Error.Code
+                );
                 return;
             }
 
@@ -45,7 +50,10 @@ public static class SubscriptionPlanChangePaymentFailedConsumer
 
             logger.LogInformation(
                 "Plan change payment failed for subscription {TenantSubscriptionId}: {FailureCode} — {FailureReason}. Plan unchanged.",
-                subscription.Id, evt.FailureCode, evt.FailureReason);
+                subscription.Id,
+                evt.FailureCode,
+                evt.FailureReason
+            );
         }
     }
 }

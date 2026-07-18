@@ -23,10 +23,17 @@ public sealed record ProviderCustomerReference
     public static Result<ProviderCustomerReference> Create(PaymentProviderCode provider, string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return Result.Failure<ProviderCustomerReference>(new Error("ProviderCustomerReference.Empty", "ProviderCustomerReference value is required."));
+            return Result.Failure<ProviderCustomerReference>(
+                new Error("ProviderCustomerReference.Empty", "ProviderCustomerReference value is required.")
+            );
 
         if (value.Length > 200)
-            return Result.Failure<ProviderCustomerReference>(new Error("ProviderCustomerReference.TooLong", "ProviderCustomerReference value must be 200 characters or fewer."));
+            return Result.Failure<ProviderCustomerReference>(
+                new Error(
+                    "ProviderCustomerReference.TooLong",
+                    "ProviderCustomerReference value must be 200 characters or fewer."
+                )
+            );
 
         return Result.Success(new ProviderCustomerReference(provider, value.Trim()));
     }

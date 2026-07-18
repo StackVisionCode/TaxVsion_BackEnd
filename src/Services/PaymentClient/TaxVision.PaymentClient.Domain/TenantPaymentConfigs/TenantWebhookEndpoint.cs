@@ -22,7 +22,12 @@ public sealed class TenantWebhookEndpoint : BaseEntity
     private TenantWebhookEndpoint() { }
 
     public static TenantWebhookEndpoint Create(
-        Guid tenantPaymentConfigId, Guid tenantId, string url, EncryptedSecret signingSecret, DateTime nowUtc) =>
+        Guid tenantPaymentConfigId,
+        Guid tenantId,
+        string url,
+        EncryptedSecret signingSecret,
+        DateTime nowUtc
+    ) =>
         new()
         {
             TenantPaymentConfigId = tenantPaymentConfigId,

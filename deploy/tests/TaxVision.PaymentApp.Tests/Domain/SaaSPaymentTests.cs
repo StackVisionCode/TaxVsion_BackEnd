@@ -9,8 +9,16 @@ public sealed class SaaSPaymentTests
     public void Create_with_a_zero_amount_fails()
     {
         var result = SaaSPayment.Create(
-            Guid.NewGuid(), IdempotencyKey.Create("key-1").Value, Money.Zero("USD"), SaaSPaymentType.SubscriptionRenewal,
-            Guid.NewGuid(), PaymentProviderCode.Stripe, StatementDescriptor.Create("TAXVISION SAAS").Value, Guid.Empty, DateTime.UtcNow);
+            Guid.NewGuid(),
+            IdempotencyKey.Create("key-1").Value,
+            Money.Zero("USD"),
+            SaaSPaymentType.SubscriptionRenewal,
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            StatementDescriptor.Create("TAXVISION SAAS").Value,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.InvalidAmount", result.Error.Code);
@@ -50,7 +58,14 @@ public sealed class SaaSPaymentTests
         var nowUtc = DateTime.UtcNow;
         var nextRetry = nowUtc.AddHours(1);
 
-        var result = payment.MarkFailed("card_declined", "The card was declined.", willRetry: true, nextRetry, Guid.Empty, nowUtc);
+        var result = payment.MarkFailed(
+            "card_declined",
+            "The card was declined.",
+            willRetry: true,
+            nextRetry,
+            Guid.Empty,
+            nowUtc
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Failed, payment.Status);
@@ -64,7 +79,14 @@ public sealed class SaaSPaymentTests
         // confirmó el fallo out-of-band, así que no tiene sentido reintentar solos.
         var payment = CreatePendingPayment();
 
-        var result = payment.MarkFailed("card_declined", "The card was declined.", willRetry: false, nextRetryAtUtc: null, Guid.Empty, DateTime.UtcNow);
+        var result = payment.MarkFailed(
+            "card_declined",
+            "The card was declined.",
+            willRetry: false,
+            nextRetryAtUtc: null,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Failed, payment.Status);
@@ -104,7 +126,12 @@ public sealed class SaaSPaymentTests
     {
         var payment = CreateSucceededPayment(); // 1999 cents
 
-        var result = payment.RefundPartial(Money.Create(2000, "USD").Value, "customer request", Guid.Empty, DateTime.UtcNow);
+        var result = payment.RefundPartial(
+            Money.Create(2000, "USD").Value,
+            "customer request",
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("SaaSPayment.RefundExceedsPrincipal", result.Error.Code);
@@ -204,7 +231,14 @@ public sealed class SaaSPaymentTests
     public void PrepareForRetry_with_no_retry_scheduled_is_rejected()
     {
         var payment = CreatePendingPayment();
-        payment.MarkFailed("card_declined", "declined", willRetry: false, nextRetryAtUtc: null, Guid.Empty, DateTime.UtcNow);
+        payment.MarkFailed(
+            "card_declined",
+            "declined",
+            willRetry: false,
+            nextRetryAtUtc: null,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         var result = payment.PrepareForRetry(Guid.Empty, DateTime.UtcNow);
 
@@ -225,16 +259,19 @@ public sealed class SaaSPaymentTests
 
     private static SaaSPayment CreatePendingPayment(string idempotencyKey = "key-1")
     {
-        return SaaSPayment.Create(
-            Guid.NewGuid(),
-            IdempotencyKey.Create(idempotencyKey).Value,
-            Money.Create(1999, "USD").Value,
-            SaaSPaymentType.SubscriptionRenewal,
-            Guid.NewGuid(),
-            PaymentProviderCode.Stripe,
-            StatementDescriptor.Create("TAXVISION SAAS").Value,
-            Guid.Empty,
-            DateTime.UtcNow).Value;
+        return SaaSPayment
+            .Create(
+                Guid.NewGuid(),
+                IdempotencyKey.Create(idempotencyKey).Value,
+                Money.Create(1999, "USD").Value,
+                SaaSPaymentType.SubscriptionRenewal,
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
     }
 
     private static SaaSPayment CreateSucceededPayment()

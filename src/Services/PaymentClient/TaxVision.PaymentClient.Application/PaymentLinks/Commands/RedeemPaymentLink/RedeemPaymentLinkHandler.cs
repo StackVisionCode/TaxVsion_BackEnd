@@ -39,7 +39,8 @@ public static class RedeemPaymentLinkHandler
         IPaymentClientMetrics metrics,
         ICorrelationContext correlation,
         ILogger<PaymentLink> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var notFound = new Error("PaymentLink.NotFound", "PaymentLink does not exist.");
         var nowUtc = DateTime.UtcNow;
@@ -50,9 +51,16 @@ public static class RedeemPaymentLinkHandler
 
         // El token es la única prueba de posesión (§32.2) — sin este chequeo, alguien con el
         // link podría seguir probando tarjetas indefinidamente (§41.4/K.1).
-        if (link.Status != PaymentLinkStatus.Active && link.FailedRedemptionAttempts >= PaymentLinkAttemptPolicy.MaxRedemptionAttemptsPerLink)
+        if (
+            link.Status != PaymentLinkStatus.Active
+            && link.FailedRedemptionAttempts >= PaymentLinkAttemptPolicy.MaxRedemptionAttemptsPerLink
+        )
             return Result.Failure<RedeemPaymentLinkResponse>(
-                new Error("PaymentLink.RedemptionThrottled", "Too many failed redemption attempts; this link has been blocked."));
+                new Error(
+                    "PaymentLink.RedemptionThrottled",
+                    "Too many failed redemption attempts; this link has been blocked."
+                )
+            );
 
         if (!link.IsRedeemable(nowUtc))
             return Result.Failure<RedeemPaymentLinkResponse>(notFound);
@@ -70,7 +78,8 @@ public static class RedeemPaymentLinkHandler
             config.ProviderCode,
             config.StatementDescriptor,
             actorUserId: Guid.Empty,
-            nowUtc);
+            nowUtc
+        );
         if (preparedResult.IsFailure)
             return Result.Failure<RedeemPaymentLinkResponse>(preparedResult.Error);
 
@@ -85,7 +94,10 @@ public static class RedeemPaymentLinkHandler
         if (string.IsNullOrEmpty(secretKey))
         {
             TenantPaymentChargeOutcome.FailPayment(
-                payment, new Error("TenantPaymentConfig.SecretUnreadable", "Stored provider secret could not be decrypted."), Guid.Empty);
+                payment,
+                new Error("TenantPaymentConfig.SecretUnreadable", "Stored provider secret could not be decrypted."),
+                Guid.Empty
+            );
         }
         else
         {
@@ -98,11 +110,24 @@ public static class RedeemPaymentLinkHandler
             link.MarkBlockedAfterExcessiveFailures(nowUtc);
 
         await AuditEntryFactory.AppendAsync(
-            audit, payment.TenantId, nameof(TenantPayment), payment.Id, TenantPaymentChargeOutcome.MapAuditAction(payment.Status),
-            actorUserId: Guid.Empty, correlation.CorrelationId,
+            audit,
+            payment.TenantId,
+            nameof(TenantPayment),
+            payment.Id,
+            TenantPaymentChargeOutcome.MapAuditAction(payment.Status),
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { payment.Status, payment.FailureCode, Source = "PaymentLinkRedeem" },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                payment.Status,
+                payment.FailureCode,
+                Source = "PaymentLinkRedeem",
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         if (payment.Status == PaymentStatus.Succeeded)
         {
@@ -114,14 +139,30 @@ public static class RedeemPaymentLinkHandler
 
         logger.LogInformation(
             "PaymentLink {PaymentLinkId} redemption produced TenantPayment {TenantPaymentId} with status {Status}.",
-            link.Id, payment.Id, payment.Status);
+            link.Id,
+            payment.Id,
+            payment.Status
+        );
 
-        return Result.Success(new RedeemPaymentLinkResponse(
-            payment.Id, payment.Status.ToString(), payment.NextActionType, payment.NextActionUrl, payment.FailureCode, payment.FailureReason));
+        return Result.Success(
+            new RedeemPaymentLinkResponse(
+                payment.Id,
+                payment.Status.ToString(),
+                payment.NextActionType,
+                payment.NextActionUrl,
+                payment.FailureCode,
+                payment.FailureReason
+            )
+        );
     }
 
     private static async Task ExecuteChargeAsync(
-        TenantPayment payment, IPaymentProvider adapter, TenantProviderCredentials credentials, RedeemPaymentLinkCommand command, CancellationToken ct)
+        TenantPayment payment,
+        IPaymentProvider adapter,
+        TenantProviderCredentials credentials,
+        RedeemPaymentLinkCommand command,
+        CancellationToken ct
+    )
     {
         var chargeRequest = new ChargeAuthorizationRequest(
             PaymentMethod: new PaymentMethodToken(command.ProviderPaymentMethodToken),
@@ -133,7 +174,8 @@ public static class RedeemPaymentLinkHandler
             {
                 ["tenantId"] = payment.TenantId.ToString("N"),
                 ["tenantPaymentId"] = payment.Id.ToString("N"),
-            });
+            }
+        );
 
         var chargeResult = await adapter.AuthorizeChargeAsync(credentials, chargeRequest, ct);
         if (chargeResult.IsFailure)
@@ -149,7 +191,15 @@ public static class RedeemPaymentLinkHandler
     /// por webhook) la completa <c>ProcessTenantWebhookHandler</c> llamando a este mismo
     /// método de dominio.</summary>
     private static async Task MarkLinkUsedAsync(
-        PaymentLink link, TenantPayment payment, IPaymentAuditLogWriter audit, IMessageBus bus, IPaymentClientMetrics metrics, ICorrelationContext correlation, DateTime nowUtc, CancellationToken ct)
+        PaymentLink link,
+        TenantPayment payment,
+        IPaymentAuditLogWriter audit,
+        IMessageBus bus,
+        IPaymentClientMetrics metrics,
+        ICorrelationContext correlation,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
     {
         var markUsedResult = link.MarkAsUsed(nowUtc);
         if (markUsedResult.IsFailure)
@@ -158,21 +208,31 @@ public static class RedeemPaymentLinkHandler
         metrics.RecordPaymentLinkUsed();
 
         await AuditEntryFactory.AppendAsync(
-            audit, link.TenantId, nameof(PaymentLink), link.Id, PaymentAuditAction.PaymentLinkUsed,
-            actorUserId: Guid.Empty, correlation.CorrelationId,
+            audit,
+            link.TenantId,
+            nameof(PaymentLink),
+            link.Id,
+            PaymentAuditAction.PaymentLinkUsed,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
             before: (object?)null,
             after: new { payment.Id, link.UsedAtUtc },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 
-        await bus.PublishAsync(new PaymentLinkUsedIntegrationEvent
-        {
-            TenantId = link.TenantId,
-            PaymentLinkId = link.Id,
-            TenantPaymentId = payment.Id,
-            AmountCents = link.Amount.AmountCents,
-            Currency = link.Amount.Currency,
-            UsedAtUtc = nowUtc,
-            CorrelationId = correlation.CorrelationId,
-        });
+        await bus.PublishAsync(
+            new PaymentLinkUsedIntegrationEvent
+            {
+                TenantId = link.TenantId,
+                PaymentLinkId = link.Id,
+                TenantPaymentId = payment.Id,
+                AmountCents = link.Amount.AmountCents,
+                Currency = link.Amount.Currency,
+                UsedAtUtc = nowUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
     }
 }

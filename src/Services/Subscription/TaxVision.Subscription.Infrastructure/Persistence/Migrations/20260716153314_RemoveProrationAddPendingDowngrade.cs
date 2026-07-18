@@ -13,24 +13,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "IX_PlanChangeRequests_EffectiveAtUtc_Pending",
-                table: "PlanChangeRequests");
+                table: "PlanChangeRequests"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "PlanChangeEffective",
-                table: "SubscriptionTenantSettings");
+            migrationBuilder.DropColumn(name: "PlanChangeEffective", table: "SubscriptionTenantSettings");
 
-            migrationBuilder.DropColumn(
-                name: "EffectiveAtUtc",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "EffectiveAtUtc", table: "PlanChangeRequests");
 
-            migrationBuilder.DropColumn(
-                name: "EffectiveMode",
-                table: "PlanChangeRequests");
+            migrationBuilder.DropColumn(name: "EffectiveMode", table: "PlanChangeRequests");
 
-            migrationBuilder.RenameColumn(
-                name: "CancelledAtUtc",
-                table: "PlanChangeRequests",
-                newName: "FailedAtUtc");
+            migrationBuilder.RenameColumn(name: "CancelledAtUtc", table: "PlanChangeRequests", newName: "FailedAtUtc");
 
             migrationBuilder.AlterColumn<string>(
                 name: "PaymentIdempotencyKey",
@@ -42,7 +34,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 oldClrType: typeof(string),
                 oldType: "nvarchar(200)",
                 oldMaxLength: 200,
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<string>(
                 name: "ChargeCurrency",
@@ -54,7 +47,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 oldClrType: typeof(string),
                 oldType: "nvarchar(3)",
                 oldMaxLength: 3,
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.AlterColumn<long>(
                 name: "ChargeAmountCents",
@@ -64,7 +58,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 defaultValue: 0L,
                 oldClrType: typeof(long),
                 oldType: "bigint",
-                oldNullable: true);
+                oldNullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "PendingDowngrades",
@@ -85,7 +80,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     RequestedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     EffectiveAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     AppliedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    CancelledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    CancelledAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -95,31 +90,31 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.TenantSubscriptionId,
                         principalTable: "TenantSubscriptions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PendingDowngrades_EffectiveAtUtc_Scheduled",
                 table: "PendingDowngrades",
                 column: "EffectiveAtUtc",
-                filter: "[Status] = 'Scheduled'");
+                filter: "[Status] = 'Scheduled'"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PendingDowngrades_TenantSubscriptionId_Status",
                 table: "PendingDowngrades",
-                columns: new[] { "TenantSubscriptionId", "Status" });
+                columns: new[] { "TenantSubscriptionId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PendingDowngrades");
+            migrationBuilder.DropTable(name: "PendingDowngrades");
 
-            migrationBuilder.RenameColumn(
-                name: "FailedAtUtc",
-                table: "PlanChangeRequests",
-                newName: "CancelledAtUtc");
+            migrationBuilder.RenameColumn(name: "FailedAtUtc", table: "PlanChangeRequests", newName: "CancelledAtUtc");
 
             migrationBuilder.AddColumn<string>(
                 name: "PlanChangeEffective",
@@ -127,7 +122,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 type: "nvarchar(30)",
                 maxLength: 30,
                 nullable: false,
-                defaultValue: "");
+                defaultValue: ""
+            );
 
             migrationBuilder.AlterColumn<string>(
                 name: "PaymentIdempotencyKey",
@@ -137,7 +133,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(200)",
-                oldMaxLength: 200);
+                oldMaxLength: 200
+            );
 
             migrationBuilder.AlterColumn<string>(
                 name: "ChargeCurrency",
@@ -147,7 +144,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 nullable: true,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(3)",
-                oldMaxLength: 3);
+                oldMaxLength: 3
+            );
 
             migrationBuilder.AlterColumn<long>(
                 name: "ChargeAmountCents",
@@ -155,14 +153,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 type: "bigint",
                 nullable: true,
                 oldClrType: typeof(long),
-                oldType: "bigint");
+                oldType: "bigint"
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "EffectiveAtUtc",
                 table: "PlanChangeRequests",
                 type: "datetime2",
                 nullable: false,
-                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
+                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "EffectiveMode",
@@ -170,13 +170,15 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 type: "nvarchar(30)",
                 maxLength: 30,
                 nullable: false,
-                defaultValue: "");
+                defaultValue: ""
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlanChangeRequests_EffectiveAtUtc_Pending",
                 table: "PlanChangeRequests",
                 column: "EffectiveAtUtc",
-                filter: "[Status] = 'Pending'");
+                filter: "[Status] = 'Pending'"
+            );
         }
     }
 }

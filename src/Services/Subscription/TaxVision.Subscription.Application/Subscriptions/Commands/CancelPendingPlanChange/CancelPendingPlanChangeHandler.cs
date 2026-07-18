@@ -38,8 +38,13 @@ public static class CancelPendingPlanChangeHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanDowngradeCancelled",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.PlanDowngradeCancelled",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { PendingPlanCode = pending.ToPlanCode },
             after: new { PendingPlanCode = (string?)null },
             reason: null,

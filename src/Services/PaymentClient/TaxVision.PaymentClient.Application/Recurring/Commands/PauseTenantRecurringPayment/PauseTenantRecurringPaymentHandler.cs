@@ -16,11 +16,14 @@ public static class PauseTenantRecurringPaymentHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var plan = await plans.GetByIdAsync(command.TenantRecurringPaymentId, command.TenantId, ct);
         if (plan is null)
-            return Result.Failure(new Error("TenantRecurringPayment.NotFound", "TenantRecurringPayment does not exist."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.NotFound", "TenantRecurringPayment does not exist.")
+            );
 
         var nowUtc = DateTime.UtcNow;
         var result = plan.Pause(command.ActorUserId, nowUtc);
@@ -28,9 +31,19 @@ public static class PauseTenantRecurringPaymentHandler
             return result;
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(TenantRecurringPayment), plan.Id, PaymentAuditAction.TenantRecurringPaymentPaused,
-            command.ActorUserId, correlation.CorrelationId,
-            before: (object?)null, after: (object?)null, reason: null, nowUtc, ct);
+            audit,
+            command.TenantId,
+            nameof(TenantRecurringPayment),
+            plan.Id,
+            PaymentAuditAction.TenantRecurringPaymentPaused,
+            command.ActorUserId,
+            correlation.CorrelationId,
+            before: (object?)null,
+            after: (object?)null,
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

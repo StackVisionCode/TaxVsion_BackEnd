@@ -18,15 +18,27 @@ public sealed record StatementDescriptor
     public static Result<StatementDescriptor> Create(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return Result.Failure<StatementDescriptor>(new Error("StatementDescriptor.Empty", "StatementDescriptor is required."));
+            return Result.Failure<StatementDescriptor>(
+                new Error("StatementDescriptor.Empty", "StatementDescriptor is required.")
+            );
 
         var trimmed = value.Trim();
 
         if (trimmed.Length is < 5 or > 22)
-            return Result.Failure<StatementDescriptor>(new Error("StatementDescriptor.InvalidLength", "StatementDescriptor must be between 5 and 22 characters."));
+            return Result.Failure<StatementDescriptor>(
+                new Error(
+                    "StatementDescriptor.InvalidLength",
+                    "StatementDescriptor must be between 5 and 22 characters."
+                )
+            );
 
         if (trimmed.IndexOfAny(ForbiddenCharacters) >= 0)
-            return Result.Failure<StatementDescriptor>(new Error("StatementDescriptor.InvalidCharacters", "StatementDescriptor contains characters not accepted by card networks."));
+            return Result.Failure<StatementDescriptor>(
+                new Error(
+                    "StatementDescriptor.InvalidCharacters",
+                    "StatementDescriptor contains characters not accepted by card networks."
+                )
+            );
 
         return Result.Success(new StatementDescriptor(trimmed));
     }

@@ -27,17 +27,26 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [ProducesResponseType<IReadOnlyList<TenantPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchAllTenants(
-        [FromQuery] PaymentStatus? status, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
-        [FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct) =>
-        Search(tenantId: null, status, from, to, page, pageSize, ct);
+        [FromQuery] PaymentStatus? status,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    ) => Search(tenantId: null, status, from, to, page, pageSize, ct);
 
     [HttpGet("tenants/{tenantId:guid}/payments")]
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [ProducesResponseType<IReadOnlyList<TenantPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchForTenant(
-        Guid tenantId, [FromQuery] PaymentStatus? status, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
-        [FromQuery] int page, [FromQuery] int pageSize, CancellationToken ct) =>
-        Search(tenantId, status, from, to, page, pageSize, ct);
+        Guid tenantId,
+        [FromQuery] PaymentStatus? status,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int page,
+        [FromQuery] int pageSize,
+        CancellationToken ct
+    ) => Search(tenantId, status, from, to, page, pageSize, ct);
 
     private const int ExportMaxRows = 5000;
 
@@ -48,30 +57,79 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [Produces("text/csv")]
     public async Task<IActionResult> ExportCsv(
-        [FromQuery] Guid? tenantId, [FromQuery] PaymentStatus? status, [FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
+        [FromQuery] Guid? tenantId,
+        [FromQuery] PaymentStatus? status,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        CancellationToken ct
+    )
     {
         var result = await bus.InvokeAsync<Result<IReadOnlyList<TenantPaymentAdminResponse>>>(
-            new SearchTenantPaymentsAdminQuery(tenantId, status, from, to, Page: 1, PageSize: ExportMaxRows), ct);
+            new SearchTenantPaymentsAdminQuery(tenantId, status, from, to, Page: 1, PageSize: ExportMaxRows),
+            ct
+        );
 
         if (result.IsFailure)
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 
         var csv = CsvWriter.Write(
-            ["Id", "TenantId", "Status", "AmountCents", "Currency", "TaxpayerId", "PurposeKind", "ProviderCode", "ExternalChargeReference", "FailureCode", "PaidAtUtc", "CreatedAtUtc"],
-            result.Value.Select(p => (IReadOnlyList<string?>)
             [
-                p.Id.ToString(), p.TenantId.ToString(), p.Status, p.AmountCents.ToString(), p.Currency, p.TaxpayerId?.ToString(),
-                p.PurposeKind, p.ProviderCode, p.ExternalChargeReference, p.FailureCode, p.PaidAtUtc?.ToString("O"), p.CreatedAtUtc.ToString("O"),
-            ]));
+                "Id",
+                "TenantId",
+                "Status",
+                "AmountCents",
+                "Currency",
+                "TaxpayerId",
+                "PurposeKind",
+                "ProviderCode",
+                "ExternalChargeReference",
+                "FailureCode",
+                "PaidAtUtc",
+                "CreatedAtUtc",
+            ],
+            result.Value.Select(p =>
+                (IReadOnlyList<string?>)
+                    [
+                        p.Id.ToString(),
+                        p.TenantId.ToString(),
+                        p.Status,
+                        p.AmountCents.ToString(),
+                        p.Currency,
+                        p.TaxpayerId?.ToString(),
+                        p.PurposeKind,
+                        p.ProviderCode,
+                        p.ExternalChargeReference,
+                        p.FailureCode,
+                        p.PaidAtUtc?.ToString("O"),
+                        p.CreatedAtUtc.ToString("O"),
+                    ]
+            )
+        );
 
         return File(Encoding.UTF8.GetBytes(csv), "text/csv", $"tenant-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
     }
 
     private async Task<IActionResult> Search(
-        Guid? tenantId, PaymentStatus? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken ct)
+        Guid? tenantId,
+        PaymentStatus? status,
+        DateTime? from,
+        DateTime? to,
+        int page,
+        int pageSize,
+        CancellationToken ct
+    )
     {
         var result = await bus.InvokeAsync<Result<IReadOnlyList<TenantPaymentAdminResponse>>>(
-            new SearchTenantPaymentsAdminQuery(tenantId, status, from, to, page <= 0 ? 1 : page, pageSize <= 0 ? 50 : pageSize), ct);
+            new SearchTenantPaymentsAdminQuery(
+                tenantId,
+                status,
+                from,
+                to,
+                page <= 0 ? 1 : page,
+                pageSize <= 0 ? 50 : pageSize
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

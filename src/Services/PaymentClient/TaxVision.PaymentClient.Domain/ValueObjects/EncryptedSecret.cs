@@ -18,7 +18,9 @@ public sealed record EncryptedSecret
     public static Result<EncryptedSecret> Create(string cipherText)
     {
         if (string.IsNullOrWhiteSpace(cipherText))
-            return Result.Failure<EncryptedSecret>(new Error("EncryptedSecret.Empty", "EncryptedSecret value is required."));
+            return Result.Failure<EncryptedSecret>(
+                new Error("EncryptedSecret.Empty", "EncryptedSecret value is required.")
+            );
 
         return Result.Success(new EncryptedSecret(cipherText));
     }

@@ -26,13 +26,22 @@ public sealed class TenantProviderCustomer : TenantEntity
     private TenantProviderCustomer() { }
 
     public static Result<TenantProviderCustomer> Register(
-        Guid tenantId, PaymentProviderCode providerCode, ProviderCustomerReference customerReference, string email, DateTime nowUtc)
+        Guid tenantId,
+        PaymentProviderCode providerCode,
+        ProviderCustomerReference customerReference,
+        string email,
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<TenantProviderCustomer>(new Error("TenantProviderCustomer.InvalidTenant", "TenantId is required."));
+            return Result.Failure<TenantProviderCustomer>(
+                new Error("TenantProviderCustomer.InvalidTenant", "TenantId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(email))
-            return Result.Failure<TenantProviderCustomer>(new Error("TenantProviderCustomer.InvalidEmail", "Email is required."));
+            return Result.Failure<TenantProviderCustomer>(
+                new Error("TenantProviderCustomer.InvalidEmail", "Email is required.")
+            );
 
         var customer = new TenantProviderCustomer
         {
@@ -49,19 +58,40 @@ public sealed class TenantProviderCustomer : TenantEntity
     /// <summary>Adjunta un método tokenizado nuevo. El primero que se adjunta siempre queda
     /// como default — no tiene sentido un customer sin default cuando solo tiene un método.</summary>
     public Result<Guid> AttachPaymentMethod(
-        string methodReference, string brand, string last4, int expMonth, int expYear, bool setAsDefault, DateTime nowUtc)
+        string methodReference,
+        string brand,
+        string last4,
+        int expMonth,
+        int expYear,
+        bool setAsDefault,
+        DateTime nowUtc
+    )
     {
         if (string.IsNullOrWhiteSpace(methodReference))
-            return Result.Failure<Guid>(new Error("TenantProviderCustomer.InvalidMethodReference", "MethodReference is required."));
+            return Result.Failure<Guid>(
+                new Error("TenantProviderCustomer.InvalidMethodReference", "MethodReference is required.")
+            );
 
         if (FindActiveByReference(methodReference) is not null)
-            return Result.Failure<Guid>(new Error("TenantProviderCustomer.MethodAlreadyAttached", "This payment method is already attached."));
+            return Result.Failure<Guid>(
+                new Error("TenantProviderCustomer.MethodAlreadyAttached", "This payment method is already attached.")
+            );
 
         var makeDefault = setAsDefault || !HasAnyActiveMethod();
         if (makeDefault)
             ClearDefault();
 
-        var method = TenantSavedPaymentMethod.Create(Id, TenantId, methodReference, brand, last4, expMonth, expYear, makeDefault, nowUtc);
+        var method = TenantSavedPaymentMethod.Create(
+            Id,
+            TenantId,
+            methodReference,
+            brand,
+            last4,
+            expMonth,
+            expYear,
+            makeDefault,
+            nowUtc
+        );
         _savedMethods.Add(method);
         Touch(nowUtc);
         return Result.Success(method.Id);
@@ -71,7 +101,12 @@ public sealed class TenantProviderCustomer : TenantEntity
     {
         var method = FindActiveById(methodId);
         if (method is null)
-            return Result.Failure(new Error("TenantProviderCustomer.MethodNotFound", "Payment method does not exist or was already detached."));
+            return Result.Failure(
+                new Error(
+                    "TenantProviderCustomer.MethodNotFound",
+                    "Payment method does not exist or was already detached."
+                )
+            );
 
         var wasDefault = method.IsDefault;
         method.MarkDetached(nowUtc);
@@ -87,7 +122,9 @@ public sealed class TenantProviderCustomer : TenantEntity
     {
         var method = FindActiveById(methodId);
         if (method is null)
-            return Result.Failure(new Error("TenantProviderCustomer.MethodNotFound", "Payment method does not exist or was detached."));
+            return Result.Failure(
+                new Error("TenantProviderCustomer.MethodNotFound", "Payment method does not exist or was detached.")
+            );
 
         ClearDefault();
         method.SetDefault(true);

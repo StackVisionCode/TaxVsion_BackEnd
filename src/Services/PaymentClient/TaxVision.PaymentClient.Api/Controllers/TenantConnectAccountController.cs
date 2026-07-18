@@ -31,7 +31,16 @@ public sealed class TenantConnectAccountController(IMessageBus bus) : Controller
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<InitiateStripeConnectOnboardingResponse>>(
-            new InitiateStripeConnectOnboardingCommand(tenantId, request.Type, request.Email, request.RefreshUrl, request.ReturnUrl, userId), ct);
+            new InitiateStripeConnectOnboardingCommand(
+                tenantId,
+                request.Type,
+                request.Email,
+                request.RefreshUrl,
+                request.ReturnUrl,
+                userId
+            ),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -45,7 +54,10 @@ public sealed class TenantConnectAccountController(IMessageBus bus) : Controller
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<TenantConnectAccountResponse>>(new GetTenantConnectAccountQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<TenantConnectAccountResponse>>(
+            new GetTenantConnectAccountQuery(tenantId),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

@@ -55,7 +55,9 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<ChangePlanResult>>(
-            new ChangePlanCommand(tenantId, request.PlanCode, request.BillingCycle, userId), ct);
+            new ChangePlanCommand(tenantId, request.PlanCode, request.BillingCycle, userId),
+            ct
+        );
 
         if (result.IsFailure)
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -81,7 +83,10 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new ActivateSubscriptionCommand(tenantId, request?.BillingCycle, userId), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new ActivateSubscriptionCommand(tenantId, request?.BillingCycle, userId),
+            ct
+        );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

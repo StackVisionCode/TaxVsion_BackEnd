@@ -25,7 +25,8 @@ public sealed class SaaSPaymentAttempt : BaseEntity
         int attemptNumber,
         string? providerResponseCode,
         string? providerResponseBody,
-        DateTime nowUtc) =>
+        DateTime nowUtc
+    ) =>
         new()
         {
             SaaSPaymentId = saaSPaymentId,

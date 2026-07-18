@@ -16,7 +16,8 @@ public static class RevokePaymentLinkHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var link = await links.GetByIdAsync(command.PaymentLinkId, command.TenantId, ct);
         if (link is null)
@@ -28,11 +29,19 @@ public static class RevokePaymentLinkHandler
             return revokeResult;
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, nameof(PaymentLink), link.Id, PaymentAuditAction.PaymentLinkRevoked,
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            nameof(PaymentLink),
+            link.Id,
+            PaymentAuditAction.PaymentLinkRevoked,
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
             after: (object?)null,
-            reason: command.Reason, nowUtc, ct);
+            reason: command.Reason,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

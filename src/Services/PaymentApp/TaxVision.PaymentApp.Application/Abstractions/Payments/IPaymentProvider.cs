@@ -20,19 +20,32 @@ public interface IPaymentProvider
     ProviderCapabilities Capabilities { get; }
 
     Task<Result<ProviderCustomerToken>> GetOrCreateCustomerAsync(
-        Guid tenantId, string email, string? name, CancellationToken ct);
+        Guid tenantId,
+        string email,
+        string? name,
+        CancellationToken ct
+    );
 
     Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
-        ChargeAuthorizationRequest request, CancellationToken ct);
+        ChargeAuthorizationRequest request,
+        CancellationToken ct
+    );
 
-    Task<Result<CaptureResult>> CaptureAsync(
-        string providerChargeReference, Money amount, CancellationToken ct);
+    Task<Result<CaptureResult>> CaptureAsync(string providerChargeReference, Money amount, CancellationToken ct);
 
     Task<Result<RefundResult>> RefundAsync(
-        string providerChargeReference, Money amount, string reason, CancellationToken ct);
+        string providerChargeReference,
+        Money amount,
+        string reason,
+        CancellationToken ct
+    );
 
     Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-        string rawPayload, string signatureHeader, string webhookSecret, CancellationToken ct);
+        string rawPayload,
+        string signatureHeader,
+        string webhookSecret,
+        CancellationToken ct
+    );
 
     /// <summary>Traduce un webhook YA verificado (<see cref="VerifyWebhookSignatureAsync"/>)
     /// a datos canónicos que <c>SaaSPayment</c> puede aplicar. Solo el adapter conoce el
@@ -50,7 +63,10 @@ public interface IPaymentProvider
     /// directamente del provider — el backend nunca confía en lo que el frontend afirma
     /// sobre una tarjeta.</summary>
     Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
-        ProviderCustomerToken customer, string paymentMethodReference, CancellationToken ct);
+        ProviderCustomerToken customer,
+        string paymentMethodReference,
+        CancellationToken ct
+    );
 
     /// <summary>Desvincula el método del customer en el provider — el registro local queda
     /// marcado detached independientemente de esto, pero sin esta llamada el método seguiría

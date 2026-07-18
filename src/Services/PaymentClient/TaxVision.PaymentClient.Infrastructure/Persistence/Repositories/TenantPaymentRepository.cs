@@ -11,7 +11,11 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
         WithChildren(db.TenantPayments)
             .FirstOrDefaultAsync(payment => payment.Id == tenantPaymentId && payment.TenantId == tenantId, ct);
 
-    public Task<TenantPayment?> GetByIdempotencyKeyAsync(Guid tenantId, string idempotencyKey, CancellationToken ct = default)
+    public Task<TenantPayment?> GetByIdempotencyKeyAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        CancellationToken ct = default
+    )
     {
         var keyResult = IdempotencyKey.Create(idempotencyKey);
         if (keyResult.IsFailure)
@@ -23,30 +27,56 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
     }
 
     public Task<TenantPayment?> GetByExternalReferenceAsync(
-        Guid tenantId, PaymentProviderCode code, string providerChargeReference, CancellationToken ct = default) =>
+        Guid tenantId,
+        PaymentProviderCode code,
+        string providerChargeReference,
+        CancellationToken ct = default
+    ) =>
         WithChildren(db.TenantPayments)
-            .FirstOrDefaultAsync(payment =>
-                payment.TenantId == tenantId
-                && payment.ExternalChargeReference != null
-                && payment.ExternalChargeReference.Provider == code
-                && payment.ExternalChargeReference.Value == providerChargeReference, ct);
+            .FirstOrDefaultAsync(
+                payment =>
+                    payment.TenantId == tenantId
+                    && payment.ExternalChargeReference != null
+                    && payment.ExternalChargeReference.Provider == code
+                    && payment.ExternalChargeReference.Value == providerChargeReference,
+                ct
+            );
 
-    public async Task<IReadOnlyList<TenantPayment>> GetStuckProcessingAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<TenantPayment>> GetStuckProcessingAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
         await WithChildren(db.TenantPayments)
             .Where(payment => payment.Status == PaymentStatus.Processing && payment.UpdatedAtUtc < cutoffUtc)
             .OrderBy(payment => payment.UpdatedAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TenantPayment>> GetDueForRetryAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<TenantPayment>> GetDueForRetryAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
         await WithChildren(db.TenantPayments)
-            .Where(payment => payment.Status == PaymentStatus.Failed && payment.NextRetryAtUtc != null && payment.NextRetryAtUtc <= nowUtc)
+            .Where(payment =>
+                payment.Status == PaymentStatus.Failed
+                && payment.NextRetryAtUtc != null
+                && payment.NextRetryAtUtc <= nowUtc
+            )
             .OrderBy(payment => payment.NextRetryAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<TenantPayment>> SearchAdminAsync(
-        Guid? tenantId, PaymentStatus? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken ct = default)
+        Guid? tenantId,
+        PaymentStatus? status,
+        DateTime? from,
+        DateTime? to,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
         var query = WithChildren(db.TenantPayments).AsNoTracking().AsQueryable();
 

@@ -28,11 +28,14 @@ public static class ExecuteRecurringScheduleHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var plan = await plans.GetByIdAsync(command.TenantRecurringPaymentId, command.TenantId, ct);
         if (plan is null)
-            return Result.Failure(new Error("TenantRecurringPayment.NotFound", "TenantRecurringPayment does not exist."));
+            return Result.Failure(
+                new Error("TenantRecurringPayment.NotFound", "TenantRecurringPayment does not exist.")
+            );
 
         var nowUtc = DateTime.UtcNow;
         var processingResult = plan.MarkScheduleProcessing(command.ScheduleId, Guid.Empty, nowUtc);
@@ -54,12 +57,19 @@ public static class ExecuteRecurringScheduleHandler
                 idempotencyKey,
                 ActorUserId: Guid.Empty,
                 plan.PlatformFeeAmountCents,
-                plan.PlatformFeeReference),
-            ct);
+                plan.PlatformFeeReference
+            ),
+            ct
+        );
 
         if (chargeResult.IsFailure)
         {
-            var directFailureResult = plan.RecordFailure(command.ScheduleId, chargeResult.Error.Message, Guid.Empty, nowUtc);
+            var directFailureResult = plan.RecordFailure(
+                command.ScheduleId,
+                chargeResult.Error.Message,
+                Guid.Empty,
+                nowUtc
+            );
             if (directFailureResult.IsFailure)
                 return directFailureResult;
 
@@ -73,23 +83,47 @@ public static class ExecuteRecurringScheduleHandler
 
         var applyResult = succeeded
             ? plan.RecordSuccess(command.ScheduleId, chargeResult.Value, payment!.Status.ToString(), Guid.Empty, nowUtc)
-            : plan.RecordFailure(command.ScheduleId, payment?.FailureReason ?? payment?.Status.ToString(), Guid.Empty, nowUtc);
+            : plan.RecordFailure(
+                command.ScheduleId,
+                payment?.FailureReason ?? payment?.Status.ToString(),
+                Guid.Empty,
+                nowUtc
+            );
         if (applyResult.IsFailure)
             return applyResult;
 
         // Mantiene el plan auto-alimentado: si ya no quedan schedules pendientes/en retry por
         // delante, genera el siguiente — así el plan avanza indefinidamente sin un job de
         // "top up" aparte.
-        if (plan.Status == RecurringStatus.Active && !plan.Schedules.Any(s => s.Status is RecurringScheduleStatus.Pending or RecurringScheduleStatus.RetryPending))
+        if (
+            plan.Status == RecurringStatus.Active
+            && !plan.Schedules.Any(s =>
+                s.Status is RecurringScheduleStatus.Pending or RecurringScheduleStatus.RetryPending
+            )
+        )
             plan.GenerateSchedules(1, nowUtc);
 
         await AuditEntryFactory.AppendAsync(
-            audit, plan.TenantId, nameof(TenantRecurringPayment), plan.Id,
-            succeeded ? PaymentAuditAction.TenantRecurringPaymentExecutionSucceeded : PaymentAuditAction.TenantRecurringPaymentExecutionFailed,
-            actorUserId: Guid.Empty, correlation.CorrelationId,
+            audit,
+            plan.TenantId,
+            nameof(TenantRecurringPayment),
+            plan.Id,
+            succeeded
+                ? PaymentAuditAction.TenantRecurringPaymentExecutionSucceeded
+                : PaymentAuditAction.TenantRecurringPaymentExecutionFailed,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { command.ScheduleId, plan.Status, Succeeded = succeeded },
-            reason: null, nowUtc, ct);
+            after: new
+            {
+                command.ScheduleId,
+                plan.Status,
+                Succeeded = succeeded,
+            },
+            reason: null,
+            nowUtc,
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 
@@ -97,11 +131,24 @@ public static class ExecuteRecurringScheduleHandler
     }
 
     private static async Task AuditFailureAsync(
-        IPaymentAuditLogWriter audit, TenantRecurringPayment plan, ICorrelationContext correlation, DateTime nowUtc, CancellationToken ct) =>
+        IPaymentAuditLogWriter audit,
+        TenantRecurringPayment plan,
+        ICorrelationContext correlation,
+        DateTime nowUtc,
+        CancellationToken ct
+    ) =>
         await AuditEntryFactory.AppendAsync(
-            audit, plan.TenantId, nameof(TenantRecurringPayment), plan.Id, PaymentAuditAction.TenantRecurringPaymentExecutionFailed,
-            actorUserId: Guid.Empty, correlation.CorrelationId,
+            audit,
+            plan.TenantId,
+            nameof(TenantRecurringPayment),
+            plan.Id,
+            PaymentAuditAction.TenantRecurringPaymentExecutionFailed,
+            actorUserId: Guid.Empty,
+            correlation.CorrelationId,
             before: (object?)null,
             after: new { plan.Status },
-            reason: null, nowUtc, ct);
+            reason: null,
+            nowUtc,
+            ct
+        );
 }

@@ -27,13 +27,22 @@ public sealed class WebhookEvent : TenantEntity
     private WebhookEvent() { }
 
     public static Result<WebhookEvent> Receive(
-        Guid tenantId, PaymentProviderCode providerCode, string providerEventId, string eventType, string rawPayload, string signatureHeader, DateTime nowUtc)
+        Guid tenantId,
+        PaymentProviderCode providerCode,
+        string providerEventId,
+        string eventType,
+        string rawPayload,
+        string signatureHeader,
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<WebhookEvent>(new Error("WebhookEvent.InvalidTenant", "TenantId is required."));
 
         if (string.IsNullOrWhiteSpace(providerEventId))
-            return Result.Failure<WebhookEvent>(new Error("WebhookEvent.InvalidProviderEventId", "ProviderEventId is required."));
+            return Result.Failure<WebhookEvent>(
+                new Error("WebhookEvent.InvalidProviderEventId", "ProviderEventId is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(eventType))
             return Result.Failure<WebhookEvent>(new Error("WebhookEvent.InvalidEventType", "EventType is required."));

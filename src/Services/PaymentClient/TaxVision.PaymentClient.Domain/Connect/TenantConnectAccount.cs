@@ -29,10 +29,17 @@ public sealed class TenantConnectAccount : TenantEntity
     /// <summary>Se llama justo después de que Infrastructure crea la Account en Stripe — el
     /// id ya viene resuelto, nunca se genera acá (el Domain no habla con Stripe).</summary>
     public static Result<TenantConnectAccount> Create(
-        Guid tenantId, PaymentProviderCode providerCode, ConnectAccountType accountType, StripeConnectAccountId stripeConnectAccountId, DateTime nowUtc)
+        Guid tenantId,
+        PaymentProviderCode providerCode,
+        ConnectAccountType accountType,
+        StripeConnectAccountId stripeConnectAccountId,
+        DateTime nowUtc
+    )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<TenantConnectAccount>(new Error("TenantConnectAccount.InvalidTenant", "TenantId is required."));
+            return Result.Failure<TenantConnectAccount>(
+                new Error("TenantConnectAccount.InvalidTenant", "TenantId is required.")
+            );
 
         var account = new TenantConnectAccount
         {
@@ -57,7 +64,9 @@ public sealed class TenantConnectAccount : TenantEntity
     public Result InitiateOnboarding(DateTime nowUtc)
     {
         if (Status is ConnectAccountStatus.Disabled)
-            return Result.Failure(new Error("TenantConnectAccount.InvalidTransition", "Cannot onboard a disabled Connect account."));
+            return Result.Failure(
+                new Error("TenantConnectAccount.InvalidTransition", "Cannot onboard a disabled Connect account.")
+            );
 
         if (Status == ConnectAccountStatus.Pending)
             Status = ConnectAccountStatus.InProgress;
@@ -72,10 +81,20 @@ public sealed class TenantConnectAccount : TenantEntity
     /// habilitado y cero requirements pendientes; perder <c>chargesEnabled</c> desde Enabled
     /// degrada a Restricted; recuperarlo vuelve a Enabled. <c>Disabled</c> es terminal — solo
     /// <see cref="Deactivate"/> (acción de admin) lo alcanza.</summary>
-    public Result UpdateFromWebhook(bool chargesEnabled, bool payoutsEnabled, IReadOnlyList<string> requirementsCurrentlyDue, DateTime nowUtc)
+    public Result UpdateFromWebhook(
+        bool chargesEnabled,
+        bool payoutsEnabled,
+        IReadOnlyList<string> requirementsCurrentlyDue,
+        DateTime nowUtc
+    )
     {
         if (Status == ConnectAccountStatus.Disabled)
-            return Result.Failure(new Error("TenantConnectAccount.InvalidTransition", "A disabled Connect account cannot be updated by webhook."));
+            return Result.Failure(
+                new Error(
+                    "TenantConnectAccount.InvalidTransition",
+                    "A disabled Connect account cannot be updated by webhook."
+                )
+            );
 
         CanCharge = chargesEnabled;
         CanReceivePayouts = payoutsEnabled;
@@ -102,7 +121,9 @@ public sealed class TenantConnectAccount : TenantEntity
             return Result.Failure(new Error("TenantConnectAccount.InvalidReason", "Reason is required."));
 
         if (Status == ConnectAccountStatus.Disabled)
-            return Result.Failure(new Error("TenantConnectAccount.InvalidTransition", "Connect account is already disabled."));
+            return Result.Failure(
+                new Error("TenantConnectAccount.InvalidTransition", "Connect account is already disabled.")
+            );
 
         Status = ConnectAccountStatus.Disabled;
         CanCharge = false;

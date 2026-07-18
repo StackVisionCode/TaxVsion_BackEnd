@@ -44,6 +44,8 @@ jobs:
           SCRIBE_DB_CONNECTION=${{ secrets.SCRIBE_DB_CONNECTION }}
           CONNECTORS_DB_CONNECTION=${{ secrets.CONNECTORS_DB_CONNECTION }}
           CORRESPONDENCE_DB_CONNECTION=${{ secrets.CORRESPONDENCE_DB_CONNECTION }}
+          PAYMENTAPP_DB_CONNECTION=${{ secrets.PAYMENTAPP_DB_CONNECTION }}
+          PAYMENTCLIENT_DB_CONNECTION=${{ secrets.PAYMENTCLIENT_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
 
           # ---------- RabbitMQ / MinIO / Grafana ----------
@@ -107,13 +109,32 @@ jobs:
           # ---------- Signature (PAdES-B sealing) ----------
           SIGNATURE_PFX_PASSWORD=${{ secrets.SIGNATURE_PFX_PASSWORD }}
 
+          # ---------- PaymentApp (Fases A-K) ----------
+          STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          INTELLIPAY_MERCHANT_KEY=${{ secrets.INTELLIPAY_MERCHANT_KEY }}
+          INTELLIPAY_API_KEY=${{ secrets.INTELLIPAY_API_KEY }}
+
+          # ---------- PaymentClient (Fases E-M) ----------
+          STRIPE_CONNECT_PLATFORM_SECRET_KEY=${{ secrets.STRIPE_CONNECT_PLATFORM_SECRET_KEY }}
+          STRIPE_CONNECT_WEBHOOK_SECRET=${{ secrets.STRIPE_CONNECT_WEBHOOK_SECRET }}
+
           # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
+          # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto
+          # compartido viajan por aca.
           COMMUNICATION_TURN_URL=${{ secrets.COMMUNICATION_TURN_URL }}
           COMMUNICATION_TURN_STATIC_AUTH_SECRET=${{ secrets.COMMUNICATION_TURN_STATIC_AUTH_SECRET }}
           COMMUNICATION_TURN_TTL_SECONDS=${{ secrets.COMMUNICATION_TURN_TTL_SECONDS }}
           COMMUNICATION_CORS_ORIGINS=${{ secrets.COMMUNICATION_CORS_ORIGINS }}
           COMMUNICATION_PLATFORM_TENANT_ID=${{ secrets.COMMUNICATION_PLATFORM_TENANT_ID }}
           COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=${{ secrets.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP }}
+          # Faltaba desde la propia Fase Backend 5 — sin esto communication-api no
+          # bootea en produccion (COMMUNICATION_JOIN_TICKET_SECRET es z.string().min(32)
+          # requerido). El M2M de Communication (COMMUNICATION_SERVICE_AUTH_CLIENT_*)
+          # reusa COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID/SECRET, ya escritos arriba
+          # — no hace falta un secret nuevo para eso.
+          COMMUNICATION_JOIN_TICKET_SECRET=${{ secrets.COMMUNICATION_JOIN_TICKET_SECRET }}
+          COMMUNICATION_FRONTEND_BASE_URL=${{ secrets.COMMUNICATION_FRONTEND_BASE_URL }}
 
           # ---------- Bootstrap / dominio ----------
           # PLATFORM_BOOTSTRAP_ENABLED se deja apagado salvo que el secret exista y sea "true"

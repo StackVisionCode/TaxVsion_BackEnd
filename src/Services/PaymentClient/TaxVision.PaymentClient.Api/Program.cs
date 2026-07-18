@@ -41,7 +41,11 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddPaymentClientInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "payment-client-service", PaymentClientMetrics.MeterName);
+builder.Services.AddTaxVisionOpenTelemetry(
+    builder.Configuration,
+    "payment-client-service",
+    PaymentClientMetrics.MeterName
+);
 builder.Services.AddRedisCache(builder.Configuration);
 
 // Autorización por permiso ([HasPermission("payment_client.*")]); los admins pasan siempre.

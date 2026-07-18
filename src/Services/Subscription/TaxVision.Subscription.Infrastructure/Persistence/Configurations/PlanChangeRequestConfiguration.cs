@@ -35,7 +35,8 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.PaymentIdempotencyKey).HasMaxLength(200).IsRequired();
         builder.Property(request => request.SaaSPaymentId);
 
-        builder.HasIndex(request => new { request.TenantSubscriptionId, request.Status })
+        builder
+            .HasIndex(request => new { request.TenantSubscriptionId, request.Status })
             .HasDatabaseName("IX_PlanChangeRequests_TenantSubscriptionId_Status");
     }
 }

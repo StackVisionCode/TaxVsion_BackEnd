@@ -8,7 +8,14 @@ public sealed class WebhookEventTests
     [Fact]
     public void Receive_with_an_empty_provider_event_id_fails()
     {
-        var result = WebhookEvent.Receive(PaymentProviderCode.Stripe, "  ", "payment_intent.succeeded", "{}", "sig", DateTime.UtcNow);
+        var result = WebhookEvent.Receive(
+            PaymentProviderCode.Stripe,
+            "  ",
+            "payment_intent.succeeded",
+            "{}",
+            "sig",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("WebhookEvent.InvalidProviderEventId", result.Error.Code);
@@ -53,6 +60,14 @@ public sealed class WebhookEventTests
     }
 
     private static WebhookEvent CreateReceivedEvent() =>
-        WebhookEvent.Receive(
-            PaymentProviderCode.Stripe, "evt_123", "payment_intent.succeeded", "{}", "t=1,v1=abc", DateTime.UtcNow).Value;
+        WebhookEvent
+            .Receive(
+                PaymentProviderCode.Stripe,
+                "evt_123",
+                "payment_intent.succeeded",
+                "{}",
+                "t=1,v1=abc",
+                DateTime.UtcNow
+            )
+            .Value;
 }

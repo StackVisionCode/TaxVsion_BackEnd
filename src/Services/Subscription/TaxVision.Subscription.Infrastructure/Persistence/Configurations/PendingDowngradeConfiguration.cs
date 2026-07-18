@@ -30,10 +30,12 @@ public sealed class PendingDowngradeConfiguration : IEntityTypeConfiguration<Pen
         builder.Property(pending => pending.RequestedAtUtc).IsRequired();
         builder.Property(pending => pending.EffectiveAtUtc).IsRequired();
 
-        builder.HasIndex(pending => new { pending.TenantSubscriptionId, pending.Status })
+        builder
+            .HasIndex(pending => new { pending.TenantSubscriptionId, pending.Status })
             .HasDatabaseName("IX_PendingDowngrades_TenantSubscriptionId_Status");
 
-        builder.HasIndex(pending => pending.EffectiveAtUtc)
+        builder
+            .HasIndex(pending => pending.EffectiveAtUtc)
             .HasFilter("[Status] = 'Scheduled'")
             .HasDatabaseName("IX_PendingDowngrades_EffectiveAtUtc_Scheduled");
     }

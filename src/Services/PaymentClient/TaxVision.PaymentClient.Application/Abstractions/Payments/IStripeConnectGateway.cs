@@ -5,7 +5,11 @@ namespace TaxVision.PaymentClient.Application.Abstractions.Payments;
 
 /// <summary>Snapshot de <c>account.updated</c>/<c>capability.updated</c> ya traducido — el
 /// Domain nunca ve el payload crudo de Stripe (guardrail §44.1).</summary>
-public sealed record ConnectAccountStatusSnapshot(bool ChargesEnabled, bool PayoutsEnabled, IReadOnlyList<string> RequirementsCurrentlyDue);
+public sealed record ConnectAccountStatusSnapshot(
+    bool ChargesEnabled,
+    bool PayoutsEnabled,
+    IReadOnlyList<string> RequirementsCurrentlyDue
+);
 
 /// <summary>
 /// Evento del webhook de plataforma (<c>/payments-client/webhooks/stripe-connect</c>) ya
@@ -26,7 +30,8 @@ public sealed record ConnectWebhookEvent(
     string? PayoutReference,
     long? PayoutAmountCents,
     string? PayoutCurrency,
-    string? PayoutFailureReason);
+    string? PayoutFailureReason
+);
 
 /// <summary>
 /// Operaciones de plataforma sobre Connected Accounts — a diferencia de
@@ -39,12 +44,25 @@ public interface IStripeConnectGateway
 {
     Task<Result<string>> CreateAccountAsync(ConnectAccountType type, string tenantEmail, CancellationToken ct);
 
-    Task<Result<string>> CreateOnboardingLinkAsync(string stripeConnectAccountId, string refreshUrl, string returnUrl, CancellationToken ct);
+    Task<Result<string>> CreateOnboardingLinkAsync(
+        string stripeConnectAccountId,
+        string refreshUrl,
+        string returnUrl,
+        CancellationToken ct
+    );
 
-    Task<Result<ConnectAccountStatusSnapshot>> GetAccountStatusAsync(string stripeConnectAccountId, CancellationToken ct);
+    Task<Result<ConnectAccountStatusSnapshot>> GetAccountStatusAsync(
+        string stripeConnectAccountId,
+        CancellationToken ct
+    );
 
     /// <summary>Verifica la firma HMAC contra <see cref="PlatformStripeCredentials.ConnectWebhookSecret"/>
     /// (secret de plataforma — distinto del <c>WebhookSecretEncrypted</c> per-tenant que usa
     /// el webhook de <c>TenantPayment</c>) y traduce el payload ya autenticado.</summary>
-    Task<Result<ConnectWebhookEvent>> VerifyAndParseConnectWebhookAsync(string rawPayload, string signatureHeader, string webhookSecret, CancellationToken ct);
+    Task<Result<ConnectWebhookEvent>> VerifyAndParseConnectWebhookAsync(
+        string rawPayload,
+        string signatureHeader,
+        string webhookSecret,
+        CancellationToken ct
+    );
 }

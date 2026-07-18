@@ -46,10 +46,14 @@ public static class ChangePlanHandler
 
         var planVersion = plan.GetPublishedVersion();
         if (planVersion is null)
-            return Result.Failure<ChangePlanResult>(new Error("Plan.NoPublishedVersion", "Plan has no published version."));
+            return Result.Failure<ChangePlanResult>(
+                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
+            );
 
         if (!PlanPricing.TryParseBillingCycle(command.BillingCycle, out var requestedCycle))
-            return Result.Failure<ChangePlanResult>(new Error("Subscription.InvalidBillingCycle", $"'{command.BillingCycle}' is not a valid billing cycle."));
+            return Result.Failure<ChangePlanResult>(
+                new Error("Subscription.InvalidBillingCycle", $"'{command.BillingCycle}' is not a valid billing cycle.")
+            );
 
         var cycleChanged = requestedCycle is not null && requestedCycle.Value != subscription.BillingCycle;
         if (subscription.PlanId == plan.Id && subscription.PlanVersionId == planVersion.Id && !cycleChanged)
@@ -58,15 +62,26 @@ public static class ChangePlanHandler
         var effectiveCycle = requestedCycle ?? subscription.BillingCycle;
         var targetPrice = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, effectiveCycle);
         if (targetPrice is null)
-            return Result.Failure<ChangePlanResult>(new Error("Plan.NoPriceTier", $"Plan {plan.Code.Value} has no price for billing cycle {effectiveCycle}."));
+            return Result.Failure<ChangePlanResult>(
+                new Error(
+                    "Plan.NoPriceTier",
+                    $"Plan {plan.Code.Value} has no price for billing cycle {effectiveCycle}."
+                )
+            );
 
         var currentPlan = await plans.GetByIdAsync(subscription.PlanId, ct);
         var currentPlanVersion = PlanPricing.FindVersion(currentPlan, subscription.PlanVersionId);
-        var currentPrice = currentPlanVersion is null ? null : PlanPricing.ResolveBaseSubscriptionPrice(currentPlanVersion, subscription.BillingCycle);
+        var currentPrice = currentPlanVersion is null
+            ? null
+            : PlanPricing.ResolveBaseSubscriptionPrice(currentPlanVersion, subscription.BillingCycle);
         if (currentPrice is null)
         {
             return Result.Failure<ChangePlanResult>(
-                new Error("Plan.NoCurrentPriceTier", "Current plan has no resolvable price for its billing cycle; cannot determine upgrade/downgrade direction."));
+                new Error(
+                    "Plan.NoCurrentPriceTier",
+                    "Current plan has no resolvable price for its billing cycle; cannot determine upgrade/downgrade direction."
+                )
+            );
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -79,51 +94,91 @@ public static class ChangePlanHandler
             var paymentIdempotencyKey = IdempotencyKeyFactory.PlanChangeCharge(chargeToken);
 
             var upgradeResult = subscription.RequestUpgrade(
-                plan, planVersion, requestedCycle, targetPrice.Value.AmountCents, targetPrice.Value.Currency,
-                paymentIdempotencyKey, command.RequestedByUserId, nowUtc);
+                plan,
+                planVersion,
+                requestedCycle,
+                targetPrice.Value.AmountCents,
+                targetPrice.Value.Currency,
+                paymentIdempotencyKey,
+                command.RequestedByUserId,
+                nowUtc
+            );
             if (upgradeResult.IsFailure)
                 return Result.Failure<ChangePlanResult>(upgradeResult.Error);
 
             await unitOfWork.SaveChangesAsync(ct);
 
-            var awaitingPayment = subscription.PlanChangeRequests.First(r => r.Status == PlanChangeRequestStatus.AwaitingPayment);
+            var awaitingPayment = subscription.PlanChangeRequests.First(r =>
+                r.Status == PlanChangeRequestStatus.AwaitingPayment
+            );
 
             await AuditEntryFactory.AppendAsync(
-                audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanUpgradeAwaitingPayment",
-                command.RequestedByUserId, correlation.CorrelationId,
+                audit,
+                command.TenantId,
+                "TenantSubscription",
+                subscription.Id,
+                "TenantSubscription.PlanUpgradeAwaitingPayment",
+                command.RequestedByUserId,
+                correlation.CorrelationId,
                 before: new { PlanCode = previousPlanCode },
-                after: new { PlanCode = previousPlanCode, PendingPlanCode = plan.Code.Value, awaitingPayment.ChargeAmountCents, awaitingPayment.ChargeCurrency },
-                reason: null, nowUtc, ct);
+                after: new
+                {
+                    PlanCode = previousPlanCode,
+                    PendingPlanCode = plan.Code.Value,
+                    awaitingPayment.ChargeAmountCents,
+                    awaitingPayment.ChargeCurrency,
+                },
+                reason: null,
+                nowUtc,
+                ct
+            );
 
-            await bus.PublishAsync(new SubscriptionPlanChangeDueIntegrationEvent
-            {
-                TenantId = command.TenantId,
-                TenantSubscriptionId = subscription.Id,
-                PlanChangeRequestId = awaitingPayment.Id,
-                TargetPlanId = plan.Id,
-                IdempotencyKey = awaitingPayment.PaymentIdempotencyKey,
-                TargetPlanPrice = awaitingPayment.ChargeAmountCents,
-                Currency = awaitingPayment.ChargeCurrency,
-            });
+            await bus.PublishAsync(
+                new SubscriptionPlanChangeDueIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    TenantSubscriptionId = subscription.Id,
+                    PlanChangeRequestId = awaitingPayment.Id,
+                    TargetPlanId = plan.Id,
+                    IdempotencyKey = awaitingPayment.PaymentIdempotencyKey,
+                    TargetPlanPrice = awaitingPayment.ChargeAmountCents,
+                    Currency = awaitingPayment.ChargeCurrency,
+                }
+            );
 
             logger.LogInformation(
                 "Tenant {TenantId} requested an upgrade to {PlanCode}; full price charge of {AmountCents} {Currency} in flight (requested by {UserId}).",
-                command.TenantId, plan.Code.Value, awaitingPayment.ChargeAmountCents, awaitingPayment.ChargeCurrency, command.RequestedByUserId
+                command.TenantId,
+                plan.Code.Value,
+                awaitingPayment.ChargeAmountCents,
+                awaitingPayment.ChargeCurrency,
+                command.RequestedByUserId
             );
             return Result.Success(new ChangePlanResult(AwaitingPayment: true, awaitingPayment.Id));
         }
 
         // Downgrade (o mismo precio): nunca cobra, nunca prorratea — se agenda para el fin del
         // período actual y sigue disfrutando el plan actual hasta la próxima renovación.
-        var downgradeResult = subscription.RequestDowngrade(plan, planVersion, requestedCycle, command.RequestedByUserId, nowUtc);
+        var downgradeResult = subscription.RequestDowngrade(
+            plan,
+            planVersion,
+            requestedCycle,
+            command.RequestedByUserId,
+            nowUtc
+        );
         if (downgradeResult.IsFailure)
             return Result.Failure<ChangePlanResult>(downgradeResult.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, command.TenantId, "TenantSubscription", subscription.Id, "TenantSubscription.PlanDowngradeScheduled",
-            command.RequestedByUserId, correlation.CorrelationId,
+            audit,
+            command.TenantId,
+            "TenantSubscription",
+            subscription.Id,
+            "TenantSubscription.PlanDowngradeScheduled",
+            command.RequestedByUserId,
+            correlation.CorrelationId,
             before: new { PlanCode = previousPlanCode },
             after: new
             {

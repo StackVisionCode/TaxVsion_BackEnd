@@ -9,7 +9,13 @@ public sealed class TenantPaymentConfigTests
     public void Create_with_an_empty_tenant_fails()
     {
         var result = TenantPaymentConfig.Create(
-            Guid.Empty, PaymentProviderCode.Stripe, TenantPaymentMode.DirectApiKeys, "pk_test_123", Descriptor(), DateTime.UtcNow);
+            Guid.Empty,
+            PaymentProviderCode.Stripe,
+            TenantPaymentMode.DirectApiKeys,
+            "pk_test_123",
+            Descriptor(),
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantPaymentConfig.InvalidTenant", result.Error.Code);
@@ -157,8 +163,26 @@ public sealed class TenantPaymentConfigTests
     private static StatementDescriptor Descriptor() => StatementDescriptor.Create("ACME TAX SVC").Value;
 
     private static TenantPaymentConfig CreateConfig() =>
-        TenantPaymentConfig.Create(Guid.NewGuid(), PaymentProviderCode.Stripe, TenantPaymentMode.DirectApiKeys, "pk_test_123", Descriptor(), DateTime.UtcNow).Value;
+        TenantPaymentConfig
+            .Create(
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                TenantPaymentMode.DirectApiKeys,
+                "pk_test_123",
+                Descriptor(),
+                DateTime.UtcNow
+            )
+            .Value;
 
     private static TenantPaymentConfig CreateConnectConfig() =>
-        TenantPaymentConfig.Create(Guid.NewGuid(), PaymentProviderCode.Stripe, TenantPaymentMode.Connect, "pk_test_123", Descriptor(), DateTime.UtcNow).Value;
+        TenantPaymentConfig
+            .Create(
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                TenantPaymentMode.Connect,
+                "pk_test_123",
+                Descriptor(),
+                DateTime.UtcNow
+            )
+            .Value;
 }

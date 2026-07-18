@@ -26,6 +26,11 @@ public sealed class IntellipayResponse
 
 public sealed record IntellipayCreateCustomerRequest(string Account, string Email, string FirstName);
 
-public sealed record IntellipayChargeRequest(string CustomerId, long AmountCents, string Description, string IdempotencyKey);
+public sealed record IntellipayChargeRequest(
+    string CustomerId,
+    long AmountCents,
+    string Description,
+    string IdempotencyKey
+);
 
 public sealed record IntellipayRefundRequest(string TransactionId, long AmountCents, string Reason);

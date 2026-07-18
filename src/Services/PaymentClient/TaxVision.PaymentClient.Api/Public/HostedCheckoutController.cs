@@ -27,7 +27,10 @@ public sealed class HostedCheckoutController(IMessageBus bus) : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(string linkToken, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<PaymentLinkCheckoutResponse>>(new GetPaymentLinkByTokenQuery(linkToken), ct);
+        var result = await bus.InvokeAsync<Result<PaymentLinkCheckoutResponse>>(
+            new GetPaymentLinkByTokenQuery(linkToken),
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : NotFound(new { result.Error.Code, result.Error.Message });
     }
@@ -42,7 +45,9 @@ public sealed class HostedCheckoutController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> Pay(string linkToken, PayRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<RedeemPaymentLinkResponse>>(
-            new RedeemPaymentLinkCommand(linkToken, request.ProviderPaymentMethodToken, request.ReceiptEmail), ct);
+            new RedeemPaymentLinkCommand(linkToken, request.ProviderPaymentMethodToken, request.ReceiptEmail),
+            ct
+        );
 
         if (result.IsSuccess)
             return Ok(result.Value);

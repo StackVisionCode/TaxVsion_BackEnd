@@ -108,7 +108,13 @@ public static class SubscriptionPlanCatalogSeeder
         var plan = SubscriptionPlan.Seed(planId, PlanCode.Create(code).Value, name, description, tier, nowUtc).Value;
 
         var version = SubscriptionPlanVersion
-            .Seed(versionId, planId, versionNumber: 1, trialDaysDefault: 14, supportedBillingCycles: [BillingCycle.Monthly, BillingCycle.Yearly])
+            .Seed(
+                versionId,
+                planId,
+                versionNumber: 1,
+                trialDaysDefault: 14,
+                supportedBillingCycles: [BillingCycle.Monthly, BillingCycle.Yearly]
+            )
             .Value;
 
         AddEntitlement(version, "seats.max", EntitlementValueType.Int, seatsMax.ToString());
@@ -119,14 +125,26 @@ public static class SubscriptionPlanCatalogSeeder
             AddFeature(version, $"module.{module}");
 
         var monthlyTier = PlanPriceTier
-            .Create(versionId, BillingCycle.Monthly, minQuantity: 1, maxQuantity: null, Money.Create(monthlyPriceUsd, "USD").Value)
+            .Create(
+                versionId,
+                BillingCycle.Monthly,
+                minQuantity: 1,
+                maxQuantity: null,
+                Money.Create(monthlyPriceUsd, "USD").Value
+            )
             .Value;
         version.AddPriceTier(monthlyTier);
 
         // Anual = 10x el mensual ("2 meses gratis", convencion estandar SaaS) — ajustar si el
         // negocio define otro descuento.
         var yearlyTier = PlanPriceTier
-            .Create(versionId, BillingCycle.Yearly, minQuantity: 1, maxQuantity: null, Money.Create(monthlyPriceUsd * 10m, "USD").Value)
+            .Create(
+                versionId,
+                BillingCycle.Yearly,
+                minQuantity: 1,
+                maxQuantity: null,
+                Money.Create(monthlyPriceUsd * 10m, "USD").Value
+            )
             .Value;
         version.AddPriceTier(yearlyTier);
 

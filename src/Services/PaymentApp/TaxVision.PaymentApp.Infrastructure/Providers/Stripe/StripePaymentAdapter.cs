@@ -2,11 +2,11 @@ using System.Diagnostics;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Stripe;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
-using Stripe;
 
 namespace TaxVision.PaymentApp.Infrastructure.Providers.Stripe;
 
@@ -22,7 +22,11 @@ public sealed class StripePaymentAdapter : IPaymentProvider
     private readonly ILogger<StripePaymentAdapter> _logger;
     private readonly IPaymentAppMetrics _metrics;
 
-    public StripePaymentAdapter(IOptions<StripeOptions> options, ILogger<StripePaymentAdapter> logger, IPaymentAppMetrics metrics)
+    public StripePaymentAdapter(
+        IOptions<StripeOptions> options,
+        ILogger<StripePaymentAdapter> logger,
+        IPaymentAppMetrics metrics
+    )
     {
         _client = new StripeClient(options.Value.SecretKey);
         _logger = logger;
@@ -33,14 +37,19 @@ public sealed class StripePaymentAdapter : IPaymentProvider
     public ProviderCapabilities Capabilities => StripeCapabilities.Instance;
 
     public async Task<Result<ProviderCustomerToken>> GetOrCreateCustomerAsync(
-        Guid tenantId, string email, string? name, CancellationToken ct)
+        Guid tenantId,
+        string email,
+        string? name,
+        CancellationToken ct
+    )
     {
         var service = new CustomerService(_client);
         try
         {
             var search = await service.SearchAsync(
                 new CustomerSearchOptions { Query = $"metadata['tenantId']:'{tenantId:N}'", Limit = 1 },
-                cancellationToken: ct);
+                cancellationToken: ct
+            );
 
             var existing = search.Data.Count > 0 ? search.Data[0] : null;
             if (existing is not null)
@@ -53,40 +62,56 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                     Name = name,
                     Metadata = new Dictionary<string, string> { ["tenantId"] = tenantId.ToString("N") },
                 },
-                cancellationToken: ct);
+                cancellationToken: ct
+            );
 
             return Result.Success(new ProviderCustomerToken(created.Id, PaymentProviderCode.Stripe));
         }
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe GetOrCreateCustomer failed for tenant {TenantId}", tenantId);
-            return Result.Failure<ProviderCustomerToken>(new Error("Stripe.Customer.Failed", ex.StripeError?.Message ?? ex.Message));
+            return Result.Failure<ProviderCustomerToken>(
+                new Error("Stripe.Customer.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
         }
     }
 
     public async Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
-        ProviderCustomerToken customer, string paymentMethodReference, CancellationToken ct)
+        ProviderCustomerToken customer,
+        string paymentMethodReference,
+        CancellationToken ct
+    )
     {
         var service = new PaymentMethodService(_client);
         try
         {
             var method = await service.AttachAsync(
-                paymentMethodReference, new PaymentMethodAttachOptions { Customer = customer.Token }, cancellationToken: ct);
+                paymentMethodReference,
+                new PaymentMethodAttachOptions { Customer = customer.Token },
+                cancellationToken: ct
+            );
 
             if (method.Card is null)
-                return Result.Failure<SavedPaymentMethodInfo>(new Error("Stripe.PaymentMethod.NotACard", "Only card payment methods are supported."));
+                return Result.Failure<SavedPaymentMethodInfo>(
+                    new Error("Stripe.PaymentMethod.NotACard", "Only card payment methods are supported.")
+                );
 
-            return Result.Success(new SavedPaymentMethodInfo(
-                MethodReference: method.Id,
-                Brand: method.Card.Brand,
-                Last4: method.Card.Last4,
-                ExpMonth: (int)method.Card.ExpMonth,
-                ExpYear: (int)method.Card.ExpYear));
+            return Result.Success(
+                new SavedPaymentMethodInfo(
+                    MethodReference: method.Id,
+                    Brand: method.Card.Brand,
+                    Last4: method.Card.Last4,
+                    ExpMonth: (int)method.Card.ExpMonth,
+                    ExpYear: (int)method.Card.ExpYear
+                )
+            );
         }
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe AttachPaymentMethod failed. Reference={Reference}", paymentMethodReference);
-            return Result.Failure<SavedPaymentMethodInfo>(new Error("Stripe.PaymentMethod.AttachFailed", ex.StripeError?.Message ?? ex.Message));
+            return Result.Failure<SavedPaymentMethodInfo>(
+                new Error("Stripe.PaymentMethod.AttachFailed", ex.StripeError?.Message ?? ex.Message)
+            );
         }
     }
 
@@ -101,11 +126,16 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe DetachPaymentMethod failed. Reference={Reference}", paymentMethodReference);
-            return Result.Failure(new Error("Stripe.PaymentMethod.DetachFailed", ex.StripeError?.Message ?? ex.Message));
+            return Result.Failure(
+                new Error("Stripe.PaymentMethod.DetachFailed", ex.StripeError?.Message ?? ex.Message)
+            );
         }
     }
 
-    public async Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(ChargeAuthorizationRequest request, CancellationToken ct)
+    public async Task<Result<ChargeAuthorizationResult>> AuthorizeChargeAsync(
+        ChargeAuthorizationRequest request,
+        CancellationToken ct
+    )
     {
         var service = new PaymentIntentService(_client);
         var hasPaymentMethod = request.SpecificPaymentMethod is not null;
@@ -130,40 +160,60 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                     Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
                 },
                 new RequestOptions { IdempotencyKey = request.IdempotencyKey.Value },
-                ct);
+                ct
+            );
 
             return Result.Success(MapToChargeResult(intent));
         }
         catch (StripeException ex)
         {
-            _logger.LogWarning(ex, "Stripe AuthorizeCharge failed. IdempotencyKey={IdempotencyKey}", request.IdempotencyKey.Value);
-            return Result.Success(new ChargeAuthorizationResult(
-                ProviderChargeReference: ex.StripeError?.PaymentIntent?.Id ?? string.Empty,
-                Status: PaymentStatus.Failed,
-                FailureCode: ex.StripeError?.Code,
-                FailureMessage: ex.StripeError?.Message ?? ex.Message));
+            _logger.LogWarning(
+                ex,
+                "Stripe AuthorizeCharge failed. IdempotencyKey={IdempotencyKey}",
+                request.IdempotencyKey.Value
+            );
+            return Result.Success(
+                new ChargeAuthorizationResult(
+                    ProviderChargeReference: ex.StripeError?.PaymentIntent?.Id ?? string.Empty,
+                    Status: PaymentStatus.Failed,
+                    FailureCode: ex.StripeError?.Code,
+                    FailureMessage: ex.StripeError?.Message ?? ex.Message
+                )
+            );
         }
         finally
         {
-            _metrics.RecordProviderLatency(stopwatch.Elapsed.TotalMilliseconds, PaymentProviderCode.Stripe.ToString(), nameof(AuthorizeChargeAsync));
+            _metrics.RecordProviderLatency(
+                stopwatch.Elapsed.TotalMilliseconds,
+                PaymentProviderCode.Stripe.ToString(),
+                nameof(AuthorizeChargeAsync)
+            );
         }
     }
 
-    private static ChargeAuthorizationResult MapToChargeResult(PaymentIntent intent) => intent.Status switch
-    {
-        "succeeded" => new ChargeAuthorizationResult(intent.Id, PaymentStatus.Succeeded),
-        "requires_action" or "requires_source_action" => new ChargeAuthorizationResult(
-            intent.Id, PaymentStatus.RequiresAction,
-            NextActionType: intent.NextAction?.Type,
-            NextActionUrl: intent.NextAction?.RedirectToUrl?.Url),
-        "processing" => new ChargeAuthorizationResult(intent.Id, PaymentStatus.Processing),
-        _ => new ChargeAuthorizationResult(
-            intent.Id, PaymentStatus.Failed,
-            FailureCode: intent.Status,
-            FailureMessage: intent.LastPaymentError?.Message),
-    };
+    private static ChargeAuthorizationResult MapToChargeResult(PaymentIntent intent) =>
+        intent.Status switch
+        {
+            "succeeded" => new ChargeAuthorizationResult(intent.Id, PaymentStatus.Succeeded),
+            "requires_action" or "requires_source_action" => new ChargeAuthorizationResult(
+                intent.Id,
+                PaymentStatus.RequiresAction,
+                NextActionType: intent.NextAction?.Type,
+                NextActionUrl: intent.NextAction?.RedirectToUrl?.Url
+            ),
+            "processing" => new ChargeAuthorizationResult(intent.Id, PaymentStatus.Processing),
+            _ => new ChargeAuthorizationResult(
+                intent.Id,
+                PaymentStatus.Failed,
+                FailureCode: intent.Status,
+                FailureMessage: intent.LastPaymentError?.Message
+            ),
+        };
 
-    public async Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(string providerChargeReference, CancellationToken ct)
+    public async Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
+        string providerChargeReference,
+        CancellationToken ct
+    )
     {
         var service = new PaymentIntentService(_client);
         try
@@ -174,11 +224,17 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe GetChargeStatus failed. Reference={Reference}", providerChargeReference);
-            return Result.Failure<ChargeAuthorizationResult>(new Error("Stripe.ChargeStatus.Failed", ex.StripeError?.Message ?? ex.Message));
+            return Result.Failure<ChargeAuthorizationResult>(
+                new Error("Stripe.ChargeStatus.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
         }
     }
 
-    public async Task<Result<CaptureResult>> CaptureAsync(string providerChargeReference, Money amount, CancellationToken ct)
+    public async Task<Result<CaptureResult>> CaptureAsync(
+        string providerChargeReference,
+        Money amount,
+        CancellationToken ct
+    )
     {
         var service = new PaymentIntentService(_client);
         try
@@ -186,7 +242,8 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             var intent = await service.CaptureAsync(
                 providerChargeReference,
                 new PaymentIntentCaptureOptions { AmountToCapture = amount.AmountCents },
-                cancellationToken: ct);
+                cancellationToken: ct
+            );
 
             var status = intent.Status == "succeeded" ? PaymentStatus.Succeeded : PaymentStatus.Processing;
             return Result.Success(new CaptureResult(intent.Id, status, amount));
@@ -194,11 +251,18 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe Capture failed. Reference={Reference}", providerChargeReference);
-            return Result.Failure<CaptureResult>(new Error("Stripe.Capture.Failed", ex.StripeError?.Message ?? ex.Message));
+            return Result.Failure<CaptureResult>(
+                new Error("Stripe.Capture.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
         }
     }
 
-    public async Task<Result<RefundResult>> RefundAsync(string providerChargeReference, Money amount, string reason, CancellationToken ct)
+    public async Task<Result<RefundResult>> RefundAsync(
+        string providerChargeReference,
+        Money amount,
+        string reason,
+        CancellationToken ct
+    )
     {
         var service = new RefundService(_client);
         var stopwatch = Stopwatch.StartNew();
@@ -211,7 +275,8 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                     Amount = amount.AmountCents,
                     Metadata = new Dictionary<string, string> { ["reason"] = reason },
                 },
-                cancellationToken: ct);
+                cancellationToken: ct
+            );
 
             var status = refund.Status == "succeeded" ? PaymentStatus.Refunded : PaymentStatus.Processing;
             return Result.Success(new RefundResult(refund.Id, status, amount));
@@ -219,30 +284,48 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe Refund failed. Reference={Reference}", providerChargeReference);
-            return Result.Failure<RefundResult>(new Error("Stripe.Refund.Failed", ex.StripeError?.Message ?? ex.Message));
+            return Result.Failure<RefundResult>(
+                new Error("Stripe.Refund.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
         }
         finally
         {
-            _metrics.RecordProviderLatency(stopwatch.Elapsed.TotalMilliseconds, PaymentProviderCode.Stripe.ToString(), nameof(RefundAsync));
+            _metrics.RecordProviderLatency(
+                stopwatch.Elapsed.TotalMilliseconds,
+                PaymentProviderCode.Stripe.ToString(),
+                nameof(RefundAsync)
+            );
         }
     }
 
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-        string rawPayload, string signatureHeader, string webhookSecret, CancellationToken ct)
+        string rawPayload,
+        string signatureHeader,
+        string webhookSecret,
+        CancellationToken ct
+    )
     {
         try
         {
             var stripeEvent = EventUtility.ConstructEvent(rawPayload, signatureHeader, webhookSecret);
-            return Task.FromResult(Result.Success(new WebhookVerificationResult(stripeEvent.Id, stripeEvent.Type, rawPayload)));
+            return Task.FromResult(
+                Result.Success(new WebhookVerificationResult(stripeEvent.Id, stripeEvent.Type, rawPayload))
+            );
         }
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe webhook signature verification failed.");
-            return Task.FromResult(Result.Failure<WebhookVerificationResult>(new Error("Stripe.WebhookSignature.Invalid", ex.Message)));
+            return Task.FromResult(
+                Result.Failure<WebhookVerificationResult>(new Error("Stripe.WebhookSignature.Invalid", ex.Message))
+            );
         }
     }
 
-    public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(string rawPayload, string eventType, CancellationToken ct)
+    public Task<Result<WebhookEventPayload>> ParseWebhookEventAsync(
+        string rawPayload,
+        string eventType,
+        CancellationToken ct
+    )
     {
         Event stripeEvent;
         try
@@ -252,7 +335,9 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (Exception ex) when (ex is StripeException or System.Text.Json.JsonException)
         {
             _logger.LogWarning(ex, "Stripe webhook payload could not be parsed.");
-            return Task.FromResult(Result.Failure<WebhookEventPayload>(new Error("Stripe.Webhook.ParseFailed", ex.Message)));
+            return Task.FromResult(
+                Result.Failure<WebhookEventPayload>(new Error("Stripe.Webhook.ParseFailed", ex.Message))
+            );
         }
 
         var result = eventType switch
@@ -262,7 +347,9 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             "payment_intent.canceled" => ParsePaymentIntent(stripeEvent, PaymentStatus.Cancelled),
             "charge.refunded" => ParseCharge(stripeEvent),
             "charge.dispute.created" => ParseDispute(stripeEvent),
-            _ => Result.Failure<WebhookEventPayload>(new Error("Stripe.Webhook.UnsupportedEventType", $"Event type '{eventType}' is not handled.")),
+            _ => Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.Webhook.UnsupportedEventType", $"Event type '{eventType}' is not handled.")
+            ),
         };
 
         return Task.FromResult(result);
@@ -271,39 +358,54 @@ public sealed class StripePaymentAdapter : IPaymentProvider
     private static Result<WebhookEventPayload> ParsePaymentIntent(Event stripeEvent, PaymentStatus mappedStatus)
     {
         if (stripeEvent.Data.Object is not PaymentIntent intent)
-            return Result.Failure<WebhookEventPayload>(new Error("Stripe.Webhook.UnexpectedPayload", "Expected a PaymentIntent object."));
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.Webhook.UnexpectedPayload", "Expected a PaymentIntent object.")
+            );
 
-        return Result.Success(new WebhookEventPayload(
-            ProviderChargeReference: intent.Id,
-            Status: mappedStatus,
-            FailureCode: intent.LastPaymentError?.Code,
-            FailureMessage: intent.LastPaymentError?.Message,
-            RefundedAmountCents: null));
+        return Result.Success(
+            new WebhookEventPayload(
+                ProviderChargeReference: intent.Id,
+                Status: mappedStatus,
+                FailureCode: intent.LastPaymentError?.Code,
+                FailureMessage: intent.LastPaymentError?.Message,
+                RefundedAmountCents: null
+            )
+        );
     }
 
     private static Result<WebhookEventPayload> ParseCharge(Event stripeEvent)
     {
         if (stripeEvent.Data.Object is not Charge charge)
-            return Result.Failure<WebhookEventPayload>(new Error("Stripe.Webhook.UnexpectedPayload", "Expected a Charge object."));
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.Webhook.UnexpectedPayload", "Expected a Charge object.")
+            );
 
-        return Result.Success(new WebhookEventPayload(
-            ProviderChargeReference: charge.PaymentIntentId ?? charge.Id,
-            Status: PaymentStatus.Refunded,
-            FailureCode: null,
-            FailureMessage: null,
-            RefundedAmountCents: charge.AmountRefunded));
+        return Result.Success(
+            new WebhookEventPayload(
+                ProviderChargeReference: charge.PaymentIntentId ?? charge.Id,
+                Status: PaymentStatus.Refunded,
+                FailureCode: null,
+                FailureMessage: null,
+                RefundedAmountCents: charge.AmountRefunded
+            )
+        );
     }
 
     private static Result<WebhookEventPayload> ParseDispute(Event stripeEvent)
     {
         if (stripeEvent.Data.Object is not Dispute dispute)
-            return Result.Failure<WebhookEventPayload>(new Error("Stripe.Webhook.UnexpectedPayload", "Expected a Dispute object."));
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.Webhook.UnexpectedPayload", "Expected a Dispute object.")
+            );
 
-        return Result.Success(new WebhookEventPayload(
-            ProviderChargeReference: dispute.PaymentIntentId ?? string.Empty,
-            Status: PaymentStatus.ChargedBack,
-            FailureCode: dispute.Reason,
-            FailureMessage: "Chargeback dispute created.",
-            RefundedAmountCents: null));
+        return Result.Success(
+            new WebhookEventPayload(
+                ProviderChargeReference: dispute.PaymentIntentId ?? string.Empty,
+                Status: PaymentStatus.ChargedBack,
+                FailureCode: dispute.Reason,
+                FailureMessage: "Chargeback dispute created.",
+                RefundedAmountCents: null
+            )
+        );
     }
 }

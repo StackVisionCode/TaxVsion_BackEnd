@@ -44,16 +44,18 @@ public sealed class SeatRenewalJob(
 
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.PublishAsync(new SeatRenewalDueIntegrationEvent
-            {
-                TenantId = seat.TenantId,
-                SeatId = seat.Id,
-                PeriodStartUtc = seat.CurrentPeriodEndUtc.Value,
-                PeriodEndUtc = seat.BillingCycle.CalculateNext(seat.CurrentPeriodEndUtc.Value),
-                IdempotencyKey = idempotencyKey,
-                AmountCents = (long)Math.Round(seat.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
-                Currency = seat.UnitPrice.Currency,
-            });
+            await bus.PublishAsync(
+                new SeatRenewalDueIntegrationEvent
+                {
+                    TenantId = seat.TenantId,
+                    SeatId = seat.Id,
+                    PeriodStartUtc = seat.CurrentPeriodEndUtc.Value,
+                    PeriodEndUtc = seat.BillingCycle.CalculateNext(seat.CurrentPeriodEndUtc.Value),
+                    IdempotencyKey = idempotencyKey,
+                    AmountCents = (long)Math.Round(seat.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
+                    Currency = seat.UnitPrice.Currency,
+                }
+            );
         }
 
         if (due.Count > 0)

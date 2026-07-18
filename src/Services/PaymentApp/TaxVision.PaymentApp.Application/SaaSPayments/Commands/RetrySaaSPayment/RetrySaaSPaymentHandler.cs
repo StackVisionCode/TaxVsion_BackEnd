@@ -24,7 +24,8 @@ public static class RetrySaaSPaymentHandler
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var payment = await payments.GetByIdAsync(command.SaaSPaymentId, command.TenantId, ct);
         if (payment is null)
@@ -41,11 +42,25 @@ public static class RetrySaaSPaymentHandler
         await ExecuteRetryAsync(payment, adapter, providerCustomers, command.ActorUserId, metrics, ct);
 
         await AuditEntryFactory.AppendAsync(
-            audit, payment.TenantId, nameof(SaaSPayment), payment.Id, SaaSPaymentChargeOutcome.MapAuditAction(payment.Status),
-            command.ActorUserId, correlation.CorrelationId,
+            audit,
+            payment.TenantId,
+            nameof(SaaSPayment),
+            payment.Id,
+            SaaSPaymentChargeOutcome.MapAuditAction(payment.Status),
+            command.ActorUserId,
+            correlation.CorrelationId,
             before: (object?)null,
-            after: new { payment.Status, payment.FailureCode, payment.FailureReason, RetryAttempt = payment.Attempts.Count },
-            reason: null, DateTime.UtcNow, ct);
+            after: new
+            {
+                payment.Status,
+                payment.FailureCode,
+                payment.FailureReason,
+                RetryAttempt = payment.Attempts.Count,
+            },
+            reason: null,
+            DateTime.UtcNow,
+            ct
+        );
 
         await SaaSPaymentChargeOutcome.PublishResultAsync(payment, bus, correlation, ct);
 
@@ -53,18 +68,33 @@ public static class RetrySaaSPaymentHandler
 
         logger.LogInformation(
             "SaaSPayment {SaaSPaymentId} retry finished with status {Status} (attempt {Attempt}).",
-            payment.Id, payment.Status, payment.Attempts.Count);
+            payment.Id,
+            payment.Status,
+            payment.Attempts.Count
+        );
 
         return Result.Success();
     }
 
     private static async Task ExecuteRetryAsync(
-        SaaSPayment payment, IPaymentProvider adapter, ITenantProviderCustomerRepository providerCustomers, Guid actorUserId, IPaymentAppMetrics metrics, CancellationToken ct)
+        SaaSPayment payment,
+        IPaymentProvider adapter,
+        ITenantProviderCustomerRepository providerCustomers,
+        Guid actorUserId,
+        IPaymentAppMetrics metrics,
+        CancellationToken ct
+    )
     {
         var nextRetryAtUtc = SaaSPaymentChargeOutcome.ComputeNextRetryAtUtc(payment, DateTime.UtcNow);
 
         var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
-            payment.TenantId, SyntheticPayer.EmailFor(payment.TenantId), null, providerCustomers, adapter, ct);
+            payment.TenantId,
+            SyntheticPayer.EmailFor(payment.TenantId),
+            null,
+            providerCustomers,
+            adapter,
+            ct
+        );
         if (payerResult.IsFailure)
         {
             SaaSPaymentChargeOutcome.FailPayment(payment, payerResult.Error, actorUserId, nextRetryAtUtc, metrics);
@@ -82,7 +112,8 @@ public static class RetrySaaSPaymentHandler
                 ["saaSPaymentId"] = payment.Id.ToString("N"),
                 ["retry"] = "true",
             },
-            SpecificPaymentMethod: payerResult.Value.Method);
+            SpecificPaymentMethod: payerResult.Value.Method
+        );
 
         var chargeResult = await adapter.AuthorizeChargeAsync(chargeRequest, ct);
         if (chargeResult.IsFailure)

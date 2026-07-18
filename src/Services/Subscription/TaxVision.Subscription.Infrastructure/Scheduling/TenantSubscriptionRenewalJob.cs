@@ -44,16 +44,25 @@ public sealed class TenantSubscriptionRenewalJob(
 
             var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
             var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
-            var price = planVersion is null ? null : PlanPricing.ResolveBaseSubscriptionPrice(planVersion, subscription.BillingCycle);
+            var price = planVersion is null
+                ? null
+                : PlanPricing.ResolveBaseSubscriptionPrice(planVersion, subscription.BillingCycle);
             if (price is null)
             {
                 logger.LogWarning(
                     "Could not resolve a price tier for subscription {SubscriptionId} (plan {PlanId}, version {PlanVersionId}, cycle {BillingCycle}); skipping renewal intent.",
-                    subscription.Id, subscription.PlanId, subscription.PlanVersionId, subscription.BillingCycle);
+                    subscription.Id,
+                    subscription.PlanId,
+                    subscription.PlanVersionId,
+                    subscription.BillingCycle
+                );
                 continue;
             }
 
-            var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewal(subscription.Id, subscription.CurrentPeriodEndUtc);
+            var idempotencyKey = IdempotencyKeyFactory.SubscriptionRenewal(
+                subscription.Id,
+                subscription.CurrentPeriodEndUtc
+            );
             var result = subscription.BeginRenewal(idempotencyKey, actorUserId: Guid.Empty, nowUtc);
             if (result.IsFailure)
             {
@@ -67,17 +76,19 @@ public sealed class TenantSubscriptionRenewalJob(
 
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.PublishAsync(new SubscriptionRenewalDueIntegrationEvent
-            {
-                TenantId = subscription.TenantId,
-                TenantSubscriptionId = subscription.Id,
-                PlanCode = subscription.PlanCode,
-                PeriodStartUtc = subscription.CurrentPeriodEndUtc,
-                PeriodEndUtc = subscription.BillingCycle.CalculateNext(subscription.CurrentPeriodEndUtc),
-                IdempotencyKey = idempotencyKey,
-                AmountCents = price.Value.AmountCents,
-                Currency = price.Value.Currency,
-            });
+            await bus.PublishAsync(
+                new SubscriptionRenewalDueIntegrationEvent
+                {
+                    TenantId = subscription.TenantId,
+                    TenantSubscriptionId = subscription.Id,
+                    PlanCode = subscription.PlanCode,
+                    PeriodStartUtc = subscription.CurrentPeriodEndUtc,
+                    PeriodEndUtc = subscription.BillingCycle.CalculateNext(subscription.CurrentPeriodEndUtc),
+                    IdempotencyKey = idempotencyKey,
+                    AmountCents = price.Value.AmountCents,
+                    Currency = price.Value.Currency,
+                }
+            );
         }
 
         if (due.Count > 0)
@@ -85,10 +96,18 @@ public sealed class TenantSubscriptionRenewalJob(
     }
 
     private static async Task ApplyPendingDowngradeIfAnyAsync(
-        TenantSubscription subscription, IPlanRepository plans, IUnitOfWork unitOfWork, IMessageBus bus,
-        ILogger<TenantSubscriptionRenewalJob> logger, DateTime nowUtc, CancellationToken ct)
+        TenantSubscription subscription,
+        IPlanRepository plans,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ILogger<TenantSubscriptionRenewalJob> logger,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
     {
-        var pendingDowngrade = subscription.PendingDowngrades.FirstOrDefault(d => d.Status == PendingDowngradeStatus.Scheduled);
+        var pendingDowngrade = subscription.PendingDowngrades.FirstOrDefault(d =>
+            d.Status == PendingDowngradeStatus.Scheduled
+        );
         if (pendingDowngrade is null)
             return;
 
@@ -98,16 +117,27 @@ public sealed class TenantSubscriptionRenewalJob(
         {
             logger.LogWarning(
                 "Could not apply pending downgrade {Id} for subscription {SubscriptionId}: target plan/version no longer exists.",
-                pendingDowngrade.Id, subscription.Id);
+                pendingDowngrade.Id,
+                subscription.Id
+            );
             return;
         }
 
-        var applyResult = subscription.ApplyPendingDowngrade(pendingDowngrade.Id, toPlan, toPlanVersion, actorUserId: Guid.Empty, nowUtc);
+        var applyResult = subscription.ApplyPendingDowngrade(
+            pendingDowngrade.Id,
+            toPlan,
+            toPlanVersion,
+            actorUserId: Guid.Empty,
+            nowUtc
+        );
         if (applyResult.IsFailure)
         {
             logger.LogWarning(
                 "Could not apply pending downgrade {Id} for subscription {SubscriptionId}: {Code}.",
-                pendingDowngrade.Id, subscription.Id, applyResult.Error.Code);
+                pendingDowngrade.Id,
+                subscription.Id,
+                applyResult.Error.Code
+            );
             return;
         }
 

@@ -9,7 +9,14 @@ public sealed class WebhookEventTests
     public void Receive_with_an_empty_tenant_id_fails()
     {
         var result = WebhookEvent.Receive(
-            Guid.Empty, PaymentProviderCode.Stripe, "evt_123", "payment_intent.succeeded", "{}", "sig", DateTime.UtcNow);
+            Guid.Empty,
+            PaymentProviderCode.Stripe,
+            "evt_123",
+            "payment_intent.succeeded",
+            "{}",
+            "sig",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("WebhookEvent.InvalidTenant", result.Error.Code);
@@ -19,7 +26,14 @@ public sealed class WebhookEventTests
     public void Receive_with_an_empty_provider_event_id_fails()
     {
         var result = WebhookEvent.Receive(
-            Guid.NewGuid(), PaymentProviderCode.Stripe, "  ", "payment_intent.succeeded", "{}", "sig", DateTime.UtcNow);
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            "  ",
+            "payment_intent.succeeded",
+            "{}",
+            "sig",
+            DateTime.UtcNow
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("WebhookEvent.InvalidProviderEventId", result.Error.Code);
@@ -64,6 +78,15 @@ public sealed class WebhookEventTests
     }
 
     private static WebhookEvent CreateReceivedEvent() =>
-        WebhookEvent.Receive(
-            Guid.NewGuid(), PaymentProviderCode.Stripe, "evt_123", "payment_intent.succeeded", "{}", "t=1,v1=abc", DateTime.UtcNow).Value;
+        WebhookEvent
+            .Receive(
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                "evt_123",
+                "payment_intent.succeeded",
+                "{}",
+                "t=1,v1=abc",
+                DateTime.UtcNow
+            )
+            .Value;
 }

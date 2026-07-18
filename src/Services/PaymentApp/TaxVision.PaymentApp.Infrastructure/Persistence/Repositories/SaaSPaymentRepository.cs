@@ -21,37 +21,76 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
         return WithChildren(db.SaaSPayments).FirstOrDefaultAsync(payment => payment.IdempotencyKey == key, ct);
     }
 
-    public Task<SaaSPayment?> GetByExternalReferenceAsync(PaymentProviderCode code, string providerChargeReference, CancellationToken ct = default) =>
+    public Task<SaaSPayment?> GetByExternalReferenceAsync(
+        PaymentProviderCode code,
+        string providerChargeReference,
+        CancellationToken ct = default
+    ) =>
         WithChildren(db.SaaSPayments)
-            .FirstOrDefaultAsync(payment =>
-                payment.ExternalChargeReference != null
-                && payment.ExternalChargeReference.Provider == code
-                && payment.ExternalChargeReference.Value == providerChargeReference, ct);
+            .FirstOrDefaultAsync(
+                payment =>
+                    payment.ExternalChargeReference != null
+                    && payment.ExternalChargeReference.Provider == code
+                    && payment.ExternalChargeReference.Value == providerChargeReference,
+                ct
+            );
 
-    public async Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
+        DateTime cutoffUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
         await WithChildren(db.SaaSPayments)
             .Where(payment => payment.Status == PaymentStatus.Processing && payment.UpdatedAtUtc < cutoffUtc)
             .OrderBy(payment => payment.UpdatedAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(DateTime nowUtc, int batchSize, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<SaaSPayment>> GetDueForRetryAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
         await WithChildren(db.SaaSPayments)
-            .Where(payment => payment.Status == PaymentStatus.Failed && payment.NextRetryAtUtc != null && payment.NextRetryAtUtc <= nowUtc)
+            .Where(payment =>
+                payment.Status == PaymentStatus.Failed
+                && payment.NextRetryAtUtc != null
+                && payment.NextRetryAtUtc <= nowUtc
+            )
             .OrderBy(payment => payment.NextRetryAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
 
     public Task<int> CountDueForRetryAsync(DateTime nowUtc, CancellationToken ct = default) =>
-        db.SaaSPayments.CountAsync(payment => payment.Status == PaymentStatus.Failed && payment.NextRetryAtUtc != null && payment.NextRetryAtUtc <= nowUtc, ct);
+        db.SaaSPayments.CountAsync(
+            payment =>
+                payment.Status == PaymentStatus.Failed
+                && payment.NextRetryAtUtc != null
+                && payment.NextRetryAtUtc <= nowUtc,
+            ct
+        );
 
-    public Task<long> SumSucceededAmountCentsAsync(SaaSPaymentType type, DateTime sinceUtc, CancellationToken ct = default) =>
-        db.SaaSPayments
-            .Where(payment => payment.Status == PaymentStatus.Succeeded && payment.Type == type && payment.PaidAtUtc >= sinceUtc)
+    public Task<long> SumSucceededAmountCentsAsync(
+        SaaSPaymentType type,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    ) =>
+        db
+            .SaaSPayments.Where(payment =>
+                payment.Status == PaymentStatus.Succeeded && payment.Type == type && payment.PaidAtUtc >= sinceUtc
+            )
             .SumAsync(payment => payment.Amount.AmountCents, ct);
 
     public async Task<IReadOnlyList<SaaSPayment>> SearchAdminAsync(
-        Guid? tenantId, PaymentStatus? status, SaaSPaymentType? type, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken ct = default)
+        Guid? tenantId,
+        PaymentStatus? status,
+        SaaSPaymentType? type,
+        DateTime? from,
+        DateTime? to,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
         var query = WithChildren(db.SaaSPayments).AsNoTracking().AsQueryable();
 

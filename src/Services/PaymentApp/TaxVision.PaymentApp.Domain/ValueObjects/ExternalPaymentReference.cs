@@ -21,10 +21,17 @@ public sealed record ExternalPaymentReference
     public static Result<ExternalPaymentReference> Create(PaymentProviderCode provider, string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return Result.Failure<ExternalPaymentReference>(new Error("ExternalPaymentReference.Empty", "ExternalPaymentReference value is required."));
+            return Result.Failure<ExternalPaymentReference>(
+                new Error("ExternalPaymentReference.Empty", "ExternalPaymentReference value is required.")
+            );
 
         if (value.Length > 200)
-            return Result.Failure<ExternalPaymentReference>(new Error("ExternalPaymentReference.TooLong", "ExternalPaymentReference value must be 200 characters or fewer."));
+            return Result.Failure<ExternalPaymentReference>(
+                new Error(
+                    "ExternalPaymentReference.TooLong",
+                    "ExternalPaymentReference value must be 200 characters or fewer."
+                )
+            );
 
         return Result.Success(new ExternalPaymentReference(provider, value.Trim()));
     }

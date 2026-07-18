@@ -31,8 +31,8 @@ public static class PlanVersionEntitlements
     /// <summary>Precio base (quantity 1) por ciclo soportado, para que el catálogo de planes
     /// pueda mostrar "$X/mes" y "$Y/año" sin que el cliente tenga que calcularlo.</summary>
     public static IReadOnlyDictionary<string, decimal> GetPricesUsdByCycle(SubscriptionPlanVersion version) =>
-        version.PriceTiers
-            .Where(tier => tier.MinQuantity <= 1 && (tier.MaxQuantity is null || tier.MaxQuantity >= 1))
+        version
+            .PriceTiers.Where(tier => tier.MinQuantity <= 1 && (tier.MaxQuantity is null || tier.MaxQuantity >= 1))
             .ToDictionary(tier => tier.BillingCycle.ToString(), tier => tier.UnitAmount.Amount);
 
     public static string[] GetEnabledModules(SubscriptionPlanVersion version) =>

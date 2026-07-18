@@ -27,12 +27,13 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     CausationId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     BeforePayload = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     AfterPayload = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                    Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PaymentAuditEntries", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "SaaSPayments",
@@ -47,7 +48,11 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     ProviderCode = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
                     Status = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
                     ExternalChargeProvider = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
-                    ExternalChargeReference = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    ExternalChargeReference = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: true
+                    ),
                     StatementDescriptor = table.Column<string>(type: "nvarchar(22)", maxLength: 22, nullable: false),
                     NextActionType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     NextActionUrl = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
@@ -62,12 +67,13 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SaaSPayments", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "Tenants",
@@ -81,12 +87,13 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     Status = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Tenants", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "RefundLines",
@@ -98,9 +105,13 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     AmountCents = table.Column<long>(type: "bigint", nullable: false),
                     Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                     Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
-                    ExternalRefundReference = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    ExternalRefundReference = table.Column<string>(
+                        type: "nvarchar(200)",
+                        maxLength: 200,
+                        nullable: true
+                    ),
                     RequestedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    RefundedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    RefundedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -110,8 +121,10 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         column: x => x.SaaSPaymentId,
                         principalTable: "SaaSPayments",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "SaaSPaymentAttempts",
@@ -123,7 +136,7 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     AttemptNumber = table.Column<int>(type: "int", nullable: false),
                     AttemptedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ProviderResponseCode = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    ProviderResponseBody = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    ProviderResponseBody = table.Column<string>(type: "nvarchar(max)", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -133,65 +146,69 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         column: x => x.SaaSPaymentId,
                         principalTable: "SaaSPayments",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PaymentAuditEntries_TenantId_Aggregate",
                 table: "PaymentAuditEntries",
-                columns: new[] { "TenantId", "AggregateType", "AggregateId" });
+                columns: new[] { "TenantId", "AggregateType", "AggregateId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_RefundLines_SaaSPaymentId",
                 table: "RefundLines",
-                column: "SaaSPaymentId");
+                column: "SaaSPaymentId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SaaSPaymentAttempts_SaaSPaymentId",
                 table: "SaaSPaymentAttempts",
-                column: "SaaSPaymentId");
+                column: "SaaSPaymentId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SaaSPayments_Status_NextRetry",
                 table: "SaaSPayments",
                 column: "NextRetryAtUtc",
-                filter: "[Status] = 'Failed' AND [NextRetryAtUtc] IS NOT NULL");
+                filter: "[Status] = 'Failed' AND [NextRetryAtUtc] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SaaSPayments_TenantId_Status",
                 table: "SaaSPayments",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_SaaSPayments_IdempotencyKey",
                 table: "SaaSPayments",
                 column: "IdempotencyKey",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_Tenants_SubDomain",
                 table: "Tenants",
                 column: "SubDomain",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PaymentAuditEntries");
+            migrationBuilder.DropTable(name: "PaymentAuditEntries");
 
-            migrationBuilder.DropTable(
-                name: "RefundLines");
+            migrationBuilder.DropTable(name: "RefundLines");
 
-            migrationBuilder.DropTable(
-                name: "SaaSPaymentAttempts");
+            migrationBuilder.DropTable(name: "SaaSPaymentAttempts");
 
-            migrationBuilder.DropTable(
-                name: "Tenants");
+            migrationBuilder.DropTable(name: "Tenants");
 
-            migrationBuilder.DropTable(
-                name: "SaaSPayments");
+            migrationBuilder.DropTable(name: "SaaSPayments");
         }
     }
 }

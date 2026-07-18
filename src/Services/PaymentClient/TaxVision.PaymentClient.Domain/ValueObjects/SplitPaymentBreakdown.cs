@@ -19,14 +19,24 @@ public sealed record SplitPaymentBreakdown
         PlatformFeeReference = platformFeeReference;
     }
 
-    public static Result<SplitPaymentBreakdown> Create(long tenantAmountCents, long platformFeeAmountCents, string? platformFeeReference)
+    public static Result<SplitPaymentBreakdown> Create(
+        long tenantAmountCents,
+        long platformFeeAmountCents,
+        string? platformFeeReference
+    )
     {
         if (tenantAmountCents < 0)
-            return Result.Failure<SplitPaymentBreakdown>(new Error("SplitPaymentBreakdown.NegativeTenantAmount", "TenantAmountCents cannot be negative."));
+            return Result.Failure<SplitPaymentBreakdown>(
+                new Error("SplitPaymentBreakdown.NegativeTenantAmount", "TenantAmountCents cannot be negative.")
+            );
 
         if (platformFeeAmountCents < 0)
-            return Result.Failure<SplitPaymentBreakdown>(new Error("SplitPaymentBreakdown.NegativePlatformFee", "PlatformFeeAmountCents cannot be negative."));
+            return Result.Failure<SplitPaymentBreakdown>(
+                new Error("SplitPaymentBreakdown.NegativePlatformFee", "PlatformFeeAmountCents cannot be negative.")
+            );
 
-        return Result.Success(new SplitPaymentBreakdown(tenantAmountCents, platformFeeAmountCents, platformFeeReference?.Trim()));
+        return Result.Success(
+            new SplitPaymentBreakdown(tenantAmountCents, platformFeeAmountCents, platformFeeReference?.Trim())
+        );
     }
 }

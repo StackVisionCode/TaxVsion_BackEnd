@@ -17,16 +17,20 @@ public sealed class RecurringPaymentExecutionConfiguration : IEntityTypeConfigur
         builder.Property(execution => execution.TenantId).IsRequired();
         builder.Property(execution => execution.ExecutedAtUtc).IsRequired();
 
-        builder.OwnsOne(execution => execution.AmountCharged, money =>
-        {
-            money.Property(m => m.AmountCents).HasColumnName("AmountCents").IsRequired();
-            money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
-        });
+        builder.OwnsOne(
+            execution => execution.AmountCharged,
+            money =>
+            {
+                money.Property(m => m.AmountCents).HasColumnName("AmountCents").IsRequired();
+                money.Property(m => m.Currency).HasColumnName("Currency").HasMaxLength(3).IsRequired();
+            }
+        );
 
         builder.Property(execution => execution.Succeeded).IsRequired();
         builder.Property(execution => execution.ProviderResponse).HasMaxLength(1000);
 
-        builder.HasIndex(execution => execution.RecurringScheduleId)
+        builder
+            .HasIndex(execution => execution.RecurringScheduleId)
             .HasDatabaseName("IX_RecurringPaymentExecutions_RecurringScheduleId");
     }
 }

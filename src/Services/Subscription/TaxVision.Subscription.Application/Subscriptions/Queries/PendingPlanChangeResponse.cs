@@ -15,4 +15,5 @@ public sealed record PendingPlanChangeResponse(
     DateTime RequestedAtUtc,
     DateTime? EffectiveAtUtc,
     long? ChargeAmountCents,
-    string? ChargeCurrency);
+    string? ChargeCurrency
+);
