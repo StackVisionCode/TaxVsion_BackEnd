@@ -350,6 +350,15 @@ services:
       ServiceAuth__Clients__6__Secret: ${POSTMASTER_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__6__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__6__Permissions__1: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Communication (F8 attach-recording): valida
+      # metadata de grabaciones contra CloudStorage. Ya estaba registrado en los
+      # user-secrets locales de Auth (Clients:2) pero nunca se copio a este compose
+      # — communication-api hubiera fallado con invalid_client en Docker/produccion.
+      ServiceAuth__Clients__7__ClientId: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
+      ServiceAuth__Clients__7__Secret: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:-}
+      ServiceAuth__Clients__7__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__7__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__7__Permissions__2: cloudstorage.file.view
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -963,13 +972,11 @@ services:
       COMMUNICATION_JOIN_TICKET_SECRET: ${COMMUNICATION_JOIN_TICKET_SECRET:?Set COMMUNICATION_JOIN_TICKET_SECRET in .env}
       # M2M contra Auth/CloudStorage para validar metadata de grabaciones al hacer
       # attach (Fase Backend 8) — z.string().min(1) en config.ts, requerido, faltaba
-      # en este compose desde esa fase. Reusa DELIBERADAMENTE el mismo client-id/
-      # secret que TranscriptWorker (tal como documenta el comentario en config.ts) —
-      # es el unico client M2M de Communication ya registrado en Auth
-      # (ServiceAuth__Clients__1 en auth-api); un "communication-worker" separado
-      # nunca se registro ahi y hubiera fallado con invalid_client.
-      COMMUNICATION_SERVICE_AUTH_CLIENT_ID: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
-      COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET:?Set COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET in .env}
+      # en este compose desde esa fase. Client propio "communication-worker", ya
+      # registrado en Auth (ver ServiceAuth__Clients__7 arriba) — mismo id/secret
+      # que ya tenias en src/Services/Communication/.env.
+      COMMUNICATION_SERVICE_AUTH_CLIENT_ID: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
+      COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:?Set COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET in .env}
       # DNS interno del contenedor — los defaults de config.ts (localhost:5124/:5330)
       # son de dev local y quedan inalcanzables desde dentro de este contenedor.
       COMMUNICATION_AUTH_BASE_URL: http://auth-api:8080

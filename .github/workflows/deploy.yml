@@ -128,12 +128,14 @@ jobs:
           COMMUNICATION_CORS_ORIGINS=${{ secrets.COMMUNICATION_CORS_ORIGINS }}
           COMMUNICATION_PLATFORM_TENANT_ID=${{ secrets.COMMUNICATION_PLATFORM_TENANT_ID }}
           COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=${{ secrets.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP }}
-          # Faltaba desde la propia Fase Backend 5 — sin esto communication-api no
-          # bootea en produccion (COMMUNICATION_JOIN_TICKET_SECRET es z.string().min(32)
-          # requerido). El M2M de Communication (COMMUNICATION_SERVICE_AUTH_CLIENT_*)
-          # reusa COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID/SECRET, ya escritos arriba
-          # — no hace falta un secret nuevo para eso.
+          # Faltaban desde la propia Fase Backend 5/8 — sin esto communication-api no
+          # bootea en produccion (COMMUNICATION_JOIN_TICKET_SECRET y
+          # COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET son z.string().min() requeridos).
+          # El client "communication-worker" ya esta registrado en Auth (ver
+          # ServiceAuth__Clients__7 en docker-compose.yml).
           COMMUNICATION_JOIN_TICKET_SECRET=${{ secrets.COMMUNICATION_JOIN_TICKET_SECRET }}
+          COMMUNICATION_SERVICE_AUTH_CLIENT_ID=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_ID }}
+          COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET }}
           COMMUNICATION_FRONTEND_BASE_URL=${{ secrets.COMMUNICATION_FRONTEND_BASE_URL }}
 
           # ---------- Bootstrap / dominio ----------
