@@ -13,7 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt
 # Pin a un tag estable — actualizar deliberadamente, no seguir master.
-RUN git clone --depth 1 --branch v1.7.2 https://github.com/ggerganov/whisper.cpp.git whisper.cpp
+# v1.7.2 compilaba el binario como "main" (examples/main) — el resto del
+# codebase (config.ts, tests, este mismo Dockerfile en ENV/COPY de abajo)
+# asume "whisper-cli", nombre que el proyecto adopto recien en v1.7.4 (PR
+# ggml-org/whisper.cpp#2648, "rename binaries + fix install"). v1.7.2 nunca
+# llego a probarse realmente en Docker/CI — solo local, con un whisper.cpp
+# instalado aparte que ya tenia el binario renombrado.
+RUN git clone --depth 1 --branch v1.7.4 https://github.com/ggerganov/whisper.cpp.git whisper.cpp
 WORKDIR /opt/whisper.cpp
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_TESTS=OFF \
     && cmake --build build --config Release -j"$(nproc)"
