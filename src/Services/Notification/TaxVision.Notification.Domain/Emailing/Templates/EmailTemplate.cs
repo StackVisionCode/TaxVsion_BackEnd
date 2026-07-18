@@ -15,6 +15,7 @@ public enum EmailTemplateStatus
 /// design JSON, los previews y los assets viven en CloudStorage. Cada edición crea una nueva versión;
 /// solo una versión puede estar publicada a la vez. Las plantillas publicadas no se borran: se archivan.
 /// </summary>
+/// <remarks>Migration target: <b>Scribe</b>. See <c>Responsibility_Map.md</c>. Se elimina de Notification en Fase 7.</remarks>
 public sealed class EmailTemplate : BaseEntity
 {
     private EmailTemplate() { }

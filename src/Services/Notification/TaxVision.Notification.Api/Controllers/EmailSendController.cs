@@ -17,6 +17,9 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Envío de correos (individual y por plantilla) e historial de mensajes salientes. El envío es
 /// asíncrono: los endpoints devuelven 202 y el mensaje se entrega por evento durable fuera del request.
+/// El transporte real detrás de <c>POST send</c> es <c>IEmailDeliveryService</c> — Fase 19 del plan de
+/// hardening (Notification, 2026-07-18) le agregó un segundo camino (Postmaster) detrás del mismo
+/// contrato; este controller no cambió porque ya era asíncrono de punta a punta antes de esa fase.
 /// </summary>
 [ApiController]
 [Route("notifications/email")]
@@ -32,14 +35,12 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
         IReadOnlyList<Guid>? AttachmentFileIds = null
     );
 
-    public sealed record SendTemplateRequest(
-        Guid TemplateId,
-        IReadOnlyList<EmailRecipientInput> Recipients,
-        Dictionary<string, string?>? Variables = null,
-        EmailPriority Priority = EmailPriority.Normal,
-        IReadOnlyList<Guid>? AttachmentFileIds = null,
-        bool ApplyLayout = true
-    );
+    // SendTemplateRequest / POST "send-template" retirados en la Fase 18 del plan de hardening
+    // (Notification): self-service HTTP para enviar un email ad-hoc por plantilla, confirmado por
+    // el usuario sin caller real (frontend nunca lo conectó). SendTemplateEmailCommand/Handler
+    // (Application/Email/Sending/Commands/SendTemplateEmail.cs) NO se eliminó — sigue siendo
+    // invocado en proceso por EmailCampaigns (SendCampaignTestHandler), fuera de alcance de este
+    // plan; solo se retiró esta ruta HTTP redundante que exponía el mismo command directo al público.
 
     [HttpPost("send")]
     [HasPermission(NotificationPermissions.EmailSend)]
@@ -57,29 +58,6 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
             request.Priority,
             request.Recipients,
             request.AttachmentFileIds
-        );
-        var result = await bus.InvokeAsync<Result<OutboundEmailResponse>>(command, ct);
-        return result.IsSuccess
-            ? Accepted($"/notifications/email/messages/{result.Value.Id}", result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    [HttpPost("send-template")]
-    [HasPermission(NotificationPermissions.EmailSend)]
-    [ProducesResponseType<OutboundEmailResponse>(StatusCodes.Status202Accepted)]
-    public async Task<IActionResult> SendTemplate([FromBody] SendTemplateRequest request, CancellationToken ct)
-    {
-        if (!User.TryGetTenantId(out var tenantId))
-            return Unauthorized();
-
-        var command = new SendTemplateEmailCommand(
-            tenantId,
-            request.TemplateId,
-            request.Variables ?? new Dictionary<string, string?>(),
-            request.Priority,
-            request.Recipients,
-            request.AttachmentFileIds,
-            request.ApplyLayout
         );
         var result = await bus.InvokeAsync<Result<OutboundEmailResponse>>(command, ct);
         return result.IsSuccess

@@ -8,6 +8,7 @@ namespace TaxVision.Notification.Domain.Emailing.Sending;
 /// (el render de plantillas/layout ocurre en el request, con el token del usuario); el consumer async
 /// solo hace el envío. Siempre pertenece a un tenant.
 /// </summary>
+/// <remarks>Migration target: <b>Postmaster</b> (rename a <c>SentMessage</c>). See <c>Responsibility_Map.md</c>. Se elimina de Notification en Fase 6.</remarks>
 public sealed class OutboundEmailMessage : TenantEntity
 {
     private readonly List<EmailRecipient> _recipients = [];

@@ -36,6 +36,14 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
+        // [HasPermission] por sí solo no alcanza acá: TenantAdmin recibe el mismo set de permisos
+        // que PlatformAdmin por defecto (PermissionCatalog.SystemRoleDefaults), así que sin este
+        // chequeo cualquier TenantAdmin podía reescribir los techos de plan de CUALQUIER tenant
+        // (el tenantId viene de la ruta, no del JWT del caller) — mismo patrón que ya usan
+        // Postmaster.UpsertSystemProvider y los handlers System-scope de Scribe/Notification.
+        if (!User.IsPlatformAdmin())
+            return Forbid();
+
         if (!User.TryGetUserId(out var adminUserId))
             return Unauthorized();
 

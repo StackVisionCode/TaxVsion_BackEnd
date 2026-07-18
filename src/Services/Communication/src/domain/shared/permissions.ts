@@ -44,8 +44,13 @@ export type CommunicationPermission =
   (typeof CommunicationPermissions)[keyof typeof CommunicationPermissions];
 
 /**
- * Verifica si un principal tiene un permiso concreto. TenantAdmin/PlatformAdmin
- * pasan siempre — mismo comportamiento que las policies .NET del backend.
+ * Verifica si un principal tiene un permiso concreto. Solo PlatformAdmin pasa
+ * siempre — TenantAdmin depende del claim "perm" real (Auth se lo otorga por
+ * defecto vía PermissionCatalog.SystemRoleDefaults al emitir el JWT, así que
+ * en la práctica lo sigue teniendo todo, pero ya no por un bypass de rol).
+ * Corregido tras encontrar el mismo bypass en las 8 policies .NET del backend
+ * — dejaba pasar cualquier permiso, incluso uno 100% exclusivo de plataforma,
+ * a cualquier TenantAdmin (ver signature.constraints.manage en Auth).
  * NUNCA leer roles desde el request body/query — solo desde el token verificado.
  */
 export function hasPermission(
@@ -53,6 +58,6 @@ export function hasPermission(
   permissions: readonly string[],
   required: CommunicationPermission,
 ): boolean {
-  if (actorType === 'TenantAdmin' || actorType === 'PlatformAdmin') return true;
+  if (actorType === 'PlatformAdmin') return true;
   return permissions.includes(required);
 }

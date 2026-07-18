@@ -163,6 +163,7 @@ public sealed class CloudStorageOptions
             [FolderType.Recordings] = RecordingsPolicy(),
             [FolderType.Transcripts] = TranscriptsPolicy(),
             [FolderType.Backups] = BackupsPolicy(),
+            [FolderType.Templates] = TemplatesPolicy(),
             [FolderType.Other] = OtherPolicy(),
         };
 
@@ -337,6 +338,19 @@ public sealed class CloudStorageOptions
             MaxSizeBytes = 5L * 1024 * 1024,
             AllowedExtensions = [".txt"],
             AllowedContentTypes = ["text/plain"],
+        };
+
+    /// <summary>
+    /// HTML/text/design-JSON/preview-PNG de EmailTemplateVersion y EmailLayoutVersion (Scribe Fase 5).
+    /// Contenido chico por naturaleza (un layout HTML rara vez pasa de unos pocos KB); 5MB da margen
+    /// generoso sin acercarse a un vector de abuso.
+    /// </summary>
+    private static StorageFolderTypePolicy TemplatesPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 5L * 1024 * 1024,
+            AllowedExtensions = [".html", ".txt", ".json", ".png"],
+            AllowedContentTypes = ["text/html", "text/plain", "application/json", "image/png"],
         };
 
     private static StorageFolderTypePolicy BackupsPolicy() =>

@@ -16,6 +16,19 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Gestión de plantillas de correo (System/Tenant). La BD guarda metadata + storage keys; el HTML,
 /// design JSON y preview se guardan en CloudStorage. Cada edición crea una versión; publicar activa una.
+///
+/// NO retirado en la Fase 18 del plan de hardening (Notification), a pesar de que el frontend no
+/// llama a este controller (confirmado por el usuario) y de que Scribe existe para reemplazarlo:
+/// es el ÚNICO punto de entrada dentro de Notification para crear/versionar/publicar/archivar un
+/// <see cref="TaxVision.Notification.Domain.Emailing.Templates.EmailTemplate"/> — no hay seeder ni
+/// ningún otro caller que inserte filas en esa tabla. <c>EmailCampaigns</c> (fuera de alcance de este
+/// plan por instrucción explícita del usuario, ver <c>EmailCampaignsController</c>/
+/// <c>ScheduleEmailCampaignHandler</c>/<c>CreateEmailCampaignHandler</c>) exige un
+/// <c>EmailTemplate</c> Activo con versión publicada para programar una campaña — retirar este
+/// controller habría dejado a EmailCampaigns sin forma de crear una plantilla nueva jamás, aunque
+/// su propio controller siguiera compilando. Solo se retiró el envío ad-hoc por plantilla
+/// (<c>POST /notifications/email/send-template</c> en <c>EmailSendController</c>), que sí estaba
+/// genuinamente muerto y sin ningún caller interno.
 /// </summary>
 [ApiController]
 [Route("notifications/email/templates")]

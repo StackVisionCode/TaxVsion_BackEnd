@@ -13,4 +13,7 @@ public sealed record SignatureRequestCompletedIntegrationEvent : IntegrationEven
     public required string DocumentHashPre { get; init; }
     public required IReadOnlyList<Guid> SignerIds { get; init; }
     public required bool GenerateCertificate { get; init; }
+
+    /// <summary>Snapshot de contacto de cada firmante — para notificaciones de confirmación sin lookup síncrono.</summary>
+    public required IReadOnlyList<SignerContactSnapshot> Signers { get; init; }
 }

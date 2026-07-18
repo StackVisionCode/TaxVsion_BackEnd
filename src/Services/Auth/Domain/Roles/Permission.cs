@@ -29,8 +29,18 @@ public sealed class Permission : BaseEntity
     /// (solo puede vivir en los roles de sistema sembrados por la plataforma). Guardarraíl
     /// anti-escalada: reserva permisos sensibles (billing, asientos, gestión de roles) al
     /// control exclusivo de la plataforma. Ver <see cref="TaxVision.Auth.Application.Common.RolePermissionGuard"/>.
+    /// No confundir con <see cref="PlatformOnly"/>: este flag es sobre DELEGAR el permiso a un
+    /// empleado, no sobre si el propio TenantAdmin lo tiene.
     /// </summary>
     public bool IsAssignableByTenant { get; private set; }
+
+    /// <summary>
+    /// Si es <c>true</c>, el rol de sistema "Tenant Admin" nunca lo incluye por defecto — sin
+    /// caso de uso legítimo para un tenant, exclusivo de PlatformAdmin (ej. techos de plan de
+    /// Signature). Distinto de <see cref="IsAssignableByTenant"/>: ese controla si el TenantAdmin
+    /// puede delegarlo a un empleado; este controla si el propio TenantAdmin lo tiene.
+    /// </summary>
+    public bool PlatformOnly { get; private set; }
 
     public static Permission Seed(
         Guid id,
@@ -39,7 +49,8 @@ public sealed class Permission : BaseEntity
         string description,
         bool isCustomerPortal = false,
         int minPlanTier = 0,
-        bool isAssignableByTenant = true
+        bool isAssignableByTenant = true,
+        bool platformOnly = false
     ) =>
         new()
         {
@@ -50,5 +61,6 @@ public sealed class Permission : BaseEntity
             IsCustomerPortal = isCustomerPortal,
             MinPlanTier = minPlanTier,
             IsAssignableByTenant = isAssignableByTenant,
+            PlatformOnly = platformOnly,
         };
 }

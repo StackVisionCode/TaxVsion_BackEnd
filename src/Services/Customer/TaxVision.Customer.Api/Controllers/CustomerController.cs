@@ -153,10 +153,11 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCustomerRequest body, CancellationToken ct)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new UpdateCustomerCommand(
+            tenantId,
             id,
             userId,
             body.Language,
@@ -194,10 +195,11 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<AddressResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddAddress(Guid id, [FromBody] AddAddressRequest body, CancellationToken ct)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new AddAddressCommand(
+            tenantId,
             id,
             userId,
             body.Kind,
@@ -283,10 +285,10 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var cmd = new AddContactPointCommand(id, userId, body.Type, body.Value, body.Label, body.IsPrimary);
+        var cmd = new AddContactPointCommand(tenantId, id, userId, body.Type, body.Value, body.Label, body.IsPrimary);
 
         var result = await bus.InvokeAsync<Result<ContactPointResponse>>(cmd, ct);
 
@@ -356,10 +358,11 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<RelationResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddRelation(Guid id, [FromBody] AddRelationRequest body, CancellationToken ct)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new AddRelationCommand(
+            tenantId,
             id,
             userId,
             body.RelationshipKind,
@@ -457,10 +460,10 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
-        if (!TryGetUserId(out var userId))
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new ArchiveCustomerCommand(id, userId), ct);
+        var result = await bus.InvokeAsync<Result>(new ArchiveCustomerCommand(tenantId, id, userId), ct);
 
         if (result.IsSuccess)
             return NoContent();

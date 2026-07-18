@@ -43,6 +43,34 @@
     <Project Path="src/Services/Notification/TaxVision.Notification.Domain/TaxVision.Notification.Domain.csproj" />
     <Project Path="src/Services/Notification/TaxVision.Notification.Infrastructure/TaxVision.Notification.Infrastructure.csproj" />
   </Folder>
+  <!-- ConnectorsService -->
+  <Folder Name="/src/Services/Connectors/">
+    <Project Path="src/Services/Connectors/TaxVision.Connectors.Api/TaxVision.Connectors.Api.csproj" />
+    <Project Path="src/Services/Connectors/TaxVision.Connectors.Application/TaxVision.Connectors.Application.csproj" />
+    <Project Path="src/Services/Connectors/TaxVision.Connectors.Domain/TaxVision.Connectors.Domain.csproj" />
+    <Project Path="src/Services/Connectors/TaxVision.Connectors.Infrastructure/TaxVision.Connectors.Infrastructure.csproj" />
+  </Folder>
+  <!-- CorrespondenceService -->
+  <Folder Name="/src/Services/Correspondence/">
+    <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Api/TaxVision.Correspondence.Api.csproj" />
+    <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Application/TaxVision.Correspondence.Application.csproj" />
+    <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Domain/TaxVision.Correspondence.Domain.csproj" />
+    <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Infrastructure/TaxVision.Correspondence.Infrastructure.csproj" />
+  </Folder>
+  <!-- PostmasterService -->
+  <Folder Name="/src/Services/Postmaster/">
+    <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Api/TaxVision.Postmaster.Api.csproj" />
+    <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Application/TaxVision.Postmaster.Application.csproj" />
+    <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Domain/TaxVision.Postmaster.Domain.csproj" />
+    <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Infrastructure/TaxVision.Postmaster.Infrastructure.csproj" />
+  </Folder>
+  <!-- ScribeService -->
+  <Folder Name="/src/Services/Scribe/">
+    <Project Path="src/Services/Scribe/TaxVision.Scribe.Api/TaxVision.Scribe.Api.csproj" />
+    <Project Path="src/Services/Scribe/TaxVision.Scribe.Application/TaxVision.Scribe.Application.csproj" />
+    <Project Path="src/Services/Scribe/TaxVision.Scribe.Domain/TaxVision.Scribe.Domain.csproj" />
+    <Project Path="src/Services/Scribe/TaxVision.Scribe.Infrastructure/TaxVision.Scribe.Infrastructure.csproj" />
+  </Folder>
   <!-- SignatureService -->
   <Folder Name="/src/Services/Signature/">
     <Project Path="src/Services/Signature/TaxVision.Signature.Api/TaxVision.Signature.Api.csproj" />
@@ -60,8 +88,12 @@
   <Folder Name="/deploy/tests/">
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Postmaster.Tests/TaxVision.Postmaster.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Scribe.Tests/TaxVision.Scribe.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Signature.Tests/TaxVision.Signature.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Subscription.Tests/TaxVision.Subscription.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />

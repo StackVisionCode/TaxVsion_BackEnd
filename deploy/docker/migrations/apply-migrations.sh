@@ -58,4 +58,28 @@ apply_migration \
   "src/Services/Signature/TaxVision.Signature.Api/TaxVision.Signature.Api.csproj" \
   "$SIGNATURE_DB_CONNECTION"
 
+apply_migration \
+  "Postmaster" \
+  "src/Services/Postmaster/TaxVision.Postmaster.Infrastructure/TaxVision.Postmaster.Infrastructure.csproj" \
+  "src/Services/Postmaster/TaxVision.Postmaster.Api/TaxVision.Postmaster.Api.csproj" \
+  "$POSTMASTER_DB_CONNECTION"
+
+apply_migration \
+  "Scribe" \
+  "src/Services/Scribe/TaxVision.Scribe.Infrastructure/TaxVision.Scribe.Infrastructure.csproj" \
+  "src/Services/Scribe/TaxVision.Scribe.Api/TaxVision.Scribe.Api.csproj" \
+  "$SCRIBE_DB_CONNECTION"
+
+apply_migration \
+  "Connectors" \
+  "src/Services/Connectors/TaxVision.Connectors.Infrastructure/TaxVision.Connectors.Infrastructure.csproj" \
+  "src/Services/Connectors/TaxVision.Connectors.Api/TaxVision.Connectors.Api.csproj" \
+  "$CONNECTORS_DB_CONNECTION"
+
+apply_migration \
+  "Correspondence" \
+  "src/Services/Correspondence/TaxVision.Correspondence.Infrastructure/TaxVision.Correspondence.Infrastructure.csproj" \
+  "src/Services/Correspondence/TaxVision.Correspondence.Api/TaxVision.Correspondence.Api.csproj" \
+  "$CORRESPONDENCE_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

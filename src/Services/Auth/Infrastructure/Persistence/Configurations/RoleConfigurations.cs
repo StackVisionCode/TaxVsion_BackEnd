@@ -17,6 +17,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
         builder.Property(permission => permission.Description).HasMaxLength(256).IsRequired();
         builder.Property(permission => permission.MinPlanTier).IsRequired();
         builder.Property(permission => permission.IsAssignableByTenant).IsRequired();
+        builder.Property(permission => permission.PlatformOnly).IsRequired();
         builder.HasIndex(permission => permission.Code).IsUnique();
 
         // Sembrado del catálogo global (GUID fijos definidos en PermissionCatalog).
@@ -30,6 +31,7 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
                 definition.IsCustomerPortal,
                 definition.MinPlanTier,
                 definition.IsAssignableByTenant,
+                definition.PlatformOnly,
             })
         );
     }

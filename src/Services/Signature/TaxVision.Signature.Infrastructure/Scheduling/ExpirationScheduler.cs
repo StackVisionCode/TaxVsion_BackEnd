@@ -69,7 +69,7 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
         var eventsToPublish = new List<SignatureRequestExpiredIntegrationEvent>(candidates.Count);
         foreach (var request in candidates)
         {
-            var pending = request.Signers.Where(s => s.Status == SignerStatus.Pending).Select(s => s.Id).ToList();
+            var pending = request.Signers.Where(s => s.Status == SignerStatus.Pending).ToList();
 
             var result = request.MarkExpired(now);
             if (result.IsFailure)
@@ -90,7 +90,10 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
                     SignatureRequestId = request.Id,
                     ExpiredAtUtc = now,
                     RevocationEpoch = request.RevocationEpoch,
-                    PendingSignerIds = pending,
+                    PendingSignerIds = pending.Select(s => s.Id).ToList(),
+                    PendingSigners = pending
+                        .Select(s => new SignerContactSnapshot(s.Id, s.Email.Value, s.FullName.Value, "En"))
+                        .ToList(),
                 }
             );
         }

@@ -45,6 +45,13 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "customer-serv
 // Autorización por permiso ([HasPermission("customers.*")]); los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
+// M2M interno (Correspondence Fase 2) — solo otros microservicios backend, nunca un usuario
+// humano. Mismo patrón que Postmaster/Connectors/Subscription (claim actor_type=Service emitido
+// por Auth vía client_credentials). Ver InternalCustomersController.
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
 // Rate limiter dedicado para revelar tax identifiers en claro: 5 req/min por
 // usuario+ruta. Desanima el scraping de SSN/EIN aunque el actor tenga el
 // permiso — un preparador legitimo no necesita revelar mas de un puñado por

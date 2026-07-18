@@ -15,7 +15,7 @@ public static class AddAddressHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null)
+        if (customer is null || customer.TenantId != cmd.TenantId)
             return Result.Failure<AddressResponse>(new Error("Customer.NotFound", "Customer not found."));
 
         var addressResult = AddressValue.Create(

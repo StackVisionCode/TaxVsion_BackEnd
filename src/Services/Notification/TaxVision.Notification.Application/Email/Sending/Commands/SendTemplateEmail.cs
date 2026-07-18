@@ -15,6 +15,14 @@ namespace TaxVision.Notification.Application.Email.Sending.Commands;
 /// Envío por plantilla. Renderiza el asunto/cuerpo con Fluid (variables validadas) y aplica el layout
 /// default DENTRO del request (con el token del usuario para leer de CloudStorage), guardando el cuerpo
 /// final ya renderizado. La entrega SMTP es asíncrona por evento.
+///
+/// NO retirado en la Fase 18 del plan de hardening (Notification): el HTTP self-service que lo exponía
+/// directamente (<c>POST /notifications/email/send-template</c> en <c>EmailSendController</c>) sí
+/// estaba genuinamente muerto y se eliminó, pero este command/handler sigue invocado en proceso por
+/// <c>SendCampaignTestHandler</c> (<c>EmailCampaignsController.SendTest</c>, EmailCampaigns — fuera
+/// de alcance de este plan por instrucción explícita del usuario) vía
+/// <c>bus.InvokeAsync&lt;SendTemplateEmailCommand&gt;</c>, no vía HTTP. Borrarlo habría roto el envío
+/// de prueba de una campaña.
 /// </summary>
 public sealed record SendTemplateEmailCommand(
     Guid TenantId,

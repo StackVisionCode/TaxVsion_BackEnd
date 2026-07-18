@@ -12,6 +12,7 @@ namespace TaxVision.Customer.Application.Customers.Commands.Update;
 /// si mandas FirstName debes mandar tambien LastName. El aggregate rechaza combinaciones invalidas.
 /// </summary>
 public sealed record UpdateCustomerCommand(
+    Guid TenantId,
     Guid CustomerId,
     Guid ModifiedByUserId,
     // Preferencias y contacto

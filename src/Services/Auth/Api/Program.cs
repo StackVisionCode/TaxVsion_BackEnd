@@ -22,7 +22,6 @@ using TaxVision.Auth.Api.Jobs;
 using TaxVision.Auth.Api.Middleware;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users.Commands;
-using TaxVision.Auth.Application.Users.IntegrationEvents;
 using TaxVision.Auth.Infrastructure;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Security;
@@ -46,6 +45,7 @@ builder.Services.Configure<PlatformBootstrapOptions>(
     builder.Configuration.GetSection(PlatformBootstrapOptions.SectionName)
 );
 builder.Services.AddHostedService<PlatformAdminBootstrapService>();
+builder.Services.AddHostedService<SystemRolePermissionsSyncService>();
 builder.Services.AddHostedService<TenantDomainBackfillService>();
 builder.Services.AddHostedService<TenantDomainProvisioningPoller>();
 builder.Services.AddHostedService<AuthMaintenanceService>();

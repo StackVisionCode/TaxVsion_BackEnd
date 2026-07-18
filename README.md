@@ -66,6 +66,10 @@ OpenTelemetry.
 32. Subscription Service: implementacion completa (Fases 1-4, 6-7)
 33. Multi-tenancy: subdominios y dominios propios (Auth)
 34. Terminos de servicio (ToS) — aceptacion y gating (Auth)
+35. Postmaster Service (dispatch de email desacoplado de Notification)
+36. Scribe Service (templating centralizado de email)
+37. Connectors Service (integraciones Gmail/Graph/IMAP)
+38. Correspondence Service (inbox del cliente final + compose/send)
 
 ## 1. Introduccion y objetivo
 
@@ -1900,7 +1904,7 @@ dotnet user-secrets set "CustomerImport:ReportRetentionDays" "90" `
 ```
 
 Credenciales para que el archivo de import hable con CloudStorage (sec 25.10.1a
-— mismo patron que `Signature:ServiceAuth`/`Notification:Minio`, ver sec 27):
+— mismo patron que `Signature:ServiceAuth`, ver sec 27):
 
 ```powershell
 dotnet user-secrets set "ServiceAuthClient:AuthBaseUrl" "http://localhost:5124" `
@@ -3069,7 +3073,97 @@ Result pattern, `IUnitOfWork`, EDA con outbox/inbox, aislamiento multitenant por
 | Rendering | `ITemplateRenderer` con **Fluid** (Liquid sandboxed); auto-escape en HTML | — |
 | Envio | Correos salientes + tracking + entrega asincrona por evento | `OutboundEmailMessages`, `EmailRecipients`, `EmailDeliveryLogs` |
 | Campanas | Draft → programar → fan-out por cola; contadores por eventos de entrega | `EmailCampaigns`, `EmailCampaignRecipients` |
-| Cuentas + Sync | Conexion Gmail/Graph/IMAP; carpetas, mensajes, hilos, adjuntos | `EmailAccountConnections`, `EmailFolders`, `EmailSyncedMessages`, `EmailMessageAttachments`, `EmailSyncLogs` |
+
+**Fase 17 (2026-07-18, cierre de migracion de Notification)**: el modulo "Cuentas + Sync"
+(conexion Gmail/Graph/IMAP propia de Notification, duplicada de lo que `Connectors` +
+`Correspondence` ya reemplazan) se elimino por completo — domain, adaptadores de
+proveedor, controller, scheduler, DbSets, eventos de integracion huerfanos y el
+pipeline de subida de adjuntos IMAP a MinIO (`IInboundAttachmentStorageWriter`,
+exclusivo de este modulo). Verificado sin caller externo antes de borrar (grep
+exhaustivo del monorepo: los 6 eventos que publicaba solo los consumia el propio
+Notification; ningun otro servicio ni el Postman propio de otro servicio referenciaba
+`EmailAccountsController`). Ver `Responsabilidades/Hardening_Audit_Fixes_And_Notification_Migration_Plan.md`
+§5 Fase 17.
+
+**Fase 18 (2026-07-18)**: el plan original preveia retirar el sistema de plantillas/layouts
+propio de Notification entero (`EmailTemplate`/`EmailTemplateVersion`/`EmailLayout`,
+`FluidTemplateRenderer`, `EmailTemplatesController`, `EmailLayoutsController`) por duplicar
+lo que Scribe existe para reemplazar, confirmado sin caller de frontend. La verificacion
+previa (obligatoria por el propio plan, para no romper `EmailCampaigns`) encontro que
+**si es una dependencia real**, no solo tablas compartidas: `ScheduleEmailCampaignHandler`
+exige un `EmailTemplate` Activo con version publicada y lee el `EmailLayout` default via
+`IEmailTemplateRepository`/`IEmailLayoutRepository`; `EmailCampaignBatchConsumer` llama a
+`ITemplateRenderer` directo; `SendCampaignTestHandler` invoca en proceso
+`SendTemplateEmailCommand`/`SendTemplateEmailHandler`. Ademas, `EmailTemplatesController`/
+`EmailLayoutsController` son el UNICO punto de entrada dentro de Notification para crear
+esas filas — no hay seeder. Retirarlos habria dejado a `EmailCampaigns` (fuera de alcance
+de este plan, se resuelve en su propio esfuerzo) sin forma de crear una plantilla/layout
+nueva jamas. Alcance real ejecutado: solo se elimino la ruta HTTP `POST
+/notifications/email/send-template` (self-service ad-hoc, confirmada sin caller — ni
+siquiera `EmailCampaigns` la usa por HTTP, la reusa en proceso). Todo lo demas
+(`EmailTemplate`/`EmailTemplateVersion`/`EmailLayout`, `FluidTemplateRenderer`/
+`ITemplateRenderer`, ambos controllers CRUD, `SendTemplateEmailCommand`/Handler, los 3
+DbSets) sigue vivo — comentarios XML en cada punto explican por que. Sin migracion de DB
+(no se dropeo ninguna tabla). Ver `Responsabilidades/Hardening_Audit_Fixes_And_Notification_Migration_Plan.md`
+§5 Fase 18 para el detalle completo del hallazgo.
+
+**Fase 19 (2026-07-18)**: `EmailDeliveryService` (el transporte real detras de `POST
+/notifications/email/send` y de `EmailCampaigns`) enviaba SMTP directo via `ISmtpSendClient`
+sin feature flag. Se agrego `PostmasterEmailDeliveryService`, una segunda implementacion de
+`IEmailDeliveryService` que publica `notifications.email_send_requested.v1` hacia Postmaster
+en vez de enviar directo, registrada bajo el MISMO flag `Notification:UsePostmasterDispatch`
+que ya gateaba el otro path (Auth/Signature/Communication) desde una fase anterior. Se
+investigo el impacto en `EmailCampaigns` antes de proceder (confirmado: campañas SI pasan por
+`EmailDeliveryService` via `EmailSendRequestedIntegrationEvent`) y se determino que el cambio
+es seguro — ambos flujos de campaña ya eran 100% asincronos antes de esta fase (nunca hubo
+confirmacion sincronica que romper) y el fan-out ya era per-mensaje (encaja con el modelo de
+Postmaster). Como `notifications.email_send_requested.v1` solo tiene un `NotificationLog`
+como dueño de correlacion en el otro path, `PostmasterEmailDeliveryService` reusa el mismo
+campo (`NotificationLogId`) como id opaco de `OutboundEmailMessage` en vez de crear un
+`NotificationLog`; un nuevo `PostmasterOutboundEmailCallbackConsumers.cs` (paralelo a
+`PostmasterCallbackConsumers.cs`) resuelve los 5 callbacks contra `IOutboundEmailRepository`.
+El flag sigue en `false` por default (no se flipeo en esta fase — es tarea de la Fase 21), asi
+que `EmailDeliveryService`/`EmailProviderConfigurationRepository`/`SystemNetSmtpSendClient`/
+`EmailConfigurationsController` NO se retiraron (siguen siendo el comportamiento activo hoy).
+Se corrigio ademas una imprecision del texto original del plan: `SmtpEmailSender` (que el plan
+listaba junto a `SystemNetSmtpSendClient` para retirar) en realidad implementa `IEmailSender`,
+la interfaz que usa el OTRO path (`InProcessEmailDispatchGateway`, Fase 21) — no tiene relacion
+con `EmailDeliveryService`. Si se retiro `EmailWebhooksController` (webhooks de tracking
+delivered/opened/clicked/bounced): nunca tuvo un `EmailWebhook:Secret` configurado en ningun
+appsettings/.env del repo (401 siempre, cero llamadas reales posibles) y su propio comentario
+XML ya admitia ser scaffolding especulativo para adaptadores SendGrid/Mailgun que nunca se
+construyeron — Postmaster es ahora la unica fuente de tracking real para lo que routea (el
+callback de bounce alimenta `OutboundEmailMessage.MarkBounced`, antes solo alcanzable por ese
+webhook muerto). Build+test limpio, 1395→1406 (+11, los tests nuevos de las dos clases
+agregadas). Ver `Responsabilidades/Hardening_Audit_Fixes_And_Notification_Migration_Plan.md`
+§5 Fase 19 para el detalle completo.
+
+**Fase 21 (2026-07-18) — cierre del plan de hardening**: `Notification:UsePostmasterDispatch`
+se flippeo a `true` por default en las 2 capas donde el valor puede fijarse
+(`appsettings.json` de `TaxVision.Notification.Api`, y el fallback de
+`docker-compose.yml`: `${NOTIFICATION_USE_POSTMASTER_DISPATCH:-true}`) — antes de esta
+fase ninguna de las dos definia el valor explicitamente y `GetValue<bool>` resolvia a
+`false` por default de C# cuando la clave estaba ausente. Con esto, tanto
+`EventBasedEmailDispatchGateway` (path Auth/Signature/Communication) como
+`PostmasterEmailDeliveryService` (path `/send`+`EmailCampaigns`, agregado en la Fase 19)
+quedan activos por default — comparten el mismo flag desde la Fase 19, asi que no hubo
+flags separados que reconciliar. `InProcessEmailDispatchGateway`/`EmailDeliveryService`
+(los paths SMTP-directo/in-process originales) **no se eliminaron**: siguen registrados
+y funcionales, seleccionables con `Notification:UsePostmasterDispatch=false` como
+rollback operacional explicito — retirarlos de verdad es trabajo futuro fuera de este
+plan, condicionado a confianza operacional real ganada en un despliegue en produccion.
+Se agrego cobertura de test nueva a nivel de `AddNotificationInfrastructure` (no existia
+ningun test que ejercitara el flag SIN overridearlo explicitamente — todos los tests
+existentes de ambas clases las construian directo) confirmando que, sin ninguna clave de
+config, se registra el par Postmaster-based, y que `false` explicito sigue cayendo al par
+in-process/SMTP-directo. **Importante**: lo que quedo verificado en esta fase es que la
+suite de tests pasa bajo el nuevo default — la verificacion real en produccion (una
+ventana de monitoreo con el flag en `true` contra trafico real) es un paso operacional
+fuera del alcance de este repo, mismo criterio honesto ya usado para el aprovisionamiento
+de cuentas MinIO en Correspondence Fase 8. Ver
+`Responsabilidades/Hardening_Audit_Fixes_And_Notification_Migration_Plan.md` §5 Fase 21
+para el detalle completo — cierra las 21 fases del plan de hardening
+Correspondence/Connectors/Scribe/Postmaster/Notification.
 
 ### Decisiones de diseno relevantes
 
@@ -3116,7 +3210,6 @@ POST   /notifications/email/layouts/{id}/set-default
 
 # Envio (notification.email.send | notification.email.view)
 POST   /notifications/email/send
-POST   /notifications/email/send-template
 GET    /notifications/email/messages
 GET    /notifications/email/messages/{id}
 
@@ -3127,19 +3220,6 @@ GET    /notifications/email/campaigns/{id}
 POST   /notifications/email/campaigns/{id}/schedule
 POST   /notifications/email/campaigns/{id}/send-test
 POST   /notifications/email/campaigns/{id}/cancel
-
-# Cuentas + sincronizacion (notification.account.view | notification.account.manage)
-POST   /notifications/email/accounts/connect
-GET    /notifications/email/accounts
-GET    /notifications/email/accounts/{id}
-POST   /notifications/email/accounts/{id}/disconnect
-POST   /notifications/email/accounts/{id}/sync
-POST   /notifications/email/accounts/{id}/full-sync
-GET    /notifications/email/accounts/{id}/folders
-GET    /notifications/email/accounts/{id}/messages
-GET    /notifications/email/accounts/{id}/messages/{messageId}
-GET    /notifications/email/accounts/{id}/threads/{threadId}
-GET    /notifications/email/accounts/{id}/sync-logs
 ```
 
 Los permisos `notification.*` estan en `BuildingBlocks.Authorization.NotificationPermissions`
@@ -3153,11 +3233,20 @@ exchange fanout `taxvision-events` (registrados con `PublishMessage<T>()` en
 
 - Envio: `EmailSendRequested`, `EmailDeliverySucceeded`, `EmailDeliveryFailed`.
 - Campanas: `EmailCampaignScheduled`, `EmailCampaignStarted`, `EmailCampaignCompleted`.
-- Cuentas: `EmailAccountConnected`, `EmailAccountDisconnected`, `EmailFullSyncRequested`,
-  `EmailIncrementalSyncRequested`, `EmailSyncCompleted`, `EmailSyncFailed`.
 
-Dos `IHostedService` en `Api/Jobs`: `CampaignSchedulerService` (inicia campanas
-programadas) y `EmailSyncSchedulerService` (sincronizacion incremental periodica).
+Un `IHostedService` en `Api/Jobs`: `CampaignSchedulerService` (inicia campanas
+programadas).
+
+**Fase 19 (2026-07-18)**: con `Notification:UsePostmasterDispatch=true`, `EmailDeliveryService`
+(el consumer de `EmailSendRequested`) publica `notifications.email_send_requested.v1` hacia
+Postmaster en vez de enviar SMTP directo — mismo evento que ya usaba el path de
+Auth/Signature/Communication desde una fase anterior, dos productores compartiendo un flag.
+`PostmasterOutboundEmailCallbackConsumers.cs` consume los 5 callbacks de Postmaster
+(`postmaster.email_delivery.{succeeded,failed,bounced,suppressed,provider_not_configured}.v1`)
+y, si el `NotificationLogId` del callback corresponde a un `OutboundEmailMessage` (no a un
+`NotificationLog`), transiciona el mensaje y republica `EmailDeliverySucceeded`/`Failed` para
+que los contadores de campaña sigan funcionando igual que antes. Flag en `true` por default
+desde la Fase 21 (2026-07-18) — `false` sigue siendo un override valido para rollback.
 
 ## 28.4 Configuracion nueva
 
@@ -3186,14 +3275,15 @@ dotnet user-secrets set "Encryption:MasterKey" "<BASE64_32_BYTES>" `
 
 ## 28.5 Migraciones
 
-Se agregaron cuatro migraciones aditivas a `NotificationDbContext` (no tocan
-`NotificationLogs`):
+Migraciones a `NotificationDbContext` (no tocan `NotificationLogs`):
 
 - `AddEmailProviderConfigurations`
 - `AddEmailTemplatesAndLayouts`
 - `AddOutboundEmailMessages`
 - `AddEmailCampaigns`
-- `AddEmailAccountsAndSync`
+- `AddEmailAccountsAndSync` (historica — creo las 5 tablas del modulo "Cuentas + Sync")
+- `DropEmailAccountsAndSync` (Fase 17, 2026-07-18 — elimina esas 5 tablas al retirar el
+  modulo duplicado; `Down()` las recrea completas con sus indices para rollback)
 
 Aplicar (host):
 
@@ -3267,19 +3357,19 @@ POST /notifications/email/templates/{id}/publish
 El HTML se sube a CloudStorage (usa tu bearer token). La version queda `PendingScan`
 hasta que ClamAV la marque `Available`; publicar/enviar funciona una vez disponible.
 
-### 3) Envio individual y por plantilla
+### 3) Envio individual
 
 ```http
 POST /notifications/email/send
 { "subject": "Aviso", "htmlBody": "<p>Hola</p>", "recipients": [{ "address": "cliente@example.com" }] }
 ```
 
-```http
-POST /notifications/email/send-template
-{ "templateId": "<id>", "recipients": [{ "address": "cliente@example.com" }], "variables": { "customer_name": "Maria" } }
-```
-
-Ambos devuelven `202 Accepted` con el `id` del mensaje. Consulta el estado:
+`POST /notifications/email/send-template` (envio ad-hoc por plantilla, self-service) se
+retiro en la Fase 18 del plan de hardening (2026-07-18) — confirmado por el usuario sin
+caller real, el frontend nunca lo conecto. El command/handler que renderizaba
+(`SendTemplateEmailCommand`/`SendTemplateEmailHandler`) sigue vivo porque `Campana` (mas
+abajo) lo reusa en proceso para su envio de prueba (`send-test`); solo se elimino la ruta
+HTTP publica redundante. Devuelve `202 Accepted` con el `id` del mensaje. Consulta el estado:
 
 ```http
 GET /notifications/email/messages/{id}
@@ -3303,93 +3393,69 @@ El fan-out crea un correo por destinatario; los contadores (`sentCount`, `failed
 se actualizan via eventos de entrega. `GET /campaigns/{id}` muestra el progreso.
 `POST /campaigns/{id}/send-test` envia una prueba sin afectar contadores.
 
-### 5) Conexion y sincronizacion de cuenta (IMAP)
-
-```http
-POST /notifications/email/accounts/connect
-{ "provider": "Imap", "emailAddress": "buzon@empresa-demo.com",
-  "imapHost": "imap.empresa-demo.com", "imapPort": 993, "imapUsername": "buzon@empresa-demo.com",
-  "imapPassword": "<pass>", "imapUseSsl": true }
-```
-
-Se dispara una sincronizacion completa automatica. Tambien manual:
-
-```http
-POST /notifications/email/accounts/{id}/full-sync
-POST /notifications/email/accounts/{id}/sync            // incremental (usa cursor)
-GET  /notifications/email/accounts/{id}/folders
-GET  /notifications/email/accounts/{id}/messages?folderId=<id>&page=1&size=20
-GET  /notifications/email/accounts/{id}/messages/{messageId}
-GET  /notifications/email/accounts/{id}/threads/{threadId}
-GET  /notifications/email/accounts/{id}/sync-logs
-```
-
-Los tokens/credenciales se cifran y `disconnect` los borra. Gmail/Graph devuelven
-`EmailAccount.ProviderNotConfigured` hasta habilitar sus adaptadores OAuth.
-
-### 6) Pruebas multitenant
+### 5) Pruebas multitenant
 
 Repite cualquier flujo con el `accessToken` de otro tenant y verifica que **no** ve las
-configuraciones, plantillas, campanas ni cuentas del primero (aislamiento por `tenant_id`).
+configuraciones, plantillas ni campanas del primero (aislamiento por `tenant_id`).
 Las plantillas/config con `scope=System` solo las gestiona un `PlatformAdmin`.
 
-### 7) Eventos y tracking
+### 6) Eventos y tracking
 
 En Grafana/Loki, filtra por `service_name="notification-service"` y sigue el
 `CorrelationId` para ver la cadena `EmailSendRequested → EmailDeliverySucceeded/Failed`.
 En RabbitMQ (`http://localhost:15672`) revisa la cola `notification-events`.
 
-## 28.7 Grant M2M (service-to-service) y adjuntos sincronizados
+## 28.7 Webhooks y fan-out por lotes
 
-Para que el worker de sincronizacion (sin contexto de usuario) suba los binarios de los
-adjuntos a CloudStorage, Auth expone un grant **client-credentials (M2M)**:
-
-```http
-POST /auth/service-token
-{ "clientId": "notification-worker", "clientSecret": "<secret>", "tenantId": "<tenantGuid>" }
-```
-
-Devuelve un token de servicio corto (`actor_type=Service`) con los permisos configurados
-para ese cliente. Los clientes se declaran en Auth via `ServiceAuth:Clients` (secret
-store / `.env`), por ejemplo:
-
-```env
-NOTIFICATION_SERVICE_CLIENT_ID=notification-worker
-NOTIFICATION_SERVICE_CLIENT_SECRET=<secret-fuerte>
-```
-
-Auth los mapea a los permisos `cloudstorage.file.upload|download|view`. Notification
-(`ServiceAuthClient`) obtiene y cachea estos tokens por tenant. El token provider de
-CloudStorage usa el token del usuario en contexto request y el token de servicio en
-background; asi, el worker sube el binario del adjunto y enlaza su `FileId` en
-`EmailMessageAttachments` (si el tipo no esta permitido o falla, conserva solo la metadata).
-
-## 28.8 Proveedores reales, webhooks y fan-out por lotes
-
-- **Adaptadores Gmail API y Microsoft Graph reales** (via HTTP con el access token OAuth de
-  la cuenta): listan carpetas y sincronizan mensajes (headers, cuerpo HTML/texto, adjuntos)
-  y refrescan el access token con el refresh token (`OAuthTokenService`). El token inicial se
-  obtiene con el flujo OAuth del frontend y se pasa en `connect`; las credenciales de la app
-  para refrescar se configuran en `EmailOAuth:{Gmail,Microsoft}` (client id/secret). Sin esas
-  credenciales el refresh no ocurre y el adapter devuelve `EmailAccount.ProviderNotConfigured`.
-- **Webhooks de tracking**: `POST /notifications/email/webhooks/tracking` (anonimo,
-  autenticado por header `X-Webhook-Secret` = `EmailWebhook:Secret`) recibe eventos
-  normalizados `{ events: [{ messageId, type }] }` (Delivered/Opened/Clicked/Bounced) y
-  actualiza el tracking del correo y los contadores de apertura/clic de su campana. Un
-  adaptador por proveedor (SendGrid/Mailgun) traduciria su formato a este payload.
+- **Webhooks de tracking**: `POST /notifications/email/webhooks/tracking` se retiro en la
+  Fase 19 del plan de hardening (2026-07-18) — nunca tuvo un `EmailWebhook:Secret` real
+  configurado (401 siempre, ninguna llamada posible) y su propio comentario ya admitia ser
+  scaffolding especulativo para un adaptador SendGrid/Mailgun que nunca se construyo.
+  Postmaster es ahora la unica fuente de tracking de entrega/bounce/suppression para los
+  correos que routea (bajo el flag `Notification:UsePostmasterDispatch`, `true` por
+  default desde la Fase 21 del plan de hardening, 2026-07-18).
 - **Fan-out por lotes**: el consumer de inicio de campana divide los destinatarios en lotes
   de 100 y publica un evento por lote (`EmailCampaignBatchIntegrationEvent`); cada lote se
   procesa en su propia transaccion, evitando una transaccion gigante.
 
-## 28.9 Pendientes documentados
+## 28.8 Pendientes documentados
 
 - **Verificacion end-to-end con stack real**: el flujo HTTP a CloudStorage (upload presignado
-  + M2M), el envio SMTP y las llamadas Gmail/Graph estan validados en compilacion; requieren
-  los servicios levantados y credenciales OAuth reales para probarse.
-- **Sincronizacion incremental por delta nativo** (historyId de Gmail / deltaToken de Graph):
-  hoy el incremental usa cursores por fecha/UID; el delta nativo es mas eficiente.
-- **Subida de adjuntos por cola** en vez de inline dentro de la sincronizacion, para buzones
-  con muchos adjuntos grandes.
+  + M2M) y el envio SMTP estan validados en compilacion; requieren los servicios levantados
+  para probarse.
+- **Verificacion en produccion del default `Notification:UsePostmasterDispatch=true`
+  (Fase 21, 2026-07-18)**: esta sesion dejo el build+test monorepo en verde con el nuevo
+  default (incluye tests nuevos que ejercitan el registro de DI sin overridear el flag,
+  ver §28.1), pero eso es distinto de una verificacion en produccion — no hay stack real
+  desplegado desde este repo contra el cual observar trafico. Antes de considerar el
+  cutover completamente probado hace falta un despliegue real con Postmaster corriendo y
+  una ventana de monitoreo real (logs/métricas de `postmaster.email_delivery.*`, sin
+  regresion de entregabilidad) — el mismo criterio honesto que ya se aplico al
+  aprovisionamiento de cuentas MinIO en Correspondence Fase 8. Hasta entonces,
+  `Notification:UsePostmasterDispatch=false` sigue disponible como rollback inmediato sin
+  tocar codigo.
+
+## 28.9 Cierre del plan de hardening (Fases 17-21)
+
+Esta seccion documenta, para quien llegue despues, que las Fases 17 a 21 de
+`Responsabilidades/Hardening_Audit_Fixes_And_Notification_Migration_Plan.md` (§5) cierran
+una migracion de fondo que atraveso varias sesiones: Notification arranco con un modulo
+de conexion/sync de mailbox propio, un sistema de plantillas propio y un transporte SMTP
+directo — exactamente lo que Connectors, Scribe y Postmaster se disenaron para reemplazar.
+Fase 17 elimino el modulo de mailbox/sync duplicado (dominio, adaptadores, controller,
+scheduler, 5 tablas). Fase 18 investigo el sistema de plantillas propio y encontro que
+`EmailCampaigns` (fuera de alcance, migra en su propio esfuerzo) depende en vivo de casi
+todo — solo se retiro la ruta HTTP self-service genuinamente huerfana. Fase 19 le dio a
+`EmailDeliveryService` (el transporte real detras de `/send` y de `EmailCampaigns`) un
+segundo camino event-based hacia Postmaster, bajo el mismo flag que ya gateaba el otro
+path desde una fase anterior. Fase 20 elimino scaffolding sin consumidor
+(`UserNotificationPreference`). Fase 21 (esta) flippeo ese flag compartido a `true` por
+default, dejando el transporte real de Notification apuntando a Postmaster salvo rollback
+explicito — sin eliminar el codigo SMTP-directo/in-process, que queda como fallback hasta
+que una fase futura (fuera de este plan) tenga confianza operacional para retirarlo.
+`EmailCampaigns` (el feature de campañas masivas) queda explicitamente fuera de todo este
+esfuerzo por instruccion del usuario — se resuelve en su propio esfuerzo cuando le toque
+migrar.
 
 # 29. Signature Service (firma electronica multi-tenant)
 
@@ -5193,3 +5259,846 @@ autenticado con claim `tenant_id`:
 `TermsOptions.CurrentVersion` (seccion `Terms`) es la unica clave. Subir este valor
 fuerza a **todos los tenants** a re-aceptar en su siguiente request autenticado — no
 hay mecanismo de excepcion ni de periodo de gracia por tenant.
+
+# 35. Postmaster Service (dispatch de email desacoplado de Notification)
+
+Microservicio nuevo (`src/Services/Postmaster/`, puerto 5370) responsable del envio
+material de emails transaccionales — reemplaza el envio in-process que Notification
+hacia directamente por SMTP. Notification sigue siendo dueno de plantillas/layouts/
+render y de campanas masivas; Postmaster solo transporta el MIME ya renderizado.
+Diseno completo en `Responsabilidades/Postmaster_Service_Design_And_Implementation_Plan.md`.
+Implementadas las Fases 1 a 7 y 9 (mas la 3.5, provider resolution + CID inline assets):
+delivery logs con timeline de auditoria (35.5), suppression list manual/API (35.6) y
+rate limiting + circuit breaker por provider (35.7). La **Fase 8** (tracking webhooks
+de proveedores tipo SendGrid/Mailgun/Postmark) se implemento y **se retiro
+deliberadamente** — el envio real es SMTP arbitrario configurado manualmente (Gmail,
+SMTP2GO, etc.) mas, a futuro, Gmail API/Graph via Connector; ninguno de los dos habla
+el protocolo de webhooks que esa fase asumia (tomado literal de un ejemplo ilustrativo
+del plan — "patron SendGrid/Postmark" — no de un proveedor efectivamente elegido). Si
+en el futuro se conecta un proveedor real con webhooks de tracking, se construye
+entonces con el formato real de ESE proveedor. La Fase 10 de este plan (runbook de
+cutover) sigue pendiente, pero la activacion en codigo del flag
+`Notification:UsePostmasterDispatch` ya no lo esta: se completo en la Fase 21 del plan de
+hardening independiente (`Responsabilidades/Hardening_Audit_Fixes_And_Notification_Migration_Plan.md`
+§5, 2026-07-18, ver §28.1/§28.9), que lo flippeo a `true` por default. Lo que queda de
+ambos planes converge en lo mismo: verificacion real en produccion (ventana de monitoreo
+con trafico real) — no es un gap tecnico, requiere acceso al entorno de produccion.
+
+## 35.1 Aggregates y tablas
+
+| Aggregate | Responsabilidad | Tabla(s) |
+| --- | --- | --- |
+| `SentMessage` | Intento de envio (idempotente por tenant+clave), estado y eventos de entrega | `SentMessages`, `SentMessageRecipients`, `SentMessageEvents` |
+| `SystemEmailProvider` | Config SMTP global (cross-tenant) usada como default | `SystemEmailProviders` |
+| `TenantEmailProvider` | Config SMTP propia del tenant — su ausencia NUNCA cae a System (anti-spoofing) | `TenantEmailProviders` |
+| `ProviderHealthStatus` | Circuit breaker a nivel de *resolucion* de provider (abre tras 3 fallos consecutivos, lo chequea `ProviderResolver` antes de resolver) | `ProviderHealthStatuses` |
+| `EmailIdempotency` | Reserva tecnica por `(TenantId, IdempotencyKey)`, PK compuesta | `EmailIdempotency` |
+| `SuppressionListEntry` | Lista negra por `(TenantId, EmailAddress)`, PK compuesta — Fase 7 | `SuppressionListEntries` |
+
+Nota: hay un **segundo** circuit breaker, a nivel de *transporte* (Polly, dentro de
+`SmtpEmailSender`, uno por `ProviderCode`, ver 35.7) — no es redundante con
+`ProviderHealthStatus`: el de resolucion decide "que provider usar", el de transporte
+decide "sigo intentando conectar a este SMTP ahora mismo".
+
+## 35.2 Flujo end-to-end
+
+Notification renderiza (Fluid, ver 28) y publica `notifications.email_send_requested.v1`
+con el `HtmlBody`/`TextBody` ya resueltos — Postmaster no renderiza nada. El consumer
+(`NotificationsEmailSendRequestedConsumer`):
+
+1. `IIdempotencyGuard.TryReserveAsync` — si la clave ya se completo antes, reenvia el
+   callback `Succeeded` con el `SentMessageId` existente (replay, no reenvia el email).
+2. Resuelve el provider (`IProviderResolver`) segun `RequiredProviderScope` (`System` |
+   `Tenant`) — Tenant sin `TenantEmailProvider` propio nunca cae a System, publica
+   `postmaster.email_delivery.provider_not_configured.v1` y no reintenta solo.
+3. Si resuelve, crea el `SentMessage`, arma el MIME con MailKit (`MimeMessageBuilder`,
+   soporta `LinkedResources`/CID para logos), envia via `IEmailSender` (SMTP con retry
+   Polly para 4xx transitorios; rechazos 5xx de destinatario se aislan sin abortar el
+   resto), marca `Sent`/`Failed` y publica el callback correspondiente
+   (`postmaster.email_delivery.succeeded|failed.v1`).
+
+## 35.3 Notification Fase 5 — verificacion: el render NO vive en los consumers de Notification
+
+Chequeo pedido explicitamente al cerrar esta fase: confirmar que ningun `Consumer`
+de Notification invoca `ITemplateRenderer`/`FluidTemplateRenderer`/`IEmailTemplateRepository`
+para el flujo transaccional (que ahora depende de Postmaster). Resultado real del grep
+sobre `TaxVision.Notification.Application/Consumers/`:
+
+- **Camino transaccional (limpio):** `SendTemplateEmailHandler` — un *command handler*,
+  no un consumer — renderiza una sola vez con `ITemplateRenderer` dentro del request
+  (mientras hay token de usuario para leer plantilla/layout de CloudStorage), persiste
+  el `OutboundEmailMessage` con el cuerpo final y publica el evento. Ningun `Consumer`
+  bajo esa carpeta usa el renderer para este camino — `InProcessEmailDispatchGateway`
+  y `EventBasedEmailDispatchGateway` (Fases 3-4) solo reenvian contenido ya renderizado.
+- **Hallazgo honesto, fuera de alcance de esta migracion:** `EmailCampaignConsumers.cs`
+  (`EmailCampaignBatchIntegrationEvent`) SI sigue llamando a `ITemplateRenderer` directo
+  dentro de un consumer — las campanas masivas son una feature propia y anterior de
+  Notification (`EmailCampaigns`/`IEmailCampaignRepository`), nunca migrada a Postmaster
+  (que solo cubre el stream `Transactional`; `EmailStream.Bulk` existe en el dominio de
+  Postmaster pero nada lo usa todavia). No se toco en esta sesion — migrar campanas al
+  stream Bulk de Postmaster queda como trabajo futuro, junto con la Fase 10 (cutover).
+
+Conclusion: el objetivo real de la Fase 5 ("Notification ya no renderiza en el camino
+que depende de un servicio externo") esta cumplido para el envio transaccional. La
+frase "rendering vive en Scribe" de la definicion original de la fase no es exacta —
+hoy el render vive en el propio `FluidTemplateRenderer` de Notification (seccion 28),
+no en un microservicio Scribe separado (que no existe todavia); Postmaster solo
+consume el resultado ya renderizado, que es la propiedad que realmente importaba
+verificar (Postmaster nunca necesita saber renderizar nada).
+
+## 35.4 Endpoint admin: `SystemEmailProvider`
+
+El provider "default" de plataforma (el que usa `RequiredProviderScope=System` cuando
+un tenant no configuro el suyo propio) se seedea al arrancar con credenciales
+placeholder (`SystemEmailProviderSeeder`, `localhost:1025`) — el seeder solo corre si
+`ProviderCode="smtp-default"` no existe todavia, asi que nunca pisa una config real.
+Para cargar credenciales SMTP reales:
+
+- `PUT /postmaster/system/provider/{providerCode}` (permiso `postmaster.providers.write`
+  **y** rol `PlatformAdmin` — a diferencia del endpoint de tenant, ningun tenant admin
+  puede tocar el provider de plataforma). Body: `{ displayName, providerType, host, port,
+  useTls, username, password, fromAddressDefault, fromDisplayNameDefault,
+  rateLimitPerMinute }`. Upsert por `ProviderCode` (crea si no existe, reconfigura si
+  ya existe) — `UpsertSystemEmailProviderCommand`.
+
+Nota (aclarada en su momento a partir de una confusion real): esto es un provider
+*complementario* al de tenant, no compite con el — `SystemEmailProvider` cubre emails
+de plataforma (bienvenida, reset de password) que tienen que salir aunque el tenant
+todavia no configuro nada; `TenantEmailProvider` (ya en 35.1) es el que el tenant usa
+para mandar con su propio dominio/SMTP.
+
+## 35.5 Fase 6 — Timeline de auditoria por mensaje
+
+`GET /postmaster/messages/{id}/events` (permiso `postmaster.messages.read`, tenant-scoped
+por JWT) devuelve el timeline ordenado cronologicamente de `SentMessageEvent` de un
+`SentMessage` (`Queued` → `Sending` no genera evento propio → `Sent`/`Failed`/`Suppressed`
+→ eventos de tracking del webhook si aplica). El registro de eventos en si ya existia
+desde la Fase 2 (`SentMessage.MarkAsSent/Failed/Suppressed`) — esta fase agrego la
+consulta (`GetSentMessageWithEventsHandler`) y el endpoint, no el modelo de datos.
+
+## 35.6 Fase 7 — Suppression list
+
+`SuppressionListEntry` (PK `(TenantId, EmailAddress)`, `Reason` enum
+`HardBounce | Complaint | Manual | AbuseReport`) bloquea el envio a una direccion
+especifica. Endpoints bajo `/postmaster/suppression` (permisos `postmaster.suppression.read`/
+`.write`, ya estaban reservados en el catalogo desde antes):
+
+- `GET /postmaster/suppression?address=&reason=&page=`
+- `POST /postmaster/suppression` — upsert manual (`AddSuppressionEntryCommand`; si la
+  direccion ya estaba suprimida, reactiva con el motivo/fecha nuevos en vez de duplicar).
+- `DELETE /postmaster/suppression/{address}`
+
+Integracion con el consumer de Fase 5 (`NotificationsEmailSendRequestedConsumer`,
+gap que su propia documentacion XML dejaba pendiente explicitamente): antes de enviar,
+`ApplySuppressionAsync` chequea `ISuppressionListRepository.GetSuppressedAsync` para
+todos los destinatarios del mensaje.
+
+- Si **todos** los destinatarios estan suprimidos → el `SentMessage` pasa directo a
+  `Suppressed` (nunca intenta SMTP), se completa la idempotencia y se publica
+  `postmaster.email_delivery.suppressed.v1`.
+- Si **algunos** estan suprimidos → esos recipients quedan marcados `Suppressed`
+  (`SentMessage.RecordDeliveryEvent`) y el envio continua para el resto —
+  `MimeMessageBuilder` excluye del MIME real a cualquier recipient en estado
+  `Suppressed`, asi que nunca reciben el mensaje aunque el `SentMessage` global
+  termine `Sent`.
+
+## 35.7 Fase 9 — Rate limiting + circuit breaker de transporte
+
+- **Rate limiting** (`IEmailProviderRateLimiter`): ventana fija de 1 minuto vía Redis
+  INCR+EXPIRE, clave `postmaster:ratelimit:{provider}:{tenant}:{yyyyMMddHHmm}`, tope =
+  `ResolvedEmailProvider.RateLimitPerMinute` (ya configurado por provider desde Fase 3).
+  Sin `ConnectionStrings:Redis` configurado se degrada a un limiter no-op (mismo
+  criterio que el distributed lock de Signature Fase 4) — nunca rompe el envio en dev
+  local. Si se agota el cupo, el consumer marca el `SentMessage` `Failed` con razon
+  `RateLimited: retry after Ns.` (terminal — el reintento real depende de que
+  Notification vuelva a publicar el evento).
+- **Circuit breaker de transporte** (`ProviderCircuitBreaker`, Polly): uno por
+  `ProviderCode`, envuelve todo el intento SMTP (connect+auth+send) dentro de
+  `SmtpEmailSender`. `FailureRatio=1.0` + `MinimumThroughput=5` sobre una ventana de
+  2 minutos ≈ "5 fallos consecutivos" → abre 60s; durante ese tiempo lanza
+  `BrokenCircuitException` sin intentar conectar (`SendResult` con razon
+  "circuit breaker is open").
+- **Metricas** (`PostmasterMetrics`, `System.Diagnostics.Metrics.Meter("postmaster-service")`,
+  registrado en OTel via `AddMeter(serviceName)` en `OpenTelemetryRegistration`):
+  `postmaster_rate_limit_hits_total{provider,tenant}` y
+  `postmaster_circuit_breaker_opened_total{provider}` — la base para una alerta de
+  Prometheus ("el circuit breaker de X abrio"), no la alerta en si (eso es config de
+  Prometheus/Grafana, fuera del codigo del servicio).
+
+## 35.8 D3 — Canal de envio #3: TenantOAuth (via Connectors)
+
+Tercer canal de envio junto a System/Tenant SMTP (Fase 3/3.5) — un tenant que conecto
+una cuenta Gmail/Graph via OAuth (seccion 37, "conectar cuenta") puede enviar
+notificaciones transaccionales desde esa cuenta en vez de SMTP. Diseno completo en
+`Responsabilidades/Postmaster_OAuthEmailSend_Design_And_Implementation_Plan.md`.
+
+- **`ProviderScope.TenantOAuth`** (nuevo valor del enum junto a `System`/`Tenant`) —
+  lo setea Notification en `RequiredProviderScope` del evento
+  `notifications.email_send_requested.v1` cuando quiere forzar este canal.
+- **Proyeccion local `TenantOAuthAccount`** (`TenantOAuthAccounts`,
+  `TenantId+AccountId` unico) — mismo patron que `CustomerEmailProjection` (Signature):
+  se alimenta de `connectors.tenant_email_account.connected.v1`/`.disconnected.v1`
+  (ya publicados por Connectors desde el flujo de conectar cuenta, seccion 37.3) via
+  `TenantEmailAccountConnectedConsumer`/`TenantEmailAccountDisconnectedConsumer`. Postmaster
+  nunca llama a Connectors por red solo para resolver el provider — la proyeccion local
+  alcanza (`IOAuthProviderResolver`, analogo a `IProviderResolver` con
+  `ITenantEmailProviderRepository`). Regla interina: si un tenant conecto mas de una
+  cuenta, la ultima conexion activa gana (no existe hoy un concepto de "cuenta primaria"
+  seleccionable por el usuario).
+- **`NotificationsEmailSendRequestedConsumer`** se ramifica al inicio segun
+  `RequiredProviderScope`: `TenantOAuth` va a `HandleTenantOAuthPathAsync`
+  (resolver local → suppression check compartido → `IOAuthEmailSender.SendAsync`),
+  todo lo demas sigue por `HandleSmtpPathAsync` (logica SMTP sin cambios de Fase 5-9).
+  Sin control de cupo propio en el camino OAuth — el rate limit ya lo aplica Connectors
+  por (tenant, cuenta) en su M2M de envio (20/min default), duplicarlo aca seria el
+  mismo cupo enforced dos veces con configuraciones potencialmente divergentes.
+- **`ConnectorsSendClient`** (implementa `IOAuthEmailSender`) llama
+  `POST {Postmaster:Connectors:BaseUrl}/connectors/accounts/{accountId}/send` con el
+  mismo `IPostmasterServiceTokenAcquirer` M2M que ya usa `CloudStorageInlineAssetFetcher` —
+  nunca ve el token OAuth del tenant, Connectors es quien de verdad habla con
+  Gmail/Graph. Sin threading en v1 (los 3 parametros de threading de
+  `IOAuthEmailSender.SendAsync` van null): el evento de Notification no trae
+  identificadores nativos del proveedor para responder un hilo existente — mismo
+  criterio de incrementalidad que los inline assets en Fase 3.5.
+- **Config nueva**: `Postmaster:Connectors:BaseUrl` (default local
+  `http://localhost:5390`, docker-compose `http://connectors-api:8080`).
+
+**Cross-referencia (Fase 16 de Correspondence, verificado):** además del consumer de
+Notification (35.2), Postmaster expone `POST /postmaster/correspondence-messages`
+(policy `ServiceOnly`, `SendCorrespondenceMessageHandler`) — el confirmado consumidor
+M2M del envío síncrono de `Correspondence` (`POST /correspondence/drafts/{id}/send`,
+README 38.2/38.3), idempotente por `CorrespondenceDraftId`. Mismo pipeline de
+suppression/idempotencia que el resto de este servicio (35.6), sin retry de su lado (la
+idempotencia ya cubre el reintento manual del usuario desde la UI).
+
+## 35.9 Riesgo aceptado: Postmaster es un único punto de egreso para dos dominios
+
+Los dos flujos de arriba (35.2 notificaciones automáticas, 35.8/cross-referencia
+correspondencia humana) comparten hoy el mismo proceso, la misma `SuppressionList` y el
+mismo mecanismo de idempotencia (Fase 11 del hardening) — antes de D3 eran dos dominios
+de falla independientes. Es un trade-off deliberado (centralizar suppression/idempotencia
+en un solo lugar en vez de duplicarlos), no un descuido, pero significa que una caída o
+degradación severa de Postmaster afecta **simultáneamente** las notificaciones
+transaccionales del tenant y el envío de correspondencia humana en vivo. Decisión, alternativas
+consideradas (incluyendo un circuit breaker/bulkhead separando ambos paths como mitigación
+futura posible, no construida hoy) y consecuencias documentadas en
+`Responsabilidades/ADR-0004-postmaster-single-egress-point.md`. Recomendación operacional
+explícita: la prioridad de on-call/alerting de Postmaster debe ser más alta que la que
+cualquiera de sus dos responsabilidades predecesoras habría justificado por sí sola —
+fuera del alcance de este repositorio, nota para quien administre infraestructura real.
+
+# 36. Scribe Service (templating centralizado de email)
+
+Microservicio nuevo (`src/Services/Scribe/`, puerto 5340) dueno de plantillas,
+layouts y render de email para todo el ecosistema — reemplaza el `FluidTemplateRenderer`
+in-process que tenia Notification (seccion 28) y los catalogos hardcodeados en C#
+(`EmailTemplates.cs`, `SignatureTemplateCatalog.cs`) que usaban Notification y Signature.
+Diseno completo en `Responsabilidades/Scribe_Service_Design_And_Implementation_Plan.md`
+y `Responsabilidades/Scribe_Email_Style_Guide.md` (convenciones HTML email-safe: tablas,
+CID inline para imagenes, sin flex/grid/scripts). Implementadas las Fases 0 a 8 y 10
+(Fase 9, Campaigns, queda **deliberadamente pendiente** — ver 36.7).
+
+## 36.1 Aggregates y tablas
+
+| Aggregate | Responsabilidad | Tabla(s) |
+| --- | --- | --- |
+| `EmailTemplate` | Plantilla (System o Tenant) — dueno de sus `EmailTemplateVersion`, invariante "solo una Published a la vez" | `EmailTemplates`, `EmailTemplateVersions`, `TemplateVariableDefinitions` |
+| `EmailLayout` | Layout base que todo `EmailTemplateVersion` debe extender (no se permite HTML standalone) — mismo patron que `EmailTemplate` | `EmailLayouts`, `EmailLayoutVersions` |
+| `EventTemplateMapping` | Resuelve `EventKey` → `TemplateKey` (con prioridad Tenant sobre System y locale opcional) | `EventTemplateMappings` |
+| `TenantLogoRef` / `TenantLogoMissingNotification` | Logo por tenant para el header del layout (Fase 4.5, pipeline CID) + aviso cuando falta | `TenantLogoRefs`, `TenantLogoMissingNotifications` |
+
+Cada `EmailTemplateVersion`/`EmailLayoutVersion` referencia su HTML/texto/design-JSON/preview
+como blobs en CloudStorage (`HtmlStorageKey`+`HtmlFileId`, etc.) via `ITemplateStorageService`
+— Scribe solo tiene subida/lectura, nunca delete (ver 36.7, retention).
+
+## 36.2 Endpoints
+
+- `POST /scribe/render` (permiso `scribe.render`) — HTTP. Recibe
+  `{ eventKey, tenantId?, locale?, variables, logoScope? }`, devuelve
+  `{ subject, html, text?, inlineAssets[] }`. Es el unico camino de render, usado por
+  Notification (36.3/36.4) y por Postmaster para el path de correspondencia. Hasta la
+  Fase 8 del hardening existio ademas un gRPC `scribe.TemplateService/Render`
+  (`Protos/render.proto`) con el mismo query interno pero deadline duro de 200ms —
+  fue la primera implementacion de gRPC de todo el monorepo, nunca tuvo un consumidor
+  real (Notification siempre uso HTTP) y se retiro por completo (ver 36.7, ADR-0003).
+- CRUD de templates/layouts (permisos `scribe.templates.*`/`scribe.layouts.*`):
+  crear, agregar version Draft, publicar version (archiva la anterior automaticamente),
+  deprecar.
+- `POST /scribe/templates/versions/{versionId}/preview` — renderiza con variables de
+  muestra sin tocar el estado Published (Fase 5).
+- CRUD de `EventTemplateMapping` (permisos `scribe.mappings.*`).
+
+## 36.3 Eventos consumidos por Notification (Fase 8 — migracion)
+
+13 templates migrados desde los catalogos viejos de Notification/Signature, sembrados
+al arrancar por `ScribeNotificationTemplateSeeder` (`EventTemplateMapping` + `EmailTemplate`
+Published, todos sobre el layout `system-base`):
+
+| EventKey | TemplateKey | Origen |
+| --- | --- | --- |
+| `auth.invitation_created.v1` | `auth.invitation` | `EmailTemplates.Invitation` (Notification) |
+| `auth.password_reset_requested.v1` | `auth.password_reset` | idem |
+| `auth.mfa_otp_requested.v1` | `auth.otp_code` | idem |
+| `auth.email_change_requested.v1` | `auth.email_change` | idem |
+| `auth.email_change_security_alert.v1` | `auth.security_alert` | idem (segundo correo del mismo evento) |
+| `auth.tenant_recovery_requested.v1` | `auth.tenant_recovery` | idem |
+| `auth.user_registered.v1` | `auth.welcome` | idem — sin consumer hasta Fase 9 (ver abajo) |
+| `sig.signer_invited.v1` | `sig.invitation.v1` | `SignatureTemplateCatalog.Invitation` (Signature/Notification) |
+| `sig.request_reminder_due.v1` | `sig.reminder.v1` | idem `.Reminder` |
+| `sig.request_completed.v1` | `sig.completed.v1` | template existia, sin consumer — nuevo `SignatureRequestCompletedConsumer` |
+| `sig.request_expired.v1` | `sig.expired.v1` | idem, nuevo `SignatureRequestExpiredConsumer` |
+| `sig.signer_rejected.v1` | `sig.declined.v1` | idem, nuevo `SignerRejectedConsumer` |
+| `sig.verification_challenge_issued.v1` | `sig.verification-challenge.v1` | rama `EmailOtp` de `SignerVerificationChallengeIssuedConsumer` (la rama `KbaQuiz` se quedo inline, nunca fue parte del catalogo) |
+
+Los 3 ultimos `sig.*` requirieron enriquecer `SignatureRequestCompletedIntegrationEvent`,
+`SignatureRequestExpiredIntegrationEvent` y `SignerRejectedIntegrationEvent` (BuildingBlocks)
+con un `SignerContactSnapshot` (Email/FullName/Language) por firmante — antes solo traian
+GUIDs, insuficiente para renderizar un correo sin un lookup sincrono a Signature.
+
+`auth.welcome` (Fase 9): `UserRegisteredIntegrationEvent` se movio del namespace local de
+Auth a `BuildingBlocks.Messaging.AuthIntegrationEvents` (mismo tratamiento que sus hermanos
+`UserDeactivatedIntegrationEvent`/`UserRolesChangedIntegrationEvent`) para que Notification
+pudiera consumirlo — `UserRegisteredConsumer` ya esta wireado. Communication (Node) seguia
+consumiendolo por el nombre completo del tipo CLR (`consumer-runtime.ts`,
+`CLR_TYPE_TO_EVENT_TYPE`); se actualizo esa clave al mover el evento.
+
+## 36.4 Configuracion nueva
+
+- Scribe (`appsettings`/user-secrets): `ConnectionStrings:Default`, `RabbitMq:Uri`,
+  `Redis` (cache L2 de templates parseados), `CloudStorage:BaseUrl` +
+  `ServiceAuthClient:*` (M2M contra Auth), `Scribe:Retention:Enabled/RetentionDays/BatchSize`
+  (36.7).
+- Notification: `ScribeClient:BaseUrl` (default `http://localhost:5340`, en Docker
+  `http://scribe-api:8080`) — reusa el `IServiceTokenAcquirer`/`ServiceAuthClient:*` ya
+  configurado para CloudStorage (el token M2M no esta atado a un downstream especifico).
+- Auth: el cliente M2M `notification-service` necesita el permiso `scribe.render`
+  agregado a su `ServiceAuth:Clients` para que las llamadas de Notification a
+  `POST /scribe/render` no devuelvan 403 — paso operativo, no de codigo.
+
+## 36.5 Migraciones
+
+Tres migraciones EF Core (`AddTemplateAndLayoutAggregates`, `AddEventTemplateMappings`,
+`AddTenantLogoRefs`) — Fase 8 (los 13 templates) y Fase 9/10 (auth.welcome, retention)
+no agregaron tablas nuevas, solo filas sembradas por hosted services y un metodo nuevo
+sobre el aggregate existente.
+
+## 36.6 Guia de pruebas paso a paso
+
+1. Levantar Scribe (`dotnet run` en `TaxVision.Scribe.Api`, puerto 5340) — al arrancar
+   siembra `system-base`/`tenant-base` (layouts) y los 13 templates de 36.3.
+2. `POST /scribe/render` con `Authorization: Bearer <token M2M o de usuario con scribe.render>`,
+   body `{ "eventKey": "auth.password_reset_requested.v1", "tenantId": null, "variables": { "reset_link": "https://...", "expires_at": "2026-01-01 10:00", "product_name": "TaxVision" } }`
+   — debe devolver `200` con `subject`/`html` no vacios.
+3. Levantar Notification con `ScribeClient:BaseUrl` apuntando al Scribe local; disparar
+   un `PasswordResetRequestedIntegrationEvent` (via el flujo real de Auth) y confirmar
+   en los logs de Notification que el email sale con el HTML de Scribe (no el viejo
+   builder en C#, que ya no existe).
+4. `dotnet test deploy/tests/TaxVision.Scribe.Tests/` — incluye los 7 tests de
+   `ScribeArchitectureTests` (NetArchTest, 36.7) y los de `PurgeArchivedVersionsOlderThan`.
+
+## 36.7 Pendientes documentados
+
+- **Campaigns (Fase 9 del plan original) — explicitamente fuera de alcance.** El senior
+  no confirmo que EmailCampaigns deba pasar por Scribe; no se toco `EmailCampaign`/
+  `EmailCampaignRecipient` (siguen en Notification). Queda pendiente indefinidamente
+  hasta nueva instruccion.
+- **gRPC retirado (Fase 8 del hardening, 2026-07-18).** El servidor gRPC existio desde
+  la Fase 7 (36.2) pero nunca tuvo un consumidor real — Notification siempre uso HTTP.
+  Se elimino por completo (`Protos/render.proto`, `TemplateRenderGrpcService.cs`, el
+  `AddGrpc()`/`MapGrpcService<...>()` de `Program.cs`, el paquete `Grpc.AspNetCore` y
+  sus tests) en vez de dejarlo "por si acaso" — mismo criterio YAGNI aplicado en el
+  resto de esta sesion de hardening. Decision completa en
+  `Responsabilidades/ADR-0003-scribe-grpc-retired.md`. Si en el futuro aparece un
+  consumidor con un requisito real de SLA estricto, se reconstruye entonces contra
+  ese caso de uso concreto.
+- **Retention job no cubre `EmailLayoutVersion`.** `ScribeRetentionScheduler` (deshabilitado
+  por default, `Scribe:Retention:Enabled=false`) solo purga `EmailTemplateVersion` Archived
+  viejas — una version de layout Archived puede seguir "pinneada" por el
+  `LayoutVersionNumber` de una version de template todavia Published (el pin es por
+  numero, no "ultima version"), asi que purgarla sin verificar esa referencia cruzada
+  rompiaria el render de ese template. Purgar layouts requiere ese chequeo adicional,
+  no implementado todavia.
+- **Retention job no borra blobs de CloudStorage.** `ITemplateStorageService` solo tiene
+  subida/lectura (`UploadAsync`/`DownloadTextAsync`), no delete — al purgar una version
+  de template sus blobs en CloudStorage quedan huerfanos. La limpieza de blobs huerfanos
+  es responsabilidad del recycle bin de CloudStorage (seccion 27), no de Scribe.
+- **ADR:** `Responsabilidades/ADR-0001-scribe-extraction.md` documenta la decision de
+  extraer el templating a un microservicio propio (contexto, alternativas consideradas,
+  consecuencias) — no existia convencion previa de ADR en este repo ni en la carpeta de
+  planificacion; este es el primero. `Responsabilidades/ADR-0003-scribe-grpc-retired.md`
+  documenta el retiro del gRPC (arriba, este mismo listado).
+
+# 37. Connectors Service (integraciones Gmail/Graph/IMAP)
+
+Microservicio nuevo (`src/Services/Connectors/`) dueno de OAuth, Gmail Watch API,
+Microsoft Graph subscriptions e IMAP puro — nace de la separacion de responsabilidades
+de `Notification` (seccion 28). Es el unico servicio que conoce las APIs de proveedores
+de correo: cifra/descifra tokens per-tenant, configura push notifications, resuelve
+history/delta incrementalmente y publica un evento normalizado con metadata (nunca el
+body ni bytes de attachments — eso se pide bajo demanda via M2M). Diseno completo en
+`Responsabilidades/Connectors_Service_Design_And_Implementation_Plan.md`. Implementadas
+las Fases 0 a 11 completas (plan v1 cerrado). Post-cierre (2026-07-18): agregado
+`ReconciliationJob` — safety net de Gmail/Graph detras del push y unico mecanismo de sync
+para IMAP (que nunca tuvo uno hasta ahora), ver 37.8.
+
+## 37.1 Aggregates y tablas
+
+| Aggregate | Responsabilidad | Tabla(s) |
+| --- | --- | --- |
+| `TenantEmailAccount` | Cuenta de correo conectada por un tenant (Draft → Connected → Active → Disconnected \| Error) | `TenantEmailAccounts` |
+| `OAuthConnection` + `OAuthToken` | Tokens OAuth cifrados AES-GCM (`EncryptedSecret`, `KeyVersion` para rotacion) | `OAuthConnections`, `OAuthTokens` |
+| `ImapCredentials` | Credenciales IMAP cifradas para cuentas sin OAuth (servidor propio del tenant) | `ImapCredentials` |
+| `ProviderWatchSubscription` | Suscripcion push activa (Gmail `users.watch` / Graph subscription), con expiracion y renewal | `ProviderWatchSubscriptions` |
+| `ProviderSyncCursor` | Cursor durable para retomar sync incremental (`HistoryId` Gmail / `DeltaLink` Graph / `UidValidity+LastUid` IMAP) | `ProviderSyncCursors` |
+| `ProviderConnectionAuditLog` | Log append-only de conexion/refresh/renewal/fetch/error, retention 90 dias (Fase 11, 37.7) | `ProviderConnectionAuditLogs` |
+
+## 37.2 Endpoints
+
+- `POST /connectors/accounts` (permiso `connectors.accounts.write`) — arranca el flujo
+  de conectar cuenta (D3 §12.4): genera un `state` CSRF de un solo uso y devuelve
+  `{ authorizationUrl }`; el frontend redirige el navegador ahi, no hace un fetch.
+- `GET /connectors/accounts` (permiso `connectors.accounts.read`) — lista las cuentas
+  del tenant. `GET /connectors/accounts/{id}` — detalle (nunca incluye el token).
+- `DELETE /connectors/accounts/{id}` (permiso `connectors.accounts.write`) — desconecta:
+  revoca la `OAuthConnection`, intenta ademas revocar el refresh token del lado de Google
+  (best-effort, `POST oauth2.googleapis.com/revoke`) — Graph no tiene API equivalente, el
+  usuario debe revocar el consentimiento el mismo desde `myaccount.microsoft.com/consents`.
+- `POST /connectors/accounts/{id}/reauth` (permiso `connectors.accounts.write`) —
+  reintenta el setup de watch/subscription tras `TenantEmailAccount.Status == Error`
+  (mismo comando que el connect inicial, asi que tambien recupera una connection ya
+  persistida cuyo `SetupWatchCommand` fallo antes de completar el connect).
+- `GET /connectors/accounts/admin-consent-url` (permiso `connectors.accounts.write`) —
+  fallback de admin-consent para Graph (D3 §12.6), solo si el connect normal fallo con
+  `AADSTS90094`/`consent_required`.
+- `GET /connectors/oauth/callback/{gmail,graph}` — publico, Google/Microsoft redirigen
+  el navegador aca tras el consentimiento; consume el `state`, intercambia el
+  `code` por tokens y redirige al frontend (`?connectors_connected=true&accountId=...`
+  o `?connectors_error=...`).
+- `GET /connectors/oauth/admin-consent-callback` — publico, contraparte del fallback
+  de arriba.
+- `POST /connectors/webhooks/gmail-push` — publico, valida el JWT del token de Google
+  (`Google.Apis.Auth`). Rate limit 100 req/min por IP.
+- `POST /connectors/webhooks/graph-notification` — publico, handshake `validationToken`
+  + `clientState` compartido validado en tiempo constante (Fase 7, hallazgo de seguridad
+  corregido — ver 37.7).
+- `POST /connectors/messages/{providerMessageId}/body` — M2M (`actor_type=Service`).
+  Body fetch bajo demanda (Fase 8), timeout 30s, rate limit 10 req/min por (tenant, cuenta).
+- `POST /connectors/messages/{providerMessageId}/attachments/{attachmentId}` — M2M.
+  Attachment fetch bajo demanda (Fase 9), rate limit 5 req/min por tenant.
+- `POST /connectors/accounts/{accountId}/send` — M2M (`actor_type=Service`, D3 §3.7).
+  Envio saliente vía la cuenta OAuth conectada — recibe un `OutboundMessage` normalizado
+  (nunca MIME crudo, porque Graph no lo acepta para crear un envio nuevo) y lo traduce
+  a la forma nativa del proveedor (`GmailApiClient`/`GraphApiClient.SendMessageAsync`).
+  Rate limit 20 req/min por (tenant, cuenta) via `ISendRateLimiter`. Unico consumidor
+  hoy: `ConnectorsSendClient` en Postmaster (README 35.8).
+
+## 37.3 Eventos de integracion
+
+- `connectors.raw_message_received.v1` — publicado al recibir un push (Fase 7), metadata
+  solamente (headers, subject, snippet, `AuthenticationSignals` SPF/DKIM/DMARC) — **nunca**
+  body ni bytes de attachments. Lo consume `Correspondence` (`RawMessageReceivedConsumer`,
+  README seccion 38), que arma o descarta el inbox del cliente final y llama bajo demanda
+  los dos endpoints M2M de arriba (body/attachment fetch) — ver 37.7.
+- `connectors.oauth_refresh_failed.v1`, `connectors.watch_expired.v1` — alertas operacionales,
+  publicadas por `OAuthTokenManager`/`WatchRenewalService` (Fase 4/6). **Reservados, sin
+  consumidor por diseño** (Fase 6 del plan de hardening, ver detalle abajo).
+- `connectors.message_body_fetched.v1` — publicado por `GetMessageBodyHandler` en cada body
+  fetch M2M exitoso (Fase 8). **Reservado, sin consumidor por diseño** — no es una alerta,
+  es una señal de métricas/auditoría (ver comentario en el propio DTO:
+  `ConnectorsMessageBodyFetchedIntegrationEvent`, "Opcional, solo para métricas — nunca
+  lleva el body en sí, solo confirma que se sirvió").
+- `connectors.tenant_email_account.connected.v1` / `.disconnected.v1` — publicados por
+  `CompleteOAuthConnectHandler`/`DisconnectAccountHandler` (flujo de conectar cuenta, D3
+  §12.7). Consumidos por Postmaster (`TenantEmailAccountConnectedConsumer`/
+  `TenantEmailAccountDisconnectedConsumer`, README 35.8) para mantener su proyeccion
+  local `TenantOAuthAccount`, que el motor de envio (D3 §3) consulta para resolver el
+  canal `TenantOAuth`.
+
+**Los 3 eventos huérfanos — decisión explícita (Fase 6, 2026-07-18):** `oauth_refresh_failed`,
+`watch_expired` y `message_body_fetched` se publican pero hoy nadie los consume en todo el
+repo. Se evaluó construir un consumer mínimo de alerting (opción (a) del plan) contra
+documentarlos como reservados (opción (b)) — se investigó primero si existía algún mecanismo
+reusable de "alertar a un platform admin sobre un problema operacional" en el monorepo:
+**no existe ninguno.** No hay clase `PlatformAdminAlert`/`OpsAlert`/`SystemAlert`, el rol
+`PlatformAdmin` (Auth) no es destino de ninguna notificación hoy, y el único patrón de
+notificación por rol que existe (`"role:TenantAdmin"` en `CloudStorageEventConsumers`,
+`FileInfectedDetectedConsumer`/`StorageLimitExceededConsumer`) es tenant-scoped, no
+cross-tenant — no sirve para ops. Se confirmó además que **no hay precedente en todo el
+repo** de un evento operacional `*Failed`/`*Expired` con un consumidor real hacia un rol de
+ops: `TenantDomainProvisioningFailedIntegrationEvent`/`TenantResolutionFailedIntegrationEvent`
+(Auth) están igual de huérfanos; `SignatureRequestExpiredIntegrationEvent`/
+`MeetingRecordingFailedIntegrationEvent`/`CallRecordingFailedIntegrationEvent` sí tienen
+consumer, pero notifican al usuario/tenant afectado, no a ops. Construir un consumer nuevo
+ahora sería inventar infraestructura de alerting de cero (nueva query cross-tenant, nuevo
+destino de notificación) como efecto secundario de esta fase — viola el mismo criterio YAGNI
+aplicado en el resto de este hardening (Scribe Fase 8, gRPC retirado por la misma razón).
+**Decisión: (b).** `oauth_refresh_failed`/`watch_expired` quedan reservados para cuando
+exista un servicio de ops/alerting real (`TenantEmailAccount.Status` ya queda en `Error` en
+ambos casos — el estado es consultable hoy vía `GET /connectors/accounts`, solo falta el
+push proactivo). `message_body_fetched.v1` queda reservado para un futuro consumidor de
+analytics/usage-metering — es una señal de conteo, no una alerta, así que ni siquiera
+comparte la misma justificación que los otros dos.
+
+## 37.4 Configuracion nueva
+
+- `.env`: `CONNECTORS_DB_CONNECTION`, `GMAIL_CLIENT_ID/SECRET`, `MSGRAPH_CLIENT_ID/SECRET/TENANT_ID`,
+  `CONNECTORS_GMAIL_WATCH_TOPIC`, `CONNECTORS_GRAPH_NOTIFICATION_URL`,
+  `CONNECTORS_GRAPH_WATCH_CLIENT_STATE`, `CONNECTORS_GMAIL_PUSH_AUDIENCE` (opcional,
+  scoping del JWT de Pub/Sub).
+- `Connectors:RateLimit` / `Connectors:MessageBodyRateLimit` / `Connectors:AttachmentRateLimit`
+  / `Connectors:SendRateLimit` — limites per-provider/per-tenant, con defaults en codigo
+  (10 req/s, 10/min, 5/min, 20/min) si la seccion no esta en `appsettings.json`.
+- `Connectors:Retention` (`Enabled`, `RetentionDays` default 90, `BatchSize` default 500)
+  — Fase 11, deshabilitado por default hasta autorizacion explicita (mismo patron que
+  `Scribe:Retention`, 36.4).
+- `Connectors:Reconciliation` (`IntervalMinutes` default 15) — cadence de `ReconciliationJob`
+  (37.8). `.env`: `CONNECTORS_RECONCILIATION_INTERVAL_MINUTES` (opcional).
+
+## 37.5 Migraciones
+
+`InitialCreate`, `AddTenantEmailAccountAndOAuth`, `AddImapCredentials`,
+`AddProviderWatchSubscriptions`, `AddProviderSyncCursors`, `AddProviderConnectionAuditLogs`,
+`AddProviderConnectionAuditLogTimestampIndex` (Fase 11 — indice propio para el retention
+job, que filtra solo por `Timestamp` sin `AccountId`), `AddTenantEmailAccountStatusIndex`
+(37.8 — indice propio para `ReconciliationJob`, que filtra `TenantEmailAccounts` solo por
+`Status` sin `TenantId`, igual razon que el indice de retention de arriba).
+
+## 37.6 Guia de pruebas paso a paso
+
+1. `docker compose -f deploy/docker/docker-compose.yml up connectors-api` (o `dotnet run`
+   local con `Connectors:OAuth:*` en user-secrets).
+2. Conectar una cuenta: `POST /connectors/accounts` (`{ providerCode: "Gmail" }`) con un
+   Bearer token de tenant, abrir `authorizationUrl` en el navegador, completar el
+   consentimiento — Google/Microsoft redirigen a `GET /connectors/oauth/callback/{gmail,graph}`,
+   que a su vez redirige al frontend con `?connectors_connected=true&accountId=...`.
+   Verificar `GET /health/ready` y `GET /connectors/accounts` (la cuenta debe listar `Status: Active`).
+3. Simular un push: `curl -X POST http://localhost:5390/connectors/webhooks/gmail-push`
+   con un JWT valido de Google en `Authorization: Bearer` → verificar
+   `connectors.raw_message_received.v1` publicado (RabbitMQ management UI).
+4. `dotnet test deploy/tests/TaxVision.Connectors.Tests/` — incluye los 7 tests de
+   `ConnectorsArchitectureTests` (NetArchTest, 37.7) y los de retry/circuit breaker (37.7).
+5. Reconciliación (37.8): bajar `Connectors__Reconciliation__IntervalMinutes` a 1 para no
+   esperar 15 min, conectar una cuenta IMAP (no requiere OAuth) y esperar al siguiente tick
+   — verificar en los logs `ReconciliationJob scanned N/M active accounts...` y, si el
+   inbox IMAP tenía mail, `connectors.raw_message_received.v1` publicado sin haber pasado
+   por ningún webhook.
+
+## 37.7 Pendientes documentados
+
+- **`Correspondence` ya existe (README seccion 38), implementado completo (Fases 0-16).**
+  Nota historica corregida: esta seccion afirmaba "no existe todavia" — quedo desactualizada
+  desde que Correspondence se implemento. Es el microservicio que consume
+  `connectors.raw_message_received.v1` y llama los dos endpoints M2M de arriba (37.2,
+  body/attachment fetch bajo demanda).
+- **Flujo de "conectar cuenta" (OAuth authorization + callback) implementado.**
+  `POST /connectors/accounts` (arranca el consentimiento), `GET/DELETE
+  /connectors/accounts/{id}`, `GET /connectors/oauth/callback/{gmail,graph}` (publico) y
+  el fallback de admin-consent para Graph — disenados y construidos en la misma sesion
+  (D3 §12). Reconectar una cuenta `Revoked`/`Expired` con una grant nueva **si esta
+  soportado**: `OAuthConnection.Reconnect` reutiliza la misma fila (y la misma fila de
+  `OAuthToken`, vía `UpdateAccessToken`/`UpdateRefreshToken`) en vez de crear una nueva —
+  `OAuthConnections` tiene un indice unico por `AccountId`, asi que un segundo
+  `OAuthConnection` para la misma cuenta nunca es insertable. Si la connection existente
+  sigue `Active`/`Pending`, el connect falla limpio
+  (`CompleteOAuthConnectHandler.AlreadyConnected`) — el usuario debe desconectar primero.
+- **D3 (enviar via la cuenta OAuth conectada) — implementado.** El motor de envio
+  completo: `IOutboundEmailProviderClient`, `ISendRateLimiter`, el endpoint M2M de envio
+  en Connectors, y `ProviderScope.TenantOAuth`/`IOAuthProviderResolver`/
+  `IOAuthEmailSender`/`ConnectorsSendClient` en Postmaster (README 35.8). Sin threading
+  ni inline assets en v1 (deliberado, mismo criterio de incrementalidad usado en otras
+  fases del repo). Ver `Responsabilidades/Postmaster_OAuthEmailSend_Design_And_Implementation_Plan.md`.
+- **Retry Polly (Fase 10) solo cubre Gmail/Graph.** El circuit breaker si envuelve las
+  3 clients (`Gmail:messages`/`Graph:messages`/`Imap:messages`, claves separadas del
+  breaker de OAuth refresh), pero el reintento automatico con backoff solo aplica a
+  `HttpRequestException`/`TaskCanceledException` — MailKit (IMAP) no separa de forma
+  limpia un fallo de red transitorio de uno de auth/protocolo en su superficie de
+  excepciones, asi que forzar reintentos ahi seria una apuesta a ciegas.
+- **Hallazgo de seguridad corregido (Fase 7, post-implementacion):** la validacion de
+  `clientState` del webhook de Graph no era constant-time y aceptaba notificaciones
+  forjadas si `Connectors:Watch:Graph:ClientState` quedaba sin configurar (string vacio
+  matcheaba string vacio). Corregido con `CryptographicOperations.FixedTimeEquals` +
+  guard explicito que rechaza si el secreto no esta configurado.
+- **Jobs (`WatchRenewalJob`, `ProactiveTokenRefreshJob`, `ConnectorsRetentionScheduler`,
+  `ReconciliationJob`) sin tests unitarios.** Mismo criterio que el resto del repo: los
+  `BackgroundService` no se testean directamente en este monorepo (ninguno de los otros
+  microservicios lo hace tampoco) — la logica que si tiene tests vive en los métodos/repos
+  que estos jobs invocan (`ReconcileAccountHandlerTests`, 37.8).
+- **`Correspondence` ya existe** (README seccion 38) — implementado completo, Fases 0 a 16.
+  Consume `connectors.raw_message_received.v1` y llama los dos endpoints M2M de arriba
+  (37.2, body/attachment fetch bajo demanda).
+
+## 37.8 Reconciliación — safety net Gmail/Graph, único mecanismo de sync IMAP (post-cierre, 2026-07-18)
+
+**El gap identificado:** hasta esta sesión, Gmail y Graph detectaban mail nueva
+*exclusivamente* vía push (Pub/Sub / Graph subscriptions, Fase 7) — sin ningún fallback si
+una notificación se perdía, un push nunca llegaba, o un watch subscription vencía
+silenciosamente entre corridas de `WatchRenewalJob` (que solo renueva la suscripción, nunca
+sincroniza mail). Peor aún: **las cuentas IMAP no tenían ningún mecanismo de detección de
+mail nueva post-conexión.** `SetupWatchHandler` activa una cuenta IMAP directo a `Active`
+sin crear ninguna `ProviderWatchSubscription` (IMAP no tiene un estándar de push genérico) —
+y no existía ningún job, poller ni trigger que después le pegara a
+`ImapClient.GetHistoryAsync`. Una cuenta IMAP conectada nunca volvía a sincronizar nada.
+
+**La solución no inventa un mecanismo de sync paralelo.** Se investigó primero si
+`GetHistoryAsync` (Gmail `history.list`, Graph delta query, IMAP UID search) ya soporta
+catch-up incremental completo — **sí**: los tres clientes ya devuelven todo lo nuevo desde
+el cursor persistido (`ProviderSyncCursor`), sin importar qué disparó la llamada. Y el delta
+token de Graph ya vivía como cursor opaco (`DeltaLink` completo) desde la Fase 7 original —
+no hizo falta extender el aggregate. Con eso confirmado, `ReconciliationJob` simplemente
+re-invoca el mismo `RawMessageSyncOrchestrator` que los webhook handlers, a través de un
+nuevo `ReconcileAccountHandler` (Application, mismo patrón `Handle` estático que
+`ProcessGmailPushNotificationHandler`/`ProcessGraphNotificationHandler`) — se extrajo la
+lógica de seed de cursor común a los tres en `ProviderSyncCursorSeeder` para no duplicarla.
+
+**Cómo corre:**
+
+| Aspecto | Decisión |
+| --- | --- |
+| Cadence | Un solo `Connectors:Reconciliation:IntervalMinutes` (default 15) para Gmail, Graph e IMAP — ver el WHY-comment en `ReconciliationOptions` para por qué se descartó una cadencia separada más ajustada para IMAP (complejidad real por beneficio marginal, `GetHistoryAsync` ya está protegido por rate limiter/circuit breaker). |
+| Alcance por corrida | Un solo `BackgroundService` compartido que escanea TODAS las cuentas `Active` de todos los tenants (`ITenantEmailAccountRepository.ListActiveAsync`, nuevo índice `IX_TenantEmailAccounts_Status`) — **no** un loop por cuenta (el patrón de `ReactiveEmailReceivingService` del backend legacy, que no escala a muchos tenants). |
+| Rate limiting / circuit breaker | Ninguno nuevo — pasa por el mismo `IEmailProviderClientFactory` → mismos `GmailApiClient`/`GraphApiClient`/`ImapClient` → mismo `IProviderRateLimiter` (Redis) + `ProviderCircuitBreaker` (Fase 10) que ya protegen esos clients. |
+| Concurrencia con push | Mismo `IDistributedLock` con el mismo namespace de clave que los webhook handlers (`connectors:webhook-sync:{accountId}`, Fase 4) — un pase de reconciliación y un sync disparado por webhook para la MISMA cuenta se serializan, nunca corren en paralelo. Si el lock está tomado, el pase se salta limpio (no falla, no reintenta). TTL propio de 10 min (vs. 2 min de los webhooks) porque el primer pase de una cuenta IMAP recién activada puede traer el inbox completo. |
+| Idempotencia | Verificada, no asumida: `RawMessageReceivedConsumer` en Correspondence (README 38) dedupea por `InternetMessageId` antes de crear un `IncomingEmail` — si reconciliación re-publica un mensaje que un push ya entregó (p.ej. porque el cursor no llegó a guardarse), Correspondence lo descarta como duplicado sin efecto. No hizo falta ningún fix de idempotencia. |
+| Jitter | Delay aleatorio de 50-400ms entre cuentas dentro de una misma corrida — evita que todas las cuentas activas le peguen a los providers en el mismo instante en cada tick. |
+| Métricas | `connectors_reconciliation_accounts_scanned_total`, `connectors_reconciliation_messages_found_total`, `connectors_reconciliation_errors_total` (todos con tag `provider`), y la que importa vigilar en producción: **`connectors_reconciliation_messages_recovered_total`** — solo cuenta mensajes encontrados en cuentas Gmail/Graph donde el cursor YA existía (no es catch-up inicial). En operación normal debería quedarse en 0; una tendencia creciente es la señal de que el push se está degradando silenciosamente. IMAP nunca aporta a esta métrica — ahí reconciliación ES el mecanismo de sync, no una recuperación de nada. Cada recuperación real además loguea un `LogWarning` estructurado (no solo se corrige en silencio). |
+
+**Qué NO cubre:** esto no es polling de 5 minutos por mailbox (ese modelo, el del backend
+legacy, se descartó explícitamente por no escalar) — es una red de seguridad de baja
+frecuencia. Una cuenta Gmail/Graph con push funcionando normalmente puede tardar hasta
+`IntervalMinutes` en autocorregirse si el push falla; no hay garantía de latencia menor. El
+`ReconciliationJob` en sí no tiene tests unitarios directos (mismo criterio que el resto de
+los `BackgroundService` del repo, ver arriba) — la lógica testeada vive en
+`ReconcileAccountHandlerTests` (`deploy/tests/TaxVision.Connectors.Tests/Sync/`).
+
+# 38. Correspondence Service (inbox del cliente final + compose/send)
+
+Microservicio nuevo (`src/Services/Correspondence/`, puerto 5400) dueño del inbox de
+correo del cliente final (empleado del tenant viendo los emails de SUS customers) y del
+compose/send de correspondencia nueva o reply. Nace de la separación de responsabilidades
+de `Connectors` (sección 37): Connectors solo transporta metadata normalizada de
+proveedor, Correspondence es quien la convierte en un inbox real por customer, resuelve
+threading, y arma el envío saliente que termina en Postmaster. Diseño completo en
+`Responsabilidades/Correspondence_Service_Design_And_Implementation_Plan.md` (fusionado
+con el diseño de Compose, ver §0 de ese documento). Implementadas las Fases 0 a 16
+completas (plan v1 cerrado, incluyendo el hardening final).
+
+**Diseño no negociable (§0 del plan):** el tramo de envío es una cadena HTTP síncrona y
+bloqueante en cada hop — `POST /correspondence/drafts/{id}/send` → Postmaster
+(`POST /postmaster/correspondence-messages`, 35) → Connectors
+(`POST /connectors/accounts/{accountId}/send`, 37.2) → proveedor real (Gmail/Graph) — sin
+evento, cola, ni fire-and-forget en ningún tramo. El usuario que aprieta "Enviar" espera
+el resultado real (éxito o error concreto) en la MISMA request, igual que enviar desde
+Gmail; el "async" lo maneja el usuario reintentando desde la UI si hace falta. Esto
+**contrasta deliberadamente** con el patrón event-driven que Postmaster también sirve
+para notificaciones automáticas de tenant (`notifications.email_send_requested.v1`, 35.2)
+— ahí no hay un humano esperando en vivo, así que el patrón async/con reintento
+automático tiene sentido; acá sí hay un humano esperando, así que agregar una cola
+solo agregaría latencia y un estado "pendiente" que el usuario no puede interpretar
+("¿se mandó o no?"). Ver el ADR corto en
+`Responsabilidades/ADR-0002-correspondence-synchronous-send.md`.
+
+**`CustomerId` obligatorio (diseño, no un detalle):** todo lo que persiste este servicio
+—`IncomingEmail`, `EmailThread`, `Draft`— exige un `CustomerId` real y no vacío
+(`Draft.ValidateIds`, mismo criterio en el resto de los aggregates). Correspondence no
+tiene concepto de "correo suelto sin dueño": un mensaje entrante que no puede asociarse a
+un customer conocido NUNCA se persiste como `IncomingEmail` — cae en cuarentena (ver
+abajo). Esto es lo que hace posible que `GET /correspondence/customers/{customerId}/threads`
+sea la puerta de entrada real del inbox (todo cuelga de un customer), no un query global.
+
+**Cuarentena anti-spoofing:** `RawMessageReceivedConsumer` (Fase 4) nunca crea un
+`IncomingEmail` a ciegas — antes de eso resuelve el remitente contra
+`CustomerEmailAddresses` y valida las señales de autenticación que Connectors ya adjuntó
+al evento (`SpfResult`/`DkimResult`/`DmarcResult`, 37.3). Un mensaje cuyo remitente SÍ
+matchea un customer conocido pero cuyo DMARC falló (o SPF+DKIM fallaron ambos) se trata
+como intento de spoofing, no como ruido: va a `UnmatchedIncomingEmail` con
+`UnmatchedReason.AuthenticationFailed` en vez de aparecer en el inbox del customer
+suplantado. Un remitente que directamente no matchea ningún customer usa
+`UnmatchedReason.NoCustomerMatch` — mismo destino (cuarentena), motivo distinto (loggeado
+distinto para poder diferenciar "ruido" de "posible ataque" en los logs).
+
+## 38.1 Aggregates y tablas
+
+| Aggregate | Responsabilidad | Tabla(s) |
+| --- | --- | --- |
+| `IncomingEmail` (+`IncomingEmailRecipient`, `IncomingEmailAttachment`) | Un correo entrante ya matcheado a un customer — metadata + estado de descarga de body/attachments bajo demanda | `IncomingEmails`, `IncomingEmailRecipients`, `IncomingEmailAttachments` |
+| `EmailThread` | Hilo (thread) de un customer — agrupa `IncomingEmail`s entrantes y `Draft`s `Sent` salientes | `EmailThreads` |
+| `UnmatchedIncomingEmail` | Cuarentena: mensajes que no matchearon customer o fallaron autenticación (ver arriba) | `UnmatchedIncomingEmails` |
+| `CustomerEmailAddress` | Proyección local del email primario de cada customer, alimentada por 6 eventos de Customer (38.3) | `CustomerEmailAddresses` |
+| `TenantBackfillState` | Marca "ya corrí el backfill inicial de `CustomerEmailAddresses` para este tenant" | `TenantBackfillStates` |
+| `Draft` (+`DraftRecipient`) | Correspondencia en redacción — nueva o reply, hasta `Sent`/`Discarded`/`Failed` | `Drafts`, `DraftRecipients` |
+| `CorrespondenceAuditLog` | Rastro mínimo de auditoría (solo escritura) de acciones sobre `Draft` (Send, principalmente) | `CorrespondenceAuditLogs` |
+
+## 38.2 Endpoints
+
+Inbox (Fases 5-9, todos requieren tenant real vía JWT — nunca M2M):
+
+- `GET /correspondence/messages/{id}` (permiso `correspondence.read`) — metadata de UN
+  mensaje, nunca llama a Connectors.
+- `GET /correspondence/messages/{id}/body` (`correspondence.read`) — body fetch bajo
+  demanda contra Connectors, nunca se persiste (plan §17).
+- `GET /correspondence/messages/{id}/attachments` (`correspondence.read`) — attachments
+  ya persistidos del mensaje.
+- `POST /correspondence/messages/{id}/attachments/{attachmentId}/download`
+  (`correspondence.attachment.download`) — dispara la descarga bajo demanda
+  (Connectors → bucket temporal → CloudStorage). Idempotente.
+- `GET /correspondence/messages/{id}/attachments/{attachmentId}/download-url`
+  (`correspondence.attachment.download`) — URL presignada del attachment ya descargado.
+- `GET /correspondence/customers/{customerId}/threads` (`correspondence.read`, paginado)
+  — inbox de un customer, hilos más reciente primero.
+- `GET /correspondence/threads/{threadId}/messages` (`correspondence.read`, paginado) —
+  thread unificado inbound+outbound (Fase 15): mensajes entrantes Y `Draft`s `Sent` del
+  mismo hilo, orden cronológico ascendente.
+- `POST /correspondence/threads/{threadId}/archive` (`correspondence.read`) — archiva el
+  hilo, idempotente.
+
+Compose/Send (Fases 10-15):
+
+- `POST /correspondence/drafts` (`correspondence.compose`) — correspondencia nueva.
+- `GET /correspondence/drafts?customerId=` (`correspondence.compose`, paginado) —
+  "retomar autoguardado": drafts `Status=Draft` del customer.
+- `GET /correspondence/drafts/{id}` (`correspondence.compose`) — vista completa del
+  composer.
+- `PATCH /correspondence/drafts/{id}` (`correspondence.compose`) — autoguardado parcial,
+  204 sin body.
+- `DELETE /correspondence/drafts/{id}` (`correspondence.compose`) — `Draft → Discarded`.
+- `POST /correspondence/messages/{id}/reply/draft` (`correspondence.reply`) — arranca (o
+  reutiliza) un reply sobre un mensaje entrante.
+- `POST /correspondence/drafts/{id}/attachments` (`correspondence.compose`) — adjunta una
+  referencia a un archivo ya subido a CloudStorage (nunca bytes acá).
+- `DELETE /correspondence/drafts/{id}/attachments/{fileId}` (`correspondence.compose`) —
+  idempotente/tolerante.
+- `POST /correspondence/drafts/{id}/send` (`correspondence.send`, permiso separado de
+  `compose` a propósito — redactar es reversible, enviar no) — cierre síncrono y
+  bloqueante de la cadena completa (ver arriba).
+
+## 38.3 Eventos e integraciones M2M
+
+**Consumidos** (2, ambos vía `RawMessageReceivedConsumer`/los 6 consumers de `Projections/CustomerEvents`):
+
+- `connectors.raw_message_received.v1` (Connectors, 37.3) — arma o descarta un
+  `IncomingEmail` (ver cuarentena arriba).
+- `customer.created.v1` / `.updated.v1` / `.activated.v1` / `.deactivated.v1` /
+  `.archived.v1` / `.reactivated.v1` (Customer) — mantienen `CustomerEmailAddress` al día;
+  el primero de estos para un tenant nuevo dispara además el backfill completo
+  (`ITenantCustomerBackfillService`, pagina `GET /customers/internal/list`).
+
+**Publicados:**
+
+- `correspondence.customer_email_received.v1` — al crear un `IncomingEmail` real (no
+  cuarentena). Nadie lo consume todavía — mismo estado que varios eventos de Connectors
+  (37.3): la infraestructura de notificar "tenés un mensaje nuevo" queda lista, conectarla
+  a Communication/Notification es trabajo futuro fuera de este plan.
+- `SaveFileRequestedIntegrationEvent` (a CloudStorage, vía outbox transaccional) — al
+  descargar un attachment entrante bajo demanda.
+
+**M2M salientes (4 servicios, todos vía `HttpClient` + token de servicio,
+`ICorrespondenceServiceTokenAcquirer`):**
+
+1. **Connectors** — `POST /connectors/messages/{id}/body` (body fetch) y
+   `POST /connectors/messages/{id}/attachments/{attachmentId}` (attachment fetch),
+   ambos bajo demanda (37.2).
+2. **Customer** — `GET /customers/internal/list` (backfill inicial + reconciliación
+   periódica, 38.4).
+3. **Postmaster** — `POST /postmaster/correspondence-messages` (el cierre síncrono del
+   envío, ver arriba) — único caller: `PostmasterClient`
+   (`Infrastructure/Postmaster/`), verificado por
+   `Only_PostmasterClient_should_reference_the_concrete_postmaster_http_client`
+   (`CorrespondenceArchitectureTests`, 38.6).
+4. **CloudStorage** — `GET` de la URL presignada de un attachment ya adoptado, más un
+   chequeo de metadata best-effort (`AttachFileToDraftHandler`); la subida real de
+   archivos nuevos para un draft la hace el frontend directo contra CloudStorage, acá solo
+   viaja la referencia (`fileId`).
+
+## 38.4 Jobs en segundo plano
+
+Ambos `BackgroundService` puros (timer-tick, sin evento de entrada — guardrail de este
+servicio: solo empujan una correlación NUEVA por unidad de trabajo para que sus propias
+líneas de log queden agrupables, nunca propagan una correlación inbound porque no hay
+ninguna):
+
+| Job | Intervalo | Qué hace | Habilitado por default |
+| --- | --- | --- | --- |
+| `DraftCleanupJob` | 24h (delay inicial 15min) | `Draft`s `Status=Draft` con `UpdatedAtUtc` > `AbandonedAfterDays` (30) → `Draft.Discard()`, batcheado (200/batch, máx 25 batches/corrida) | **No** — plan §30, mismo criterio que `ConnectorsRetentionScheduler`/`ScribeRetentionScheduler`: requiere autorización explícita |
+| `CustomerEmailReconciliationJob` | 24h (delay inicial 20min) | Por cada tenant ya backfilleado, pagina `ListActiveCustomersAsync` y corrige drift de `CustomerEmailAddresses` (crea faltantes, actualiza emails desactualizados, reactiva soft-deletes obsoletos) vía `ICustomerEmailReconciliationService` | **Sí** — plan §32 R1, nunca borra datos, solo corrige (mismo perfil de riesgo que el backfill, que tampoco tiene flag) |
+
+`CustomerEmailReconciliationService` (Application, testeable sin `BackgroundService`) es
+honesto sobre su límite real: `ListActiveCustomersAsync` solo devuelve customers activos,
+así que esta reconciliación no puede detectar el caso inverso (un customer se desactivó
+en Customer pero la proyección local sigue activa) sin un endpoint M2M nuevo que hoy no
+existe — agregarlo sería scope creep de una fase de hardening. Cubre con confianza los dos
+casos que el plan §32 R1 realmente le preocupa: un email que cambió sin generar un evento
+limpio, y una fila que quedó soft-deleted de más.
+
+## 38.5 Configuración nueva
+
+- `.env`/user-secrets: `Correspondence:ServiceAuth:*` (M2M contra Auth),
+  `Correspondence:Customer:BaseUrl`, `Correspondence:Connectors:BaseUrl`,
+  `Correspondence:Postmaster:BaseUrl`, `Correspondence:CloudStorage:BaseUrl`,
+  `Correspondence:Minio:*` (credenciales scoped `correspondence-source`, mismo patrón
+  D0/D1 que Signature).
+- `Correspondence:Ingest:EnableUnmatchedDebug` / `.EnableSubjectThreadingFallback` —
+  flags de comportamiento del matching (Fase 4/6), off por default.
+- `Correspondence:DraftCleanup` (`Enabled` default `false`, `AbandonedAfterDays` default
+  30, `BatchSize` default 200) — Fase 16.
+- `Correspondence:Reconciliation` (`Enabled` default `true`) — Fase 16.
+
+## 38.6 Migraciones y arquitectura
+
+`InitialCreate`, `AddCustomerEmailAddresses`, `AddTenantBackfillStates`,
+`AddInboxAggregates`, `AddUnmatchedIncomingEmails`, `AddIncomingEmailsThreadIndex`,
+`AddDraftAggregate` (incluye `IX_Drafts_Status_UpdatedAtUtc`, preparado desde Fase 10
+para el `DraftCleanupJob` de Fase 16), `AddCorrespondenceAuditLog`,
+`AddDraftEmailThreadId`.
+
+`CorrespondenceArchitectureTests` (NetArchTest, Fase 16, 13 tests) — Domain sin
+dependencia a Application/Infrastructure/Api/EF Core/Wolverine/`System.Net.Http`/
+MailKit/Minio; Application sin dependencia a Infrastructure/Api; Infrastructure sin
+dependencia a Api; solo `PostmasterClient` puede referenciar el tipo concreto
+`PostmasterClient` (todo lo demás pasa por `IPostmasterClient`); y ningún tipo del
+servicio referencia `TaxVision.Scribe` (Correspondence nunca renderiza — Postmaster ya
+recibe el HTML final armado por el usuario).
+
+## 38.7 Métricas
+
+`CorrespondenceMetrics` (`System.Diagnostics.Metrics.Meter("correspondence-service")`,
+registrado en OTel vía `AddMeter(serviceName)`), plan §29 — registradas dentro de
+`PostmasterClient.SendAsync` (Infrastructure), no en `SendDraftHandler` (Application):
+Application no puede depender de Infrastructure, así que medir en el cliente HTTP real es
+la única ubicación consistente con las fronteras de 38.6.
+
+- `correspondence_draft_send_duration_seconds{tenant}` — tramo completo
+  Correspondence→Postmaster (incluye lo que Postmaster tarda con Connectors/el proveedor).
+- `correspondence_draft_send_total{tenant,status}` — `status` = `sent` | `failed` |
+  `suppressed` (`suppressed` solo cuando Postmaster propaga
+  `SendCorrespondenceMessageHandler.AllRecipientsSuppressed` tal cual, 35.6).
+- `correspondence_draft_abandoned_total{tenant}` — incrementada por `DraftCleanupJob`
+  (38.4) por cada `Draft` auto-descartado.
+
+## 38.8 Guía de pruebas paso a paso
+
+1. `docker compose -f deploy/docker/docker-compose.yml up correspondence-api` (o
+   `dotnet run` local, requiere `Connectors`/`Postmaster`/`Customer`/`CloudStorage`
+   corriendo para el flujo completo).
+2. Simular un mensaje entrante: publicar `connectors.raw_message_received.v1` a mano
+   (RabbitMQ management UI) con un `From` que matchee un `CustomerEmailAddress`
+   existente → verificar `GET /correspondence/customers/{customerId}/threads`.
+3. Compose/send real: `POST /correspondence/drafts` → `PATCH .../drafts/{id}` (subject +
+   body + `to`) → `POST .../drafts/{id}/send` → 200 con `sentMessageId` real si
+   Postmaster/Connectors están arriba con una cuenta OAuth conectada, o el error real
+   propagado si no.
+4. `dotnet test deploy/tests/TaxVision.Correspondence.Tests/` — incluye
+   `CorrespondenceArchitectureTests` (13 tests, 38.6) y los de
+   `CustomerEmailReconciliationService`/`DraftRepository.ListAbandonedAsync` (38.4).
+
+## 38.9 Pendientes documentados
+
+- **Reconciliación no detecta desactivaciones fantasma** (ver el WHY-comment de 38.4) —
+  requeriría un endpoint M2M nuevo en Customer.Api, fuera de alcance de una fase de
+  hardening.
+- **`correspondence.customer_email_received.v1` sin consumidor** — la infraestructura de
+  avisar "tenés un mensaje nuevo" a Communication/Notification queda lista pero
+  desconectada, mismo estado que varios eventos de Connectors (37.7).
+- **Jobs sin tests unitarios directos** (`DraftCleanupJob`/`CustomerEmailReconciliationJob`)
+  — mismo criterio que el resto del repo (35.7/37.7/32.5): la lógica real vive en
+  `IDraftRepository.ListAbandonedAsync`/`ICustomerEmailReconciliationService`, que sí
+  están testeados.

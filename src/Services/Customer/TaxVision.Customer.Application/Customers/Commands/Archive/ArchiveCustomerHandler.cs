@@ -19,7 +19,7 @@ public static class ArchiveCustomerHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null)
+        if (customer is null || customer.TenantId != cmd.TenantId)
             return Result.Failure(new Error("Customer.NotFound", "Customer not found."));
 
         var result = customer.Archive(cmd.ArchivedByUserId);

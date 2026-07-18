@@ -23,10 +23,6 @@ public static class NotificationPermissions
     public const string CampaignView = "notification.campaign.view";
     public const string CampaignManage = "notification.campaign.manage";
 
-    // Cuentas de correo externas y sincronización
-    public const string AccountView = "notification.account.view";
-    public const string AccountManage = "notification.account.manage";
-
     // Auditoría/logs
     public const string LogView = "notification.log.view";
 }

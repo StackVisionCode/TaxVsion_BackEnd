@@ -34,6 +34,11 @@ export async function reassignSupportTicket(
   if (!cmd.actor.hasAgentPermission && !cmd.actor.isPlatformAdmin) {
     return Result.fail(makeError('Auth.Forbidden', 'Missing communication.support.agent.'));
   }
+  if (cmd.actor.tenantId !== ticket.agentTenantId && !cmd.actor.isPlatformAdmin) {
+    return Result.fail(
+      makeError('Support.WrongAgentTenant', 'Agent must belong to the platform tenant.'),
+    );
+  }
 
   const previousAgentId = ticket.assignedAgentId;
   if (!previousAgentId) {
@@ -82,6 +87,11 @@ export async function escalateSupportTicket(
 
   if (!cmd.actor.hasAgentPermission && !cmd.actor.isPlatformAdmin) {
     return Result.fail(makeError('Auth.Forbidden', 'Missing communication.support.agent.'));
+  }
+  if (cmd.actor.tenantId !== ticket.agentTenantId && !cmd.actor.isPlatformAdmin) {
+    return Result.fail(
+      makeError('Support.WrongAgentTenant', 'Agent must belong to the platform tenant.'),
+    );
   }
 
   const result = ticket.escalate({ escalatedByUserId: cmd.actor.userId, newPriority: cmd.newPriority });

@@ -11,4 +11,7 @@ public sealed record SignatureRequestExpiredIntegrationEvent : IntegrationEvent
     public required DateTime ExpiredAtUtc { get; init; }
     public required int RevocationEpoch { get; init; }
     public required IReadOnlyList<Guid> PendingSignerIds { get; init; }
+
+    /// <summary>Snapshot de contacto de cada firmante pendiente — para notificar la expiración sin lookup síncrono.</summary>
+    public required IReadOnlyList<SignerContactSnapshot> PendingSigners { get; init; }
 }

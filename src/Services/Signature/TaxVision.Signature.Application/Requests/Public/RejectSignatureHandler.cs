@@ -26,26 +26,26 @@ public static class RejectSignatureHandler
 
         var (request, signer) = (resolution.Value.Request, resolution.Value.Signer);
         var rejectedAt = DateTime.UtcNow;
-        var pendingSignerIds = CollectPendingSignerIdsExcluding(request, signer.Id);
+        var pendingSigners = CollectPendingSignersExcluding(request, signer.Id);
 
         var rejection = request.MarkSignerRejected(signer.Id, rejectedAt, cmd.Reason, cmd.ClientIp, cmd.UserAgent);
         if (rejection.IsFailure)
             return rejection;
 
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishRejectedAsync(request, signer, rejectedAt, cmd.Reason, pendingSignerIds, correlation, bus);
+        await PublishRejectedAsync(request, signer, rejectedAt, cmd.Reason, pendingSigners, correlation, bus);
         return Result.Success();
     }
 
-    private static IReadOnlyList<Guid> CollectPendingSignerIdsExcluding(SignatureRequest request, Guid excluded) =>
-        request.Signers.Where(s => s.Id != excluded && s.Status == SignerStatus.Pending).Select(s => s.Id).ToList();
+    private static IReadOnlyList<Signer> CollectPendingSignersExcluding(SignatureRequest request, Guid excluded) =>
+        request.Signers.Where(s => s.Id != excluded && s.Status == SignerStatus.Pending).ToList();
 
     private static Task PublishRejectedAsync(
         SignatureRequest request,
         Signer signer,
         DateTime rejectedAtUtc,
         string? reason,
-        IReadOnlyList<Guid> pendingSignerIds,
+        IReadOnlyList<Signer> pendingSigners,
         ICorrelationContext correlation,
         IMessageBus bus
     ) =>
@@ -59,7 +59,10 @@ public static class RejectSignatureHandler
                     RejectedAtUtc = rejectedAtUtc,
                     RevocationEpoch = request.RevocationEpoch,
                     Reason = reason,
-                    PendingSignerIds = pendingSignerIds,
+                    PendingSignerIds = pendingSigners.Select(s => s.Id).ToList(),
+                    PendingSigners = pendingSigners
+                        .Select(s => new SignerContactSnapshot(s.Id, s.Email.Value, s.FullName.Value, "En"))
+                        .ToList(),
                 }
             )
             .AsTask();

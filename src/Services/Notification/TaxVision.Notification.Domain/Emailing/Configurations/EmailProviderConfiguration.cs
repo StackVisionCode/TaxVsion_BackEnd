@@ -30,6 +30,11 @@ public enum ProviderScope
 /// <remarks>
 /// Deriva de <see cref="BaseEntity"/> (no de <c>TenantEntity</c>) porque las configuraciones globales
 /// tienen <see cref="TenantId"/> nulo, y <c>TenantEntity.TenantId</c> es no-nullable.
+/// <para>
+/// Migration target: <b>Postmaster</b>. See <c>Responsibility_Map.md</c>. En Fase 6 se elimina de Notification
+/// y su equivalente vive en el bounded context de Postmaster (renombrado a <c>TenantEmailProvider</c> +
+/// <c>SystemEmailProvider</c> según scope, ver <c>Postmaster_Service_Design_And_Implementation_Plan.md</c> §14).
+/// </para>
 /// </remarks>
 public sealed class EmailProviderConfiguration : BaseEntity
 {

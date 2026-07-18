@@ -22,8 +22,10 @@ public static class ClaimsPrincipalExtensions
 
     public static bool IsPlatformAdmin(this ClaimsPrincipal principal) => principal.IsInRole("PlatformAdmin");
 
+    // TenantAdmin YA NO tiene bypass acá — depende del claim "perm" real (PermissionCatalog
+    // computa su set completo al login, excluyendo lo marcado Permission.PlatformOnly).
+    // PlatformAdmin sí lo conserva: por diseño debe pasar todo, sin depender de que el claim
+    // esté correctamente poblado en cada caso borde (ver discusión de la Fase de auditoría).
     public static bool HasPermission(this ClaimsPrincipal principal, string permission) =>
-        principal.HasClaim("perm", permission)
-        || principal.IsInRole("TenantAdmin")
-        || principal.IsInRole("PlatformAdmin");
+        principal.HasClaim("perm", permission) || principal.IsInRole("PlatformAdmin");
 }
