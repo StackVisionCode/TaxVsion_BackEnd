@@ -3,6 +3,7 @@ using BuildingBlocks.Domain;
 namespace TaxVision.Notification.Domain.Emailing.Sending;
 
 /// <summary>Destinatario de un correo saliente (To/Cc/Bcc).</summary>
+/// <remarks>Migration target: <b>Postmaster</b> (rename a <c>SentMessageRecipient</c>). See <c>Responsibility_Map.md</c>.</remarks>
 public sealed class EmailRecipient : BaseEntity
 {
     private EmailRecipient() { }

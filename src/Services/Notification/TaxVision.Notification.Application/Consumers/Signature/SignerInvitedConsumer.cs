@@ -1,32 +1,27 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
-using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
 /// <summary>
-/// Consume <see cref="SignerInvitedIntegrationEvent"/> emitido por Signature al enviar
-/// la solicitud. Compone y envía el correo con el enlace público al firmante, y registra
-/// el evento en <see cref="NotificationLog"/> para audit.
-///
-/// <para>
-/// SRP: cada fase (log inicial, render, envío, transición estado) en un método privado
-/// con nombre autoexplicativo. El consumer no accede a Signature ni conoce su BD — solo
-/// recibe el evento y decide cómo entregar.
-/// </para>
+/// Consume <see cref="SignerInvitedIntegrationEvent"/> emitido por Signature al enviar la solicitud.
+/// Compone y despacha el correo con el enlace público al firmante, y registra el evento en
+/// <see cref="TaxVision.Notification.Domain.Notifications.NotificationLog"/> para audit.
 /// </summary>
+/// <remarks>
+/// Fase 8 (Scribe): el HTML ya no se arma localmente (antes: SignatureTemplateCatalog.Invitation) —
+/// se renderiza en Scribe vía IScribeRenderClient y el resultado se envía tal cual por el gateway.
+/// </remarks>
 public static class SignerInvitedConsumer
 {
     private const string TemplateKey = SignatureTemplateCatalog.InvitationKey;
 
     public static async Task Handle(
         SignerInvitedIntegrationEvent evt,
-        IEmailSender emailSender,
-        INotificationLogRepository logRepository,
-        IUnitOfWork unitOfWork,
+        IEmailDispatchGateway gateway,
+        IScribeRenderClient scribeClient,
         ICorrelationContext correlation,
         ILogger<SignerInvitedIntegrationEvent> logger,
         CancellationToken ct
@@ -35,33 +30,42 @@ public static class SignerInvitedConsumer
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
-            var logResult = NotificationLog.Create(
-                evt.TenantId,
-                NotificationChannel.Email,
-                evt.Email,
-                BuildSubject(evt),
-                TemplateKey,
-                evt.EventId,
-                correlationId
+            // Hardening Fase 7: un render fallido ya no se loguea-y-descarta — EnsureRendered lanza
+            // ScribeRenderFailedException para que Wolverine reintente/DLQ en vez de que la
+            // invitación de firma se pierda en silencio.
+            var render = (
+                await scribeClient.RenderAsync(
+                    "sig.signer_invited.v1",
+                    evt.TenantId,
+                    new Dictionary<string, object?>
+                    {
+                        ["full_name"] = evt.FullName,
+                        ["invite_link"] = evt.PublicUrl,
+                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["requires_consent"] = evt.RequiresConsent,
+                        ["language"] = evt.Language,
+                    },
+                    ct
+                )
+            ).EnsureRendered("sig.signer_invited.v1");
+
+            var result = await gateway.QueueEmailAsync(
+                new EmailDispatchRequest(
+                    TenantId: evt.TenantId,
+                    To: evt.Email,
+                    Subject: render.Subject,
+                    HtmlBody: render.Html,
+                    TextBody: render.Text ?? string.Empty,
+                    TemplateKey: TemplateKey,
+                    RelatedEventId: evt.EventId,
+                    CorrelationId: correlationId,
+                    InlineAssets: render.InlineAssets
+                ),
+                ct
             );
-            if (logResult.IsFailure)
-            {
-                logger.LogWarning(
-                    "SignerInvited log could not be created for {SignerId}: {Error}",
-                    evt.SignerId,
-                    logResult.Error.Message
-                );
-                return;
-            }
 
-            var log = logResult.Value;
-            await logRepository.AddAsync(log, ct);
-
-            var message = BuildEmailMessage(evt);
-            var sendResult = await emailSender.SendAsync(message, ct);
-            if (sendResult.IsSuccess)
+            if (result.IsSuccess)
             {
-                log.MarkSent();
                 logger.LogInformation(
                     "SignerInvited email dispatched to signer {SignerId} for request {RequestId}.",
                     evt.SignerId,
@@ -70,39 +74,15 @@ public static class SignerInvitedConsumer
             }
             else
             {
-                log.MarkFailed(sendResult.Error.Message);
                 logger.LogWarning(
                     "SignerInvited email failed for signer {SignerId}: {Error}",
                     evt.SignerId,
-                    sendResult.Error.Message
+                    result.Error
                 );
             }
-
-            await unitOfWork.SaveChangesAsync(ct);
         }
     }
 
-    // ------------------------------------------------------------------
-    // Métodos privados: una única responsabilidad por método
-    // ------------------------------------------------------------------
-
     private static string ResolveCorrelationId(SignerInvitedIntegrationEvent evt) =>
         string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
-
-    private static string BuildSubject(SignerInvitedIntegrationEvent evt) =>
-        SignatureTemplateCatalog
-            .Invitation(evt.Language == "Es", evt.FullName, evt.PublicUrl, evt.ExpiresAtUtc, evt.RequiresConsent)
-            .Subject;
-
-    private static EmailMessage BuildEmailMessage(SignerInvitedIntegrationEvent evt)
-    {
-        var t = SignatureTemplateCatalog.Invitation(
-            evt.Language == "Es",
-            evt.FullName,
-            evt.PublicUrl,
-            evt.ExpiresAtUtc,
-            evt.RequiresConsent
-        );
-        return new EmailMessage(evt.Email, t.Subject, t.Html, t.Text);
-    }
 }

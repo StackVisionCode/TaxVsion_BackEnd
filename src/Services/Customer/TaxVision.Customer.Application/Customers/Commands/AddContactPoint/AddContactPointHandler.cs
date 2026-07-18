@@ -16,7 +16,7 @@ public static class AddContactPointHandler
     )
     {
         var customer = await repository.GetByIdAsync(cmd.CustomerId, ct);
-        if (customer is null)
+        if (customer is null || customer.TenantId != cmd.TenantId)
             return Result.Failure<ContactPointResponse>(new Error("Customer.NotFound", "Customer not found."));
 
         string normalizedValue;

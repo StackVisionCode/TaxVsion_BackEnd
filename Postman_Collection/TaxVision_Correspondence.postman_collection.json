@@ -1,0 +1,726 @@
+{
+  "info": {
+    "_postman_id": "8a3f1d6e-4c9b-4e2a-b7d5-1f6c9a2e4b8d",
+    "name": "TaxVision - Correspondence",
+    "description": "Coleccion del microservicio Correspondence de TaxVision (inbox del cliente final: hilos, mensajes, attachments, compose/send). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, p. ej. http://localhost:5047). Todos los endpoints son HTTP-triggered para un usuario final real (empleado del tenant), gateados por [HasPermission(...)] segun corresponda (correspondence.read/attachment.download/compose/reply/send) — el {{accessToken}} debe venir de un login de usuario normal (ver coleccion Auth), el TenantId siempre se toma del JWT, nunca de la ruta/query. Dos arcos: Inbox (Fases 5, 7, 8, 9 — body fetch, attachments, threads/messages listados, archive) y Drafts/compose-send (Fases 10-15 — CRUD de drafts, attachments de draft, reply/draft, listado de drafts, thread unificado inbound+outbound). El endpoint Drafts > Send cierra una cadena HTTP SINCRONICA y bloqueante Correspondence -> Postmaster -> Connectors -> proveedor real (por diseno explicito, ver README seccion 38 y Responsabilidades/ADR-0002-correspondence-synchronous-send.md) — nunca 202 Accepted, la respuesta trae el resultado real del envio. 17 endpoints, verificados endpoint por endpoint contra los controllers reales en el hardening final de Fase 16 (NetArchTest + jobs de retention/reconciliacion + esta pasada de Postman).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Threads",
+      "item": [
+        {
+          "name": "ListCustomerThreads",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/customers/{{correspondenceCustomerId}}/threads?page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "customers",
+                "{{correspondenceCustomerId}}",
+                "threads"
+              ],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "Fase 9 — inbox paginado de un customer, hilos mas reciente primero (LastMessageAtUtc DESC), incluye hilos archivados. page default 1, size default 20 (clampeado a max 100 en el repositorio). Requiere correspondence.read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200);",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"has PagedResult shape\", () => 'items' in body && 'page' in body && 'size' in body && 'totalCount' in body);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ListThreadMessages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/threads/{{correspondenceThreadId}}/messages?page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "threads",
+                "{{correspondenceThreadId}}",
+                "messages"
+              ],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "Fase 9, extendido en Fase 15 — mensajes de UN hilo, thread unificado inbound (IncomingEmail) + outbound (Draft ya Sent), orden cronologico ascendente (el mas viejo primero, como cualquier cliente de correo), paginado sobre el resultado YA fusionado (nunca por fuente). Cada item trae Direction (Inbound/Outbound); Outbound expone Subject/OccurredAtUtc/ToAddresses en vez de From/Snippet/BodyStatus. 404 EmailThread.NotFound si el hilo no existe o pertenece a otro tenant. Nunca incluye body (ver GetBody). Requiere correspondence.read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Archive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/threads/{{correspondenceThreadId}}/archive",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "threads",
+                "{{correspondenceThreadId}}",
+                "archive"
+              ]
+            },
+            "description": "Fase 9 — archiva el hilo. Idempotente (EmailThread.Archive() de Fase 3): llamarlo sobre un hilo ya archivado es un no-op exitoso, no pisa el ArchivedAtUtc original. 404 EmailThread.NotFound si no existe o es de otro tenant. Requiere correspondence.read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204 or documented error\", () => [204, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "GetMetadata",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/messages/{{correspondenceMessageId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "messages",
+                "{{correspondenceMessageId}}"
+              ]
+            },
+            "description": "Fase 9 — metadata de UN mensaje (mismo shape que ListThreadMessages), nunca llama a Connectors ni incluye body. 404 IncomingEmail.NotFound si no existe o es de otro tenant. Requiere correspondence.read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetBody",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/messages/{{correspondenceMessageId}}/body",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "messages",
+                "{{correspondenceMessageId}}",
+                "body"
+              ]
+            },
+            "description": "Fase 5 — body fetch bajo demanda: le pide html/text/headers a Connectors en vivo, nunca se persiste (plan de diseno Sec17). Requiere correspondence.read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 403, 404, 429, 502, 503, 504].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetAttachments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/messages/{{correspondenceMessageId}}/attachments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "messages",
+                "{{correspondenceMessageId}}",
+                "attachments"
+              ]
+            },
+            "description": "Fase 7 — lista los attachments ya persistidos del mensaje (filename/contentType/size/isInline/downloadStatus/cloudStorageFileId), nunca bytes. Requiere correspondence.read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DownloadAttachment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/messages/{{correspondenceMessageId}}/attachments/{{correspondenceAttachmentId}}/download",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "messages",
+                "{{correspondenceMessageId}}",
+                "attachments",
+                "{{correspondenceAttachmentId}}",
+                "download"
+              ]
+            },
+            "description": "Fase 8 — dispara la descarga bajo demanda del attachment (Connectors -> bucket temporal -> CloudStorage via SaveFileRequestedIntegrationEvent). Idempotente: si ya esta Downloaded devuelve el CloudStorageFileId cacheado. Requiere correspondence.attachment.download."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 403, 404, 429, 502, 503, 504].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetAttachmentDownloadUrl",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/messages/{{correspondenceMessageId}}/attachments/{{correspondenceAttachmentId}}/download-url",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "messages",
+                "{{correspondenceMessageId}}",
+                "attachments",
+                "{{correspondenceAttachmentId}}",
+                "download-url"
+              ]
+            },
+            "description": "Fase 8 — URL presignada del attachment ya descargado (CloudStorage). 409 IncomingEmailAttachment.NotReady si todavia no esta Downloaded — nunca dispara la descarga implicitamente, es un endpoint separado a proposito (ver DownloadAttachment). Requiere correspondence.attachment.download."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 403, 404, 409, 502, 503].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "StartReplyDraft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{correspondenceAccountId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/messages/{{correspondenceMessageId}}/reply/draft",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "messages",
+                "{{correspondenceMessageId}}",
+                "reply",
+                "draft"
+              ]
+            },
+            "description": "Fase 10/11 — arranca (o reutiliza, ver FindOpenReplyDraftAsync) un Draft de reply sobre este mensaje. AccountId es la cuenta conectada de Connectors desde la que se respondera. Devuelve { draftId, subject, replyContext } para pre-poblar el composer. Requiere correspondence.reply."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Drafts",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts?customerId={{correspondenceCustomerId}}&page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts"
+              ],
+              "query": [
+                { "key": "customerId", "value": "{{correspondenceCustomerId}}" },
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "20" }
+              ]
+            },
+            "description": "Fase 15 — \"retomar un autoguardado\": drafts en Status=Draft del customer, mas reciente primero (UpdatedAtUtc DESC). Fila lean (DraftListItem: draftId/subject/status/isReply/updatedAtUtc/lastAutoSavedAtUtc) — para el composer completo de UNO, ver GetById. Requiere correspondence.compose."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200);",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"has PagedResult shape\", () => 'items' in body && 'page' in body && 'size' in body && 'totalCount' in body);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{correspondenceCustomerId}}\",\n  \"accountId\": \"{{correspondenceAccountId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts"
+              ]
+            },
+            "description": "Fase 11 — correspondencia nueva desde cero (subject/body vacios, el autoguardado los llena). Devuelve { draftId }. Requiere correspondence.compose."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 400].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetById",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts/{{correspondenceDraftId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts",
+                "{{correspondenceDraftId}}"
+              ]
+            },
+            "description": "Fase 11 — vista completa del composer (subject/bodies/recipients/attachments/replyContext/status). 404 Draft.NotFound si no existe o es de otro tenant. Requiere correspondence.compose."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AutoSave",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Tax question\",\n  \"htmlBody\": \"<p>Hello</p>\",\n  \"textBody\": \"Hello\",\n  \"to\": [\n    { \"address\": \"customer@example.com\", \"displayName\": \"The Customer\" }\n  ],\n  \"cc\": null,\n  \"bcc\": null\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts/{{correspondenceDraftId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts",
+                "{{correspondenceDraftId}}"
+              ]
+            },
+            "description": "Fase 11 — autoguardado parcial (semantica PATCH): cada campo es independientemente opcional, un campo ausente/null nunca pisa lo ya guardado. Pensado para llamarse cada pocos segundos mientras el usuario escribe. 204 sin body. Requiere correspondence.compose."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204 or documented error\", () => [204, 404, 409].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AttachFile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{correspondenceFileId}}\",\n  \"filename\": \"file.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 1024\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts/{{correspondenceDraftId}}/attachments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts",
+                "{{correspondenceDraftId}}",
+                "attachments"
+              ]
+            },
+            "description": "Fase 12 — adjunta una referencia a un archivo YA subido a CloudStorage por el frontend (no viajan bytes acá). Adjuntar el mismo FileId dos veces es un no-op, no un error. 204 sin body. Requiere correspondence.compose."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204 or documented error\", () => [204, 404, 409].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "RemoveAttachment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts/{{correspondenceDraftId}}/attachments/{{correspondenceFileId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts",
+                "{{correspondenceDraftId}}",
+                "attachments",
+                "{{correspondenceFileId}}"
+              ]
+            },
+            "description": "Fase 12 — idempotente/tolerante: quitar un adjunto que ya no esta no es un error. 204 sin body. Requiere correspondence.compose."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204 or documented error\", () => [204, 404, 409].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts/{{correspondenceDraftId}}/send",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts",
+                "{{correspondenceDraftId}}",
+                "send"
+              ]
+            },
+            "description": "Fase 14 — llama SINCRONICAMENTE y de forma bloqueante a Postmaster; esta request no responde hasta tener el resultado real del envio (200 con sentMessageId/providerMessageId, o error real si Postmaster/Connectors/proveedor fallan — nunca \"202 Accepted y esperemos\"). Permiso separado de correspondence.compose (redactar es reversible, enviar no lo es): requiere correspondence.send."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 or documented error\", () => [200, 404, 409, 502, 503, 504].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Discard",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/correspondence/drafts/{{correspondenceDraftId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "correspondence",
+                "drafts",
+                "{{correspondenceDraftId}}"
+              ]
+            },
+            "description": "Fase 11 — Draft -> Discarded. Solo valido desde Status=Draft (un mensaje ya Sent no se puede \"descartar\", ver nota de clase de Draft). 204 sin body. Requiere correspondence.compose."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204 or documented error\", () => [204, 404, 409].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -290,12 +290,18 @@ services:
       # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
       # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.
       Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY in .env}
-      # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de CloudStorage.
+      # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
+      # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
+      # token M2M para llamar POST /scribe/render, gateado por [HasPermission(ScribePermissions.
+      # Render)] (mismo mecanismo que los endpoints humanos de Scribe, no ServiceOnly/actor_type).
+      # Sin esta linea el claim "perm" nunca incluia scribe.render y la llamada devolvia 403 real —
+      # bug real encontrado y corregido en la Fase 10.5, no solo el permiso sin sembrar en Auth.
       ServiceAuth__Clients__0__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
       ServiceAuth__Clients__0__Secret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__0__Permissions__0: cloudstorage.file.upload
       ServiceAuth__Clients__0__Permissions__1: cloudstorage.file.download
       ServiceAuth__Clients__0__Permissions__2: cloudstorage.file.view
+      ServiceAuth__Clients__0__Permissions__3: scribe.render
       # Cliente de servicio (M2M) para el worker de Transcripts de Communication (Fase 6):
       # descarga la grabacion, sube el .txt transcrito, mismos permisos de CloudStorage.
       ServiceAuth__Clients__1__ClientId: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
@@ -318,6 +324,24 @@ services:
       ServiceAuth__Clients__3__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__3__Permissions__1: cloudstorage.file.view
       ServiceAuth__Clients__3__Permissions__2: cloudstorage.file.delete
+      # Cliente de servicio (M2M) para Correspondence (Fase 2): backfill de CustomerEmailAddresses
+      # via Customer.Api GET /customers/internal/list (policy ServiceOnly — actor_type=Service
+      # alcanza, no requiere ningun "perm" puntual, por eso sin Permissions__N).
+      ServiceAuth__Clients__4__ClientId: ${CORRESPONDENCE_SERVICE_CLIENT_ID:-correspondence-worker}
+      ServiceAuth__Clients__4__Secret: ${CORRESPONDENCE_SERVICE_CLIENT_SECRET:-}
+      # Cliente de servicio (M2M) para Scribe: sube/descarga assets de templates/layouts a
+      # CloudStorage (publicar plantillas). Nunca borra.
+      ServiceAuth__Clients__5__ClientId: ${SCRIBE_SERVICE_CLIENT_ID:-scribe-worker}
+      ServiceAuth__Clients__5__Secret: ${SCRIBE_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__5__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__5__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__5__Permissions__2: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Postmaster: solo lectura contra CloudStorage
+      # (descarga adjuntos/documentos), nunca sube.
+      ServiceAuth__Clients__6__ClientId: ${POSTMASTER_SERVICE_CLIENT_ID:-postmaster-worker}
+      ServiceAuth__Clients__6__Secret: ${POSTMASTER_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__6__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__6__Permissions__1: cloudstorage.file.view
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -447,39 +471,236 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
+      # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
+      # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:
+      # módulo de mailbox/sync duplicado, self-service de templates por HTTP, y el transporte SMTP
+      # directo de EmailDeliveryService/InProcessEmailDispatchGateway ganó su equivalente
+      # event-based). Rollback: setear NOTIFICATION_USE_POSTMASTER_DISPATCH=false en el .env de
+      # despliegue — el path in-process/SMTP-directo sigue vivo, sin eliminar (retiro real es
+      # trabajo futuro fuera de este plan, condicionado a confianza operacional en producción).
+      Notification__UsePostmasterDispatch: ${NOTIFICATION_USE_POSTMASTER_DISPATCH:-true}
       Smtp__Host: ${SMTP_HOST:-}
       Smtp__Port: ${SMTP_PORT:-587}
       Smtp__User: ${SMTP_USER:-}
       Smtp__Password: ${SMTP_PASSWORD:-}
       Smtp__FromAddress: ${SMTP_FROM:-no-reply@taxvision.local}
-      # Clave de cifrado de secretos del módulo email (config SMTP/API, tokens OAuth).
-      # Base64 de 32 bytes; requerida para los endpoints de configuración/cuentas de correo.
+      # Clave de cifrado de secretos del módulo email (config SMTP/API).
+      # Base64 de 32 bytes; requerida para los endpoints de configuración de correo.
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
       # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts
-      # (contexto de request, JWT del usuario/M2M — sin cambios en la Fase D3).
+      # (contexto de request, JWT del usuario/M2M).
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
-      # Credenciales de servicio (M2M) — siguen haciendo falta para el CloudStorageClient de
-      # arriba (plantillas/layouts); los adjuntos IMAP entrantes (Fase D3) ya no las usan.
+      # Microservicio Scribe — IScribeRenderClient le pega a esto para renderizar plantillas
+      # (path de dispatch basado en render). Sin esta linea, ScribeRenderClient no tiene forma
+      # de alcanzar scribe-api dentro de docker y el render en vivo falla.
+      ScribeClient__BaseUrl: http://scribe-api:8080
+      # Credenciales de servicio (M2M) para el CloudStorageClient de arriba (plantillas/layouts).
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
       ServiceAuthClient__ClientSecret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
-      # Fase D3 — credenciales MinIO propias para adjuntos IMAP entrantes (IAM scoped a
-      # taxvision-temp/notification/*, ver deploy/docker/minio/policies/notification-source.json
-      # + provision-service-accounts.sh). NUNCA MINIO_ROOT_USER/PASSWORD.
-      Notification__Minio__Endpoint: minio:9000
-      Notification__Minio__UseTls: "false"
-      Notification__Minio__AccessKey: notification-worker
-      Notification__Minio__SecretKey: ${NOTIFICATION_MINIO_SECRET:?Set NOTIFICATION_MINIO_SECRET in .env}
-      Notification__Minio__TempBucket: taxvision-temp
-      Notification__Minio__SourcePrefix: notification
-      # Secreto de los webhooks de tracking (delivered/opened/clicked/bounced).
-      EmailWebhook__Secret: ${EMAIL_WEBHOOK_SECRET:-}
-      # Credenciales de las apps OAuth para refrescar tokens de Gmail/Graph (solo refresh; el token inicial va en connect).
-      EmailOAuth__Gmail__ClientId: ${GMAIL_CLIENT_ID:-}
-      EmailOAuth__Gmail__ClientSecret: ${GMAIL_CLIENT_SECRET:-}
-      EmailOAuth__Microsoft__ClientId: ${MSGRAPH_CLIENT_ID:-}
-      EmailOAuth__Microsoft__ClientSecret: ${MSGRAPH_CLIENT_SECRET:-}
-      EmailOAuth__Microsoft__TenantId: ${MSGRAPH_TENANT_ID:-common}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  postmaster-api:
+    image: taxvision/postmaster-api:dev
+    container_name: taxvision-postmaster-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Postmaster/TaxVision.Postmaster.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${POSTMASTER_DB_CONNECTION:?Set POSTMASTER_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Clave de cifrado de secretos (SMTP password de TenantEmailProvider, ver Fase 3.5).
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Credenciales de servicio (M2M) contra Auth — mismo patron que Correspondence__ServiceAuth.
+      Postmaster__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Postmaster__ServiceAuth__ClientId: ${POSTMASTER_SERVICE_CLIENT_ID:-postmaster-worker}
+      Postmaster__ServiceAuth__ClientSecret: ${POSTMASTER_SERVICE_CLIENT_SECRET:?Set POSTMASTER_SERVICE_CLIENT_SECRET in .env}
+      # Descarga de adjuntos/documentos desde CloudStorage (solo lectura, nunca sube).
+      Postmaster__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Canal de envío #3 (TenantOAuth, D3) — M2M a Connectors para enviar vía Gmail/Graph conectado.
+      Postmaster__Connectors__BaseUrl: http://connectors-api:8080
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  scribe-api:
+    image: taxvision/scribe-api:dev
+    container_name: taxvision-scribe-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Scribe/TaxVision.Scribe.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${SCRIBE_DB_CONNECTION:?Set SCRIBE_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Credenciales de servicio (M2M) contra Auth — mismo patron que Correspondence__ServiceAuth.
+      Scribe__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Scribe__ServiceAuth__ClientId: ${SCRIBE_SERVICE_CLIENT_ID:-scribe-worker}
+      Scribe__ServiceAuth__ClientSecret: ${SCRIBE_SERVICE_CLIENT_SECRET:?Set SCRIBE_SERVICE_CLIENT_SECRET in .env}
+      Scribe__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Credenciales MinIO propias (IAM scoped a taxvision-temp/scribe/*, ver
+      # deploy/docker/minio/policies/scribe-source.json + provision-service-accounts.sh).
+      # NUNCA MINIO_ROOT_USER/PASSWORD. AddSingleton<IMinioClient> es incondicional —
+      # sin esto, publicar templates/layouts revienta en Docker.
+      Scribe__Minio__Endpoint: minio:9000
+      Scribe__Minio__UseTls: "false"
+      Scribe__Minio__AccessKey: scribe-worker
+      Scribe__Minio__SecretKey: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
+      Scribe__Minio__TempBucket: taxvision-temp
+      Scribe__Minio__SourcePrefix: scribe
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  connectors-api:
+    image: taxvision/connectors-api:dev
+    container_name: taxvision-connectors-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Connectors/TaxVision.Connectors.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Cifra los tokens OAuth (Connectors Fase 3). Mismo valor que Notification/Postmaster/Signature
+      # — necesario para migrar en el futuro las OAuthConnection existentes de Notification sin
+      # re-encriptar (ver Connectors_Service_Design_And_Implementation_Plan.md §33 RM1).
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      # Lock distribuido para el refresh proactivo de OAuth (Fase 4) — mismo Redis que Signature/Subscription.
+      ConnectionStrings__Redis: redis:6379
+      # App registration compartido de TaxVision (uno por proveedor, no por tenant). Vars ya
+      # reservadas en .env desde el plan de deploy original (GMAIL_*/MSGRAPH_*), nunca usadas hasta ahora.
+      Connectors__OAuth__Google__ClientId: ${GMAIL_CLIENT_ID:-}
+      Connectors__OAuth__Google__ClientSecret: ${GMAIL_CLIENT_SECRET:-}
+      Connectors__OAuth__Microsoft__ClientId: ${MSGRAPH_CLIENT_ID:-}
+      Connectors__OAuth__Microsoft__ClientSecret: ${MSGRAPH_CLIENT_SECRET:-}
+      Connectors__OAuth__Microsoft__TenantId: ${MSGRAPH_TENANT_ID:-common}
+      # Flujo de conectar cuenta (D3 §12.2/12.4) — debe matchear byte a byte el redirect_uri
+      # configurado en el app registration de cada proveedor.
+      Connectors__OAuth__Google__RedirectUri: ${CONNECTORS_GOOGLE_REDIRECT_URI:-http://localhost:5047/connectors/oauth/callback/gmail}
+      Connectors__OAuth__Microsoft__RedirectUri: ${CONNECTORS_MICROSOFT_REDIRECT_URI:-http://localhost:5047/connectors/oauth/callback/graph}
+      # A dónde redirige el navegador tras el callback de OAuth (D3 §12.4/12.5) — mismo frontend que Notification.
+      Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
+      # Watch/subscription renewal (Fase 6) — topic de Pub/Sub (Gmail) y notificationUrl+clientState
+      # (Graph). Sin esto SetupWatchHandler falla al conectar una cuenta Gmail/Graph.
+      Connectors__Watch__Gmail__TopicName: ${CONNECTORS_GMAIL_WATCH_TOPIC:-}
+      Connectors__Watch__Graph__NotificationUrl: ${CONNECTORS_GRAPH_NOTIFICATION_URL:-}
+      Connectors__Watch__Graph__ClientState: ${CONNECTORS_GRAPH_WATCH_CLIENT_STATE:-}
+      # Webhooks públicos (Fase 7) — audiencia esperada del JWT OIDC de Pub/Sub.
+      Connectors__Webhooks__GmailPush__ExpectedAudience: ${CONNECTORS_GMAIL_PUSH_AUDIENCE:-}
+      # Reconciliación (README §37.8) — safety net Gmail/Graph detrás del push, único mecanismo de
+      # sync de IMAP. Default 15 min: prioriza que IMAP (100% dependiente de este job) tenga
+      # frescura razonable sin volver a un polling agresivo por-mailbox.
+      Connectors__Reconciliation__IntervalMinutes: ${CONNECTORS_RECONCILIATION_INTERVAL_MINUTES:-15}
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  correspondence-api:
+    image: taxvision/correspondence-api:dev
+    container_name: taxvision-correspondence-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Correspondence/TaxVision.Correspondence.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Fase 2 — CustomerEmailBackfill: token M2M por tenant contra Auth + base URL de Customer.Api
+      # (mismo patron que Postmaster__ServiceAuth/Postmaster__Connectors).
+      Correspondence__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Correspondence__ServiceAuth__ClientId: ${CORRESPONDENCE_SERVICE_CLIENT_ID:-correspondence-worker}
+      Correspondence__ServiceAuth__ClientSecret: ${CORRESPONDENCE_SERVICE_CLIENT_SECRET:-}
+      Correspondence__Customer__BaseUrl: http://customer-api:8080
+      # Faltaba desde la propia Fase 5 (ConnectorsClient) — sin esto, ConnectorsClient caía al
+      # default de desarrollo (localhost:5390), inalcanzable dentro de la red de contenedores.
+      Correspondence__Connectors__BaseUrl: http://connectors-api:8080
+      Correspondence__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Fase 14 — cierre síncrono de la cadena de envío (Correspondence → Postmaster → Connectors).
+      Correspondence__Postmaster__BaseUrl: http://postmaster-api:8080
+      # Fase 8 — cliente MinIO propio (taxvision-temp/correspondence/*, patrón D0/D1), ver
+      # deploy/docker/minio/policies/correspondence-source.json.
+      Correspondence__Minio__Endpoint: minio:9000
+      Correspondence__Minio__UseTls: "false"
+      Correspondence__Minio__AccessKey: correspondence-worker
+      Correspondence__Minio__SecretKey: ${CORRESPONDENCE_MINIO_SECRET:?Set CORRESPONDENCE_MINIO_SECRET in .env}
+      Correspondence__Minio__TempBucket: taxvision-temp
+      Correspondence__Minio__SourcePrefix: correspondence
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -711,8 +932,10 @@ services:
       - taxvision-network
 
   # Fase D0 (cerrado en la revision post-D4) — crea/actualiza las cuentas de
-  # servicio scoped de MinIO para Signature/Notification/CommunicationTranscriptWorker
-  # (ver deploy/docker/minio/provision-service-accounts.sh + policies/*.json).
+  # servicio scoped de MinIO para Signature/CommunicationTranscriptWorker/Customer/
+  # Correspondence (ver deploy/docker/minio/provision-service-accounts.sh + policies/*.json).
+  # Notification ya no tiene cuenta propia — su modulo de sync IMAP se elimino en
+  # Fase 17 del plan de hardening/migracion (ver README §28.1).
   # Antes esto era un paso manual que el operador podia olvidarse de correr —
   # ahora es parte del deploy, igual que "migrations" de abajo. Idempotente:
   # correrlo de nuevo en cada deploy no rompe nada (mc admin user add
@@ -730,9 +953,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
       SIGNATURE_MINIO_SECRET: ${SIGNATURE_MINIO_SECRET:?Set SIGNATURE_MINIO_SECRET in .env}
-      NOTIFICATION_MINIO_SECRET: ${NOTIFICATION_MINIO_SECRET:?Set NOTIFICATION_MINIO_SECRET in .env}
       TRANSCRIPT_WORKER_MINIO_SECRET: ${TRANSCRIPT_WORKER_MINIO_SECRET:?Set TRANSCRIPT_WORKER_MINIO_SECRET in .env}
       CUSTOMER_MINIO_SECRET: ${CUSTOMER_MINIO_SECRET:?Set CUSTOMER_MINIO_SECRET in .env}
+      CORRESPONDENCE_MINIO_SECRET: ${CORRESPONDENCE_MINIO_SECRET:?Set CORRESPONDENCE_MINIO_SECRET in .env}
+      SCRIBE_MINIO_SECRET: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
     volumes:
       - ./minio:/provision:ro
     depends_on:
@@ -756,6 +980,12 @@ services:
       NOTIFICATION_DB_CONNECTION: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
       CLOUDSTORAGE_DB_CONNECTION: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
       SIGNATURE_DB_CONNECTION: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
+      # POSTMASTER_DB_CONNECTION/SCRIBE_DB_CONNECTION faltaban acá desde sus propias Fase 1 — sin
+      # esto "docker compose run migrations" nunca corría sus migraciones. Corregido de paso.
+      POSTMASTER_DB_CONNECTION: ${POSTMASTER_DB_CONNECTION:?Set POSTMASTER_DB_CONNECTION in .env}
+      SCRIBE_DB_CONNECTION: ${SCRIBE_DB_CONNECTION:?Set SCRIBE_DB_CONNECTION in .env}
+      CONNECTORS_DB_CONNECTION: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
+      CORRESPONDENCE_DB_CONNECTION: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -791,6 +1021,10 @@ services:
       ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/
       ReverseProxy__Clusters__subscription__Destinations__subscription1__Address: http://subscription-api:8080/
       ReverseProxy__Clusters__notification__Destinations__notification1__Address: http://notification-api:8080/
+      ReverseProxy__Clusters__postmaster__Destinations__postmaster1__Address: http://postmaster-api:8080/
+      ReverseProxy__Clusters__scribe__Destinations__scribe1__Address: http://scribe-api:8080/
+      ReverseProxy__Clusters__connectors__Destinations__connectors1__Address: http://connectors-api:8080/
+      ReverseProxy__Clusters__correspondence__Destinations__correspondence1__Address: http://correspondence-api:8080/
       ReverseProxy__Clusters__cloudstorage__Destinations__cloudstorage1__Address: http://cloudstorage-api:8080/
       ReverseProxy__Clusters__signature__Destinations__signature1__Address: http://signature-api:8080/
       ReverseProxy__Clusters__communication__Destinations__communication1__Address: http://communication-api:5350/
@@ -803,6 +1037,10 @@ services:
       - customer-api
       - subscription-api
       - notification-api
+      - postmaster-api
+      - scribe-api
+      - connectors-api
+      - correspondence-api
       - cloudstorage-api
       - signature-api
       - communication-api

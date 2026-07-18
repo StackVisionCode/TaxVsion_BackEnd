@@ -3,6 +3,7 @@ using BuildingBlocks.Domain;
 namespace TaxVision.Notification.Domain.Emailing.Sending;
 
 /// <summary>Registro de un intento de entrega de un correo saliente (auditoría/tracking).</summary>
+/// <remarks>Migration target: <b>Postmaster</b> (rename a <c>SentMessageEvent</c>, append-only por webhook). See <c>Responsibility_Map.md</c>.</remarks>
 public sealed class EmailDeliveryLog : BaseEntity
 {
     private EmailDeliveryLog() { }

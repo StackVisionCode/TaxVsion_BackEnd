@@ -1,11 +1,11 @@
 using System.Text.Json;
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users;
-using TaxVision.Auth.Application.Users.IntegrationEvents;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Roles;

@@ -14,6 +14,15 @@ namespace TaxVision.Notification.Application.Email.Sending;
 /// proveedor (tenant → global), envía (SMTP hoy), actualiza estado/tracking, publica el evento de
 /// resultado y persiste todo en una sola transacción (outbox). Reutilizable por envíos y campañas.
 /// </summary>
+/// <remarks>
+/// Implementación registrada cuando <c>Notification:UsePostmasterDispatch=false</c> — desde Hardening
+/// Fase 21 (2026-07-18) ese es el valor de ROLLBACK explícito, no el default (el default pasó a ser
+/// <c>true</c>). Ver <see cref="PostmasterEmailDeliveryService"/> (Hardening Fase 19, 2026-07-18) para
+/// la implementación registrada por default, que transporta vía Postmaster en vez de
+/// <see cref="ISmtpSendClient"/> directo. Esta clase sigue viva sin cambios como fallback operacional:
+/// retirarla es trabajo futuro fuera del plan de hardening, condicionado a confianza operacional real
+/// en un despliegue en producción (ver Fase 21 del plan).
+/// </remarks>
 public sealed class EmailDeliveryService(
     IOutboundEmailRepository repository,
     IEmailConfigurationResolver configResolver,

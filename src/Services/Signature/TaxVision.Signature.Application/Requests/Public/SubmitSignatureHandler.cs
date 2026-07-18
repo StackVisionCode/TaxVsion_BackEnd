@@ -140,6 +140,9 @@ public static class SubmitSignatureHandler
                     DocumentHashPre = request.DocumentHashPre!.Value,
                     SignerIds = request.Signers.Select(s => s.Id).ToList(),
                     GenerateCertificate = request.GenerateCertificate,
+                    Signers = request
+                        .Signers.Select(s => new SignerContactSnapshot(s.Id, s.Email.Value, s.FullName.Value, "En"))
+                        .ToList(),
                 }
             )
             .AsTask();

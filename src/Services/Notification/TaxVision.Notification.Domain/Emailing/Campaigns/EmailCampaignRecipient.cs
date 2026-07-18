@@ -3,6 +3,7 @@ using BuildingBlocks.Domain;
 namespace TaxVision.Notification.Domain.Emailing.Campaigns;
 
 /// <summary>Destinatario explícito de una campaña, con variables propias para el render por-destinatario.</summary>
+/// <remarks>Migration target: <b>Scribe</b>. See <c>Responsibility_Map.md</c>. Se elimina de Notification en Fase 7.</remarks>
 public sealed class EmailCampaignRecipient : BaseEntity
 {
     private EmailCampaignRecipient() { }

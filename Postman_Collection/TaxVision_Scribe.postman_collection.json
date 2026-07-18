@@ -1,0 +1,716 @@
+{
+  "info": {
+    "_postman_id": "3d7e5a91-6c4b-4f2a-9d8e-1b0c7f4a2e6d",
+    "name": "TaxVision - Scribe",
+    "description": "Coleccion del microservicio Scribe de TaxVision (templates/layouts de correo, event mappings, render por EventKey). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, p. ej. http://localhost:5047). Todos los endpoints son HTTP REST puro con [Authorize] + [HasPermission(...)] — Scribe no expone ningun endpoint con policy ServiceOnly. El unico endpoint M2M real es POST /scribe/render (Render): Notification lo llama con un token de servicio (POST /auth/service-token) cuyo cliente tiene el permiso scribe.render en su lista de ServiceAuth:Clients:Permissions — el mismo mecanismo [HasPermission] que gatea el resto, no un claim actor_type=Service como en Connectors. El servicio gRPC equivalente (TemplateRenderGrpcService) fue retirado en la Fase 8 del hardening (ver ADR-0003) por no tener ningun caller real — esta coleccion documenta unicamente los 14 endpoints HTTP reales que existen hoy. NOTA (Fase 10, hallazgo colateral): los permisos scribe.templates.*/scribe.layouts.*/scribe.event_mappings.*/scribe.campaigns.*/scribe.render estan definidos en BuildingBlocks/Authorization/ScribePermissions.cs pero, a diferencia de Connectors (arreglado en su propia Fase 6.5), NUNCA se sembraron en Auth.Domain.PermissionCatalog.cs — hoy ningun rol custom puede tenerlos asignados via la UI de admin. Los endpoints CRUD de Templates/Layouts/EventMappings solo son alcanzables en la practica por el bypass de rol que ya usa [HasPermission] (TenantAdmin/PlatformAdmin pasan siempre, con o sin el claim 'perm' explicito) — no fue arreglado en esta fase (fuera de alcance, es un cambio de codigo/migracion, no de documentacion). NOTA 2: BuildingBlocks.Web.Results.ErrorHttpMapping.cs no tiene ninguna entrada para los codigos 'EventTemplateMapping.*' (NotFound/Forbidden/Tenant/TenantRequired/TenantNotAllowed) — todos caen al default 400 Bad Request en vez de 404/403. Los tests de la carpeta EventMappings reflejan este comportamiento real (no un objetivo deseado).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Render",
+      "item": [
+        {
+          "name": "Render",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "En produccion este token casi siempre es un token de servicio (M2M) obtenido por Notification via POST /auth/service-token — ver TaxVision.Notification.Infrastructure.Scribe.ScribeRenderClient. Para probar manualmente sirve igual un token de usuario TenantAdmin/PlatformAdmin, o uno con el claim perm=scribe.render."
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventKey\": \"auth.password_reset_requested.v1\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"locale\": \"es-MX\",\n  \"variables\": {\n    \"user_name\": \"Maria Fernanda\",\n    \"reset_link\": \"https://app.taxvision.mx/reset-password?token=abc123\"\n  },\n  \"logoScope\": \"Tenant\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/render",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "render"
+              ]
+            },
+            "description": "Resuelve EventKey -> TemplateKey (EventTemplateResolver, prioriza mapping Tenant sobre System) y renderiza la version Published con Fluid. `logoScope` es `System` (default) o `Tenant` — controla si se resuelve el logo del tenant o el logo generico de TaxVision (ILogoResolver). Devuelve `RenderedContent` (subject/html/text/inlineAssets — Fase 9 del hardening, referencias CID a CloudStorage que Postmaster resuelve a bytes reales). Requiere scribe.render. Errores reales: EventKey/Locale con formato invalido (400, sin codigo mapeado explicito), EmailRenderer.NoMapping / EmailRenderer.NoPublishedVersion / EmailRenderer.LayoutVersionNotFound (404 — no hay mapping para el evento, o el template/layout resuelto no tiene version Published)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with subject/html, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"subject\");",
+                  "    pm.expect(pm.response.json()).to.have.property(\"html\");",
+                  "  } else {",
+                  "    pm.expect([400, 403, 404]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Templates",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"Tenant\",\n  \"templateKey\": \"tenant.custom_invoice_reminder\",\n  \"name\": \"Recordatorio de factura pendiente\",\n  \"description\": \"Enviado 3 dias antes del vencimiento de una factura.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/templates",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "templates"
+              ]
+            },
+            "description": "Crea el EmailTemplate (aun sin versiones — ver AddDraftVersion). `scope` es `System` (global, requiere PlatformAdmin) o `Tenant` (usa el tenant del caller). `templateKey` es unico por scope (mismo key puede existir en System y en Tenant a la vez, cada uno con su propio indice). Requiere scribe.templates.write. Errores reales: EmailTemplate.Forbidden (403, scope System sin ser PlatformAdmin), EmailTemplate.Tenant / EmailTemplate.TenantRequired / EmailTemplate.TenantNotAllowed / EmailTemplate.Name / TemplateKey invalido (400, ninguno mapeado explicitamente en ErrorHttpMapping, caen al default)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201 with id, or documented error\", () => {",
+                  "  if (pm.response.code === 201) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "    pm.expect(pm.response.json()).to.have.property(\"status\");",
+                  "  } else {",
+                  "    pm.expect([400, 403]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AddDraftVersion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Recordatorio: tu factura {{ invoice_number }} vence pronto\",\n  \"htmlContent\": \"<p>Hola {{ user_name }}, tu factura {{ invoice_number }} vence el {{ due_date }}.</p>\",\n  \"textContent\": \"Hola {{ user_name }}, tu factura {{ invoice_number }} vence el {{ due_date }}.\",\n  \"designJson\": null,\n  \"layoutId\": \"{{scribeLayoutId}}\",\n  \"layoutVersionNumber\": 1,\n  \"variableDefinitions\": [\n    { \"name\": \"user_name\", \"type\": \"String\", \"required\": true, \"defaultValue\": null, \"description\": \"Nombre del cliente\" },\n    { \"name\": \"invoice_number\", \"type\": \"String\", \"required\": true, \"defaultValue\": null, \"description\": \"Numero de factura\" },\n    { \"name\": \"due_date\", \"type\": \"Date\", \"required\": true, \"defaultValue\": null, \"description\": \"Fecha de vencimiento\" }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/templates/{{scribeTemplateId}}/versions",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "templates",
+                "{{scribeTemplateId}}",
+                "versions"
+              ]
+            },
+            "description": "Agrega una version Draft — sube html/text/designJson a CloudStorage via ITemplateStorageService (nunca los guarda inline en la fila de DB) y valida que `layoutId`/`layoutVersionNumber` existan. `htmlContent`/`textContent` usan sintaxis Fluid ({{ variable }}) — las llaves dobles en este body son literales del template, no variables de Postman (no hay ninguna variable de entorno con esos nombres). `variableDefinitions` declara los placeholders permitidos: publicar (ver PublishVersion) rechaza cualquier placeholder no declarado aqui. Requiere scribe.templates.write. Errores reales: EmailTemplate.NotFound (404), EmailTemplate.Forbidden (403, template de otro tenant o System sin PlatformAdmin), EmailTemplate.NotActive / TemplateVariableDefinition.Name (400), CloudStorageClient.EmptyResponse/UnexpectedStatus (502) o ServiceAuthUnavailable/RequestFailed (503) si CloudStorage esta lento o caido durante el upload."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201 with id, or documented error\", () => {",
+                  "  if (pm.response.code === 201) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "    pm.expect(pm.response.json()).to.have.property(\"status\");",
+                  "  } else {",
+                  "    pm.expect([400, 403, 404, 502, 503]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PublishVersion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/scribe/templates/{{scribeTemplateId}}/versions/{{scribeTemplateVersionId}}/publish",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "templates",
+                "{{scribeTemplateId}}",
+                "versions",
+                "{{scribeTemplateVersionId}}",
+                "publish"
+              ]
+            },
+            "description": "Corre Validate automaticamente (placeholders no declarados + EmailHtmlSafetyValidator) y rechaza el publish si hay errores — sin body, todo el contexto viene de la ruta. Solo una version puede estar Published por template a la vez (versiones anteriores quedan Archived). Requiere scribe.templates.write. Errores reales: EmailTemplate.NotFound (404), EmailTemplate.VersionNotFound (404, el versionId no pertenece a este template), EmailTemplate.Forbidden (403), EmailTemplateVersion.ValidationFailed (400, HTML inseguro o placeholders no declarados — ver Validate para inspeccionar antes de publicar), CloudStorageClient.* (502/503) al descargar el HTML para revalidarlo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with Published status, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "    pm.expect(pm.response.json().status).to.eql(\"Published\");",
+                  "  } else {",
+                  "    pm.expect([400, 403, 404, 502, 503]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preview",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sampleVariables\": {\n    \"user_name\": \"Maria Fernanda\",\n    \"invoice_number\": \"A-2026-0417\",\n    \"due_date\": \"2026-08-01\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/templates/{{scribeTemplateId}}/versions/{{scribeTemplateVersionId}}/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "templates",
+                "{{scribeTemplateId}}",
+                "versions",
+                "{{scribeTemplateVersionId}}",
+                "preview"
+              ]
+            },
+            "description": "Renderiza una version concreta (Draft o Published, cualquiera de las dos) con variables de muestra, sin publicarla ni pasar por EventTemplateResolver — util para revisar el resultado final antes de publicar. Requiere scribe.templates.read (nota: solo lectura, a diferencia de Create/AddDraftVersion/PublishVersion). Errores reales: EmailTemplateVersion.NotFound (404, versionId inexistente), y cualquier error de renderizado Fluid (400, no mapeado explicitamente)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with subject/html, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"subject\");",
+                  "    pm.expect(pm.response.json()).to.have.property(\"html\");",
+                  "  } else {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/scribe/templates/{{scribeTemplateId}}/versions/{{scribeTemplateVersionId}}/validate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "templates",
+                "{{scribeTemplateId}}",
+                "versions",
+                "{{scribeTemplateVersionId}}",
+                "validate"
+              ]
+            },
+            "description": "Parsea y analiza una version (placeholders no declarados + issues de EmailHtmlSafetyValidator) sin publicarla ni modificar nada — el mismo chequeo que PublishVersion corre automaticamente antes de publicar, expuesto aca como paso previo inspeccionable. Requiere scribe.templates.read. Devuelve `TemplateValidationOutcome { isValid, errors[], warnings[] }` — errors[]/warnings[] son `{ code, message }`. Errores reales: EmailTemplateVersion.NotFound (404)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with isValid, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"isValid\");",
+                  "  } else {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Layouts",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"Tenant\",\n  \"layoutKey\": \"tenant-invoice-branding\",\n  \"name\": \"Layout de facturacion con marca del tenant\",\n  \"description\": \"Header/footer con el logo y colores del tenant para emails de facturacion.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/layouts",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "layouts"
+              ]
+            },
+            "description": "Crea el EmailLayout (aun sin versiones — ver AddDraftVersion). Mismo par de scopes que Templates: `System` (ej. el layout base sembrado `system-base`, requiere PlatformAdmin) o `Tenant`. Requiere scribe.layouts.write. Errores reales: EmailLayout.Forbidden (403), EmailLayout.Tenant / EmailLayout.TenantRequired / EmailLayout.TenantNotAllowed / EmailLayout.Name / LayoutKey invalido (400, ninguno mapeado explicitamente)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201 with id, or documented error\", () => {",
+                  "  if (pm.response.code === 201) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "    pm.expect(pm.response.json()).to.have.property(\"status\");",
+                  "  } else {",
+                  "    pm.expect([400, 403]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "AddDraftVersion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"htmlContent\": \"<html><body>{{ body }}<footer>TaxVision</footer></body></html>\",\n  \"designJson\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/layouts/{{scribeLayoutId}}/versions",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "layouts",
+                "{{scribeLayoutId}}",
+                "versions"
+              ]
+            },
+            "description": "Agrega una version Draft del layout — sube el HTML a CloudStorage igual que Templates.AddDraftVersion. A diferencia de un template, un layout NO declara variableDefinitions (Publish no valida placeholders custom, solo seguridad HTML). El HTML DEBE contener el placeholder literal `{{ body }}` (FluidTemplateRenderer lo exige — EmailLayout.Body si falta) donde se inserta el subject/html del template renderizado. Requiere scribe.layouts.write. Errores reales: EmailLayout.NotFound (404), EmailLayout.Forbidden (403), EmailLayout.NotActive / EmailLayout.Body (400), CloudStorageClient.* (502/503)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201 with id, or documented error\", () => {",
+                  "  if (pm.response.code === 201) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "    pm.expect(pm.response.json()).to.have.property(\"status\");",
+                  "  } else {",
+                  "    pm.expect([400, 403, 404, 502, 503]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PublishVersion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/scribe/layouts/{{scribeLayoutId}}/versions/{{scribeLayoutVersionId}}/publish",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "layouts",
+                "{{scribeLayoutId}}",
+                "versions",
+                "{{scribeLayoutVersionId}}",
+                "publish"
+              ]
+            },
+            "description": "Preflight de seguridad (EmailHtmlSafetyValidator) antes de publicar — sin body, sin validacion de variables (los layouts no declaran VariableDefinitions). Solo una version puede estar Published por layout a la vez. Requiere scribe.layouts.write. Errores reales: EmailLayout.NotFound (404), EmailLayout.VersionNotFound (404), EmailLayout.Forbidden (403), EmailLayoutVersion.ValidationFailed (400, HTML inseguro segun EmailHtmlSafetyValidator), CloudStorageClient.* (502/503) al descargar el HTML para revalidarlo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with Published status, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "    pm.expect(pm.response.json().status).to.eql(\"Published\");",
+                  "  } else {",
+                  "    pm.expect([400, 403, 404, 502, 503]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EventMappings",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"Tenant\",\n  \"eventKey\": \"correspondence.message_received.v1\",\n  \"templateKey\": \"tenant.custom_invoice_reminder\",\n  \"locale\": null,\n  \"priority\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/event-mappings",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "event-mappings"
+              ]
+            },
+            "description": "Crea una regla evento->template (ej. 'auth.password_reset_requested.v1' -> 'auth.password_reset', ver los mappings sembrados por ScribeNotificationTemplateSeeder). `EventKey`/`Scope`/`TenantId`/`Locale` son la identidad de la regla — no se pueden editar despues (borrar y recrear). `priority` desempata cuando hay mas de un mapping habilitado para el mismo EventKey/Locale. Requiere scribe.event_mappings.write. Errores reales: 403 generico de framework si falta el claim 'perm' (sin bypass de rol); a nivel de Result, EventTemplateMapping.Forbidden/Tenant/TenantRequired/TenantNotAllowed y EventKey/TemplateKey/Locale invalidos caen TODOS en 400 — BuildingBlocks.Web.Results.ErrorHttpMapping.cs no tiene ninguna entrada 'EventTemplateMapping.*' (gap real, ver nota de la coleccion)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201 with id, or documented error\", () => {",
+                  "  if (pm.response.code === 201) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "  } else {",
+                  "    pm.expect([400, 403]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/scribe/event-mappings",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "event-mappings"
+              ]
+            },
+            "description": "Lista los mappings visibles para el caller — System siempre, mas Tenant si el JWT trae tenant_id (PlatformAdmin sin tenant_id ve solo System). Requiere scribe.event_mappings.read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with array, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.be.an(\"array\");",
+                  "  } else {",
+                  "    pm.expect([403]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetById",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/scribe/event-mappings/{{scribeEventMappingId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "event-mappings",
+                "{{scribeEventMappingId}}"
+              ]
+            },
+            "description": "Detalle de un mapping. Requiere scribe.event_mappings.read. Nota: un id inexistente devuelve EventTemplateMapping.NotFound, que ErrorHttpMapping.cs no mapea explicitamente — cae al default 400 Bad Request, no 404 (gap real, ver nota de la coleccion; no se corrigio en esta fase, es un cambio de codigo)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with id, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "  } else {",
+                  "    pm.expect([400, 403]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"templateKey\": \"tenant.custom_invoice_reminder\",\n  \"priority\": 20,\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/scribe/event-mappings/{{scribeEventMappingId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "event-mappings",
+                "{{scribeEventMappingId}}"
+              ]
+            },
+            "description": "Cambia a que TemplateKey apunta el mapping, su prioridad, o si esta habilitado — nunca su identidad (EventKey/Scope/TenantId/Locale, borrar y recrear para eso). Requiere scribe.event_mappings.write. Mismos codigos reales que Create/GetById: todo lo que no sea 200 cae en 400 (NotFound/Forbidden incluidos, gap de ErrorHttpMapping) o 403 (framework, permiso ausente)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 with id, or documented error\", () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
+                  "  } else {",
+                  "    pm.expect([400, 403]).to.include(pm.response.code);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/scribe/event-mappings/{{scribeEventMappingId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "scribe",
+                "event-mappings",
+                "{{scribeEventMappingId}}"
+              ]
+            },
+            "description": "Borra la regla (identidad incluida — no hay soft-delete). Requiere scribe.event_mappings.write. Mismos codigos reales que el resto de la carpeta: 400 (NotFound/Forbidden, gap de ErrorHttpMapping) o 403 (framework)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204 or documented error\", () => [204, 400, 403].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

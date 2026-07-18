@@ -24,6 +24,8 @@ public enum NotificationStatus
 /// </summary>
 public sealed class NotificationLog : TenantEntity
 {
+    private readonly List<NotificationDispatchAttempt> _attempts = new();
+
     private NotificationLog() { }
 
     public NotificationChannel Channel { get; private set; }
@@ -36,6 +38,14 @@ public sealed class NotificationLog : TenantEntity
     public string? CorrelationId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
+
+    /// <summary>
+    /// Intentos por canal introducidos en Notifications Fase 2. Vacío hasta que los consumers
+    /// (Fase 3+) empiecen a poblarlos. La existencia de esta colección no altera el estado
+    /// agregado <see cref="Status"/>, que sigue actualizándose por <see cref="MarkSent"/> /
+    /// <see cref="MarkFailed"/> como legacy hasta Fase 6.
+    /// </summary>
+    public IReadOnlyCollection<NotificationDispatchAttempt> Attempts => _attempts.AsReadOnly();
 
     public static Result<NotificationLog> Create(
         Guid tenantId,
@@ -80,6 +90,50 @@ public sealed class NotificationLog : TenantEntity
     {
         Status = NotificationStatus.Failed;
         Error = Truncate(error, 512);
+    }
+
+    /// <summary>
+    /// Crea un nuevo <see cref="NotificationDispatchAttempt"/> para el canal indicado y lo agrega
+    /// a la colección del aggregate. Introducido en Notifications Fase 2 — no se invoca todavía;
+    /// los consumers empiezan a llamarlo en Fase 3.
+    /// </summary>
+    public NotificationDispatchAttempt AddDispatchAttempt(
+        NotificationChannel channel,
+        string? providerMessageId = null,
+        DateTime? queuedAtUtc = null
+    )
+    {
+        var attempt = NotificationDispatchAttempt.Create(
+            TenantId,
+            Id,
+            channel,
+            providerMessageId,
+            queuedAtUtc ?? DateTime.UtcNow
+        );
+        _attempts.Add(attempt);
+        return attempt;
+    }
+
+    /// <summary>
+    /// Actualiza el estado de un attempt existente (ej. desde el callback de Postmaster). Todas
+    /// las transiciones válidas están definidas en <see cref="NotificationDispatchAttempt"/>.
+    /// </summary>
+    public Result UpdateAttemptStatus(
+        Guid attemptId,
+        NotificationDispatchAttemptStatus newStatus,
+        string? providerMessageId = null,
+        string? errorReason = null,
+        DateTime? eventAtUtc = null
+    )
+    {
+        var attempt = _attempts.FirstOrDefault(a => a.Id == attemptId);
+        if (attempt is null)
+        {
+            return Result.Failure(
+                new Error("NotificationLog.AttemptNotFound", $"Dispatch attempt {attemptId} not found on log {Id}.")
+            );
+        }
+        return attempt.Transition(newStatus, providerMessageId, errorReason, eventAtUtc ?? DateTime.UtcNow);
     }
 
     private static string Truncate(string value, int maxLength) =>

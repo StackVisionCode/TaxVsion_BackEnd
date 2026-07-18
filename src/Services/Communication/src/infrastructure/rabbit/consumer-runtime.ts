@@ -36,7 +36,7 @@ import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/
  */
 const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // Auth
-  'TaxVision.Auth.Application.Users.IntegrationEvents.UserRegisteredIntegrationEvent': 'auth.user.registered.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRegisteredIntegrationEvent': 'auth.user.registered.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRolesChangedIntegrationEvent': 'auth.user.roles_changed.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent': 'auth.user.deactivated.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent': 'auth.user.profile_updated.v1',

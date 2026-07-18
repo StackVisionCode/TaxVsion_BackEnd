@@ -1,26 +1,27 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
-using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
-using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
 /// <summary>
 /// Consume <see cref="SignatureRequestReminderDueIntegrationEvent"/> emitido por el
-/// ReminderScheduler de Signature. Compone y envía el correo de reminder usando el
+/// ReminderScheduler de Signature. Compone y despacha el correo de reminder usando el
 /// template versionado <c>sig.reminder.v1</c>.
 /// </summary>
+/// <remarks>
+/// Fase 8 (Scribe): el HTML ya no se arma localmente (antes: SignatureTemplateCatalog.Reminder) —
+/// se renderiza en Scribe vía IScribeRenderClient y el resultado se envía tal cual por el gateway.
+/// </remarks>
 public static class SignatureRequestReminderDueConsumer
 {
     private const string TemplateKey = SignatureTemplateCatalog.ReminderKey;
 
     public static async Task Handle(
         SignatureRequestReminderDueIntegrationEvent evt,
-        IEmailSender emailSender,
-        INotificationLogRepository logRepository,
-        IUnitOfWork unitOfWork,
+        IEmailDispatchGateway gateway,
+        IScribeRenderClient scribeClient,
         ICorrelationContext correlation,
         ILogger<SignatureRequestReminderDueIntegrationEvent> logger,
         CancellationToken ct
@@ -29,43 +30,42 @@ public static class SignatureRequestReminderDueConsumer
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
-            var template = SignatureTemplateCatalog.Reminder(
-                evt.Language == "Es",
-                evt.FullName,
-                evt.PublicUrl,
-                evt.ExpiresAtUtc,
-                evt.RemindersSent
-            );
+            // Hardening Fase 7: un render fallido ya no se loguea-y-descarta — EnsureRendered lanza
+            // ScribeRenderFailedException para que Wolverine reintente/DLQ en vez de que el
+            // recordatorio de firma se pierda en silencio.
+            var render = (
+                await scribeClient.RenderAsync(
+                    "sig.request_reminder_due.v1",
+                    evt.TenantId,
+                    new Dictionary<string, object?>
+                    {
+                        ["full_name"] = evt.FullName,
+                        ["invite_link"] = evt.PublicUrl,
+                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["reminders_sent"] = evt.RemindersSent,
+                        ["language"] = evt.Language,
+                    },
+                    ct
+                )
+            ).EnsureRendered("sig.request_reminder_due.v1");
 
-            var logResult = NotificationLog.Create(
-                evt.TenantId,
-                NotificationChannel.Email,
-                evt.Email,
-                template.Subject,
-                TemplateKey,
-                evt.EventId,
-                correlationId
-            );
-            if (logResult.IsFailure)
-            {
-                logger.LogWarning(
-                    "Reminder log could not be created for signer {SignerId}: {Error}",
-                    evt.SignerId,
-                    logResult.Error.Message
-                );
-                return;
-            }
-
-            var log = logResult.Value;
-            await logRepository.AddAsync(log, ct);
-
-            var send = await emailSender.SendAsync(
-                new EmailMessage(evt.Email, template.Subject, template.Html, template.Text),
+            var result = await gateway.QueueEmailAsync(
+                new EmailDispatchRequest(
+                    TenantId: evt.TenantId,
+                    To: evt.Email,
+                    Subject: render.Subject,
+                    HtmlBody: render.Html,
+                    TextBody: render.Text ?? string.Empty,
+                    TemplateKey: TemplateKey,
+                    RelatedEventId: evt.EventId,
+                    CorrelationId: correlationId,
+                    InlineAssets: render.InlineAssets
+                ),
                 ct
             );
-            if (send.IsSuccess)
+
+            if (result.IsSuccess)
             {
-                log.MarkSent();
                 logger.LogInformation(
                     "Reminder {RemindersSent}/3 dispatched to signer {SignerId} for request {RequestId}.",
                     evt.RemindersSent,
@@ -75,14 +75,12 @@ public static class SignatureRequestReminderDueConsumer
             }
             else
             {
-                log.MarkFailed(send.Error.Message);
                 logger.LogWarning(
                     "Reminder dispatch failed for signer {SignerId}: {Error}",
                     evt.SignerId,
-                    send.Error.Message
+                    result.Error
                 );
             }
-            await unitOfWork.SaveChangesAsync(ct);
         }
     }
 

@@ -9,6 +9,7 @@ namespace TaxVision.Notification.Domain.Emailing.Layouts;
 /// El HTML/design/preview viven en CloudStorage; la BD guarda claves y FileIds.
 /// El HTML del layout debe contener el marcador <c>{{ body }}</c> donde se inserta el cuerpo renderizado.
 /// </summary>
+/// <remarks>Migration target: <b>Scribe</b>. See <c>Responsibility_Map.md</c>. En Scribe se extiende con versionado inmutable + validación email-safe (ver <c>Scribe_Service_Design_And_Implementation_Plan.md</c> §14.7).</remarks>
 public sealed class EmailLayout : BaseEntity
 {
     private EmailLayout() { }

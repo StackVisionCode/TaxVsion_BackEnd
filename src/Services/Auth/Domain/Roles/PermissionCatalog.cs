@@ -67,6 +67,85 @@ public static class PermissionCatalog
     public const string SignaturePreparerManage = SignaturePermissions.PreparerManage;
     public const string SignatureCertificateVerify = SignaturePermissions.CertificateVerify;
 
+    // Techos de plan (signature.constraints.manage) — nunca estuvo en este catálogo pese a que
+    // SignatureAdminController lo exige desde que se creó: sin fila real, el chequeo de
+    // [HasPermission] dependía por completo del bypass de rol (ver HasPermission() en cada
+    // ClaimsPrincipalExtensions), que se retiró para TenantAdmin. Sembrado ahora con
+    // PlatformOnly: true — nunca lo tiene el rol de sistema "Tenant Admin" por defecto.
+    public const string SignaturePlanConstraintsManage = SignaturePermissions.PlanConstraintsManage;
+
+    // Correspondence — inbox filtrado por customer (bounded context propio, ver microservicio
+    // Correspondence). La Fase 5 registró correspondence.read; la Fase 8 agrega
+    // attachment.download (disparar la descarga bajo demanda + pedir su URL firmada); la Fase 11
+    // agrega compose (crear/editar/autoguardar/descartar un Draft) y reply (arrancar/reutilizar un
+    // reply sobre un mensaje entrante) — independientes entre sí (plan §27); la Fase 14 agrega
+    // send (enviar un Draft ya redactado, llama a Postmaster). admin se registra en una fase
+    // futura, no antes (YAGNI).
+    public const string CorrespondenceRead = CorrespondencePermissions.Read;
+    public const string CorrespondenceAttachmentDownload = CorrespondencePermissions.AttachmentDownload;
+    public const string CorrespondenceCompose = CorrespondencePermissions.Compose;
+    public const string CorrespondenceReply = CorrespondencePermissions.Reply;
+    public const string CorrespondenceSend = CorrespondencePermissions.Send;
+
+    // Connectors — cuentas de correo conectadas (OAuth Gmail/Graph o IMAP+SMTP manual) que
+    // alimentan el envío/recepción de Correspondence (bounded context propio, ver microservicio
+    // Connectors). Fase 6.5 (hardening): estos dos permisos ya los exigían los controllers de
+    // Connectors vía [HasPermission(...)] desde que se construyeron, pero nunca se habían
+    // sembrado en este catálogo — sin fila real, ningún rol podía tenerlos asignados.
+    public const string ConnectorsAccountsRead = ConnectorsPermissions.AccountsRead;
+    public const string ConnectorsAccountsWrite = ConnectorsPermissions.AccountsWrite;
+
+    // Scribe — templates/layouts de correo, event mappings y render (bounded context propio, ver
+    // microservicio Scribe). Fase 10.5 (hardening): estos 9 permisos ya los exigían los 4
+    // controllers de Scribe vía [HasPermission(...)] desde que se construyeron, pero nunca se
+    // habían sembrado en este catálogo — mismo gap exacto que Connectors (Fase 6.5). ScribeRender
+    // es distinto de los otros 8: no lo usa ningún endpoint humano, lo exige únicamente
+    // RenderController ("POST /scribe/render") para el caller M2M de Notification
+    // (ScribeRenderClient) — se sembró como fila real para que el token de servicio pueda llevarlo
+    // como claim "perm" (ver ServiceAuth:Clients en Auth), no para que un rol humano lo reciba (ver
+    // el comentario junto a su PermissionDefinition más abajo).
+    public const string ScribeTemplatesRead = ScribePermissions.TemplatesRead;
+    public const string ScribeTemplatesWrite = ScribePermissions.TemplatesWrite;
+    public const string ScribeLayoutsRead = ScribePermissions.LayoutsRead;
+    public const string ScribeLayoutsWrite = ScribePermissions.LayoutsWrite;
+    public const string ScribeEventMappingsRead = ScribePermissions.EventMappingsRead;
+    public const string ScribeEventMappingsWrite = ScribePermissions.EventMappingsWrite;
+    public const string ScribeCampaignsRead = ScribePermissions.CampaignsRead;
+    public const string ScribeCampaignsWrite = ScribePermissions.CampaignsWrite;
+    public const string ScribeRender = ScribePermissions.Render;
+
+    // Postmaster — envío/entrega de correo, proveedores por tenant y suppression list (bounded
+    // context propio, ver microservicio Postmaster). Encontrado durante la auditoría de
+    // aislamiento por tenant_id (2026-07-18): estos 5 permisos ya los exigían los 3 controllers
+    // de Postmaster vía [HasPermission(...)] desde que se construyeron, pero nunca se habían
+    // sembrado en este catálogo — mismo gap exacto que Connectors (Fase 6.5) y Scribe (Fase
+    // 10.5), esta vez descubierto porque el TenantAdmin de una oficina real recibió 403 en
+    // ProvidersController tras retirarse el bypass de rol (sin fila real, "perm" nunca se poblaba
+    // salvo por el bypass). ProvidersWrite cubre también PUT /postmaster/system/provider/{code}
+    // (el proveedor default de plataforma), pero ese endpoint ya trae su propio chequeo inline
+    // `User.IsInRole("PlatformAdmin")` — no hace falta PlatformOnly aquí.
+    public const string PostmasterMessagesRead = PostmasterPermissions.MessagesRead;
+    public const string PostmasterSuppressionRead = PostmasterPermissions.SuppressionRead;
+    public const string PostmasterSuppressionWrite = PostmasterPermissions.SuppressionWrite;
+    public const string PostmasterProvidersRead = PostmasterPermissions.ProvidersRead;
+    public const string PostmasterProvidersWrite = PostmasterPermissions.ProvidersWrite;
+
+    // Notification — configuración SMTP/API, envío/historial, templates/layouts, campañas y logs
+    // (bounded context propio, ver microservicio Notification). Mismo gap y mismo hallazgo que
+    // Postmaster arriba: 8 de estos 9 permisos ya los exigían los 5 controllers de Notification
+    // vía [HasPermission(...)], pero nunca se habían sembrado en este catálogo. LogView no lo usa
+    // ningún controller todavía (reservado, mismo criterio que ScribeCampaignsRead/Write) — se
+    // siembra igual porque el código ya define la constante.
+    public const string NotificationSettingsManage = NotificationPermissions.SettingsManage;
+    public const string NotificationEmailSend = NotificationPermissions.EmailSend;
+    public const string NotificationEmailView = NotificationPermissions.EmailView;
+    public const string NotificationTemplateView = NotificationPermissions.TemplateView;
+    public const string NotificationTemplateManage = NotificationPermissions.TemplateManage;
+    public const string NotificationLayoutManage = NotificationPermissions.LayoutManage;
+    public const string NotificationCampaignView = NotificationPermissions.CampaignView;
+    public const string NotificationCampaignManage = NotificationPermissions.CampaignManage;
+    public const string NotificationLogView = NotificationPermissions.LogView;
+
     // Portal del cliente final
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
@@ -105,7 +184,8 @@ public static class PermissionCatalog
         string Description,
         bool IsCustomerPortal,
         int MinPlanTier = (int)PlanTier.Starter,
-        bool IsAssignableByTenant = true
+        bool IsAssignableByTenant = true,
+        bool PlatformOnly = false
     );
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
@@ -358,6 +438,156 @@ public static class PermissionCatalog
             false
         ),
         new(
+            new Guid("a1000000-0000-0000-0000-000000000072"),
+            CorrespondenceRead,
+            "correspondence",
+            "Ver la bandeja de correspondencia con customers",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000073"),
+            CorrespondenceAttachmentDownload,
+            "correspondence",
+            "Descargar adjuntos de la bandeja de correspondencia",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000074"),
+            CorrespondenceCompose,
+            "correspondence",
+            "Crear, editar y descartar borradores de correspondencia",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000075"),
+            CorrespondenceReply,
+            "correspondence",
+            "Responder a un mensaje entrante de correspondencia",
+            false
+        ),
+        new(
+            // Enviar es una acción irreversible (llama a Postmaster, un correo real sale por el
+            // proveedor conectado) — riesgo distinto de Compose/Reply, mismo criterio que separó
+            // esos dos entre sí (plan §27, Fase 14).
+            new Guid("a1000000-0000-0000-0000-000000000076"),
+            CorrespondenceSend,
+            "correspondence",
+            "Enviar un borrador de correspondencia ya redactado",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000077"),
+            ConnectorsAccountsRead,
+            "connectors",
+            "Ver las cuentas de correo conectadas del tenant",
+            false
+        ),
+        new(
+            // A diferencia de ConnectorsAccountsRead, conectar/reconectar/desconectar una cuenta
+            // implica un intercambio OAuth real o credenciales IMAP/SMTP en texto plano — mismo
+            // nivel de riesgo que un cambio de configuración de módulo (ver
+            // CloudStorageSettingsManage/SignatureSettingsManage: assignable por el tenant, pero
+            // no otorgado por defecto al empleado). Asignable a un rol custom si el TenantAdmin
+            // decide delegarlo (a diferencia de RolesManage/BillingManage/TenantDomainsManage,
+            // que son IsAssignableByTenant: false por su riesgo de escalada/facturación).
+            new Guid("a1000000-0000-0000-0000-000000000078"),
+            ConnectorsAccountsWrite,
+            "connectors",
+            "Conectar, reconectar y desconectar cuentas de correo del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000079"),
+            ScribeTemplatesRead,
+            "scribe",
+            "Ver templates de correo (System y del tenant)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000080"),
+            ScribeTemplatesWrite,
+            "scribe",
+            "Crear, editar y publicar versiones de templates de correo",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000081"),
+            ScribeLayoutsRead,
+            "scribe",
+            "Ver layouts de correo (System y del tenant)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000082"),
+            ScribeLayoutsWrite,
+            "scribe",
+            "Crear, editar y publicar versiones de layouts de correo",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000083"),
+            ScribeEventMappingsRead,
+            "scribe",
+            "Ver las reglas de resolución evento→template",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000084"),
+            ScribeEventMappingsWrite,
+            "scribe",
+            "Crear, editar y borrar reglas de resolución evento→template",
+            false
+        ),
+        new(
+            // Reservado: sin EmailCampaignsController real en Scribe todavía (confirmado por
+            // lectura directa de los 4 controllers existentes en la Fase 10.5) — el par
+            // campaigns.read/write de ScribePermissions.cs es scaffolding para una feature que
+            // aún no se construyó (relacionado con el retiro de EmailCampaigns de Notification,
+            // fuera de este plan). Se siembra igual porque el código ya define la constante y este
+            // catálogo debe reflejar 1:1 lo que ScribePermissions.cs declara, pero sin otorgarlo
+            // por defecto a nadie (ver SystemRoleDefaults) hasta que exista un controller real que
+            // lo exija.
+            new Guid("a1000000-0000-0000-0000-000000000085"),
+            ScribeCampaignsRead,
+            "scribe",
+            "Ver campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000086"),
+            ScribeCampaignsWrite,
+            "scribe",
+            "Gestionar campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
+            false
+        ),
+        new(
+            // A diferencia de los 8 permisos anteriores de este bloque, ScribeRender no lo pide
+            // ningún endpoint pensado para un humano — RenderController ("POST /scribe/render")
+            // solo lo llama Notification vía token de servicio M2M (ScribeRenderClient). Se
+            // siembra como fila real únicamente para que ServiceAuth:Clients (Auth) pueda listarlo
+            // en el Permissions de un cliente de servicio y que IssueServiceTokenHandler lo emita
+            // como claim "perm" en el token. Marcado PlatformOnly (auditoría de aislamiento por
+            // tenant_id, 2026-07-18): el comentario original decía que el bundle automático de
+            // SystemTenantAdmin era "inofensivo" porque TenantAdmin pasaba HasPermission por rol
+            // sin depender de este claim — eso era cierto bajo el bypass de rol que ya se retiró
+            // (ver ClaimsPrincipalExtensions). Sin el bypass, un TenantAdmin real SÍ recibe este
+            // claim "perm" en su JWT (PermissionCatalog.SystemRoleDefaults) y RenderController
+            // toma el TenantId del BODY, no del token (lo necesita así para el caso M2M legítimo:
+            // Notification renderiza a nombre de tenants arbitrarios) — sin PlatformOnly, cualquier
+            // TenantAdmin podía llamar POST /scribe/render con el TenantId de otro tenant y leer su
+            // contenido de template renderizado. PlatformOnly no afecta al caller M2M real: los
+            // permisos de un client de servicio vienen de ServiceAuth:Clients (config), no de
+            // SystemRoleDefaults — ver Service_token_with_perm_claim_ScribeRender_is_authorized_for_
+            // Render en HasPermissionPolicyTests.
+            new Guid("a1000000-0000-0000-0000-000000000087"),
+            ScribeRender,
+            "scribe",
+            "Invocar el render de templates (M2M — Notification u otros servicios via token de servicio)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
             new Guid("a1000000-0000-0000-0000-000000000029"),
             SignatureRequestCreate,
             "signature",
@@ -468,6 +698,18 @@ public static class PermissionCatalog
             "signature",
             "Verificar certificados de firma (endpoint público)",
             false
+        ),
+        new(
+            // Nunca asignable a un rol custom (escalada de billing/límites) NI al rol de sistema
+            // Tenant Admin (PlatformOnly): sin caso de uso tenant-propio, es 100% exclusivo de
+            // PlatformAdmin (ver SignatureAdminController.UpdateConstraints).
+            new Guid("a1000000-0000-0000-0000-000000000088"),
+            SignaturePlanConstraintsManage,
+            "signature",
+            "Gestionar los techos de plan de Signature de un tenant (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000063"),
@@ -633,6 +875,107 @@ public static class PermissionCatalog
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
+        // Postmaster (auditoría de aislamiento por tenant_id, 2026-07-18 — ver comentario junto a
+        // los const de arriba).
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000089"),
+            PostmasterMessagesRead,
+            "postmaster",
+            "Ver el historial de correos enviados del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000090"),
+            PostmasterSuppressionRead,
+            "postmaster",
+            "Ver la suppression list (direcciones que rebotaron o se dieron de baja) del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000091"),
+            PostmasterSuppressionWrite,
+            "postmaster",
+            "Agregar o quitar direcciones de la suppression list del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000092"),
+            PostmasterProvidersRead,
+            "postmaster",
+            "Ver el proveedor de correo configurado para el tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000093"),
+            PostmasterProvidersWrite,
+            "postmaster",
+            "Configurar el proveedor de correo (SMTP/API) del tenant",
+            false
+        ),
+        // Notification (mismo hallazgo, ver comentario junto a los const de arriba).
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000094"),
+            NotificationSettingsManage,
+            "notification",
+            "Gestionar la configuración SMTP/API de Notification del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000095"),
+            NotificationEmailSend,
+            "notification",
+            "Enviar un correo puntual desde Notification",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000096"),
+            NotificationEmailView,
+            "notification",
+            "Ver el historial de correos enviados desde Notification",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000097"),
+            NotificationTemplateView,
+            "notification",
+            "Ver los templates de correo del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000098"),
+            NotificationTemplateManage,
+            "notification",
+            "Crear, editar y publicar templates de correo del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000099"),
+            NotificationLayoutManage,
+            "notification",
+            "Gestionar los layouts base de correo del tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000100"),
+            NotificationCampaignView,
+            "notification",
+            "Ver campañas de correo del tenant (reservado, sin controller aún)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000101"),
+            NotificationCampaignManage,
+            "notification",
+            "Gestionar campañas de correo del tenant (reservado, sin controller aún)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000102"),
+            NotificationLogView,
+            "notification",
+            "Ver logs de auditoría de Notification del tenant (reservado, sin controller aún)",
+            false
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -646,7 +989,9 @@ public static class PermissionCatalog
     public static IReadOnlyCollection<string> SystemRoleDefaults(string systemRoleName) =>
         systemRoleName switch
         {
-            Role.SystemTenantAdmin => All.Where(definition => !definition.IsCustomerPortal)
+            // PlatformOnly se excluye acá — el TenantAdmin nunca lo recibe por defecto, sin
+            // importar qué se agregue al catálogo en el futuro (ver Permission.PlatformOnly).
+            Role.SystemTenantAdmin => All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly)
                 .Select(definition => definition.Code)
                 .ToArray(),
             Role.SystemEmployee =>
@@ -691,6 +1036,46 @@ public static class PermissionCatalog
                 CommunicationMeetingHost,
                 CommunicationScreenshotCreate,
                 CommunicationNotificationRead,
+                // Correspondence: el empleado ve el inbox filtrado por customer de su tenant,
+                // puede descargar los adjuntos que aparecen ahí, redactar/responder
+                // correspondencia (Fase 11), y enviarla (Fase 14) — mismo criterio operativo que
+                // ya cubre el resto de estos permisos, no reservado a TenantAdmin.
+                CorrespondenceRead,
+                CorrespondenceAttachmentDownload,
+                CorrespondenceCompose,
+                CorrespondenceReply,
+                CorrespondenceSend,
+                // Connectors: el empleado puede ver qué cuentas de correo están conectadas (para
+                // elegir remitente al redactar correspondencia, o diagnosticar por qué algo no
+                // llegó) — no incluye accounts.write (conectar/desconectar es una acción de
+                // configuración de integración, reservada a TenantAdmin por defecto, mismo
+                // criterio que CloudStorageSettingsManage/SignatureSettingsManage).
+                ConnectorsAccountsRead,
+                // Scribe: el empleado puede ver los templates/layouts/event-mappings vigentes
+                // (System y del tenant) para redactar/diagnosticar comunicaciones — mismo criterio
+                // operativo que ConnectorsAccountsRead. No incluye templates.write/layouts.write/
+                // event_mappings.write (crear o publicar una versión es un cambio de configuración
+                // reservado a TenantAdmin por defecto, mismo criterio que ConnectorsAccountsWrite/
+                // CloudStorageSettingsManage/SignatureSettingsManage), ni campaigns.read/write (sin
+                // controller real todavía, ver PermissionDefinition), ni scribe.render (M2M-only,
+                // nunca un permiso humano — ver PermissionDefinition).
+                ScribeTemplatesRead,
+                ScribeLayoutsRead,
+                ScribeEventMappingsRead,
+                // Postmaster: el empleado puede ver el historial de envíos y la suppression list
+                // (diagnosticar por qué un correo no llegó) — no incluye providers.write ni
+                // suppression.write (configurar el proveedor de correo del tenant o dar de baja
+                // una supresión es una acción de configuración, reservada a TenantAdmin por
+                // defecto, mismo criterio que ConnectorsAccountsWrite/CloudStorageSettingsManage).
+                PostmasterMessagesRead,
+                PostmasterSuppressionRead,
+                PostmasterProvidersRead,
+                // Notification: el empleado consulta templates/layouts vigentes y el historial de
+                // envíos para diagnosticar — no incluye template.manage/layout.manage/
+                // settings.manage (cambios de configuración, reservados a TenantAdmin) ni
+                // campaign.view/manage (sin controller real todavía, ver PermissionDefinition).
+                NotificationEmailView,
+                NotificationTemplateView,
             ],
             Role.SystemCustomerPortal =>
             [

@@ -540,6 +540,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<bool>("PlatformOnly")
+                        .HasColumnType("bit");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
@@ -556,7 +559,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "users"
+                            Module = "users",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -566,7 +570,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "users"
+                            Module = "users",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -576,7 +581,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "users"
+                            Module = "users",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -586,7 +592,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "users"
+                            Module = "users",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -596,7 +603,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "audit"
+                            Module = "audit",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -606,7 +614,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "settings"
+                            Module = "settings",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -616,7 +625,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "billing"
+                            Module = "billing",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -626,7 +636,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "billing"
+                            Module = "billing",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -636,7 +647,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "billing"
+                            Module = "billing",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -646,7 +658,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "customers"
+                            Module = "customers",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -656,7 +669,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "customers"
+                            Module = "customers",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -666,7 +680,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signatures"
+                            Module = "signatures",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -676,7 +691,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "documents"
+                            Module = "documents",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -686,7 +702,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "documents"
+                            Module = "documents",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -696,7 +713,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "email"
+                            Module = "email",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -706,7 +724,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "comms"
+                            Module = "comms",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -716,7 +735,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "campaigns"
+                            Module = "campaigns",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -726,7 +746,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "reports"
+                            Module = "reports",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -736,7 +757,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 0,
-                            Module = "portal"
+                            Module = "portal",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -746,7 +768,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 0,
-                            Module = "portal"
+                            Module = "portal",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -756,7 +779,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 0,
-                            Module = "portal"
+                            Module = "portal",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -766,7 +790,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 0,
-                            Module = "portal"
+                            Module = "portal",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -776,7 +801,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -786,7 +812,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -796,7 +823,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -806,7 +834,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -816,7 +845,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -826,7 +856,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -836,7 +867,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -846,7 +878,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -856,7 +889,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -866,7 +900,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -876,7 +911,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -886,7 +922,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -896,7 +933,184 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "cloudstorage"
+                            Module = "cloudstorage",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000072"),
+                            Code = "correspondence.read",
+                            Description = "Ver la bandeja de correspondencia con customers",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "correspondence",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000073"),
+                            Code = "correspondence.attachment.download",
+                            Description = "Descargar adjuntos de la bandeja de correspondencia",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "correspondence",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000074"),
+                            Code = "correspondence.compose",
+                            Description = "Crear, editar y descartar borradores de correspondencia",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "correspondence",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000075"),
+                            Code = "correspondence.reply",
+                            Description = "Responder a un mensaje entrante de correspondencia",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "correspondence",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000076"),
+                            Code = "correspondence.send",
+                            Description = "Enviar un borrador de correspondencia ya redactado",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "correspondence",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000077"),
+                            Code = "connectors.accounts.read",
+                            Description = "Ver las cuentas de correo conectadas del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "connectors",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000078"),
+                            Code = "connectors.accounts.write",
+                            Description = "Conectar, reconectar y desconectar cuentas de correo del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "connectors",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000079"),
+                            Code = "scribe.templates.read",
+                            Description = "Ver templates de correo (System y del tenant)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000080"),
+                            Code = "scribe.templates.write",
+                            Description = "Crear, editar y publicar versiones de templates de correo",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000081"),
+                            Code = "scribe.layouts.read",
+                            Description = "Ver layouts de correo (System y del tenant)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000082"),
+                            Code = "scribe.layouts.write",
+                            Description = "Crear, editar y publicar versiones de layouts de correo",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000083"),
+                            Code = "scribe.event_mappings.read",
+                            Description = "Ver las reglas de resolución evento→template",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000084"),
+                            Code = "scribe.event_mappings.write",
+                            Description = "Crear, editar y borrar reglas de resolución evento→template",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000085"),
+                            Code = "scribe.campaigns.read",
+                            Description = "Ver campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000086"),
+                            Code = "scribe.campaigns.write",
+                            Description = "Gestionar campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000087"),
+                            Code = "scribe.render",
+                            Description = "Invocar el render de templates (M2M — Notification u otros servicios via token de servicio)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "scribe",
+                            PlatformOnly = true
                         },
                         new
                         {
@@ -906,7 +1120,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -916,7 +1131,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -926,7 +1142,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -936,7 +1153,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -946,7 +1164,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -956,7 +1175,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -966,7 +1186,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -976,7 +1197,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -986,7 +1208,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -996,7 +1219,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1006,7 +1230,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1016,7 +1241,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1026,7 +1252,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1036,7 +1263,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1046,7 +1274,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1056,7 +1285,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "signature"
+                            Module = "signature",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000088"),
+                            Code = "signature.constraints.manage",
+                            Description = "Gestionar los techos de plan de Signature de un tenant (uso exclusivo de plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "signature",
+                            PlatformOnly = true
                         },
                         new
                         {
@@ -1066,7 +1307,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "customers"
+                            Module = "customers",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1076,7 +1318,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             MinPlanTier = 0,
-                            Module = "domains"
+                            Module = "domains",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1086,7 +1329,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1096,7 +1340,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1106,7 +1351,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1116,7 +1362,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1126,7 +1373,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1136,7 +1384,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1146,7 +1395,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1156,7 +1406,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1166,7 +1417,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1176,7 +1428,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1186,7 +1439,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1196,7 +1450,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1206,7 +1461,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1216,7 +1472,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1226,7 +1483,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1236,7 +1494,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1246,7 +1505,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -1256,7 +1516,162 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             MinPlanTier = 1,
-                            Module = "communication"
+                            Module = "communication",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000089"),
+                            Code = "postmaster.messages.read",
+                            Description = "Ver el historial de correos enviados del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "postmaster",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000090"),
+                            Code = "postmaster.suppression.read",
+                            Description = "Ver la suppression list (direcciones que rebotaron o se dieron de baja) del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "postmaster",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000091"),
+                            Code = "postmaster.suppression.write",
+                            Description = "Agregar o quitar direcciones de la suppression list del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "postmaster",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000092"),
+                            Code = "postmaster.providers.read",
+                            Description = "Ver el proveedor de correo configurado para el tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "postmaster",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000093"),
+                            Code = "postmaster.providers.write",
+                            Description = "Configurar el proveedor de correo (SMTP/API) del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "postmaster",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000094"),
+                            Code = "notification.settings.manage",
+                            Description = "Gestionar la configuración SMTP/API de Notification del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000095"),
+                            Code = "notification.email.send",
+                            Description = "Enviar un correo puntual desde Notification",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000096"),
+                            Code = "notification.email.view",
+                            Description = "Ver el historial de correos enviados desde Notification",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000097"),
+                            Code = "notification.template.view",
+                            Description = "Ver los templates de correo del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000098"),
+                            Code = "notification.template.manage",
+                            Description = "Crear, editar y publicar templates de correo del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000099"),
+                            Code = "notification.layout.manage",
+                            Description = "Gestionar los layouts base de correo del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000100"),
+                            Code = "notification.campaign.view",
+                            Description = "Ver campañas de correo del tenant (reservado, sin controller aún)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000101"),
+                            Code = "notification.campaign.manage",
+                            Description = "Gestionar campañas de correo del tenant (reservado, sin controller aún)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000102"),
+                            Code = "notification.log.view",
+                            Description = "Ver logs de auditoría de Notification del tenant (reservado, sin controller aún)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "notification",
+                            PlatformOnly = false
                         });
                 });
 

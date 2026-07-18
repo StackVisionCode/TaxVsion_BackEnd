@@ -32,8 +32,18 @@ describe('branded ids', () => {
 });
 
 describe('permissions', () => {
-  it('TenantAdmin bypasses catalog', () => {
-    expect(hasPermission('TenantAdmin', [], CommunicationPermissions.MeetingHost)).toBe(true);
+  it('PlatformAdmin bypasses catalog', () => {
+    expect(hasPermission('PlatformAdmin', [], CommunicationPermissions.MeetingHost)).toBe(true);
+  });
+
+  it('TenantAdmin without the perm claim is rejected (bypass retirado — mismo hallazgo que en .NET)', () => {
+    expect(hasPermission('TenantAdmin', [], CommunicationPermissions.MeetingHost)).toBe(false);
+  });
+
+  it('TenantAdmin with the perm claim is authorized', () => {
+    expect(
+      hasPermission('TenantAdmin', [CommunicationPermissions.MeetingHost], CommunicationPermissions.MeetingHost),
+    ).toBe(true);
   });
 
   it('regular actor needs the exact permission', () => {

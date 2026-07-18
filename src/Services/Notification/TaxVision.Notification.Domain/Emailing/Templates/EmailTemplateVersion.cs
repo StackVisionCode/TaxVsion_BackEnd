@@ -15,6 +15,7 @@ public enum EmailTemplateVersionStatus
 /// y el preview en CloudStorage (no se guarda el contenido en la BD). El subject renderizable se
 /// versiona junto con el cuerpo.
 /// </summary>
+/// <remarks>Migration target: <b>Scribe</b>. See <c>Responsibility_Map.md</c>. Se elimina de Notification en Fase 7.</remarks>
 public sealed class EmailTemplateVersion : BaseEntity
 {
     private EmailTemplateVersion() { }

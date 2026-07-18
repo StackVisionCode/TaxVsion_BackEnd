@@ -13,7 +13,6 @@ namespace TaxVision.Notification.Application.Common;
 /// reintento/diagnóstico, evitando reencolar eventos con tokens ya emitidos.
 /// </summary>
 public sealed class NotificationDispatcher(
-    IEmailSender emailSender,
     ISmsSender smsSender,
     IPushSender pushSender,
     IPushDeviceTokenRepository pushDeviceTokens,
@@ -22,67 +21,6 @@ public sealed class NotificationDispatcher(
     ILogger<NotificationDispatcher> logger
 )
 {
-    public async Task SendEmailAsync(
-        Guid tenantId,
-        string to,
-        RenderedEmail email,
-        string templateKey,
-        Guid? relatedEventId,
-        string? correlationId,
-        CancellationToken ct = default
-    )
-    {
-        var logResult = NotificationLog.Create(
-            tenantId,
-            NotificationChannel.Email,
-            to,
-            email.Subject,
-            templateKey,
-            relatedEventId,
-            correlationId
-        );
-        if (logResult.IsFailure)
-        {
-            logger.LogError(
-                "Invalid notification log for template {TemplateKey}: {Error}",
-                templateKey,
-                logResult.Error.Message
-            );
-            return;
-        }
-
-        var log = logResult.Value;
-        await logs.AddAsync(log, ct);
-
-        var sendResult = await emailSender.SendAsync(
-            new EmailMessage(to, email.Subject, email.HtmlBody, email.TextBody),
-            ct
-        );
-        if (sendResult.IsSuccess)
-        {
-            log.MarkSent();
-            logger.LogInformation(
-                "Email {TemplateKey} sent to {Recipient} for tenant {TenantId}.",
-                templateKey,
-                to,
-                tenantId
-            );
-        }
-        else
-        {
-            log.MarkFailed(sendResult.Error.Message);
-            logger.LogError(
-                "Email {TemplateKey} to {Recipient} failed for tenant {TenantId}: {Error}",
-                templateKey,
-                to,
-                tenantId,
-                sendResult.Error.Message
-            );
-        }
-
-        await unitOfWork.SaveChangesAsync(ct);
-    }
-
     public async Task SendSmsAsync(
         Guid tenantId,
         string phoneNumber,

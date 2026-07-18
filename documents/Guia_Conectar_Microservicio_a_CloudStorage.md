@@ -608,8 +608,16 @@ recibe **todo**, filtrás por si te corresponde mirando el `FileId`/`TenantId`.
 - `src/Services/Signature/TaxVision.Signature.Infrastructure/Sealing/HttpClients/SignatureCloudStorageClient.cs` — A1 (fire-and-forget, sube el PDF sellado).
 - `src/Services/Customer/TaxVision.Customer.Infrastructure/Imports/CustomerImportCloudStorageClient.cs` — A2 (sube y después lee de vuelta para parsear filas).
 - `src/Services/Customer/TaxVision.Customer.Application/Imports/Consumers/ImportFileScanResultConsumer.cs` — el consumer del Paso 8.
-- `src/Services/Notification/TaxVision.Notification.Infrastructure/Storage/InboundAttachmentStorageWriter.cs` — A1 en Notification (adjuntos IMAP).
 - `src/Services/CommunicationTranscriptWorker/src/cloudstorage/minio-uploader.ts` — mismo patrón A1 pero en Node/TS.
+
+> **Nota (18 de julio de 2026)**: el ejemplo que citaba acá
+> `InboundAttachmentStorageWriter.cs` de Notification se eliminó — era parte
+> del módulo de conexión/sync de mailbox propio de Notification, retirado
+> por duplicar lo que `Connectors` (conexión OAuth + sync) y
+> `Correspondence` (inbox filtrado por customer) ya hacen mejor. Si
+> necesitás un ejemplo A1 de adjuntos entrantes hoy, mirá cómo
+> `Correspondence` descarga y sube attachments de mensajes recibidos
+> (`DownloadAttachmentHandler.cs` en `TaxVision.Correspondence.Application`).
 
 **Caso B**:
 

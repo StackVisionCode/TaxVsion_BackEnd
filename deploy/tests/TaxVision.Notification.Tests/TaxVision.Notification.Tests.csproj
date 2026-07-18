@@ -16,5 +16,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Notification\TaxVision.Notification.Domain\TaxVision.Notification.Domain.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Notification\TaxVision.Notification.Application\TaxVision.Notification.Application.csproj" />
+    <!-- Hardening Fase 9: agregado para poder probar ScribeRenderClient (Infrastructure) directamente,
+         mismo patrón que TaxVision.Postmaster.Tests ya usa para sus clientes HTTP de Infrastructure. -->
+    <ProjectReference Include="..\..\..\src\Services\Notification\TaxVision.Notification.Infrastructure\TaxVision.Notification.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

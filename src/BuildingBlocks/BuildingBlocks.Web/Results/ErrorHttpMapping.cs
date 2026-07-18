@@ -20,11 +20,33 @@ public static class ErrorHttpMapping
             or "EmailConfiguration.NotFound"
             or "EmailTemplate.NotFound"
             or "EmailLayout.NotFound"
+            or "EmailTemplateVersion.NotFound"
+            or "EmailLayoutVersion.NotFound"
+            or "EmailTemplate.VersionNotFound"
+            or "EmailLayout.VersionNotFound"
+            or "EmailRenderer.NoMapping"
+            or "EmailRenderer.NoPublishedVersion"
+            or "EmailRenderer.LayoutVersionNotFound"
             or "Campaign.NotFound"
             or "EmailAccount.NotFound"
             or "EmailMessage.NotFound"
             or "TenantDomain.NotFound"
-            or "ShareLink.NotFound" => StatusCodes.Status404NotFound,
+            or "ShareLink.NotFound"
+            or "TenantEmailAccount.NotFound"
+            or "ProviderWatchSubscription.NotFound"
+            or "GetMessageAttachmentHandler.AttachmentNotFound"
+            or "IncomingEmail.NotFound"
+            or "IncomingEmailAttachment.NotFound"
+            or "EmailThread.NotFound"
+            or "Draft.NotFound"
+            or "EventTemplateMapping.NotFound"
+            // Fase 16.5 (hardening Postmaster): los 4 códigos NotFound propios de Postmaster no
+            // tenían entrada explícita y caían al default (400) en vez del 404 semánticamente
+            // correcto — mismo gap exacto que EventTemplateMapping.NotFound tuvo en Scribe Fase 10.5.
+            or "SentMessage.NotFound"
+            or "TenantEmailProvider.NotFound"
+            or "SystemEmailProvider.NotFound"
+            or "SuppressionListEntry.NotFound" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -37,16 +59,70 @@ public static class ErrorHttpMapping
             or "TenantDomain.InvalidTransition"
             or "TenantDomain.ReservationEmail"
             or "TenantDomain.ReservationTtl"
-            or "Auth.TenantIdRequired" => StatusCodes.Status400BadRequest,
+            or "Auth.TenantIdRequired"
+            // EventTemplateMapping.{Tenant,TenantRequired,TenantNotAllowed} son validación de
+            // contexto de tenant (falta contexto / contexto no permitido para el Scope), no un
+            // problema de autorización — mismo tratamiento que sus equivalentes EmailTemplate.*/
+            // EmailLayout.* (Tenant/TenantRequired/TenantNotAllowed), que tampoco están mapeados
+            // explícitamente en este archivo y por eso ya caen correctamente en el "default" 400
+            // de más abajo. Se agregan acá explícitos (mismo resultado, 400) en vez de dejarlos
+            // caer al default, para que los 5 códigos de EventTemplateMapping quedan documentados
+            // 1:1 en este mapping — a diferencia de NotFound/Forbidden, NO se mapean a 403: hacerlo
+            // sería una regresión real de semántica HTTP (error de validación de payload, no de
+            // autorización) y una desviación del comportamiento ya establecido para sus
+            // equivalentes de Templates/Layouts.
+            or "EventTemplateMapping.Tenant"
+            or "EventTemplateMapping.TenantRequired"
+            or "EventTemplateMapping.TenantNotAllowed" => StatusCodes.Status400BadRequest,
             "TenantDomain.ReservationConsumed"
             or "TenantDomain.ReservationExpired"
             or "TenantDomain.HostTaken"
             or "TenantDomain.SlugTaken"
             or "TenantDomain.SlugReservedTemporarily"
-            or "TenantDomain.NotReadyForActivation" => StatusCodes.Status409Conflict,
+            or "TenantDomain.NotReadyForActivation"
+            or "TenantEmailAccount.InvalidTransition"
+            or "IncomingEmailAttachment.InvalidTransition"
+            or "IncomingEmailAttachment.NotReady"
+            or "Draft.InvalidTransition" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
-            or "TenantDomain.PrimaryCannotBeDisabled" => StatusCodes.Status403Forbidden,
-            "TenantDomain.CloudflareHttp" or "TenantDomain.CloudflareRejected" => StatusCodes.Status502BadGateway,
+            or "TenantDomain.PrimaryCannotBeDisabled"
+            or "SetupWatchHandler.Forbidden"
+            or "GetMessageBodyHandler.Forbidden"
+            or "GetMessageAttachmentHandler.Forbidden"
+            or "SendMessageHandler.Forbidden"
+            or "SendMessageHandler.PermissionDenied"
+            or "SendCorrespondenceMessageHandler.AccountNotFound" => StatusCodes.Status403Forbidden,
+            "TenantDomain.CloudflareHttp"
+            or "TenantDomain.CloudflareRejected"
+            or "SetupWatchHandler.ProviderFailed"
+            or "WatchRenewalService.RenewalFailed"
+            or "WatchRenewalService.SubscriptionExpired"
+            or "GetMessageBodyHandler.ProviderFailed"
+            or "GetMessageAttachmentHandler.ProviderFailed"
+            or "SendMessageHandler.TransientProviderError"
+            or "SendCorrespondenceMessageHandler.ConnectorsSendFailed"
+            or "SendCorrespondenceMessageHandler.AttachmentFetchFailed"
+            or "ConnectorsClient.EmptyResponse"
+            or "ConnectorsClient.UnexpectedStatus"
+            or "CloudStorageClient.EmptyResponse"
+            or "CloudStorageClient.UnexpectedStatus"
+            or "CorrespondenceTempBucketUploader.UploadFailed"
+            or "PostmasterClient.EmptyResponse"
+            or "PostmasterClient.UnexpectedStatus" => StatusCodes.Status502BadGateway,
+            "ConnectorsClient.ServiceAuthUnavailable"
+            or "ConnectorsClient.Unavailable"
+            or "ConnectorsClient.RequestFailed"
+            or "CloudStorageClient.ServiceAuthUnavailable"
+            or "CloudStorageClient.RequestFailed"
+            or "PostmasterClient.ServiceAuthUnavailable"
+            or "PostmasterClient.RequestFailed" => StatusCodes.Status503ServiceUnavailable,
+            "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
+                StatusCodes.Status504GatewayTimeout,
+            "GetMessageBodyHandler.RateLimited"
+            or "GetMessageAttachmentHandler.RateLimited"
+            or "SendMessageHandler.RateLimited"
+            or "SendMessageHandler.QuotaExceeded" => StatusCodes.Status429TooManyRequests,
+            "SendMessageHandler.AuthExpired" => StatusCodes.Status401Unauthorized,
             "Auth.Invalid"
             or "Auth.InvalidInvitation"
             or "Auth.InvalidRefreshToken"
@@ -70,6 +146,7 @@ public static class ErrorHttpMapping
             or "EmailConfiguration.Forbidden"
             or "EmailTemplate.Forbidden"
             or "EmailLayout.Forbidden"
+            or "EventTemplateMapping.Forbidden"
             or "Campaign.Forbidden"
             or "EmailAccount.Forbidden"
             or "Role.PermissionNotAssignable"
@@ -93,7 +170,9 @@ public static class ErrorHttpMapping
             "Auth.LockedOut" or "Auth.OtpThrottled" or "Invitation.ResendLimit" => StatusCodes.Status429TooManyRequests,
             "File.TooManyItems" or "File.ZipTooLarge" or "File.TooManyFolders" or "File.TooLarge" =>
                 StatusCodes.Status413PayloadTooLarge,
-            "File.MultipartCompleteFailed" => StatusCodes.Status409Conflict,
+            "File.MultipartCompleteFailed"
+            or "SendCorrespondenceMessageHandler.AllRecipientsSuppressed"
+            or "SendCorrespondenceMessageHandler.SendInProgress" => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest,
         };
 }

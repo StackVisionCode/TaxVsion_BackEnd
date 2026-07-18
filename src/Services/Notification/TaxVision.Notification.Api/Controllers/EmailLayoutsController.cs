@@ -16,6 +16,12 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Gestión de layouts de correo (System/Tenant). El layout envuelve el cuerpo de la plantilla
 /// (marcador {{ body }}). Un layout default por scope/tenant; fallback al global del SaaS.
+///
+/// NO retirado en la Fase 18 del plan de hardening (Notification) por el mismo motivo exacto que
+/// <see cref="EmailTemplatesController"/>: es el único punto de entrada para crear/marcar-default un
+/// <see cref="TaxVision.Notification.Domain.Emailing.Layouts.EmailLayout"/>, y
+/// <c>ScheduleEmailCampaignHandler</c> (EmailCampaigns, fuera de alcance de este plan) lee el layout
+/// default vía <c>IEmailLayoutRepository.GetDefaultAsync</c> al programar una campaña.
 /// </summary>
 [ApiController]
 [Route("notifications/email/layouts")]

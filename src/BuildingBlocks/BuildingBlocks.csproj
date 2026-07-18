@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Remove="BuildingBlocks.Infrastructure\**\*.cs" />
     <Compile Remove="BuildingBlocks.Web\**\*.cs" />
+    <Compile Remove="TaxVision.Templates.Renderer\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

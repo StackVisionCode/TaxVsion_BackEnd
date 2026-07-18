@@ -12,4 +12,7 @@ public sealed record SignerRejectedIntegrationEvent : IntegrationEvent
     public required int RevocationEpoch { get; init; }
     public string? Reason { get; init; }
     public required IReadOnlyList<Guid> PendingSignerIds { get; init; }
+
+    /// <summary>Snapshot de contacto de los firmantes aún pendientes — se les notifica que la solicitud fue cancelada.</summary>
+    public required IReadOnlyList<SignerContactSnapshot> PendingSigners { get; init; }
 }

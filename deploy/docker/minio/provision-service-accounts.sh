@@ -1,15 +1,20 @@
 #!/usr/bin/env sh
-# Fase D0/D-Customer — crea las 4 cuentas de servicio scoped que reemplazan el uso
-# de las credenciales root de MinIO (MINIO_ROOT_USER/PASSWORD) en Signature/
-# Notification/CommunicationTranscriptWorker/Customer. Cada una solo puede
-# s3:PutObject bajo su propio prefijo en taxvision-temp/* (ver policies/*.json) —
-# nunca leer, listar ni tocar taxvision-storage/taxvision-quarantine.
+# Fase D0/D-Customer (+ Correspondence Fase 8, + Scribe) — crea las 5 cuentas de servicio
+# scoped que reemplazan el uso de las credenciales root de MinIO (MINIO_ROOT_USER/PASSWORD)
+# en Signature/CommunicationTranscriptWorker/Customer/Correspondence/Scribe. Cada una
+# solo puede s3:PutObject bajo su propio prefijo en taxvision-temp/* (ver policies/*.json)
+# — nunca leer, listar ni tocar taxvision-storage/taxvision-quarantine.
+#
+# Notification tuvo una cuenta propia ("notification-worker") para el modulo de sync IMAP
+# entrante — se elimino junto con ese modulo en la Fase 17 del plan de hardening/migracion
+# (ver README §28.1). Si un futuro modulo de Notification vuelve a necesitar subir binarios
+# a MinIO directo, se reprovisiona igual que las demas, no se reusa este historial.
 #
 # Los access keys y los nombres de variable *_MINIO_SECRET de abajo son EXACTAMENTE
 # los que consume deploy/docker/docker-compose.yml (Signature__Minio__AccessKey,
-# Notification__Minio__AccessKey, TRANSCRIPT_WORKER_MINIO_ACCESS_KEY,
-# Customer__Minio__AccessKey) — si los cambias aca, cambialos tambien alla o los
-# servicios dejan de poder autenticarse.
+# TRANSCRIPT_WORKER_MINIO_ACCESS_KEY, Customer__Minio__AccessKey,
+# Correspondence__Minio__AccessKey, Scribe__Minio__AccessKey) — si los cambias aca,
+# cambialos tambien alla o los servicios dejan de poder autenticarse.
 #
 # Se ejecuta automaticamente como parte del deploy (ver el servicio "minio-provision"
 # en docker-compose.yml, profile "tools", y el workflow deploy.yml) DESPUES de que
@@ -19,8 +24,8 @@
 # Uso manual:
 #   MINIO_ALIAS=local MINIO_ENDPOINT=http://localhost:9000 \
 #   MINIO_ROOT_USER=... MINIO_ROOT_PASSWORD=... \
-#   SIGNATURE_MINIO_SECRET=... NOTIFICATION_MINIO_SECRET=... TRANSCRIPT_WORKER_MINIO_SECRET=... \
-#   CUSTOMER_MINIO_SECRET=... \
+#   SIGNATURE_MINIO_SECRET=... TRANSCRIPT_WORKER_MINIO_SECRET=... \
+#   CUSTOMER_MINIO_SECRET=... CORRESPONDENCE_MINIO_SECRET=... SCRIBE_MINIO_SECRET=... \
 #   ./provision-service-accounts.sh
 #
 # Los *_MINIO_SECRET son las contrasenas que despues van en cada servicio como
@@ -49,11 +54,13 @@ provision() {
 
 provision "signature" "signature-worker" "${SIGNATURE_MINIO_SECRET:?Set SIGNATURE_MINIO_SECRET}" \
   "$(dirname "$0")/policies/signature-source.json"
-provision "notification" "notification-worker" "${NOTIFICATION_MINIO_SECRET:?Set NOTIFICATION_MINIO_SECRET}" \
-  "$(dirname "$0")/policies/notification-source.json"
 provision "transcript" "communication-transcript-worker" "${TRANSCRIPT_WORKER_MINIO_SECRET:?Set TRANSCRIPT_WORKER_MINIO_SECRET}" \
   "$(dirname "$0")/policies/transcript-source.json"
 provision "customer" "customer-worker" "${CUSTOMER_MINIO_SECRET:?Set CUSTOMER_MINIO_SECRET}" \
   "$(dirname "$0")/policies/customer-source.json"
+provision "correspondence" "correspondence-worker" "${CORRESPONDENCE_MINIO_SECRET:?Set CORRESPONDENCE_MINIO_SECRET}" \
+  "$(dirname "$0")/policies/correspondence-source.json"
+provision "scribe" "scribe-worker" "${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET}" \
+  "$(dirname "$0")/policies/scribe-source.json"
 
 echo "Done. Set Minio__AccessKey/Minio__SecretKey in each service to the access-key/secret used above."

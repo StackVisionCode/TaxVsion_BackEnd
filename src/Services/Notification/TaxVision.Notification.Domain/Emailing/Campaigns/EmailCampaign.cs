@@ -27,6 +27,7 @@ public enum CampaignStatus
 /// el layout desde CloudStorage (en el request, con token de usuario) para que el fan-out en background
 /// renderice por destinatario sin depender de CloudStorage. El procesamiento masivo es por cola/evento.
 /// </summary>
+/// <remarks>Migration target: <b>Scribe</b> (junto con <see cref="EmailCampaignRecipient"/>). See <c>Responsibility_Map.md</c>. Se elimina de Notification en Fase 7.</remarks>
 public sealed class EmailCampaign : TenantEntity
 {
     private readonly List<EmailCampaignRecipient> _recipients = [];

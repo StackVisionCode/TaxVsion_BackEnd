@@ -52,6 +52,13 @@ public enum FolderType
     /// </summary>
     Transcripts,
     Backups,
+
+    /// <summary>
+    /// HTML/text/design-JSON/preview-PNG de EmailTemplateVersion y EmailLayoutVersion (Scribe Fase 5).
+    /// Sin RequiresYear: no son documentos fiscales, son artefactos de contenido versionados por
+    /// TemplateKey/VersionNumber en la BD de Scribe, no por año.
+    /// </summary>
+    Templates,
     Other,
 }
 
