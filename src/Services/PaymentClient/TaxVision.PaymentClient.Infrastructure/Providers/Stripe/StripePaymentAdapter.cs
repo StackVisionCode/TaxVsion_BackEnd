@@ -37,7 +37,7 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger) :
                     PaymentMethodTypes = ["card"],
                     Confirm = true,
                     ReceiptEmail = request.ReceiptEmail,
-                    StatementDescriptor = request.Descriptor.Value,
+                    StatementDescriptorSuffix = request.Descriptor.Value,
                     Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
                     ApplicationFeeAmount = request.ApplicationFee?.AmountCents,
                 },
