@@ -70,6 +70,10 @@ COPY --from=build /app/dist ./dist
 
 RUN groupadd -r taxvision && useradd -r -g taxvision taxvision \
     && mkdir -p /tmp/transcript-worker && chown -R taxvision:taxvision /app /tmp/transcript-worker
+# useradd -r no crea /home/taxvision — mismo bug que en Communication/Dockerfile,
+# mismo fix preventivo (nada corre npm en runtime hoy, pero cualquier `docker
+# compose run` con un comando distinto al CMD default lo pisaria igual).
+ENV HOME=/app
 USER taxvision
 
 # Fase Transcript 8 — servidor HTTP minimo solo para /metrics (Prometheus scrape).
