@@ -333,12 +333,6 @@ services:
       PlatformBootstrap__Email: ${PLATFORM_BOOTSTRAP_EMAIL:-}
       PlatformBootstrap__InvitationToken: ${PLATFORM_BOOTSTRAP_INVITATION_TOKEN:-}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
-      # Bootstrap del primer PlatformAdmin (README §"Bootstrap del PlatformAdmin") — crea una
-      # invitacion pendiente al arrancar SI todavia no existe ningun PlatformAdmin. Deshabilitar
-      # (o dejar sin PLATFORM_BOOTSTRAP_INVITATION_TOKEN) despues de aceptarla en produccion.
-      PlatformBootstrap__Enabled: ${PLATFORM_BOOTSTRAP_ENABLED:-false}
-      PlatformBootstrap__Email: ${PLATFORM_BOOTSTRAP_EMAIL:-}
-      PlatformBootstrap__InvitationToken: ${PLATFORM_BOOTSTRAP_INVITATION_TOKEN:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-private.pem:/run/secrets/jwt-private.pem:ro
