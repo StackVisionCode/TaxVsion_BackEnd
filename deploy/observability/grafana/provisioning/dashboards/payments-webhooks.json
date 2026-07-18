@@ -1,0 +1,46 @@
+{
+  "title": "Payments — Webhooks health",
+  "uid": "taxvision-payments-webhooks",
+  "tags": ["taxvision", "payments"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Webhooks recibidos por servicio",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(paymentapp_webhook_received_total[5m])) by (provider)", "legendFormat": "PaymentApp — {{provider}}", "refId": "A" },
+        { "expr": "sum(rate(paymentclient_webhook_received_total[5m])) by (provider)", "legendFormat": "PaymentClient — {{provider}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Duplicados (entregas repetidas, no-op idempotente)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(paymentapp_webhook_duplicate_total[5m])) by (provider)", "legendFormat": "PaymentApp — {{provider}}", "refId": "A" },
+        { "expr": "sum(rate(paymentclient_webhook_duplicate_total[5m])) by (provider)", "legendFormat": "PaymentClient — {{provider}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Firmas inválidas (alerta si > 0 sostenido)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "thresholdsStyle": { "mode": "line" } } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(paymentapp_webhook_signature_failed_total[5m])) by (provider)", "legendFormat": "PaymentApp — {{provider}}", "refId": "A" },
+        { "expr": "sum(rate(paymentclient_webhook_signature_failed_total[5m])) by (provider)", "legendFormat": "PaymentClient — {{provider}}", "refId": "B" }
+      ]
+    }
+  ]
+}

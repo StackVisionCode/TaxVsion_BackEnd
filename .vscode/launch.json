@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Tenant API: Debug",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build Tenant API",
+            "program": "${workspaceFolder}/src/Services/Tenant/TaxVision.Tenant.Api/bin/Debug/net10.0/TaxVision.Tenant.Api.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/Services/Tenant/TaxVision.Tenant.Api",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "serverReadyAction": {
+                "action": "openExternally",
+                "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+                "uriFormat": "%s/swagger"
+            },
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development",
+                "ASPNETCORE_URLS": "http://localhost:5217"
+            }
+        },
+        {
+            "name": "Tenant API: Attach",
+            "type": "coreclr",
+            "request": "attach",
+            "processId": "${command:pickProcess}"
+        }
+    ]
+}

@@ -485,3 +485,14 @@ $RECYCLE.BIN/
 .env
 *.user
 appsettings.*.local.json
+
+# Reportes de auditoria generados (no son parte del codigo)
+TaxVision_Auditoria_*.pdf
+
+# Carpeta de salida de reportes/scratch (no es codigo)
+output/
+
+# Nunca versionar el zip del entorno (contiene secretos)
+.env.zip
+jwt-private.pem
+src/Services/CommunicationTranscriptWorker/vendor/whisper/models/*.bin

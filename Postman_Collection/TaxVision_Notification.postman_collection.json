@@ -1,0 +1,957 @@
+{
+	"info": {
+		"_postman_id": "196c8b2a-119d-4df5-9383-b3fa8bfff680",
+		"name": "TaxVision - Notification",
+		"description": "Coleccion del microservicio Notification (notificaciones + email avanzado).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "GetNotifications",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/notifications?page=1&size=20",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"notifications"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "1"
+						},
+						{
+							"key": "size",
+							"value": "20"
+						}
+					]
+				},
+				"description": "Historial de notificaciones del tenant (email/SMS/in-app)."
+			},
+			"response": []
+		},
+		{
+			"name": "Push Devices",
+			"item": [
+				{
+					"name": "RegisterPushDevice",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notifications/push/devices",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"push",
+								"devices"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"platform\": \"Fcm\",\n  \"token\": \"<device push token (FCM/APNs)>\",\n  \"deviceId\": \"device-12345\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "Requiere estar autenticado; tenantId y userId salen del JWT, nunca del body. platform (obligatorio): 'Fcm' | 'Apns'. token: push token del dispositivo (FCM/APNs). deviceId: opcional, identificador propio del cliente para distinguir varios dispositivos por usuario."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const r = pm.response.json();",
+									"if (r.id) pm.environment.set('pushTokenId', r.id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "RevokePushDevice",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notifications/push/devices/{{pushTokenId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"push",
+								"devices",
+								"{{pushTokenId}}"
+							]
+						},
+						"description": "Requiere estar autenticado; el userId sale del JWT, no del body. tokenId: GUID del PushDeviceToken a revocar (debe pertenecer al usuario autenticado). Responde 204 sin body."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Email",
+			"item": [
+				{
+					"name": "Configurations",
+					"item": [
+						{
+							"name": "CreateEmailConfiguration",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/configurations",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"configurations"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"scope\": \"Tenant\",\n  \"providerType\": \"Smtp\",\n  \"displayName\": \"SMTP del tenant\",\n  \"fromEmail\": \"no-reply@empresa-demo.com\",\n  \"fromName\": \"Empresa Demo\",\n  \"host\": \"smtp.mailtrap.io\",\n  \"port\": 587,\n  \"username\": \"user\",\n  \"password\": \"secret\",\n  \"useSsl\": true,\n  \"isDefault\": true\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r = pm.response.json();",
+											"if (r.id) pm.environment.set('emailConfigId', r.id);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "ListEmailConfigurations",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/configurations",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"configurations"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetEmailConfiguration",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/configurations/{{emailConfigId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"configurations",
+										"{{emailConfigId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateEmailConfiguration",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/configurations/{{emailConfigId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"configurations",
+										"{{emailConfigId}}"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"displayName\": \"SMTP actualizado\",\n  \"fromEmail\": \"no-reply@empresa-demo.com\",\n  \"host\": \"smtp.mailtrap.io\",\n  \"port\": 587,\n  \"username\": \"user\",\n  \"useSsl\": true\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "SetDefaultEmailConfiguration",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/configurations/{{emailConfigId}}/set-default",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"configurations",
+										"{{emailConfigId}}",
+										"set-default"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "TestEmailConfiguration",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/configurations/{{emailConfigId}}/test",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"configurations",
+										"{{emailConfigId}}",
+										"test"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"toEmail\": \"prueba@empresa-demo.com\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Templates",
+					"item": [
+						{
+							"name": "CreateEmailTemplate",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/templates",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"templates"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"scope\": \"Tenant\",\n  \"templateKey\": \"welcome\",\n  \"subject\": \"Hola {{ customer_name }}\",\n  \"description\": \"Bienvenida\",\n  \"category\": \"Onboarding\",\n  \"variables\": [\"customer_name\"]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r = pm.response.json();",
+											"if (r.id) pm.environment.set('templateId', r.id);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "ListEmailTemplates",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/templates",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"templates"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetEmailTemplate",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/templates/{{templateId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"templates",
+										"{{templateId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AddTemplateVersion",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/templates/{{templateId}}/versions",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"templates",
+										"{{templateId}}",
+										"versions"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"subjectTemplate\": \"Hola {{ customer_name }}\",\n  \"html\": \"<h1>Bienvenido {{ customer_name }}</h1>\",\n  \"designJson\": \"{}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r = pm.response.json();",
+											"if (r.id) pm.environment.set('templateVersionId', r.id);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "PublishTemplate",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/templates/{{templateId}}/publish",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"templates",
+										"{{templateId}}",
+										"publish"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"versionId\": \"{{templateVersionId}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ArchiveTemplate",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/templates/{{templateId}}/archive",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"templates",
+										"{{templateId}}",
+										"archive"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Layouts",
+					"item": [
+						{
+							"name": "CreateEmailLayout",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/layouts",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"layouts"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"scope\": \"Tenant\",\n  \"layoutName\": \"Base\",\n  \"html\": \"<html><body style=\\\"font-family:sans-serif\\\">{{ body }}</body></html>\",\n  \"isDefault\": true\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r = pm.response.json();",
+											"if (r.id) pm.environment.set('layoutId', r.id);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "ListEmailLayouts",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/layouts",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"layouts"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "SetDefaultLayout",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/layouts/{{layoutId}}/set-default",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"layouts",
+										"{{layoutId}}",
+										"set-default"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Sending",
+					"item": [
+						{
+							"name": "SendEmail",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/send",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"send"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"subject\": \"Aviso\",\n  \"htmlBody\": \"<p>Hola</p>\",\n  \"textBody\": \"Hola\",\n  \"priority\": \"Normal\",\n  \"recipients\": [ { \"address\": \"cliente@example.com\", \"kind\": \"To\" } ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r = pm.response.json();",
+											"if (r.id) pm.environment.set('emailMessageId', r.id);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "ListMessages",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/messages?page=1&size=20",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"messages"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetMessage",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/messages/{{emailMessageId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"messages",
+										"{{emailMessageId}}"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Campaigns",
+					"item": [
+						{
+							"name": "CreateCampaign",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/campaigns",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"campaigns"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Newsletter Julio\",\n  \"type\": \"Newsletter\",\n  \"templateId\": \"{{templateId}}\",\n  \"recipients\": [\n    { \"address\": \"a@example.com\", \"name\": \"Ana\", \"variables\": { \"customer_name\": \"Ana\" } },\n    { \"address\": \"b@example.com\", \"name\": \"Beto\", \"variables\": { \"customer_name\": \"Beto\" } }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const r = pm.response.json();",
+											"if (r.id) pm.environment.set('campaignId', r.id);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "ListCampaigns",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/campaigns",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"campaigns"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GetCampaign",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/campaigns/{{campaignId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"campaigns",
+										"{{campaignId}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ScheduleCampaign",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/campaigns/{{campaignId}}/schedule",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"campaigns",
+										"{{campaignId}}",
+										"schedule"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"scheduledAtUtc\": null\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "SendCampaignTest",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/campaigns/{{campaignId}}/send-test",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"campaigns",
+										"{{campaignId}}",
+										"send-test"
+									]
+								},
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"toEmail\": \"prueba@example.com\",\n  \"variables\": { \"customer_name\": \"Test\" }\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "CancelCampaign",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{accessToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/notifications/email/campaigns/{{campaignId}}/cancel",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"notifications",
+										"email",
+										"campaigns",
+										"{{campaignId}}",
+										"cancel"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		}
+	]
+}

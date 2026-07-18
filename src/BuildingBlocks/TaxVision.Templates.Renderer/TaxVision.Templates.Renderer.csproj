@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>TaxVision.Templates.Renderer</PackageId>
+    <Description>Renderer Liquid (Fluid) sin estado, sin BD y sin dependencias de Scribe — lee el texto fuente cacheado en el Redis compartido por Scribe y renderiza. Fallback in-process para cuando Scribe no está disponible (Fase Scribe 7).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fluid.Core" Version="2.31.0" />
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+  </ItemGroup>
+</Project>

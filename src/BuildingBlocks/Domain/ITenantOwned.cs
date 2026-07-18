@@ -1,7 +1,7 @@
-﻿namespace BuildingBlocks;
+﻿namespace BuildingBlocks.Domain;
 
 public interface ITenantOwned
 {
     Guid TenantId { get; }
-    void SetTenantId(Guid tenantId);
+    void SetTenant(Guid tenantId);
 }

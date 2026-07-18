@@ -1,0 +1,73 @@
+using TaxVision.PaymentApp.Domain.ValueObjects;
+using TaxVision.PaymentApp.Domain.Webhooks;
+
+namespace TaxVision.PaymentApp.Tests.Domain;
+
+public sealed class WebhookEventTests
+{
+    [Fact]
+    public void Receive_with_an_empty_provider_event_id_fails()
+    {
+        var result = WebhookEvent.Receive(
+            PaymentProviderCode.Stripe,
+            "  ",
+            "payment_intent.succeeded",
+            "{}",
+            "sig",
+            DateTime.UtcNow
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("WebhookEvent.InvalidProviderEventId", result.Error.Code);
+    }
+
+    [Fact]
+    public void Receive_starts_in_Received_status()
+    {
+        var webhookEvent = CreateReceivedEvent();
+
+        Assert.Equal(WebhookEventStatus.Received, webhookEvent.Status);
+    }
+
+    [Fact]
+    public void MarkProcessing_then_MarkApplied_reaches_Applied_with_the_related_payment()
+    {
+        var webhookEvent = CreateReceivedEvent();
+        var relatedPaymentId = Guid.NewGuid();
+
+        var processing = webhookEvent.MarkProcessing(DateTime.UtcNow);
+        var applied = webhookEvent.MarkApplied(relatedPaymentId, DateTime.UtcNow);
+
+        Assert.True(processing.IsSuccess);
+        Assert.True(applied.IsSuccess);
+        Assert.Equal(WebhookEventStatus.Applied, webhookEvent.Status);
+        Assert.Equal(relatedPaymentId, webhookEvent.RelatedSaaSPaymentId);
+    }
+
+    [Fact]
+    public void MarkApplied_can_never_be_undone_by_a_later_reject_or_fail()
+    {
+        var webhookEvent = CreateReceivedEvent();
+        webhookEvent.MarkProcessing(DateTime.UtcNow);
+        webhookEvent.MarkApplied(Guid.NewGuid(), DateTime.UtcNow);
+
+        var rejected = webhookEvent.MarkRejected("late", DateTime.UtcNow);
+        var failed = webhookEvent.MarkFailed("late", DateTime.UtcNow);
+
+        Assert.True(rejected.IsFailure);
+        Assert.True(failed.IsFailure);
+        Assert.Equal(WebhookEventStatus.Applied, webhookEvent.Status);
+    }
+
+    private static WebhookEvent CreateReceivedEvent() =>
+        WebhookEvent
+            .Receive(
+                PaymentProviderCode.Stripe,
+                "evt_123",
+                "payment_intent.succeeded",
+                "{}",
+                "t=1,v1=abc",
+                DateTime.UtcNow
+            )
+            .Value;
+}

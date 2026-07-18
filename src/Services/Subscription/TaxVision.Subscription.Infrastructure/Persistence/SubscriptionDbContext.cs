@@ -1,0 +1,50 @@
+using System.Reflection;
+using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Audit;
+using TaxVision.Subscription.Domain.Entitlements;
+using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.Seats;
+using TaxVision.Subscription.Domain.Settings;
+using TaxVision.Subscription.Domain.Subscriptions;
+
+namespace TaxVision.Subscription.Infrastructure.Persistence;
+
+public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext> options)
+    : DbContext(options),
+        IUnitOfWork
+{
+    public DbSet<SubscriptionPlan> Plans => Set<SubscriptionPlan>();
+    public DbSet<TenantSubscription> Subscriptions => Set<TenantSubscription>();
+    public DbSet<SubscriptionSeat> Seats => Set<SubscriptionSeat>();
+    public DbSet<SubscriptionTenantSettings> TenantSettings => Set<SubscriptionTenantSettings>();
+    public DbSet<AddOnDefinition> AddOnDefinitions => Set<AddOnDefinition>();
+    public DbSet<TenantAddOn> TenantAddOns => Set<TenantAddOn>();
+    public DbSet<TenantEntitlementSnapshot> EntitlementSnapshots => Set<TenantEntitlementSnapshot>();
+    public DbSet<SubscriptionAuditLog> AuditLogs => Set<SubscriptionAuditLog>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        base.OnModelCreating(modelBuilder);
+    }
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
+        {
+            throw new ConflictException(
+                "Persistence.UniqueConstraint",
+                "A record with the same unique values already exists.",
+                ex
+            );
+        }
+    }
+}

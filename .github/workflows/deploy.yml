@@ -1,0 +1,219 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    env:
+      COMPOSE_FILE: deploy/docker/docker-compose.yml
+      # Mismo nombre que docker-compose.yml usa vía ${TAXVISION_SECRETS_DIR:-...}
+      # (antes se llamaba SECRETS_DIR acá y coincidía con el default del compose
+      # solo por casualidad de valor — ahora el nombre es el mismo en los dos lados).
+      TAXVISION_SECRETS_DIR: /opt/taxvision/secrets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------------
+      # .env de produccion — se escribe en cada run a partir de los Secrets del
+      # repo, nunca se versiona. Los nombres de variable son EXACTAMENTE los
+      # que docker-compose.yml consume via ${VAR}.
+      # ---------------------------------------------------------------------
+      - name: Write production .env
+        run: |
+          cat > .env <<EOF
+          # ---------- SQL Server (contenedor interno, ver seccion 3 del plan) ----------
+          AUTH_DB_CONNECTION=${{ secrets.AUTH_DB_CONNECTION }}
+          TENANT_DB_CONNECTION=${{ secrets.TENANT_DB_CONNECTION }}
+          CUSTOMER_DB_CONNECTION=${{ secrets.CUSTOMER_DB_CONNECTION }}
+          SUBSCRIPTION_DB_CONNECTION=${{ secrets.SUBSCRIPTION_DB_CONNECTION }}
+          NOTIFICATION_DB_CONNECTION=${{ secrets.NOTIFICATION_DB_CONNECTION }}
+          CLOUDSTORAGE_DB_CONNECTION=${{ secrets.CLOUDSTORAGE_DB_CONNECTION }}
+          SIGNATURE_DB_CONNECTION=${{ secrets.SIGNATURE_DB_CONNECTION }}
+          COMMUNICATION_DB_CONNECTION=${{ secrets.COMMUNICATION_DB_CONNECTION }}
+          POSTMASTER_DB_CONNECTION=${{ secrets.POSTMASTER_DB_CONNECTION }}
+          SCRIBE_DB_CONNECTION=${{ secrets.SCRIBE_DB_CONNECTION }}
+          CONNECTORS_DB_CONNECTION=${{ secrets.CONNECTORS_DB_CONNECTION }}
+          CORRESPONDENCE_DB_CONNECTION=${{ secrets.CORRESPONDENCE_DB_CONNECTION }}
+          PAYMENTAPP_DB_CONNECTION=${{ secrets.PAYMENTAPP_DB_CONNECTION }}
+          PAYMENTCLIENT_DB_CONNECTION=${{ secrets.PAYMENTCLIENT_DB_CONNECTION }}
+          MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
+
+          # ---------- RabbitMQ / MinIO / Grafana ----------
+          RABBITMQ_CONNECTION=${{ secrets.RABBITMQ_CONNECTION }}
+          RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD=${{ secrets.RABBITMQ_PASSWORD }}
+          MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
+          MINIO_PUBLIC_ENDPOINT=${{ secrets.MINIO_PUBLIC_ENDPOINT }}
+
+          # ---------- Cuentas de servicio scoped de MinIO (ver servicio "minio-provision") ----------
+          SIGNATURE_MINIO_SECRET=${{ secrets.SIGNATURE_MINIO_SECRET }}
+          TRANSCRIPT_WORKER_MINIO_SECRET=${{ secrets.TRANSCRIPT_WORKER_MINIO_SECRET }}
+          CUSTOMER_MINIO_SECRET=${{ secrets.CUSTOMER_MINIO_SECRET }}
+          CORRESPONDENCE_MINIO_SECRET=${{ secrets.CORRESPONDENCE_MINIO_SECRET }}
+          SCRIBE_MINIO_SECRET=${{ secrets.SCRIBE_MINIO_SECRET }}
+          GRAFANA_ADMIN_USER=${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+
+          # ---------- Cifrado de secretos ----------
+          ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
+          MFA_ENCRYPTION_KEY=${{ secrets.MFA_ENCRYPTION_KEY }}
+
+          # ---------- Email / SMTP / OAuth ----------
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_PORT=${{ secrets.SMTP_PORT }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM=${{ secrets.SMTP_FROM }}
+          GMAIL_CLIENT_ID=${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET=${{ secrets.GMAIL_CLIENT_SECRET }}
+          MSGRAPH_CLIENT_ID=${{ secrets.MSGRAPH_CLIENT_ID }}
+          MSGRAPH_CLIENT_SECRET=${{ secrets.MSGRAPH_CLIENT_SECRET }}
+          MSGRAPH_TENANT_ID=${{ secrets.MSGRAPH_TENANT_ID }}
+          PORTAL_BASE_URL=${{ secrets.PORTAL_BASE_URL }}
+
+          # ---------- Connectors (OAuth connect-account flow + Watch/webhooks) ----------
+          CONNECTORS_GOOGLE_REDIRECT_URI=${{ secrets.CONNECTORS_GOOGLE_REDIRECT_URI }}
+          CONNECTORS_MICROSOFT_REDIRECT_URI=${{ secrets.CONNECTORS_MICROSOFT_REDIRECT_URI }}
+          CONNECTORS_GMAIL_WATCH_TOPIC=${{ secrets.CONNECTORS_GMAIL_WATCH_TOPIC }}
+          CONNECTORS_GRAPH_NOTIFICATION_URL=${{ secrets.CONNECTORS_GRAPH_NOTIFICATION_URL }}
+          CONNECTORS_GRAPH_WATCH_CLIENT_STATE=${{ secrets.CONNECTORS_GRAPH_WATCH_CLIENT_STATE }}
+          CONNECTORS_GMAIL_PUSH_AUDIENCE=${{ secrets.CONNECTORS_GMAIL_PUSH_AUDIENCE }}
+
+          # ---------- Clientes M2M (ServiceAuth) ----------
+          NOTIFICATION_SERVICE_CLIENT_ID=${{ secrets.NOTIFICATION_SERVICE_CLIENT_ID }}
+          NOTIFICATION_SERVICE_CLIENT_SECRET=${{ secrets.NOTIFICATION_SERVICE_CLIENT_SECRET }}
+          SIGNATURE_SERVICE_CLIENT_ID=${{ secrets.SIGNATURE_SERVICE_CLIENT_ID }}
+          SIGNATURE_SERVICE_CLIENT_SECRET=${{ secrets.SIGNATURE_SERVICE_CLIENT_SECRET }}
+          CUSTOMER_SERVICE_CLIENT_ID=${{ secrets.CUSTOMER_SERVICE_CLIENT_ID }}
+          CUSTOMER_SERVICE_CLIENT_SECRET=${{ secrets.CUSTOMER_SERVICE_CLIENT_SECRET }}
+          COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID=${{ secrets.COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID }}
+          COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET=${{ secrets.COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET }}
+          CORRESPONDENCE_SERVICE_CLIENT_ID=${{ secrets.CORRESPONDENCE_SERVICE_CLIENT_ID }}
+          CORRESPONDENCE_SERVICE_CLIENT_SECRET=${{ secrets.CORRESPONDENCE_SERVICE_CLIENT_SECRET }}
+          SCRIBE_SERVICE_CLIENT_ID=${{ secrets.SCRIBE_SERVICE_CLIENT_ID }}
+          SCRIBE_SERVICE_CLIENT_SECRET=${{ secrets.SCRIBE_SERVICE_CLIENT_SECRET }}
+          POSTMASTER_SERVICE_CLIENT_ID=${{ secrets.POSTMASTER_SERVICE_CLIENT_ID }}
+          POSTMASTER_SERVICE_CLIENT_SECRET=${{ secrets.POSTMASTER_SERVICE_CLIENT_SECRET }}
+
+          # ---------- Signature (PAdES-B sealing) ----------
+          SIGNATURE_PFX_PASSWORD=${{ secrets.SIGNATURE_PFX_PASSWORD }}
+
+          # ---------- PaymentApp (Fases A-K) ----------
+          STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          INTELLIPAY_MERCHANT_KEY=${{ secrets.INTELLIPAY_MERCHANT_KEY }}
+          INTELLIPAY_API_KEY=${{ secrets.INTELLIPAY_API_KEY }}
+
+          # ---------- PaymentClient (Fases E-M) ----------
+          STRIPE_CONNECT_PLATFORM_SECRET_KEY=${{ secrets.STRIPE_CONNECT_PLATFORM_SECRET_KEY }}
+          STRIPE_CONNECT_WEBHOOK_SECRET=${{ secrets.STRIPE_CONNECT_WEBHOOK_SECRET }}
+
+          # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
+          # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto
+          # compartido viajan por aca.
+          COMMUNICATION_TURN_URL=${{ secrets.COMMUNICATION_TURN_URL }}
+          COMMUNICATION_TURN_STATIC_AUTH_SECRET=${{ secrets.COMMUNICATION_TURN_STATIC_AUTH_SECRET }}
+          COMMUNICATION_TURN_TTL_SECONDS=${{ secrets.COMMUNICATION_TURN_TTL_SECONDS }}
+          COMMUNICATION_CORS_ORIGINS=${{ secrets.COMMUNICATION_CORS_ORIGINS }}
+          COMMUNICATION_PLATFORM_TENANT_ID=${{ secrets.COMMUNICATION_PLATFORM_TENANT_ID }}
+          COMMUNICATION_MEDIASOUP_ANNOUNCED_IP=${{ secrets.COMMUNICATION_MEDIASOUP_ANNOUNCED_IP }}
+          # Faltaban desde la propia Fase Backend 5/8 — sin esto communication-api no
+          # bootea en produccion (COMMUNICATION_JOIN_TICKET_SECRET y
+          # COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET son z.string().min() requeridos).
+          # El client "communication-worker" ya esta registrado en Auth (ver
+          # ServiceAuth__Clients__7 en docker-compose.yml).
+          COMMUNICATION_JOIN_TICKET_SECRET=${{ secrets.COMMUNICATION_JOIN_TICKET_SECRET }}
+          COMMUNICATION_SERVICE_AUTH_CLIENT_ID=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_ID }}
+          COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET=${{ secrets.COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET }}
+          COMMUNICATION_FRONTEND_BASE_URL=${{ secrets.COMMUNICATION_FRONTEND_BASE_URL }}
+
+          # ---------- Bootstrap / dominio ----------
+          # PLATFORM_BOOTSTRAP_ENABLED se deja apagado salvo que el secret exista y sea "true"
+          # explicitamente — ver PlatformBootstrap__Enabled en docker-compose.yml.
+          PLATFORM_BOOTSTRAP_ENABLED=${{ secrets.PLATFORM_BOOTSTRAP_ENABLED }}
+          PLATFORM_BOOTSTRAP_EMAIL=${{ secrets.PLATFORM_BOOTSTRAP_EMAIL }}
+          PLATFORM_BOOTSTRAP_INVITATION_TOKEN=${{ secrets.PLATFORM_BOOTSTRAP_INVITATION_TOKEN }}
+          TAXVISION_DOMAIN=${{ secrets.TAXVISION_DOMAIN }}
+          # Fase X1 (completitud plan v2) — dominio raiz para el cert WILDCARD de Caddy
+          # (*.TAXVISION_BASE_DOMAIN) + token DNS-01 de Cloudflare, ver README sec 20.
+          # Token distinto del que usa Auth para custom hostnames — solo Zone:DNS:Edit.
+          TAXVISION_BASE_DOMAIN=${{ secrets.TAXVISION_BASE_DOMAIN }}
+          CLOUDFLARE_DNS_API_TOKEN=${{ secrets.CLOUDFLARE_DNS_API_TOKEN }}
+
+          # ---------- Rutas de secretos montados (ver step "Write JWT keys...") ----------
+          TAXVISION_SECRETS_DIR=${{ env.TAXVISION_SECRETS_DIR }}
+          EOF
+          chmod 600 .env
+
+      # ---------------------------------------------------------------------
+      # Certificados/claves — NUNCA viven en el checkout de git. Se decodifican
+      # a una carpeta fija del server en cada deploy. El compose los monta
+      # desde ahi (ver TAXVISION_SECRETS_DIR en docker-compose.yml).
+      # ---------------------------------------------------------------------
+      - name: Write JWT keys and signing certificate
+        run: |
+          mkdir -p "$TAXVISION_SECRETS_DIR"
+          chmod 700 "$TAXVISION_SECRETS_DIR"
+          echo "${{ secrets.JWT_PRIVATE_KEY_PEM_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/jwt-private.pem"
+          echo "${{ secrets.JWT_PUBLIC_KEY_PEM_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/jwt-public.pem"
+          echo "${{ secrets.SIGNATURE_SEALING_PFX_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/signature-sealing.pfx"
+          chmod 600 "$TAXVISION_SECRETS_DIR"/jwt-private.pem "$TAXVISION_SECRETS_DIR"/jwt-public.pem "$TAXVISION_SECRETS_DIR"/signature-sealing.pfx
+
+      - name: Build images
+        run: docker compose -f "$COMPOSE_FILE" --env-file .env build
+
+      # ---------------------------------------------------------------------
+      # Crea/actualiza las cuentas de servicio scoped de MinIO (Signature/
+      # Notification/CommunicationTranscriptWorker) ANTES de levantar esos
+      # servicios — si no existen todavia, sus uploads a MinIO fallan con
+      # error de autenticacion. Idempotente, seguro de correr en cada deploy.
+      # `docker compose run` trae arriba `minio` solo (su dependencia) sin
+      # tocar el resto de los servicios.
+      # ---------------------------------------------------------------------
+      - name: Provision scoped MinIO service accounts
+        run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
+
+      - name: Apply .NET EF Core migrations (7 servicios)
+        run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
+
+      - name: Apply Communication Prisma migrations
+        run: docker compose -f "$COMPOSE_FILE" --env-file .env run --rm communication-api npx prisma migrate deploy
+
+      # ---------------------------------------------------------------------
+      # `up -d` solo recrea contenedores cuya imagen/config cambio. Nunca
+      # borra volumenes nombrados — sqlserver-data/minio-data sobreviven
+      # intactos a este paso siempre (ver seccion 7 del plan de deploy).
+      # ---------------------------------------------------------------------
+      - name: Deploy (up -d, sin tocar volumenes)
+        run: docker compose -f "$COMPOSE_FILE" --env-file .env up -d --remove-orphans
+
+      - name: Clean up old images/build cache (nunca volumenes)
+        run: |
+          docker image prune -f
+          docker builder prune -f --filter "until=24h"
+
+      - name: Healthcheck
+        run: |
+          domain="${{ secrets.TAXVISION_DOMAIN }}"
+          domain="${domain:-api.taxprocore.com}"
+          for i in $(seq 1 20); do
+            if curl -sf "https://${domain}/health/ready" >/dev/null; then
+              echo "Gateway healthy after ${i} intentos."
+              exit 0
+            fi
+            echo "Intento ${i}/20: aun no responde, esperando 5s..."
+            sleep 5
+          done
+          echo "Gateway no respondio saludable a tiempo — revisar logs con: docker compose -f $COMPOSE_FILE logs --tail=200"
+          exit 1

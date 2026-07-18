@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -7,9 +6,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.11" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
-    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <Compile Remove="BuildingBlocks.Infrastructure\**\*.cs" />
+    <Compile Remove="BuildingBlocks.Web\**\*.cs" />
+    <Compile Remove="TaxVision.Templates.Renderer\**\*.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      Solo para [MessageIdentity] en CommunicationIntegrationEvents (Fase Backend 5 de
+      Communication) — mapea el wire-type-name que publica el microservicio Node.js
+      (que no es un CLR type) a un record C#. No trae ningun comportamiento en runtime
+      para los servicios que NO llaman UseWolverine() en su Program.cs (Auth, Customer,
+      etc.) — es puro atributo/metadata a nivel de compilacion.
+    -->
+    <PackageReference Include="WolverineFx" Version="6.14.0" />
+  </ItemGroup>
 </Project>

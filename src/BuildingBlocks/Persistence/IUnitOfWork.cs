@@ -1,4 +1,4 @@
-﻿namespace BuildingBlocks;
+﻿namespace BuildingBlocks.Persistence;
 
 public interface IUnitOfWork
 {

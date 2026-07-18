@@ -1,0 +1,24 @@
+using BuildingBlocks.Domain;
+
+namespace TaxVision.Notification.Domain.Emailing.Sending;
+
+/// <summary>Registro de un intento de entrega de un correo saliente (auditoría/tracking).</summary>
+/// <remarks>Migration target: <b>Postmaster</b> (rename a <c>SentMessageEvent</c>, append-only por webhook). See <c>Responsibility_Map.md</c>.</remarks>
+public sealed class EmailDeliveryLog : BaseEntity
+{
+    private EmailDeliveryLog() { }
+
+    public Guid MessageId { get; private set; }
+    public EmailStatus Status { get; private set; }
+    public string? Detail { get; private set; }
+    public DateTime AttemptedAtUtc { get; private set; }
+
+    internal static EmailDeliveryLog Create(EmailStatus status, string? detail) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            Status = status,
+            Detail = detail is { Length: > 1024 } ? detail[..1024] : detail,
+            AttemptedAtUtc = DateTime.UtcNow,
+        };
+}

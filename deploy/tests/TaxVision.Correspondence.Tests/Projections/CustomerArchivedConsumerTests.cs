@@ -1,0 +1,44 @@
+using BuildingBlocks.Messaging.CustomerIntegrationEvents;
+using Microsoft.Extensions.Logging.Abstractions;
+using TaxVision.Correspondence.Application.Projections.CustomerEvents;
+using TaxVision.Correspondence.Domain.Projections;
+using TaxVision.Correspondence.Domain.ValueObjects;
+
+namespace TaxVision.Correspondence.Tests.Projections;
+
+public sealed class CustomerArchivedConsumerTests
+{
+    [Fact]
+    public async Task Handle_soft_deletes_the_existing_row()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var repository = new FakeCustomerEmailAddressRepository();
+        var existing = CustomerEmailAddress.Create(
+            tenantId,
+            customerId,
+            EmailAddress.Create("jane.doe@example.com").Value
+        );
+        repository.Seed(existing);
+        var unitOfWork = new FakeUnitOfWork();
+        var evt = new CustomerArchivedIntegrationEvent
+        {
+            TenantId = tenantId,
+            CustomerId = customerId,
+            ArchivedByUserId = Guid.NewGuid(),
+        };
+
+        await CustomerArchivedConsumer.Handle(
+            evt,
+            repository,
+            new FakeTenantCustomerBackfillService(),
+            unitOfWork,
+            new FakeCorrelationContext(),
+            NullLogger<CustomerEmailAddress>.Instance,
+            CancellationToken.None
+        );
+
+        var stored = await repository.GetByCustomerIdAsync(tenantId, customerId);
+        Assert.False(stored!.IsActive);
+    }
+}

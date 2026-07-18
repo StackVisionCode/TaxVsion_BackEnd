@@ -1,0 +1,1230 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.3.2-management
+    container_name: taxvision-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+    # Solo loopback — igual que sqlserver: nada de esto se expone a la interfaz
+    # publica, se accede via VPN + SSH al server (127.0.0.1 desde ahi mismo).
+    # 5672 (AMQP) y 15672 (management UI) no los necesita nadie fuera del
+    # server: los servicios de la app usan rabbitmq:5672 por DNS interno.
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.2.12-alpine
+    container_name: taxvision-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    # Solo loopback — para redis-cli via VPN+SSH, ningun servicio de la app lo
+    # necesita publicado (usan redis:6379 por DNS interno).
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # MinIO open source (AGPL-3.0), no el producto comercial AIStor: no requiere licencia.
+  # Solo para desarrollo/local. En produccion, apunte cloudstorage-api a un S3 gestionado
+  # (S3/R2) via las variables Minio__* (ver README seccion 27.5) para evitar la AGPL.
+  # Fuente MinIO: https://github.com/minio/minio
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: taxvision-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    # 9000 (API S3) solo loopback: los servicios .NET/Node corridos con `dotnet run`/
+    # `npm run dev` en el host (no en Docker) necesitan pegarle a localhost:9000 —
+    # sin esto ningun servicio local (ni siquiera CloudStorage) puede alcanzar MinIO.
+    # En produccion Caddy le pega a minio:9000 por la red interna de docker (no usa
+    # este mapeo), asi que loopback-only no afloja nada ahi. 9001 (consola) igual.
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  clamav:
+    image: clamav/clamav:1.4.3
+    container_name: taxvision-clamav
+    expose:
+      - "3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  # SQL Server 2022 Developer edition — gratis para no-produccion-comercial-interna
+  # (uso propio del negocio, sin redistribuir), version completa sin los limites de
+  # Express. Solo alcanzable via loopback (127.0.0.1) + VPN al server, nunca en la
+  # interfaz publica — ver seccion 3 del plan de deploy.
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: taxvision-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - taxvision-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  loki:
+    image: grafana/loki:3.7.2
+    container_name: taxvision-loki
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ../observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    expose:
+      - "3100"
+    networks:
+      - taxvision-network
+
+  tempo:
+    image: grafana/tempo:2.8.2
+    container_name: taxvision-tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ../observability/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    expose:
+      - "3200"
+      - "4317"
+      - "4318"
+    networks:
+      - taxvision-network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.153.0
+    container_name: taxvision-otel-collector
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ../observability/otel-collector.yml:/etc/otelcol/config.yml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    expose:
+      - "9464"
+    depends_on:
+      - loki
+      - tempo
+    networks:
+      - taxvision-network
+
+  # Metricas de contenedores (CPU/memoria/IO por servicio) — sin esto Prometheus
+  # solo tiene metricas de aplicacion (OTel), cero visibilidad de infraestructura.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: taxvision-cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+    networks:
+      - taxvision-network
+
+  # Metricas del host: disco/memoria/CPU del server — vigila que sqlserver-data
+  # y minio-data no se llenen en silencio.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: taxvision-node-exporter
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    expose:
+      - "9100"
+    networks:
+      - taxvision-network
+
+  prometheus:
+    image: prom/prometheus:v3.5.3
+    container_name: taxvision-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    # Solo loopback, via VPN+SSH — Grafana ya reexpone lo que hace falta ver.
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - otel-collector
+      - cadvisor
+      - node-exporter
+    networks:
+      - taxvision-network
+
+  grafana:
+    image: grafana/grafana:13.0.3
+    container_name: taxvision-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    # Solo loopback — vos entras via VPN+SSH al server y ahi si abris localhost:3000.
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    networks:
+      - taxvision-network
+
+  tenant-api:
+    image: taxvision/tenant-api:dev
+    container_name: taxvision-tenant-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Tenant/TaxVision.Tenant.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  auth-api:
+    image: taxvision/auth-api:dev
+    container_name: taxvision-auth-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Auth/Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: unico servicio con la clave privada — firma los JWT y publica el
+      # JWKS real en /auth/.well-known/jwks.json (con HS256 ese endpoint
+      # devuelve un keyset vacio, ver SigningKeyProvider.cs:65-69 — rompe la
+      # validacion de Communication, que SOLO valida via JWKS).
+      Jwt__PrivateKeyPath: /run/secrets/jwt-private.pem
+      # Auth también valida bearer tokens en sus propios endpoints protegidos
+      # (/auth/logout, /auth/me, etc.) — necesita la pública igual que el resto
+      # de los servicios, no solo la privada para firmar (README §31.4).
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Dominio base para componer subdominios de tenant (oficina1.taxprocore.com).
+      # Explicito en vez de confiar en el default de TenantDomainOptions.cs — mismo
+      # valor que usa Caddy para el certificado wildcard (TAXVISION_BASE_DOMAIN).
+      TenantDomains__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
+      # Clave de cifrado de secretos de MFA (AesGcmSecretProtector.cs). Antes caia
+      # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
+      # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.
+      Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY in .env}
+      # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
+      # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
+      # token M2M para llamar POST /scribe/render, gateado por [HasPermission(ScribePermissions.
+      # Render)] (mismo mecanismo que los endpoints humanos de Scribe, no ServiceOnly/actor_type).
+      # Sin esta linea el claim "perm" nunca incluia scribe.render y la llamada devolvia 403 real —
+      # bug real encontrado y corregido en la Fase 10.5, no solo el permiso sin sembrar en Auth.
+      ServiceAuth__Clients__0__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
+      ServiceAuth__Clients__0__Secret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__0__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__0__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__0__Permissions__2: cloudstorage.file.view
+      ServiceAuth__Clients__0__Permissions__3: scribe.render
+      # Cliente de servicio (M2M) para el worker de Transcripts de Communication (Fase 6):
+      # descarga la grabacion, sube el .txt transcrito, mismos permisos de CloudStorage.
+      ServiceAuth__Clients__1__ClientId: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
+      ServiceAuth__Clients__1__Secret: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET:-}
+      ServiceAuth__Clients__1__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__1__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__1__Permissions__2: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Signature: descarga el documento pendiente de sellado
+      # y sube el PDF sellado/PAdES a CloudStorage (README.md:3352-3362).
+      ServiceAuth__Clients__2__ClientId: ${SIGNATURE_SERVICE_CLIENT_ID:-signature-worker}
+      ServiceAuth__Clients__2__Secret: ${SIGNATURE_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__2__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__2__Permissions__1: cloudstorage.file.view
+      ServiceAuth__Clients__2__Permissions__2: cloudstorage.file.upload
+      # Cliente de servicio (M2M) para Customer: sube el Excel/CSV de import directo a MinIO
+      # con credenciales propias (ver Customer__Minio__* mas abajo) y solo usa este token para
+      # descargarlo de vuelta (parseo de filas) y borrarlo al terminar — nunca para subir.
+      ServiceAuth__Clients__3__ClientId: ${CUSTOMER_SERVICE_CLIENT_ID:-customer-worker}
+      ServiceAuth__Clients__3__Secret: ${CUSTOMER_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__3__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__3__Permissions__1: cloudstorage.file.view
+      ServiceAuth__Clients__3__Permissions__2: cloudstorage.file.delete
+      # Cliente de servicio (M2M) para Correspondence (Fase 2): backfill de CustomerEmailAddresses
+      # via Customer.Api GET /customers/internal/list (policy ServiceOnly — actor_type=Service
+      # alcanza, no requiere ningun "perm" puntual, por eso sin Permissions__N).
+      ServiceAuth__Clients__4__ClientId: ${CORRESPONDENCE_SERVICE_CLIENT_ID:-correspondence-worker}
+      ServiceAuth__Clients__4__Secret: ${CORRESPONDENCE_SERVICE_CLIENT_SECRET:-}
+      # Cliente de servicio (M2M) para Scribe: sube/descarga assets de templates/layouts a
+      # CloudStorage (publicar plantillas). Nunca borra.
+      ServiceAuth__Clients__5__ClientId: ${SCRIBE_SERVICE_CLIENT_ID:-scribe-worker}
+      ServiceAuth__Clients__5__Secret: ${SCRIBE_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__5__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__5__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__5__Permissions__2: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Postmaster: solo lectura contra CloudStorage
+      # (descarga adjuntos/documentos), nunca sube.
+      ServiceAuth__Clients__6__ClientId: ${POSTMASTER_SERVICE_CLIENT_ID:-postmaster-worker}
+      ServiceAuth__Clients__6__Secret: ${POSTMASTER_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__6__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__6__Permissions__1: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Communication (F8 attach-recording): valida
+      # metadata de grabaciones contra CloudStorage. Ya estaba registrado en los
+      # user-secrets locales de Auth (Clients:2) pero nunca se copio a este compose
+      # — communication-api hubiera fallado con invalid_client en Docker/produccion.
+      ServiceAuth__Clients__7__ClientId: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
+      ServiceAuth__Clients__7__Secret: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:-}
+      ServiceAuth__Clients__7__Permissions__0: cloudstorage.file.upload
+      ServiceAuth__Clients__7__Permissions__1: cloudstorage.file.download
+      ServiceAuth__Clients__7__Permissions__2: cloudstorage.file.view
+      # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
+      # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
+      # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
+      # faltan o son invalidos, el hosted service tira InvalidOperationException al
+      # arrancar y tumba todo auth-api. Activar explicitamente (PLATFORM_BOOTSTRAP_ENABLED=true)
+      # solo para el deploy que crea al primer PlatformAdmin, despues se puede dejar
+      # en true sin riesgo — el service detecta que ya existe un PlatformAdmin y hace no-op.
+      PlatformBootstrap__Enabled: ${PLATFORM_BOOTSTRAP_ENABLED:-false}
+      PlatformBootstrap__Email: ${PLATFORM_BOOTSTRAP_EMAIL:-}
+      PlatformBootstrap__InvitationToken: ${PLATFORM_BOOTSTRAP_INVITATION_TOKEN:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-private.pem:/run/secrets/jwt-private.pem:ro
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  customer-api:
+    image: taxvision/customer-api:dev
+    container_name: taxvision-customer-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Customer/TaxVision.Customer.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Microservicio CloudStorage donde vive el archivo de import mientras se procesa.
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # Credenciales de servicio (M2M) — solo para DownloadAsync/DeleteAsync del archivo de
+      # import (el UploadAsync va directo a MinIO, ver Customer__Minio__* abajo).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${CUSTOMER_SERVICE_CLIENT_ID:-customer-worker}
+      ServiceAuthClient__ClientSecret: ${CUSTOMER_SERVICE_CLIENT_SECRET:-}
+      # Credenciales MinIO propias para el archivo de import (IAM scoped a
+      # taxvision-temp/customer/*, ver deploy/docker/minio/policies/customer-source.json +
+      # provision-service-accounts.sh). NUNCA MINIO_ROOT_USER/PASSWORD.
+      Customer__Minio__Endpoint: minio:9000
+      Customer__Minio__UseTls: "false"
+      Customer__Minio__AccessKey: customer-worker
+      Customer__Minio__SecretKey: ${CUSTOMER_MINIO_SECRET:?Set CUSTOMER_MINIO_SECRET in .env}
+      Customer__Minio__TempBucket: taxvision-temp
+      Customer__Minio__SourcePrefix: customer
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  subscription-api:
+    image: taxvision/subscription-api:dev
+    container_name: taxvision-subscription-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Subscription/TaxVision.Subscription.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Subscriptions__DefaultPlanCode: starter
+      Subscriptions__TrialDays: "14"
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  notification-api:
+    image: taxvision/notification-api:dev
+    container_name: taxvision-notification-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Notification/TaxVision.Notification.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
+      # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
+      # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:
+      # módulo de mailbox/sync duplicado, self-service de templates por HTTP, y el transporte SMTP
+      # directo de EmailDeliveryService/InProcessEmailDispatchGateway ganó su equivalente
+      # event-based). Rollback: setear NOTIFICATION_USE_POSTMASTER_DISPATCH=false en el .env de
+      # despliegue — el path in-process/SMTP-directo sigue vivo, sin eliminar (retiro real es
+      # trabajo futuro fuera de este plan, condicionado a confianza operacional en producción).
+      Notification__UsePostmasterDispatch: ${NOTIFICATION_USE_POSTMASTER_DISPATCH:-true}
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__FromAddress: ${SMTP_FROM:-no-reply@taxvision.local}
+      # Clave de cifrado de secretos del módulo email (config SMTP/API).
+      # Base64 de 32 bytes; requerida para los endpoints de configuración de correo.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      # Microservicio CloudStorage donde se guardan HTML/design/preview de plantillas y layouts
+      # (contexto de request, JWT del usuario/M2M).
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # Microservicio Scribe — IScribeRenderClient le pega a esto para renderizar plantillas
+      # (path de dispatch basado en render). Sin esta linea, ScribeRenderClient no tiene forma
+      # de alcanzar scribe-api dentro de docker y el render en vivo falla.
+      ScribeClient__BaseUrl: http://scribe-api:8080
+      # Credenciales de servicio (M2M) para el CloudStorageClient de arriba (plantillas/layouts).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${NOTIFICATION_SERVICE_CLIENT_ID:-notification-worker}
+      ServiceAuthClient__ClientSecret: ${NOTIFICATION_SERVICE_CLIENT_SECRET:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  postmaster-api:
+    image: taxvision/postmaster-api:dev
+    container_name: taxvision-postmaster-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Postmaster/TaxVision.Postmaster.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${POSTMASTER_DB_CONNECTION:?Set POSTMASTER_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Clave de cifrado de secretos (SMTP password de TenantEmailProvider, ver Fase 3.5).
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Credenciales de servicio (M2M) contra Auth — mismo patron que Correspondence__ServiceAuth.
+      Postmaster__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Postmaster__ServiceAuth__ClientId: ${POSTMASTER_SERVICE_CLIENT_ID:-postmaster-worker}
+      Postmaster__ServiceAuth__ClientSecret: ${POSTMASTER_SERVICE_CLIENT_SECRET:?Set POSTMASTER_SERVICE_CLIENT_SECRET in .env}
+      # Descarga de adjuntos/documentos desde CloudStorage (solo lectura, nunca sube).
+      Postmaster__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Canal de envío #3 (TenantOAuth, D3) — M2M a Connectors para enviar vía Gmail/Graph conectado.
+      Postmaster__Connectors__BaseUrl: http://connectors-api:8080
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  scribe-api:
+    image: taxvision/scribe-api:dev
+    container_name: taxvision-scribe-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Scribe/TaxVision.Scribe.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${SCRIBE_DB_CONNECTION:?Set SCRIBE_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Credenciales de servicio (M2M) contra Auth — mismo patron que Correspondence__ServiceAuth.
+      Scribe__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Scribe__ServiceAuth__ClientId: ${SCRIBE_SERVICE_CLIENT_ID:-scribe-worker}
+      Scribe__ServiceAuth__ClientSecret: ${SCRIBE_SERVICE_CLIENT_SECRET:?Set SCRIBE_SERVICE_CLIENT_SECRET in .env}
+      Scribe__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Credenciales MinIO propias (IAM scoped a taxvision-temp/scribe/*, ver
+      # deploy/docker/minio/policies/scribe-source.json + provision-service-accounts.sh).
+      # NUNCA MINIO_ROOT_USER/PASSWORD. AddSingleton<IMinioClient> es incondicional —
+      # sin esto, publicar templates/layouts revienta en Docker.
+      Scribe__Minio__Endpoint: minio:9000
+      Scribe__Minio__UseTls: "false"
+      Scribe__Minio__AccessKey: scribe-worker
+      Scribe__Minio__SecretKey: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
+      Scribe__Minio__TempBucket: taxvision-temp
+      Scribe__Minio__SourcePrefix: scribe
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  connectors-api:
+    image: taxvision/connectors-api:dev
+    container_name: taxvision-connectors-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Connectors/TaxVision.Connectors.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Cifra los tokens OAuth (Connectors Fase 3). Mismo valor que Notification/Postmaster/Signature
+      # — necesario para migrar en el futuro las OAuthConnection existentes de Notification sin
+      # re-encriptar (ver Connectors_Service_Design_And_Implementation_Plan.md §33 RM1).
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      # Lock distribuido para el refresh proactivo de OAuth (Fase 4) — mismo Redis que Signature/Subscription.
+      ConnectionStrings__Redis: redis:6379
+      # App registration compartido de TaxVision (uno por proveedor, no por tenant). Vars ya
+      # reservadas en .env desde el plan de deploy original (GMAIL_*/MSGRAPH_*), nunca usadas hasta ahora.
+      Connectors__OAuth__Google__ClientId: ${GMAIL_CLIENT_ID:-}
+      Connectors__OAuth__Google__ClientSecret: ${GMAIL_CLIENT_SECRET:-}
+      Connectors__OAuth__Microsoft__ClientId: ${MSGRAPH_CLIENT_ID:-}
+      Connectors__OAuth__Microsoft__ClientSecret: ${MSGRAPH_CLIENT_SECRET:-}
+      Connectors__OAuth__Microsoft__TenantId: ${MSGRAPH_TENANT_ID:-common}
+      # Flujo de conectar cuenta (D3 §12.2/12.4) — debe matchear byte a byte el redirect_uri
+      # configurado en el app registration de cada proveedor.
+      Connectors__OAuth__Google__RedirectUri: ${CONNECTORS_GOOGLE_REDIRECT_URI:-http://localhost:5047/connectors/oauth/callback/gmail}
+      Connectors__OAuth__Microsoft__RedirectUri: ${CONNECTORS_MICROSOFT_REDIRECT_URI:-http://localhost:5047/connectors/oauth/callback/graph}
+      # A dónde redirige el navegador tras el callback de OAuth (D3 §12.4/12.5) — mismo frontend que Notification.
+      Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
+      # Watch/subscription renewal (Fase 6) — topic de Pub/Sub (Gmail) y notificationUrl+clientState
+      # (Graph). Sin esto SetupWatchHandler falla al conectar una cuenta Gmail/Graph.
+      Connectors__Watch__Gmail__TopicName: ${CONNECTORS_GMAIL_WATCH_TOPIC:-}
+      Connectors__Watch__Graph__NotificationUrl: ${CONNECTORS_GRAPH_NOTIFICATION_URL:-}
+      Connectors__Watch__Graph__ClientState: ${CONNECTORS_GRAPH_WATCH_CLIENT_STATE:-}
+      # Webhooks públicos (Fase 7) — audiencia esperada del JWT OIDC de Pub/Sub.
+      Connectors__Webhooks__GmailPush__ExpectedAudience: ${CONNECTORS_GMAIL_PUSH_AUDIENCE:-}
+      # Reconciliación (README §37.8) — safety net Gmail/Graph detrás del push, único mecanismo de
+      # sync de IMAP. Default 15 min: prioriza que IMAP (100% dependiente de este job) tenga
+      # frescura razonable sin volver a un polling agresivo por-mailbox.
+      Connectors__Reconciliation__IntervalMinutes: ${CONNECTORS_RECONCILIATION_INTERVAL_MINUTES:-15}
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  correspondence-api:
+    image: taxvision/correspondence-api:dev
+    container_name: taxvision-correspondence-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Correspondence/TaxVision.Correspondence.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Fase 2 — CustomerEmailBackfill: token M2M por tenant contra Auth + base URL de Customer.Api
+      # (mismo patron que Postmaster__ServiceAuth/Postmaster__Connectors).
+      Correspondence__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Correspondence__ServiceAuth__ClientId: ${CORRESPONDENCE_SERVICE_CLIENT_ID:-correspondence-worker}
+      Correspondence__ServiceAuth__ClientSecret: ${CORRESPONDENCE_SERVICE_CLIENT_SECRET:-}
+      Correspondence__Customer__BaseUrl: http://customer-api:8080
+      # Faltaba desde la propia Fase 5 (ConnectorsClient) — sin esto, ConnectorsClient caía al
+      # default de desarrollo (localhost:5390), inalcanzable dentro de la red de contenedores.
+      Correspondence__Connectors__BaseUrl: http://connectors-api:8080
+      Correspondence__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Fase 14 — cierre síncrono de la cadena de envío (Correspondence → Postmaster → Connectors).
+      Correspondence__Postmaster__BaseUrl: http://postmaster-api:8080
+      # Fase 8 — cliente MinIO propio (taxvision-temp/correspondence/*, patrón D0/D1), ver
+      # deploy/docker/minio/policies/correspondence-source.json.
+      Correspondence__Minio__Endpoint: minio:9000
+      Correspondence__Minio__UseTls: "false"
+      Correspondence__Minio__AccessKey: correspondence-worker
+      Correspondence__Minio__SecretKey: ${CORRESPONDENCE_MINIO_SECRET:?Set CORRESPONDENCE_MINIO_SECRET in .env}
+      Correspondence__Minio__TempBucket: taxvision-temp
+      Correspondence__Minio__SourcePrefix: correspondence
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  cloudstorage-api:
+    image: taxvision/cloudstorage-api:dev
+    container_name: taxvision-cloudstorage-api
+    build:
+      context: ../..
+      dockerfile: src/Services/CloudStorage/TaxVision.CloudStorage.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # El endpoint es el dominio PUBLICO, no el DNS interno de docker (minio:9000):
+      # las URLs presignadas que genera este servicio se le entregan directo al
+      # navegador del cliente para subir/bajar bytes sin pasar por la API — tienen
+      # que ser alcanzables desde fuera del server. Caddy rutea los 3 prefijos de
+      # bucket (taxvision-storage/temp/quarantine) de ese mismo dominio hacia
+      # minio:9000 internamente (ver deploy/docker/caddy/Caddyfile) — MinIO en si
+      # nunca se expone directo.
+      Minio__Endpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxprocore.com}
+      Minio__AccessKey: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      Minio__SecretKey: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      # Default "true" para producción (Caddy termina TLS en el dominio público). En
+      # dev local sin Caddy/dominio real, overridear MINIO_PUBLIC_ENDPOINT=minio:9000
+      # y MINIO_USE_TLS=false en .env — minio local sirve HTTP plano.
+      Minio__UseTls: ${MINIO_USE_TLS:-true}
+      ClamAv__Host: clamav
+      ClamAv__Port: "3310"
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  signature-api:
+    image: taxvision/signature-api:dev
+    container_name: taxvision-signature-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Signature/TaxVision.Signature.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Clave de cifrado de secretos compartida (BuildingBlocks.Infrastructure.Security) —
+      # usada para el audit trail append-only (ConsentEvent) y otros campos sensibles.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Signature__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Signature__ServiceAuth__ClientId: ${SIGNATURE_SERVICE_CLIENT_ID:-signature-worker}
+      Signature__ServiceAuth__ClientSecret: ${SIGNATURE_SERVICE_CLIENT_SECRET:-}
+      Signature__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Fase D1 — credenciales MinIO propias para subir PDFs sellados (IAM scoped a
+      # taxvision-temp/signature/*, ver deploy/docker/minio/policies/signature-source.json
+      # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
+      Signature__Minio__Endpoint: minio:9000
+      Signature__Minio__UseTls: "false"
+      Signature__Minio__AccessKey: signature-worker
+      Signature__Minio__SecretKey: ${SIGNATURE_MINIO_SECRET:?Set SIGNATURE_MINIO_SECRET in .env}
+      Signature__Minio__TempBucket: taxvision-temp
+      Signature__Minio__SourcePrefix: signature
+      # Certificado PAdES-B (CMS signing) montado desde /run/secrets — ver seccion 4 del plan
+      # de deploy. Sin CertificatePath configurado, el registro del CMS signer queda inerte
+      # (no crashea, pero el sellado no funciona) — ver DependencyInjection.cs linea 73-83.
+      Signature__Sealing__Cms__CertificatePath: /run/secrets/signature-sealing.pfx
+      Signature__Sealing__Cms__CertificatePassword: ${SIGNATURE_PFX_PASSWORD:?Set SIGNATURE_PFX_PASSWORD in .env}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-sealing.pfx:/run/secrets/signature-sealing.pfx:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  payment-app-api:
+    image: taxvision/payment-app-api:dev
+    container_name: taxvision-payment-app-api
+    build:
+      context: ../..
+      dockerfile: src/Services/PaymentApp/TaxVision.PaymentApp.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Producción: solo estas dos claves — el resto del adapter Intellipay usa
+      # defaults hardcoded (ver IntellipayOptions.cs).
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY:?Set STRIPE_SECRET_KEY in .env}
+      Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET:?Set STRIPE_WEBHOOK_SECRET in .env}
+      Intellipay__MerchantKey: ${INTELLIPAY_MERCHANT_KEY:-}
+      Intellipay__ApiKey: ${INTELLIPAY_API_KEY:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  payment-client-api:
+    image: taxvision/payment-client-api:dev
+    container_name: taxvision-payment-client-api
+    build:
+      context: ../..
+      dockerfile: src/Services/PaymentClient/TaxVision.PaymentClient.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Modo DirectApiKeys: cada tenant trae sus propias credenciales Stripe
+      # (TenantPaymentConfig) cifradas con esta clave.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      # Modo Connect: una sola cuenta Stripe (la de la plataforma) crea Connected
+      # Accounts y cobra direct charges en nombre del tenant — a diferencia de
+      # DirectApiKeys, esto sí es una credencial global, análoga a Stripe__SecretKey
+      # en payment-app-api.
+      Stripe__PlatformSecretKey: ${STRIPE_CONNECT_PLATFORM_SECRET_KEY:-}
+      Stripe__ConnectWebhookSecret: ${STRIPE_CONNECT_WEBHOOK_SECRET:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  communication-api:
+    image: taxvision/communication-api:dev
+    container_name: taxvision-communication-api
+    build:
+      context: ../../src/Services/Communication
+      dockerfile: Dockerfile
+    expose:
+      - "5350"
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      SERVICE_NAME: communication-service
+      COMMUNICATION_HTTP_HOST: 0.0.0.0
+      COMMUNICATION_HTTP_PORT: "5350"
+      COMMUNICATION_DB_CONNECTION: ${COMMUNICATION_DB_CONNECTION:?Set COMMUNICATION_DB_CONNECTION in .env}
+      COMMUNICATION_REDIS_URI: redis://redis:6379/0
+      COMMUNICATION_SESSION_DENYLIST_PREFIX: auth:session-denylist
+      # Tenant especial "de plataforma" para el modulo de Support cross-tenant
+      # (Fase 5) — existe en .env local pero faltaba en este compose.
+      COMMUNICATION_PLATFORM_TENANT_ID: ${COMMUNICATION_PLATFORM_TENANT_ID:?Set COMMUNICATION_PLATFORM_TENANT_ID in .env}
+      COMMUNICATION_RABBITMQ_URI: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      COMMUNICATION_RABBITMQ_EXCHANGE: taxvision-events
+      COMMUNICATION_RABBITMQ_QUEUE: communication-events
+      COMMUNICATION_RABBITMQ_DLQ: communication-events.dlq
+      COMMUNICATION_JWT_ISSUER: TaxVision.Auth
+      COMMUNICATION_JWT_AUDIENCE: TaxVision.Services
+      COMMUNICATION_JWKS_URI: http://auth-api:8080/auth/.well-known/jwks.json
+      COMMUNICATION_TURN_URL: ${COMMUNICATION_TURN_URL:-}
+      COMMUNICATION_TURN_STATIC_AUTH_SECRET: ${COMMUNICATION_TURN_STATIC_AUTH_SECRET:-}
+      # Fallback numerico explicito (no vacio): COMMUNICATION_TURN_TTL_SECONDS usa
+      # z.coerce.number().positive() en config.ts — un string vacio coacciona a 0,
+      # que falla esa validacion y tumba el arranque, a diferencia de TURN_URL/
+      # TURN_STATIC_AUTH_SECRET arriba que son string().optional() (vacio es valido).
+      COMMUNICATION_TURN_TTL_SECONDS: ${COMMUNICATION_TURN_TTL_SECONDS:-300}
+      # app.taxprocore.com = CRM/staff, client.taxprocore.com = portal de clientes;
+      # + localhost para poder seguir probando contra produccion desde un frontend
+      # local (mismo criterio que Cors__Origins del gateway).
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxprocore.com,https://client.taxprocore.com,http://localhost:5173,http://localhost:4200}
+      # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
+      # shortLivedJoinTicket de guests sin cuenta uniendose a un meeting via link
+      # de invitacion (Fase Backend 5) — z.string().min(32) en config.ts, requerido,
+      # el proceso no bootea sin esto. Faltaba en este compose desde esa misma fase.
+      COMMUNICATION_JOIN_TICKET_SECRET: ${COMMUNICATION_JOIN_TICKET_SECRET:?Set COMMUNICATION_JOIN_TICKET_SECRET in .env}
+      # M2M contra Auth/CloudStorage para validar metadata de grabaciones al hacer
+      # attach (Fase Backend 8) — z.string().min(1) en config.ts, requerido, faltaba
+      # en este compose desde esa fase. Client propio "communication-worker", ya
+      # registrado en Auth (ver ServiceAuth__Clients__7 arriba) — mismo id/secret
+      # que ya tenias en src/Services/Communication/.env.
+      COMMUNICATION_SERVICE_AUTH_CLIENT_ID: ${COMMUNICATION_SERVICE_AUTH_CLIENT_ID:-communication-worker}
+      COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET:?Set COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET in .env}
+      # DNS interno del contenedor — los defaults de config.ts (localhost:5124/:5330)
+      # son de dev local y quedan inalcanzables desde dentro de este contenedor.
+      COMMUNICATION_AUTH_BASE_URL: http://auth-api:8080
+      COMMUNICATION_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      # Portal de clientes — a donde apunta el link corto de invitacion a un
+      # meeting para un guest sin cuenta (Fase Backend 5/9e).
+      COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxprocore.com}
+      # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
+      # esta apagado salvo que se prenda a proposito; el mesh WebRTC actual usa
+      # TURN (arriba) para NAT traversal, no esto. Si en el futuro se activa el
+      # SFU, ANNOUNCED_IP tiene que ser la IP publica del server (sin esto, los
+      # workers de mediasoup anuncian la IP interna del contenedor y el ICE
+      # candidate queda inalcanzable desde afuera).
+      COMMUNICATION_MEDIASOUP_ANNOUNCED_IP: ${COMMUNICATION_MEDIASOUP_ANNOUNCED_IP:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: communication-service
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  communication-transcript-worker:
+    image: taxvision/communication-transcript-worker:dev
+    container_name: taxvision-communication-transcript-worker
+    build:
+      context: ../../src/Services/CommunicationTranscriptWorker
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      SERVICE_NAME: communication-transcript-worker
+      TRANSCRIPT_WORKER_RABBITMQ_URI: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      TRANSCRIPT_WORKER_RABBITMQ_EXCHANGE: taxvision-events
+      TRANSCRIPT_WORKER_RABBITMQ_QUEUE: communication-transcript-worker
+      # Inbox de idempotencia (Redis SET NX EX por eventId) — evita reprocesar
+      # una grabacion ya transcrita ante una redelivery de RabbitMQ.
+      TRANSCRIPT_WORKER_REDIS_URI: redis://redis:6379/1
+      TRANSCRIPT_WORKER_AUTH_BASE_URL: http://auth-api:8080
+      TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_ID: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
+      TRANSCRIPT_WORKER_SERVICE_AUTH_CLIENT_SECRET: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_SECRET:-}
+      # downloadFile (bajar la grabacion original) sigue via HTTP+M2M contra esta
+      # base URL. uploadFile (Fase D2) ya no la usa — sube directo a MinIO y
+      # publica a la cola dedicada de abajo.
+      TRANSCRIPT_WORKER_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      TRANSCRIPT_WORKER_CLOUDSTORAGE_EXTERNAL_QUEUE: cloudstorage-external-uploads
+      # Fase D2 — credenciales MinIO propias (IAM scoped a taxvision-temp/transcript/*,
+      # ver deploy/docker/minio/policies/transcript-source.json + provision-service-accounts.sh).
+      # NUNCA MINIO_ROOT_USER/PASSWORD.
+      TRANSCRIPT_WORKER_MINIO_ENDPOINT: minio
+      TRANSCRIPT_WORKER_MINIO_PORT: "9000"
+      TRANSCRIPT_WORKER_MINIO_USE_SSL: "false"
+      TRANSCRIPT_WORKER_MINIO_ACCESS_KEY: communication-transcript-worker
+      TRANSCRIPT_WORKER_MINIO_SECRET_KEY: ${TRANSCRIPT_WORKER_MINIO_SECRET:?Set TRANSCRIPT_WORKER_MINIO_SECRET in .env}
+      TRANSCRIPT_WORKER_MINIO_TEMP_BUCKET: taxvision-temp
+      TRANSCRIPT_WORKER_MINIO_SOURCE_PREFIX: transcript
+      # Modelo/binario/idioma se dejan en los defaults del Dockerfile
+      # (ggml-base, whisper-cli, auto-detect) salvo que se sobreescriban aca.
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      auth-api:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  # Fase D0 (cerrado en la revision post-D4) — crea/actualiza las cuentas de
+  # servicio scoped de MinIO para Signature/CommunicationTranscriptWorker/Customer/
+  # Correspondence (ver deploy/docker/minio/provision-service-accounts.sh + policies/*.json).
+  # Notification ya no tiene cuenta propia — su modulo de sync IMAP se elimino en
+  # Fase 17 del plan de hardening/migracion (ver README §28.1).
+  # Antes esto era un paso manual que el operador podia olvidarse de correr —
+  # ahora es parte del deploy, igual que "migrations" de abajo. Idempotente:
+  # correrlo de nuevo en cada deploy no rompe nada (mc admin user add
+  # actualiza la password si el user ya existe; policy create/attach tambien
+  # son no-ops si ya estan). Usa `minio/mc` oficial, no una imagen propia —
+  # es solo un CLI de un solo uso, no un servicio de larga duracion.
+  minio-provision:
+    profiles:
+      - tools
+    image: minio/mc:latest
+    entrypoint: ["sh", "/provision/provision-service-accounts.sh"]
+    environment:
+      MINIO_ALIAS: taxvision
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      SIGNATURE_MINIO_SECRET: ${SIGNATURE_MINIO_SECRET:?Set SIGNATURE_MINIO_SECRET in .env}
+      TRANSCRIPT_WORKER_MINIO_SECRET: ${TRANSCRIPT_WORKER_MINIO_SECRET:?Set TRANSCRIPT_WORKER_MINIO_SECRET in .env}
+      CUSTOMER_MINIO_SECRET: ${CUSTOMER_MINIO_SECRET:?Set CUSTOMER_MINIO_SECRET in .env}
+      CORRESPONDENCE_MINIO_SECRET: ${CORRESPONDENCE_MINIO_SECRET:?Set CORRESPONDENCE_MINIO_SECRET in .env}
+      SCRIBE_MINIO_SECRET: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
+    volumes:
+      - ./minio:/provision:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - taxvision-network
+
+  migrations:
+    profiles:
+      - tools
+    image: taxvision/migrations:dev
+    build:
+      context: ../..
+      dockerfile: deploy/docker/migrations/Dockerfile
+    environment:
+      AUTH_DB_CONNECTION: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
+      TENANT_DB_CONNECTION: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
+      CUSTOMER_DB_CONNECTION: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
+      SUBSCRIPTION_DB_CONNECTION: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
+      NOTIFICATION_DB_CONNECTION: ${NOTIFICATION_DB_CONNECTION:?Set NOTIFICATION_DB_CONNECTION in .env}
+      CLOUDSTORAGE_DB_CONNECTION: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
+      SIGNATURE_DB_CONNECTION: ${SIGNATURE_DB_CONNECTION:?Set SIGNATURE_DB_CONNECTION in .env}
+      # POSTMASTER_DB_CONNECTION/SCRIBE_DB_CONNECTION faltaban acá desde sus propias Fase 1 — sin
+      # esto "docker compose run migrations" nunca corría sus migraciones. Corregido de paso.
+      POSTMASTER_DB_CONNECTION: ${POSTMASTER_DB_CONNECTION:?Set POSTMASTER_DB_CONNECTION in .env}
+      SCRIBE_DB_CONNECTION: ${SCRIBE_DB_CONNECTION:?Set SCRIBE_DB_CONNECTION in .env}
+      CONNECTORS_DB_CONNECTION: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
+      CORRESPONDENCE_DB_CONNECTION: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
+      PAYMENTAPP_DB_CONNECTION: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
+      PAYMENTCLIENT_DB_CONNECTION: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - taxvision-network
+
+  gateway:
+    image: taxvision/gateway:dev
+    container_name: taxvision-gateway
+    build:
+      context: ../..
+      dockerfile: src/Gateway/TaxVision.Gateway/Dockerfile
+    # Ya no publica al host — Caddy es el unico punto de entrada publico
+    # (ver servicio "caddy" mas abajo), el gateway solo es alcanzable
+    # dentro de taxvision-network.
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Origins reales de produccion (app = CRM/staff, client = portal de clientes)
+      # + localhost para poder seguir probando contra la API de produccion desde
+      # un frontend corrido local durante desarrollo (pedido explicito).
+      Cors__Origins__0: https://app.taxprocore.com
+      Cors__Origins__1: https://client.taxprocore.com
+      Cors__Origins__2: http://localhost:5173
+      Cors__Origins__3: http://localhost:4200
+      ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
+      ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
+      ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/
+      ReverseProxy__Clusters__subscription__Destinations__subscription1__Address: http://subscription-api:8080/
+      ReverseProxy__Clusters__notification__Destinations__notification1__Address: http://notification-api:8080/
+      ReverseProxy__Clusters__postmaster__Destinations__postmaster1__Address: http://postmaster-api:8080/
+      ReverseProxy__Clusters__scribe__Destinations__scribe1__Address: http://scribe-api:8080/
+      ReverseProxy__Clusters__connectors__Destinations__connectors1__Address: http://connectors-api:8080/
+      ReverseProxy__Clusters__correspondence__Destinations__correspondence1__Address: http://correspondence-api:8080/
+      ReverseProxy__Clusters__cloudstorage__Destinations__cloudstorage1__Address: http://cloudstorage-api:8080/
+      ReverseProxy__Clusters__signature__Destinations__signature1__Address: http://signature-api:8080/
+      ReverseProxy__Clusters__communication__Destinations__communication1__Address: http://communication-api:5350/
+      ReverseProxy__Clusters__paymentapp__Destinations__paymentapp1__Address: http://payment-app-api:8080/
+      ReverseProxy__Clusters__paymentclient__Destinations__paymentclient1__Address: http://payment-client-api:8080/
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      - auth-api
+      - tenant-api
+      - customer-api
+      - subscription-api
+      - notification-api
+      - postmaster-api
+      - scribe-api
+      - connectors-api
+      - correspondence-api
+      - cloudstorage-api
+      - signature-api
+      - communication-api
+      - payment-app-api
+      - payment-client-api
+      - otel-collector
+    networks:
+      - taxvision-network
+
+  caddy:
+    # Build custom (no la imagen caddy:2-alpine estandar) — agrega el plugin
+    # caddy-dns/cloudflare, necesario para el certificado WILDCARD via DNS-01
+    # (ver deploy/docker/caddy/Dockerfile y Caddyfile). Sin esto, Caddy solo
+    # puede emitir TLS para el Host exacto que ya conoce (HTTP-01), nunca para
+    # los subdominios de tenant dinamicos que TenantDomain resuelve en Auth.
+    build:
+      context: ./caddy
+    container_name: taxvision-caddy
+    environment:
+      TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
+      # Zone:DNS:Edit sobre la zona — SOLO para el reto DNS-01 del certificado
+      # wildcard. Token distinto (y con permisos mas chicos) que el que usa
+      # Auth para provisionar custom hostnames (ver CloudflareOptions en
+      # TaxVision.Auth.Infrastructure/Cloudflare) — no reusar el mismo token
+      # entre los dos usos aunque compartan la misma cuenta de Cloudflare.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_DNS_API_TOKEN:?Set CLOUDFLARE_DNS_API_TOKEN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - gateway
+      - minio
+    networks:
+      - taxvision-network
+
+volumes:
+  rabbitmq-data:
+  redis-data:
+  minio-data:
+  sqlserver-data:
+  clamav-data:
+  loki-data:
+  tempo-data:
+  prometheus-data:
+  grafana-data:
+  taxvision-logs:
+  caddy-data:
+  caddy-config:
+
+networks:
+  taxvision-network:
+    name: taxvision-network
