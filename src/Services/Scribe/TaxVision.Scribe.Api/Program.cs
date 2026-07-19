@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
@@ -100,6 +101,10 @@ builder.Host.UseWolverine(options =>
 
     // Publica los eventos propios del microservicio al exchange fan-out del ecosistema.
     options.PublishMessage<ScribeTenantLogoMissingDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Las subidas de templates/layouts se hacen primero a MinIO y CloudStorage debe
+    // catalogarlas antes de que Scribe publique la version. Sin esta ruta Wolverine
+    // no envia SaveFileRequestedIntegrationEvent y el archivo nunca existe en Files.
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options
         .Policies.OnException<Exception>()
