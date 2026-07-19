@@ -181,6 +181,11 @@ jobs:
       - name: Reconcile persisted RabbitMQ credentials
         run: |
           docker compose -f "$COMPOSE_FILE" --env-file .env up -d rabbitmq
+          # `up -d` deja intacto un contenedor ya Running. Un backend interno de
+          # usuarios caido responde `{error,noproc}` aunque AMQP y el healthcheck
+          # sigan aceptando conexiones. Reiniciar recupera esos procesos Erlang;
+          # el volumen nombrado (colas/mensajes/definitions) no se elimina.
+          docker compose -f "$COMPOSE_FILE" --env-file .env restart rabbitmq
           for i in $(seq 1 30); do
             if docker compose -f "$COMPOSE_FILE" --env-file .env exec -T rabbitmq \
               rabbitmqctl await_startup --timeout 5 >/dev/null 2>&1; then
