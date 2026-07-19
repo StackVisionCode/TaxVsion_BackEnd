@@ -2,7 +2,7 @@ name: Deploy to production
 
 on:
   push:
-    branches: [main]
+    branches: [mains]
   workflow_dispatch: {}
 
 concurrency:
@@ -144,6 +144,26 @@ jobs:
           PLATFORM_BOOTSTRAP_ENABLED=${{ secrets.PLATFORM_BOOTSTRAP_ENABLED }}
           PLATFORM_BOOTSTRAP_EMAIL=${{ secrets.PLATFORM_BOOTSTRAP_EMAIL }}
           PLATFORM_BOOTSTRAP_INVITATION_TOKEN=${{ secrets.PLATFORM_BOOTSTRAP_INVITATION_TOKEN }}
+          # Recovery path (PlatformAdminEmergencyAccessService.cs) — crea un PlatformAdmin
+          # directo (sin invitacion) cuando no hay ninguno operativo para invitar a otro.
+          # Mismo criterio que PLATFORM_BOOTSTRAP_ENABLED: dejar en false/vacio salvo el
+          # deploy puntual que necesita el recovery. Idempotente por email.
+          PLATFORM_EMERGENCY_ENABLED=${{ secrets.PLATFORM_EMERGENCY_ENABLED }}
+          PLATFORM_EMERGENCY_EMAIL=${{ secrets.PLATFORM_EMERGENCY_EMAIL }}
+          PLATFORM_EMERGENCY_NAME=${{ secrets.PLATFORM_EMERGENCY_NAME }}
+          PLATFORM_EMERGENCY_LASTNAME=${{ secrets.PLATFORM_EMERGENCY_LASTNAME }}
+          PLATFORM_EMERGENCY_PASSWORD_HASH=${{ secrets.PLATFORM_EMERGENCY_PASSWORD_HASH }}
+          # SystemEmailProviderSeeder.cs (Postmaster) — proveedor SMTP real de plataforma.
+          # Vacio = placeholder de siempre, no rompe nada. Con Host seteado, reconcilia la
+          # fila "smtp-default" en cada boot (upsert), sin pasar por el endpoint admin.
+          SYSTEM_EMAIL_HOST=${{ secrets.SYSTEM_EMAIL_HOST }}
+          SYSTEM_EMAIL_PORT=${{ secrets.SYSTEM_EMAIL_PORT }}
+          SYSTEM_EMAIL_USE_TLS=${{ secrets.SYSTEM_EMAIL_USE_TLS }}
+          SYSTEM_EMAIL_USERNAME=${{ secrets.SYSTEM_EMAIL_USERNAME }}
+          SYSTEM_EMAIL_PASSWORD=${{ secrets.SYSTEM_EMAIL_PASSWORD }}
+          SYSTEM_EMAIL_FROM_ADDRESS=${{ secrets.SYSTEM_EMAIL_FROM_ADDRESS }}
+          SYSTEM_EMAIL_FROM_NAME=${{ secrets.SYSTEM_EMAIL_FROM_NAME }}
+          SYSTEM_EMAIL_DISPLAY_NAME=${{ secrets.SYSTEM_EMAIL_DISPLAY_NAME }}
           TAXVISION_DOMAIN=${{ secrets.TAXVISION_DOMAIN }}
           # Fase X1 (completitud plan v2) — dominio raiz para el cert WILDCARD de Caddy
           # (*.TAXVISION_BASE_DOMAIN) + token DNS-01 de Cloudflare, ver README sec 20.
