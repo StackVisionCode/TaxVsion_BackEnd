@@ -200,26 +200,34 @@ public sealed class SaveFileFromSourceHandlerTests
     }
 
     [Fact]
-    public async Task Missing_quota_provisioning_is_dropped()
+    public async Task Missing_quota_provisioning_throws_so_wolverine_retries_instead_of_dropping_silently()
     {
+        // Bug real de produccion: el primer upload de un tenant nuevo (ej. su logo) puede llegar antes
+        // de que el fanout Tenant -> Subscription -> CloudStorage termine de provisionar
+        // TenantStorageLimits — esa carrera es transitoria, no un dato invalido permanente (a diferencia
+        // de Invalid_OwnerType_is_dropped_without_touching_quota_or_storage arriba), asi que debe
+        // reintentar (RetryWithCooldown de Program.cs) y eventualmente caer a dead-letter si persiste,
+        // en vez de perderse en silencio como pasaba antes de este fix.
         var tenantId = Guid.NewGuid();
         var storage = new FakeObjectStorage();
         var unitOfWork = new FakeUnitOfWork();
 
-        await SaveFileFromSourceHandler.Handle(
-            Evt(tenantId, Guid.NewGuid()),
-            new FakeFileObjectRepository(),
-            new FakeStorageLimitRepository(), // sin seed => sin cuota provisionada
-            new FakeStorageAuditRepository(),
-            new DefaultObjectKeyBuilder(),
-            storage,
-            DefaultOptions(),
-            new FakeSystemClock(DateTime.UtcNow),
-            unitOfWork,
-            new FakeMessageBus(),
-            new FakeCorrelationContext(),
-            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
-            CancellationToken.None
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            SaveFileFromSourceHandler.Handle(
+                Evt(tenantId, Guid.NewGuid()),
+                new FakeFileObjectRepository(),
+                new FakeStorageLimitRepository(), // sin seed => sin cuota provisionada
+                new FakeStorageAuditRepository(),
+                new DefaultObjectKeyBuilder(),
+                storage,
+                DefaultOptions(),
+                new FakeSystemClock(DateTime.UtcNow),
+                unitOfWork,
+                new FakeMessageBus(),
+                new FakeCorrelationContext(),
+                NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+                CancellationToken.None
+            )
         );
 
         Assert.Empty(storage.Copied);

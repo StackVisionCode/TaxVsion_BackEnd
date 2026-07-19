@@ -54,6 +54,7 @@ public sealed class RecycleBinPurgeService(IServiceScopeFactory scopeFactory, IL
                     clock,
                     actorId: null,
                     correlationId: $"recyclebin-purge-{file.Id:N}",
+                    logger,
                     ct
                 );
             }

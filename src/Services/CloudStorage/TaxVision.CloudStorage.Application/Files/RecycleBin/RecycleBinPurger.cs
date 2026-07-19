@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
@@ -30,6 +31,7 @@ public static class RecycleBinPurger
         ISystemClock clock,
         Guid? actorId,
         string correlationId,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -53,7 +55,30 @@ public static class RecycleBinPurger
         }
 
         await storage.DeleteAsync(mainBucket, file.ObjectKey, ct);
-        (await limits.GetAsync(file.TenantId, ct))?.ReleaseUsed(file.SizeBytes);
+
+        var limit = await limits.GetAsync(file.TenantId, ct);
+        if (limit is null)
+        {
+            // Mismo tipo de gap que SaveFileFromSourceHandler (bug real de produccion,
+            // Tenant_Service_LogoSupport_Plan.md): sin esta rama, un tenant sin fila de
+            // cuota (nunca provisionada, o borrada por error) purgaba archivos fisicos sin
+            // dejar ningun rastro de que su UsedBytes quedo desactualizado — silencioso para
+            // siempre. Este job es un BackgroundService, no un consumer de Wolverine, asi que
+            // no hay retry/dead-letter posible; lo maximo que se puede hacer es loguearlo alto
+            // y seguir (el borrado fisico ya se hizo, no tiene sentido revertirlo).
+            logger.LogError(
+                "RecycleBinPurger: tenant {TenantId} has no quota row — file {FileId} ({SizeBytes} bytes) "
+                    + "was purged from storage but UsedBytes was NOT released. Quota accounting for this "
+                    + "tenant is now stale.",
+                file.TenantId,
+                file.Id,
+                file.SizeBytes
+            );
+        }
+        else
+        {
+            limit.ReleaseUsed(file.SizeBytes);
+        }
 
         audit.Add(
             StorageAccessLog.Create(

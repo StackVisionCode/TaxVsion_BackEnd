@@ -69,12 +69,18 @@ public static class SaveFileFromSourceHandler
             var limit = await limits.GetAsync(evt.TenantId, ct);
             if (limit is null)
             {
-                logger.LogError(
-                    "SaveFileRequested {FileId}: tenant {TenantId} has no quota provisioned — dropping.",
-                    evt.FileId,
-                    evt.TenantId
+                // A recien-creado tenant's TenantStorageLimits llega via un fanout de 2 saltos
+                // (Tenant -> Subscription TenantCreatedConsumer -> TenantEntitlementsChangedIntegrationEvent
+                // -> CloudStorage TenantEntitlementsChangedQuotaConsumer), asincrono respecto de este
+                // consumer — a diferencia del OwnerType/FolderType invalido de arriba (nunca se corrige
+                // reintentando), esta condicion SI es transitoria: throw en vez de log+return para que
+                // el RetryWithCooldown(1s/5s/15s) de Program.cs reintente, y si el tenant sigue sin
+                // cuota tras 3 intentos, el mensaje caiga a la dead-letter queue (visible/reconciliable)
+                // en vez de perderse en silencio para siempre — bug real de produccion encontrado en el
+                // primer upload de un logo de tenant nuevo (Tenant_Service_LogoSupport_Plan.md).
+                throw new InvalidOperationException(
+                    $"SaveFileRequested {evt.FileId}: tenant {evt.TenantId} has no quota provisioned yet."
                 );
-                return;
             }
 
             var policy = options.Value.ResolveUploadPolicy(limit.PlanCode, folderType);

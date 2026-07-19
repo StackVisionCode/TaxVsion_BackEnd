@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
@@ -105,6 +106,7 @@ public static class EmptyRecycleBinHandler
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
+        ILogger<EmptyRecycleBinCommand> logger,
         CancellationToken ct
     )
     {
@@ -118,6 +120,7 @@ public static class EmptyRecycleBinHandler
             audit,
             storage,
             clock,
+            logger,
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
@@ -133,6 +136,7 @@ public static class EmptyRecycleBinHandler
         IStorageAuditRepository audit,
         IObjectStorage storage,
         ISystemClock clock,
+        ILogger logger,
         CancellationToken ct
     )
     {
@@ -150,6 +154,7 @@ public static class EmptyRecycleBinHandler
                 clock,
                 command.ActorId,
                 command.Audit.CorrelationId,
+                logger,
                 ct
             );
             if (purged)

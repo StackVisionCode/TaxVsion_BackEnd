@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
@@ -148,6 +149,7 @@ public sealed class RecycleBinHandlerTests
             options,
             new FakeSystemClock(now),
             unitOfWork,
+            NullLogger<EmptyRecycleBinCommand>.Instance,
             CancellationToken.None
         );
 
@@ -159,6 +161,44 @@ public sealed class RecycleBinHandlerTests
         Assert.Equal(2, storage.Deleted.Count);
         Assert.Equal(2, audit.Logs.Count(log => log.Action == "delete.purge"));
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task EmptyRecycleBin_purges_the_physical_object_even_when_the_tenant_has_no_quota_row()
+    {
+        // Bug real de produccion (Tenant_Service_LogoSupport_Plan.md): un tenant sin fila de
+        // TenantStorageLimits (nunca provisionada, o borrada por error) purgaba archivos fisicos
+        // en silencio, sin dejar rastro de que UsedBytes quedo desactualizado para siempre. El
+        // borrado fisico SIGUE ocurriendo (no tiene sentido bloquearlo por esto), pero ahora debe
+        // loguearse alto en vez de skippearse silenciosamente via el operador `?.` de antes.
+        var tenantId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var file = SoftDeletedFile(tenantId, now, sizeBytes: 30);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var limits = new FakeStorageLimitRepository(); // sin seed => sin cuota provisionada
+        var audit = new FakeStorageAuditRepository();
+        var storage = new FakeObjectStorage();
+        var unitOfWork = new FakeUnitOfWork();
+        var options = Options.Create(new CloudStorageOptions());
+
+        var purgedCount = await EmptyRecycleBinHandler.Handle(
+            new EmptyRecycleBinCommand(tenantId, Guid.NewGuid(), Audit()),
+            files,
+            limits,
+            audit,
+            storage,
+            options,
+            new FakeSystemClock(now),
+            unitOfWork,
+            NullLogger<EmptyRecycleBinCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(1, purgedCount);
+        Assert.True(files.Removed(file.Id));
+        Assert.Single(storage.Deleted);
     }
 
     [Fact]
@@ -193,6 +233,7 @@ public sealed class RecycleBinHandlerTests
             options,
             new FakeSystemClock(now),
             unitOfWork,
+            NullLogger<EmptyRecycleBinCommand>.Instance,
             CancellationToken.None
         );
 
