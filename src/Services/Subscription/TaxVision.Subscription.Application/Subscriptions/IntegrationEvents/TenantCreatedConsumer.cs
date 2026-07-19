@@ -24,7 +24,11 @@ namespace TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 /// el recalculo de entitlements se dispara SIEMPRE — RecalculateEntitlementsCommand es un
 /// upsert, así que reprocesar este evento (redelivery, o cualquier reintento manual) también
 /// sirve para autosanar un tenant que quedó con suscripción pero sin snapshot de entitlements
-/// por una falla anterior (ver RecalculateEntitlementsSafelyAsync).
+/// por una falla anterior. Usa RecalculateEntitlementsOrThrowAsync (no la variante "Safely") a
+/// propósito: un fallo acá debe reintentarse (RetryWithCooldown de Program.cs) y terminar en la
+/// dead-letter queue si persiste — no perderse en un simple log, que fue exactamente el bug real
+/// de producción que dejó tenants sin TenantStorageLimits para siempre (ver
+/// RecalculateEntitlementsExtensions.RecalculateEntitlementsOrThrowAsync).
 /// </summary>
 public static class TenantCreatedConsumer
 {
@@ -57,7 +61,7 @@ public static class TenantCreatedConsumer
                         + "still recalculating entitlements in case a previous attempt left it stale.",
                     evt.NewTenantId
                 );
-                await bus.RecalculateEntitlementsSafelyAsync(evt.NewTenantId, logger, ct);
+                await bus.RecalculateEntitlementsOrThrowAsync(evt.NewTenantId, ct);
                 return;
             }
 
@@ -80,7 +84,7 @@ public static class TenantCreatedConsumer
             await EnsureDefaultSettingsAsync(evt.NewTenantId, settingsRepository, ct);
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.RecalculateEntitlementsSafelyAsync(evt.NewTenantId, logger, ct);
+            await bus.RecalculateEntitlementsOrThrowAsync(evt.NewTenantId, ct);
 
             logger.LogInformation(
                 "Trial subscription created for tenant {TenantId} on plan {PlanCode} until {TrialEnd}.",

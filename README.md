@@ -4804,19 +4804,33 @@ no necesiten una llamada HTTP adicional a Subscription. Lo consumen:
   asi que hoy cae siempre a los defaults conservadores (4 participantes, 60 min,
   etc.) hasta que ese catalogo se extienda.
 
-**Confiabilidad del recalculo (2026-07)**: las ~20 rutas que disparan
-`RecalculateEntitlementsCommand` (alta de tenant, cambio de plan, seats, add-ons,
-jobs de expiracion) lo hacen via `bus.RecalculateEntitlementsSafelyAsync(...)`
-(`Entitlements/Commands/RecalculateEntitlements/RecalculateEntitlementsExtensions.cs`),
-que loguea un `ERROR` con el `TenantId` si el comando falla — antes se ignoraba el
-`Result` devuelto y una falla transitoria (ej. Redis/DB no disponibles un instante)
-dejaba al tenant con `TenantSubscription` valida pero sin `TenantEntitlementSnapshot`,
-sin que nada lo notara ni lo reintentara. Ademas, `TenantCreatedConsumer` ya no corta
-en seco cuando la suscripcion del tenant ya existe: sigue recalculando entitlements en
-ese caso (es upsert), asi que reprocesar `TenantCreatedIntegrationEvent` autosana un
-tenant que quedo en ese estado. Para reconciliar un tenant ya atascado sin esperar un
-reintento automatico, `POST /admin/subscription/tenants/{tenantId}/recalculate-entitlements`
-(PlatformAdmin, §32.4) fuerza el recalculo y republica el evento a demanda.
+**Confiabilidad del recalculo (2026-07, actualizado 2026-07-19)**: `RecalculateEntitlementsExtensions.cs`
+tiene dos variantes, con semantica de fallo distinta a proposito:
+
+- `RecalculateEntitlementsSafelyAsync` — usada por las ~19 rutas donde el efecto principal
+  del comando (compra de seat, cambio de plan, add-on, jobs de expiracion) ya se completo y
+  no debe deshacerse ni reintentarse solo porque el recalculo de entitlements fallo. Loguea
+  un `ERROR` con el `TenantId`/codigo/mensaje y sigue — el tenant queda con estado valido
+  pero snapshot stale hasta el proximo recalculo o una reconciliacion manual.
+- `RecalculateEntitlementsOrThrowAsync` — usada exclusivamente por `TenantCreatedConsumer`
+  (los dos call-sites: alta nueva y "suscripcion ya existe"). **Bug real de produccion
+  encontrado 2026-07-19**: hasta esa fecha, `TenantCreatedConsumer` tambien usaba la variante
+  "Safely", asi que un `Result.Failure` de `RecalculateEntitlementsCommand` (p.ej.
+  `Subscription.NotFound`/`Plan.NoPublishedVersion`) quedaba en un simple log — Wolverine
+  consideraba `TenantCreatedIntegrationEvent` procesado con exito (la suscripcion SI se creo)
+  y nunca reintentaba ni mandaba nada a la dead-letter queue. Un tenant podia quedar para
+  siempre sin `TenantEntitlementSnapshot` — y por lo tanto sin fila de `TenantStorageLimits`
+  en CloudStorage — de forma invisible. Ahora este call-site throw-ea, asi que el mismo
+  `RetryWithCooldown(1s/5s/15s)` + dead-letter de `Program.cs` se aplica aca tambien (igual
+  que `SaveFileFromSourceHandler` en CloudStorage, ver §41). Reprocesar
+  `TenantCreatedIntegrationEvent` es seguro: la creacion de suscripcion es idempotente y el
+  recalculo es un upsert.
+
+Para reconciliar un tenant que quedo atascado por este bug **antes** del fix (el mensaje
+original ya fue ACKed y no se puede reintentar solo), `POST /admin/subscription/tenants/{tenantId}/recalculate-entitlements`
+(PlatformAdmin, §32.4) fuerza el recalculo y republica el evento a demanda — y ahora si falla
+devuelve el error real en la respuesta HTTP (ver `AdminController.RecalculateEntitlements`),
+en vez de solo poder verse en logs.
 
 Retirados en la fase de cleanup del rediseno (2026-07): `SubscriptionActivatedIntegrationEvent`,
 `SubscriptionPlanChangedIntegrationEvent`, `SubscriptionSuspendedIntegrationEvent`,
