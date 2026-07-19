@@ -1191,6 +1191,9 @@ services:
       context: ./caddy
     container_name: taxvision-caddy
     environment:
+      # Host publico de la API. Cloudflare Tunnel lo entrega por HTTP al puerto
+      # 80 del host; el Caddyfile lo envia a gateway:8080 sin redireccionarlo.
+      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxprocore.com}
       TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
       # Zone:DNS:Edit sobre la zona — SOLO para el reto DNS-01 del certificado
       # wildcard. Token distinto (y con permisos mas chicos) que el que usa

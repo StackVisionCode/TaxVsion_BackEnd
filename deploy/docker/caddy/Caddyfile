@@ -12,6 +12,11 @@
 # CLOUDFLARE_API_TOKEN (permiso Zone:DNS:Edit sobre la zona) — ver
 # deploy/docker/caddy/Dockerfile para el build de Caddy con el plugin DNS.
 #
+# Cloudflare Tunnel entrega la aplicacion publicada a http://localhost:80.
+# Declaramos el host HTTP de la API de forma explicita para que esa conexion
+# llegue al Gateway y no quede atrapada en la redireccion HTTP->HTTPS automatica
+# de Caddy. El bloque HTTPS se conserva para publicacion directa y tenants.
+#
 # Los 3 prefijos de bucket de MinIO se rutean directo al contenedor interno
 # (proxy transparente de bytes, sin logica de aplicacion) porque las URLs
 # presignadas que genera CloudStorage usan el nombre del bucket como primer
@@ -19,13 +24,28 @@
 # /storage, etc). Todo lo demas (incluida la resolucion de tenant por Host
 # que hace Auth) va al Gateway, que ya forwardea el Host original — Caddy
 # reenvia el Host real por defecto en reverse_proxy, sin configuracion extra.
+(taxvision_upstreams) {
+	@minio path /taxvision-storage/* /taxvision-temp/* /taxvision-quarantine/*
+	handle @minio {
+		reverse_proxy minio:9000
+	}
+
+	handle {
+		reverse_proxy gateway:8080
+	}
+}
+
+# Origen HTTP usado por la ruta publicada del Cloudflare Tunnel. Todo lo que
+# no sea un objeto de MinIO entra exclusivamente por el API Gateway.
+http://{$TAXVISION_DOMAIN:api.taxprocore.com} {
+	import taxvision_upstreams
+}
+
+# Entrada TLS directa y hosts dinamicos de tenant.
 {$TAXVISION_BASE_DOMAIN:taxprocore.com}, *.{$TAXVISION_BASE_DOMAIN:taxprocore.com} {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}
 
-	@minio path /taxvision-storage/* /taxvision-temp/* /taxvision-quarantine/*
-	reverse_proxy @minio minio:9000
-
-	reverse_proxy gateway:8080
+	import taxvision_upstreams
 }
