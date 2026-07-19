@@ -183,7 +183,7 @@ jobs:
           docker compose -f "$COMPOSE_FILE" --env-file .env up -d rabbitmq
           for i in $(seq 1 30); do
             if docker compose -f "$COMPOSE_FILE" --env-file .env exec -T rabbitmq \
-              rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+              rabbitmqctl await_startup --timeout 5 >/dev/null 2>&1; then
               break
             fi
             if [ "$i" = "30" ]; then
@@ -193,14 +193,28 @@ jobs:
             sleep 2
           done
 
-          docker compose -f "$COMPOSE_FILE" --env-file .env exec -T rabbitmq sh -ec '
-            if rabbitmqctl list_users -q | cut -f1 | grep -Fxq "$RABBITMQ_DEFAULT_USER"; then
-              rabbitmqctl change_password "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS"
-            else
-              rabbitmqctl add_user "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS"
+          reconciled=false
+          for i in $(seq 1 15); do
+            if docker compose -f "$COMPOSE_FILE" --env-file .env exec -T rabbitmq sh -ec '
+              users="$(rabbitmqctl -q list_users)"
+              if printf "%s\n" "$users" | cut -f1 | grep -Fxq "$RABBITMQ_DEFAULT_USER"; then
+                rabbitmqctl change_password "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS"
+              else
+                rabbitmqctl add_user "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS"
+              fi
+              rabbitmqctl set_permissions -p / "$RABBITMQ_DEFAULT_USER" ".*" ".*" ".*"
+            '; then
+              reconciled=true
+              break
             fi
-            rabbitmqctl set_permissions -p / "$RABBITMQ_DEFAULT_USER" ".*" ".*" ".*"
-          '
+            echo "RabbitMQ aun no acepta comandos administrativos (${i}/15); reintentando..."
+            sleep 3
+          done
+          if [ "$reconciled" != "true" ]; then
+            echo "::error::No fue posible reconciliar las credenciales persistidas de RabbitMQ."
+            docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=100 rabbitmq || true
+            exit 1
+          fi
 
       # ---------------------------------------------------------------------
       # Crea/actualiza las cuentas de servicio scoped de MinIO (Signature/
