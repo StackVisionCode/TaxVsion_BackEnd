@@ -13,6 +13,7 @@ public sealed record InvitationCreatedIntegrationEvent : IntegrationEvent
     public required string RawToken { get; init; }
     public required DateTime ExpiresAtUtc { get; init; }
     public string? TenantName { get; init; }
+    public string? TenantSubdomain { get; init; }
     public string? InviterName { get; init; }
     public bool IsResend { get; init; }
 }

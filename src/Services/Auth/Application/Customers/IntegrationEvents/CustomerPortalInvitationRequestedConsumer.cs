@@ -113,6 +113,7 @@ public static class CustomerPortalInvitationRequestedConsumer
                     RawToken = token.RawToken,
                     ExpiresAtUtc = expiresAtUtc,
                     TenantName = tenant.Name,
+                    TenantSubdomain = tenant.SubDomain,
                     InviterName = evt.DisplayName,
                     CorrelationId = correlationId,
                 }
