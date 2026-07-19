@@ -11,6 +11,8 @@ public sealed class TenantEmailProviderConfiguration : IEntityTypeConfiguration<
     {
         builder.ToTable("TenantEmailProviders");
         builder.HasKey(p => p.Id);
+        // Id es Guid client-generado (TenantEntity → BaseEntity) — ver SystemEmailProviderConfiguration.
+        builder.Property(p => p.Id).ValueGeneratedNever();
         builder.Property(p => p.TenantId).IsRequired();
         builder.Property(p => p.ProviderCode).HasMaxLength(50).IsRequired();
         builder.Property(p => p.DisplayName).HasMaxLength(200).IsRequired();

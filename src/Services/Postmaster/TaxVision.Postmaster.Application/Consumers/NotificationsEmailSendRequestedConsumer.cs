@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
@@ -582,7 +583,7 @@ public static class NotificationsEmailSendRequestedConsumer
         var inlineAssetRefs = ParseInlineAssetReferences(evt, logger);
         var content = new RenderedContent(evt.Subject, evt.HtmlBody, evt.TextBody, inlineAssetRefs);
         var inlineAssetBytes = await FetchInlineAssetBytesAsync(
-            evt.TenantId,
+            ResolveInlineAssetTenantId(evt),
             inlineAssetRefs,
             inlineAssetFetcher,
             logger,
@@ -734,4 +735,17 @@ public static class NotificationsEmailSendRequestedConsumer
 
     private static ProviderPriorityHint? ParsePriorityHint(string? value) =>
         Enum.TryParse<ProviderPriorityHint>(value, ignoreCase: true, out var hint) ? hint : null;
+
+    /// <summary>
+    /// Tenant a usar para el fetch M2M de los inline assets en CloudStorage — NO siempre es
+    /// <c>evt.TenantId</c>. El logo del sistema (<c>evt.LogoScope == "System"</c>, Scribe Fase 4.5)
+    /// vive en CloudStorage bajo <see cref="PlatformTenant"/>, no bajo el tenant del destinatario del
+    /// email; <c>ICloudStorageInlineAssetFetcher</c> pide el token M2M y CloudStorage filtra
+    /// <c>Files</c> por tenant (<c>FilesController.IssueDownloadUrl</c>), así que usar
+    /// <c>evt.TenantId</c> ahí siempre devolvía 404 para el logo del sistema. <c>evt.LogoScope</c> ya
+    /// existía en el contrato para esto exacto (ver <see cref="NotificationsEmailSendRequestedIntegrationEvent.LogoScope"/>)
+    /// pero nunca se leía en este consumer.
+    /// </summary>
+    private static Guid ResolveInlineAssetTenantId(NotificationsEmailSendRequestedIntegrationEvent evt) =>
+        string.Equals(evt.LogoScope, "System", StringComparison.OrdinalIgnoreCase) ? PlatformTenant.Id : evt.TenantId;
 }

@@ -22,6 +22,12 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
     {
         builder.ToTable("SentMessages");
         builder.HasKey(m => m.Id);
+        // Id se genera en el aggregate (Guid.NewGuid(), BaseEntity) y SentMessage se agrega directo
+        // via ISentMessageRepository — sin esto, EF trata el Guid PK como store-generated y una
+        // segunda SaveChangesAsync sobre el mismo DbContext (SendAndFinalizeAsync tras el INSERT de
+        // QueueAndPersistAsync) puede fallar con DbUpdateConcurrencyException (0 filas afectadas).
+        // Mismo guardrail que Correspondence/PaymentApp/Notification (ver CLAUDE.md §49).
+        builder.Property(m => m.Id).ValueGeneratedNever();
         builder.Property(m => m.TenantId).IsRequired();
         builder.Property(m => m.NotificationLogId);
         builder.Property(m => m.CorrelationId).HasMaxLength(128);
