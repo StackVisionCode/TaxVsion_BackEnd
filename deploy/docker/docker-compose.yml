@@ -762,6 +762,7 @@ services:
   cloudstorage-api:
     image: taxvision/cloudstorage-api:dev
     container_name: taxvision-cloudstorage-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/CloudStorage/TaxVision.CloudStorage.Api/Dockerfile

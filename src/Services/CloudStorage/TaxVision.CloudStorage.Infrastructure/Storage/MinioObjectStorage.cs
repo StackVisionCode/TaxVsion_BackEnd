@@ -145,6 +145,23 @@ public sealed class MinioBucketBootstrapper(IMinioClient client, IOptions<CloudS
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        const int maxAttempts = 10;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                await EnsureBucketsAsync(cancellationToken);
+                return;
+            }
+            catch (Exception) when (attempt < maxAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+            }
+        }
+    }
+
+    private async Task EnsureBucketsAsync(CancellationToken cancellationToken)
+    {
         var options = storageOptions.Value;
         foreach (var bucket in new[] { options.MainBucket, options.TempBucket, options.QuarantineBucket })
         {
