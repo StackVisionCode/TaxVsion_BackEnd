@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,7 @@ using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Users;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.Tenants.IntegrationEvents;
 
@@ -24,6 +26,7 @@ public static class TenantCreatedConsumer
         ITenantSubdomainReservationRepository reservations,
         IOptions<TenantDomainOptions> domainOptions,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<TenantCreatedIntegrationEvent> logger,
         CancellationToken ct
@@ -72,6 +75,26 @@ public static class TenantCreatedConsumer
                     );
                     if (invitationResult.IsFailure)
                         throw new InvalidOperationException(invitationResult.Error.Message);
+
+                    if (!string.IsNullOrWhiteSpace(evt.AdminInvitationRawToken))
+                    {
+                        invitationResult.Value.MarkSent();
+                        await bus.PublishAsync(
+                            new InvitationCreatedIntegrationEvent
+                            {
+                                TenantId = evt.NewTenantId,
+                                InvitationId = invitationResult.Value.Id,
+                                Email = evt.AdminEmail,
+                                ActorType = UserActorType.TenantAdmin.ToString(),
+                                RawToken = evt.AdminInvitationRawToken,
+                                ExpiresAtUtc = expiresAtUtc,
+                                TenantName = evt.Name,
+                                TenantSubdomain = evt.SubDomain,
+                                InviterName = "TaxVision",
+                                CorrelationId = correlationId,
+                            }
+                        );
+                    }
 
                     await invitations.AddAsync(invitationResult.Value, ct);
                 }

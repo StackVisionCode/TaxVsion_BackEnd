@@ -185,6 +185,7 @@ public static class CreateInvitationHandler
                 RawToken = token.RawToken,
                 ExpiresAtUtc = expiresAtUtc,
                 TenantName = tenant.Name,
+                TenantSubdomain = tenant.SubDomain,
                 InviterName = $"{inviter.Name} {inviter.LastName}",
                 CorrelationId = correlation.CorrelationId,
             }

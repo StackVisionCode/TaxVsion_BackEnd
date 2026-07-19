@@ -66,6 +66,7 @@ public static class ResendInvitationHandler
                 RawToken = token.RawToken,
                 ExpiresAtUtc = invitation.ExpiresAtUtc,
                 TenantName = tenant?.Name,
+                TenantSubdomain = tenant?.SubDomain,
                 InviterName = $"{actor.Name} {actor.LastName}",
                 IsResend = true,
                 CorrelationId = correlation.CorrelationId,

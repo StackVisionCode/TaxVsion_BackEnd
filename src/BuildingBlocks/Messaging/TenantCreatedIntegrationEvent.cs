@@ -9,5 +9,6 @@ public sealed record TenantCreatedIntegrationEvent : IntegrationEvent
     public string DefaultTimeZoneId { get; init; } = TimeZones.IanaTimeZone.UtcId;
     public required string AdminEmail { get; init; }
     public required string AdminInvitationTokenHash { get; init; }
+    public string? AdminInvitationRawToken { get; init; }
     public DateTime? AdminInvitationExpiresAtUtc { get; init; }
 }

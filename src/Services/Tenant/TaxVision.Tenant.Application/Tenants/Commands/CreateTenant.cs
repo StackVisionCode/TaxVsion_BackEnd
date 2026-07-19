@@ -81,6 +81,7 @@ public static class CreateTenantHandler
                 DefaultTimeZoneId = tenant.DefaultTimeZoneId,
                 AdminEmail = adminEmail,
                 AdminInvitationTokenHash = activationTokenHash,
+                AdminInvitationRawToken = activationToken,
                 AdminInvitationExpiresAtUtc = invitationExpiresAtUtc,
                 CorrelationId = correlation.CorrelationId,
             }
