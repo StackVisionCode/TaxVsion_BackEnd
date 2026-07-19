@@ -10,6 +10,9 @@ public sealed class SentMessageRecipientConfiguration : IEntityTypeConfiguration
     {
         builder.ToTable("SentMessageRecipients");
         builder.HasKey(r => r.Id);
+        // Se agrega vía la colección de navegación SentMessage._recipients (fixup) — mismo motivo que
+        // SentMessageEventConfiguration.
+        builder.Property(r => r.Id).ValueGeneratedNever();
         builder.Property(r => r.TenantId).IsRequired();
         builder.Property(r => r.SentMessageId).IsRequired();
         builder.Property(r => r.Address).HasMaxLength(320).IsRequired();

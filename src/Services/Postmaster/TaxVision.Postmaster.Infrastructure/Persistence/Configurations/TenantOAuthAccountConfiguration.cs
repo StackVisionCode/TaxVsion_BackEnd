@@ -11,6 +11,10 @@ internal sealed class TenantOAuthAccountConfiguration : IEntityTypeConfiguration
         builder.ToTable("TenantOAuthAccounts");
 
         builder.HasKey(a => a.Id);
+        // Id es Guid client-generado (Guid.NewGuid() en ForNewConnection) — ver SystemEmailProviderConfiguration.
+        // Especialmente relevante acá: se crea al conectar y se actualiza al desconectar (consumers de
+        // connectors.tenant_email_account.*), el patrón exacto de doble-touch que dispara el bug.
+        builder.Property(a => a.Id).ValueGeneratedNever();
 
         builder.Property(a => a.TenantId).IsRequired();
         builder.Property(a => a.AccountId).IsRequired();

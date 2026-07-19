@@ -11,6 +11,10 @@ public sealed class SystemEmailProviderConfiguration : IEntityTypeConfiguration<
     {
         builder.ToTable("SystemEmailProviders");
         builder.HasKey(p => p.Id);
+        // Id es Guid client-generado (BaseEntity) — sin esto, EF lo trata como store-generated y una
+        // entidad agregada y luego actualizada dentro del mismo DbContext puede fallar con
+        // DbUpdateConcurrencyException (mismo bug real ya encontrado en SentMessageConfiguration).
+        builder.Property(p => p.Id).ValueGeneratedNever();
         builder.Property(p => p.ProviderCode).HasMaxLength(50).IsRequired();
         builder.Property(p => p.DisplayName).HasMaxLength(200).IsRequired();
         builder.Property(p => p.ProviderType).HasConversion<string>().HasMaxLength(20).IsRequired();
