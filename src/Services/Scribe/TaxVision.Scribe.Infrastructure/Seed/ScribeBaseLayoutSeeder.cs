@@ -80,12 +80,80 @@ public sealed class ScribeBaseLayoutSeeder(
     )
     {
         var layoutKey = LayoutKey.Create(layoutKeyValue).Value;
-        var alreadySeeded = await dbContext.EmailLayouts.AnyAsync(
+        var existingLayout = await dbContext.EmailLayouts.Include(l => l.Versions).FirstOrDefaultAsync(
             l => l.Scope == TemplateScope.System && l.LayoutKey == layoutKey,
             ct
         );
-        if (alreadySeeded)
+        if (existingLayout is not null)
+        {
+            var publishedVersion = existingLayout
+                .Versions.Where(v => v.Status == EmailVersionStatus.Published)
+                .OrderByDescending(v => v.VersionNumber)
+                .FirstOrDefault();
+            if (publishedVersion is not null)
+            {
+                var download = await storageService.DownloadTextAsync(publishedVersion.HtmlFileId, null, ct);
+                if (download.IsSuccess)
+                    return;
+
+                logger.LogWarning(
+                    "Published base layout '{LayoutKey}' references missing CloudStorage file {FileId}; repairing it.",
+                    layoutKeyValue,
+                    publishedVersion.HtmlFileId
+                );
+            }
+
+            var repairUpload = await storageService.UploadAsync(
+                null,
+                TemplateArtifactKind.Html,
+                Encoding.UTF8.GetBytes(html),
+                PlatformTenant.Id,
+                ct
+            );
+            if (repairUpload.IsFailure)
+            {
+                logger.LogError(
+                    "Failed to repair base layout '{LayoutKey}': {Error}",
+                    layoutKeyValue,
+                    repairUpload.Error.Message
+                );
+                return;
+            }
+
+            if (!await WaitUntilDownloadableAsync(storageService, repairUpload.Value.FileId, ct))
+            {
+                logger.LogError(
+                    "CloudStorage did not catalogue repaired base layout '{LayoutKey}' file {FileId} in time.",
+                    layoutKeyValue,
+                    repairUpload.Value.FileId
+                );
+                return;
+            }
+
+            var repairVersion = existingLayout.AddDraftVersion(
+                repairUpload.Value.StorageKey,
+                repairUpload.Value.FileId,
+                null,
+                null,
+                null,
+                null,
+                DateTime.UtcNow
+            );
+            if (repairVersion.IsFailure)
+            {
+                logger.LogError(
+                    "Failed to create repaired version for base layout '{LayoutKey}': {Error}",
+                    layoutKeyValue,
+                    repairVersion.Error.Message
+                );
+                return;
+            }
+
+            existingLayout.PublishVersion(repairVersion.Value.Id, PlatformTenant.Id, DateTime.UtcNow);
+            await unitOfWork.SaveChangesAsync(ct);
+            logger.LogInformation("Repaired and published base layout '{LayoutKey}'.", layoutKeyValue);
             return;
+        }
 
         var uploadResult = await storageService.UploadAsync(
             tenantId: null,
@@ -100,6 +168,16 @@ public sealed class ScribeBaseLayoutSeeder(
                 "Failed to upload base layout '{LayoutKey}': {Error}",
                 layoutKeyValue,
                 uploadResult.Error.Message
+            );
+            return;
+        }
+
+        if (!await WaitUntilDownloadableAsync(storageService, uploadResult.Value.FileId, ct))
+        {
+            logger.LogError(
+                "CloudStorage did not catalogue base layout '{LayoutKey}' file {FileId} in time.",
+                layoutKeyValue,
+                uploadResult.Value.FileId
             );
             return;
         }
@@ -148,6 +226,24 @@ public sealed class ScribeBaseLayoutSeeder(
         await dbContext.EmailLayouts.AddAsync(layout, ct);
         await unitOfWork.SaveChangesAsync(ct);
         logger.LogInformation("Seeded and published base layout '{LayoutKey}'.", layoutKeyValue);
+    }
+
+    private static async Task<bool> WaitUntilDownloadableAsync(
+        ITemplateStorageService storageService,
+        Guid fileId,
+        CancellationToken ct
+    )
+    {
+        for (var attempt = 1; attempt <= 30; attempt++)
+        {
+            var download = await storageService.DownloadTextAsync(fileId, null, ct);
+            if (download.IsSuccess)
+                return true;
+
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
+
+        return false;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

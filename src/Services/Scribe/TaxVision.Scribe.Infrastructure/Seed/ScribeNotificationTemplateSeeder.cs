@@ -158,6 +158,16 @@ public sealed class ScribeNotificationTemplateSeeder(
                 return false;
             }
 
+            if (!await WaitUntilDownloadableAsync(storageService, repairUpload.Value.FileId, ct))
+            {
+                logger.LogError(
+                    "CloudStorage did not catalogue repaired template '{TemplateKey}' file {FileId} in time.",
+                    definition.TemplateKey,
+                    repairUpload.Value.FileId
+                );
+                return false;
+            }
+
             var repairVersion = existingTemplate.AddDraftVersion(
                 definition.Subject,
                 repairUpload.Value.StorageKey,
@@ -202,6 +212,16 @@ public sealed class ScribeNotificationTemplateSeeder(
                 "Failed to upload template '{TemplateKey}': {Error}",
                 definition.TemplateKey,
                 uploadResult.Error.Message
+            );
+            return false;
+        }
+
+        if (!await WaitUntilDownloadableAsync(storageService, uploadResult.Value.FileId, ct))
+        {
+            logger.LogError(
+                "CloudStorage did not catalogue template '{TemplateKey}' file {FileId} in time.",
+                definition.TemplateKey,
+                uploadResult.Value.FileId
             );
             return false;
         }
@@ -281,6 +301,24 @@ public sealed class ScribeNotificationTemplateSeeder(
             definition.EventKey
         );
         return true;
+    }
+
+    private static async Task<bool> WaitUntilDownloadableAsync(
+        ITemplateStorageService storageService,
+        Guid fileId,
+        CancellationToken ct
+    )
+    {
+        for (var attempt = 1; attempt <= 30; attempt++)
+        {
+            var download = await storageService.DownloadTextAsync(fileId, null, ct);
+            if (download.IsSuccess)
+                return true;
+
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
+
+        return false;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
