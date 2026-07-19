@@ -53,6 +53,10 @@ builder.Services.AddHostedService<ScribeBaseLayoutSeeder>();
 // Corre después del seeder de layouts — IHostedService.StartAsync se ejecuta en orden de registro.
 builder.Services.AddHostedService<ScribeNotificationTemplateSeeder>();
 
+// Sube el logo de header de plataforma (Assets/SystemLogo/deploy.png) y persiste el FileId en
+// SystemAssetRef — reemplaza la config estática Scribe:SystemAssets.
+builder.Services.AddHostedService<ScribeSystemAssetSeeder>();
+
 // Precarga en cache (L1+L2) todo template Published (Fase 6) — corre después del seeder.
 builder.Services.AddHostedService<TemplateWarmupService>();
 

@@ -418,7 +418,7 @@ La transaccion EF conserva conjuntamente cambios de negocio y envelopes saliente
 ### Crear tenant y activar administrador
 
 ```text
-POST /tenants
+POST /tenants (ticket firmado de Auth o rol PlatformAdmin, ver §33.3)
  -> valida Name, SubDomain, AdminEmail y DefaultTimeZoneId
  -> genera activation token
  -> guarda tenant
@@ -837,7 +837,7 @@ adquirido por suscripcion.
 
 | Endpoint | Acceso |
 | --- | --- |
-| `POST /tenants` | onboarding publico, rate limited |
+| `POST /tenants` | ticket firmado de Auth (`POST /auth/subdomains/reserve`) o rol `PlatformAdmin`; policy `TenantRegistration`, rate limit `tenant-registration` (5/min/IP) — ver §33.3 |
 | `GET /tenants` | rol `PlatformAdmin` |
 | `PATCH /tenants/{id}/status` | rol `PlatformAdmin` |
 | `POST /auth/invitations` | `TenantAdmin` o `PlatformAdmin`, sujeto a la matriz |
@@ -5010,8 +5010,20 @@ sincronica extra en el path critico de cada request (resolver el Host).
    errores HTTP.
 2. **Reserva** (Fase A7): `POST /auth/subdomains/reserve` (publico) crea un
    `TenantSubdomainReservation` para bloquear el slug por 15 minutos mientras el
-   usuario termina el resto del formulario de alta.
-3. El servicio **Tenant** crea el `Tenant` y publica
+   usuario termina el resto del formulario de alta. La respuesta incluye
+   `RegistrationTicket`: un JWT de un solo proposito (`purpose=tenant-registration`,
+   `reg_slug`, `reg_email`, firmado con la misma clave RS256 de siempre,
+   `GenerateTenantRegistrationTicket` en `IJwtTokenGenerator`) que expira junto con
+   la reserva.
+3. El apex envia ese ticket como Bearer token al hacer `POST /tenants`. Tenant
+   valida el JWT localmente (misma clave publica RS256 via
+   `AddTaxVisionJwtAuthentication`, cero HTTP sincrono de vuelta a Auth) con la
+   policy `TenantRegistration`: acepta el claim `purpose=tenant-registration` o el
+   rol `PlatformAdmin` (alta directa sin pasar por reserva). Cuando el ticket esta
+   presente, `EffectiveTenantRegistrationResolver` (`Api/Common/`) toma
+   `Subdomain`/`AdminEmail` unicamente de sus claims — el body nunca los
+   sobreescribe, mismo patron que `EffectiveLoginTenantResolver` en Auth. El
+   servicio **Tenant** crea el `Tenant` y publica
    `TenantCreatedIntegrationEvent` con el subdominio elegido.
 4. Auth consume ese evento en `TenantCreatedConsumer`
    (`Application/Tenants/IntegrationEvents/`): registra el tenant en su propio

@@ -41,8 +41,8 @@ public static class DependencyInjection
 
         services.AddScoped<ITenantLogoRefRepository, TenantLogoRefRepository>();
         services.AddScoped<ITenantLogoMissingNotificationRepository, TenantLogoMissingNotificationRepository>();
+        services.AddScoped<ISystemAssetRefRepository, SystemAssetRefRepository>();
         services.AddScoped<ILogoResolver, LogoResolver>();
-        services.AddOptions<SystemAssetsOptions>().Bind(configuration.GetSection(SystemAssetsOptions.SectionName));
 
         // Preflight de publish (Fase 4.6 + 5): puro, sin estado — singleton.
         services.AddSingleton<TaxVision.Scribe.Application.Templates.Validation.EmailHtmlSafetyValidator>();

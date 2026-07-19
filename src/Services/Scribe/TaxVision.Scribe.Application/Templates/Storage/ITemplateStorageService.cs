@@ -9,6 +9,7 @@ public enum TemplateArtifactKind
     Text,
     DesignJson,
     PreviewImage,
+    SystemLogo,
 }
 
 /// <summary>Resultado de una subida: el FileId (lo único necesario para volver a leerlo) y el StorageKey (identificador legible/auditable guardado en el dominio).</summary>

@@ -84,10 +84,9 @@ public sealed class ScribeBaseLayoutSeeder(
     )
     {
         var layoutKey = LayoutKey.Create(layoutKeyValue).Value;
-        var existingLayout = await dbContext.EmailLayouts.Include(l => l.Versions).FirstOrDefaultAsync(
-            l => l.Scope == TemplateScope.System && l.LayoutKey == layoutKey,
-            ct
-        );
+        var existingLayout = await dbContext
+            .EmailLayouts.Include(l => l.Versions)
+            .FirstOrDefaultAsync(l => l.Scope == TemplateScope.System && l.LayoutKey == layoutKey, ct);
         if (existingLayout is not null)
         {
             var publishedVersion = existingLayout

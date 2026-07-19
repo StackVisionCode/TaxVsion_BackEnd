@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Scribe.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Scribe.Infrastructure.Persistence;
 namespace TaxVision.Scribe.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ScribeDbContext))]
-    partial class ScribeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719051609_AddSystemAssetRefs")]
+    partial class AddSystemAssetRefs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

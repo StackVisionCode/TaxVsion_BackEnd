@@ -127,10 +127,7 @@ public sealed class SystemEmailProviderSeeder(
         );
         if (createResult.IsFailure)
         {
-            logger.LogError(
-                "Failed to build configured SystemEmailProvider: {Error}",
-                createResult.Error.Message
-            );
+            logger.LogError("Failed to build configured SystemEmailProvider: {Error}", createResult.Error.Message);
             return;
         }
 

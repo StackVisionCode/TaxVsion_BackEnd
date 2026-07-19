@@ -131,10 +131,9 @@ public sealed class ScribeNotificationTemplateSeeder(
         var templateKey = templateKeyResult.Value;
         var eventKey = eventKeyResult.Value;
 
-        var existingTemplate = await dbContext.EmailTemplates.Include(t => t.Versions).FirstOrDefaultAsync(
-            t => t.Scope == TemplateScope.System && t.TemplateKey == templateKey,
-            ct
-        );
+        var existingTemplate = await dbContext
+            .EmailTemplates.Include(t => t.Versions)
+            .FirstOrDefaultAsync(t => t.Scope == TemplateScope.System && t.TemplateKey == templateKey, ct);
         if (existingTemplate is not null)
         {
             var publishedVersion = existingTemplate

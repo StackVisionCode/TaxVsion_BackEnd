@@ -22,8 +22,6 @@ public static class CsvWriter
         if (string.IsNullOrEmpty(value))
             return string.Empty;
 
-        return value.IndexOfAny([',', '"', '\n', '\r']) >= 0
-            ? $"\"{value.Replace("\"", "\"\"")}\""
-            : value;
+        return value.IndexOfAny([',', '"', '\n', '\r']) >= 0 ? $"\"{value.Replace("\"", "\"\"")}\"" : value;
     }
 }

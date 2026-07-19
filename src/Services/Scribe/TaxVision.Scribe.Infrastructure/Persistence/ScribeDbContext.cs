@@ -21,6 +21,7 @@ public sealed class ScribeDbContext(DbContextOptions<ScribeDbContext> options) :
     public DbSet<EventTemplateMapping> EventTemplateMappings => Set<EventTemplateMapping>();
     public DbSet<TenantLogoRef> TenantLogoRefs => Set<TenantLogoRef>();
     public DbSet<TenantLogoMissingNotification> TenantLogoMissingNotifications => Set<TenantLogoMissingNotification>();
+    public DbSet<SystemAssetRef> SystemAssetRefs => Set<SystemAssetRef>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

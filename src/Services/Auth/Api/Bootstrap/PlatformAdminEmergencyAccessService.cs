@@ -76,15 +76,15 @@ public sealed class PlatformAdminEmergencyAccessService(
         }
 
         var alreadyExists = await db.Users.AnyAsync(
-            user => user.TenantId == PlatformTenant.Id && user.Email == email && user.ActorType == UserActorType.PlatformAdmin,
+            user =>
+                user.TenantId == PlatformTenant.Id
+                && user.Email == email
+                && user.ActorType == UserActorType.PlatformAdmin,
             cancellationToken
         );
         if (alreadyExists)
         {
-            logger.LogInformation(
-                "Platform emergency access skipped: {Email} already exists as PlatformAdmin.",
-                email
-            );
+            logger.LogInformation("Platform emergency access skipped: {Email} already exists as PlatformAdmin.", email);
             return;
         }
 

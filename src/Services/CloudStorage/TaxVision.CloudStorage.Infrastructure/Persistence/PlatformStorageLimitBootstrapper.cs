@@ -45,10 +45,7 @@ public sealed class PlatformStorageLimitBootstrapper(
 
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        logger.LogInformation(
-            "Provisioned CloudStorage quota for platform tenant {TenantId}.",
-            PlatformTenant.Id
-        );
+        logger.LogInformation("Provisioned CloudStorage quota for platform tenant {TenantId}.", PlatformTenant.Id);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

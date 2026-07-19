@@ -2,7 +2,6 @@ using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxVision.Scribe.Application.Abstractions;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.Projections;
@@ -11,15 +10,19 @@ using Wolverine;
 namespace TaxVision.Scribe.Application.Rendering;
 
 /// <summary>
-/// Resuelve qué logo embeber en un correo. System siempre devuelve el logo de plataforma
-/// (config). Tenant consulta TenantLogoRef; si no hay uno activo, cae al logo de plataforma con
-/// IsFallback=true y dispara ScribeTenantLogoMissingDetectedIntegrationEvent (a lo sumo 1 por
-/// tenant por día — ver TenantLogoMissingNotification). Cache L1 5min, key "logo:{tenantId?}".
+/// Resuelve qué logo embeber en un correo. System consulta SystemAssetRef (sembrado por
+/// ScribeSystemAssetSeeder desde un archivo local al arrancar — ya no config estática). Tenant
+/// consulta TenantLogoRef; si no hay uno activo, cae al logo de plataforma con IsFallback=true y
+/// dispara ScribeTenantLogoMissingDetectedIntegrationEvent (a lo sumo 1 por tenant por día — ver
+/// TenantLogoMissingNotification). Si el logo de plataforma tampoco está sembrado todavía (recién
+/// arrancó, o el seeder falló), devuelve <see cref="Guid.Empty"/> — el caller (FluidTemplateRenderer)
+/// debe tratar eso como "sin logo" y omitir el inline asset, nunca bloquear el envío por esto.
+/// Cache L1 5min, key "logo:{tenantId?}".
 /// </summary>
 public sealed class LogoResolver(
     ITenantLogoRefRepository logoRefRepository,
     ITenantLogoMissingNotificationRepository notificationRepository,
-    IOptions<SystemAssetsOptions> systemAssets,
+    ISystemAssetRefRepository systemAssetRefRepository,
     IMemoryCache l1Cache,
     IUnitOfWork unitOfWork,
     IMessageBus messageBus,
@@ -37,7 +40,7 @@ public sealed class LogoResolver(
         var resolved =
             logoScope == LogoScope.Tenant && tenantId is not null
                 ? await ResolveTenantLogoAsync(tenantId.Value, ct)
-                : SystemLogo();
+                : await SystemLogoAsync(ct);
 
         l1Cache.Set(
             cacheKey,
@@ -47,15 +50,17 @@ public sealed class LogoResolver(
         return resolved;
     }
 
-    private LogoAsset SystemLogo()
+    private async Task<LogoAsset> SystemLogoAsync(CancellationToken ct)
     {
-        var opt = systemAssets.Value;
-        return new LogoAsset(
-            opt.HeaderLogoFileId,
-            opt.HeaderLogoContentType,
-            opt.HeaderLogoSizeBytes,
-            IsFallback: false
+        var asset = await systemAssetRefRepository.GetByKeyAsync(SystemAssetKeys.HeaderLogo, ct);
+        if (asset is not null)
+            return new LogoAsset(asset.CloudStorageFileId, asset.ContentType, asset.SizeBytes, IsFallback: false);
+
+        logger.LogWarning(
+            "System header logo is not seeded yet (SystemAssetRef '{Key}' missing); emails will render without a logo.",
+            SystemAssetKeys.HeaderLogo
         );
+        return new LogoAsset(Guid.Empty, string.Empty, 0, IsFallback: true);
     }
 
     private async Task<LogoAsset> ResolveTenantLogoAsync(Guid tenantId, CancellationToken ct)
@@ -66,13 +71,12 @@ public sealed class LogoResolver(
 
         await NotifyMissingLogoAsync(tenantId, ct);
 
-        var opt = systemAssets.Value;
-        return new LogoAsset(
-            opt.HeaderLogoFileId,
-            opt.HeaderLogoContentType,
-            opt.HeaderLogoSizeBytes,
-            IsFallback: true
-        );
+        // IsFallback siempre true acá: significa "este tenant no tiene su propio logo", no
+        // "el logo de plataforma está configurado" — eso lo decide SystemLogoAsync para su propio
+        // caso (render System-scope). Si además el logo de plataforma tampoco está sembrado
+        // (CloudStorageFileId == Guid.Empty), FluidTemplateRenderer ya omite el inline asset solo.
+        var systemLogo = await SystemLogoAsync(ct);
+        return systemLogo with { IsFallback = true };
     }
 
     private async Task NotifyMissingLogoAsync(Guid tenantId, CancellationToken ct)
