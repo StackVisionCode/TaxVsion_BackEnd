@@ -47,6 +47,9 @@ jobs:
           PAYMENTAPP_DB_CONNECTION=${{ secrets.PAYMENTAPP_DB_CONNECTION }}
           PAYMENTCLIENT_DB_CONNECTION=${{ secrets.PAYMENTCLIENT_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
+          # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
+          # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
+          SQLSERVER_BIND_ADDRESS=192.168.100.10
 
           # ---------- RabbitMQ / MinIO / Grafana ----------
           RABBITMQ_CONNECTION=${{ secrets.RABBITMQ_CONNECTION }}

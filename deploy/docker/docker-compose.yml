@@ -87,8 +87,8 @@ services:
 
   # SQL Server 2022 Developer edition — gratis para no-produccion-comercial-interna
   # (uso propio del negocio, sin redistribuir), version completa sin los limites de
-  # Express. Solo alcanzable via loopback (127.0.0.1) + VPN al server, nunca en la
-  # interfaz publica — ver seccion 3 del plan de deploy.
+  # Express. En local usa loopback; produccion lo enlaza exclusivamente a la IP
+  # privada anunciada por Cloudflare WARP, nunca a 0.0.0.0 ni a la IP publica.
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: taxvision-sqlserver
@@ -97,7 +97,7 @@ services:
       MSSQL_PID: Developer
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     ports:
-      - "127.0.0.1:1433:1433"
+      - "${SQLSERVER_BIND_ADDRESS:-127.0.0.1}:1433:1433"
     volumes:
       - sqlserver-data:/var/opt/mssql
     networks:
