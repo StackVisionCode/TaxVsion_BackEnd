@@ -91,6 +91,9 @@ public static class DependencyInjection
         services.AddSingleton<IFileContentInspector, FileContentInspector>();
         services.AddSingleton<IShareLinkPasswordHasher, Pbkdf2ShareLinkPasswordHasher>();
         services.AddSingleton<ISystemClock, SystemClock>();
+        // Must run before Wolverine listeners so Scribe's platform layouts are not
+        // dropped for a missing technical-tenant quota on a fresh database.
+        services.AddHostedService<PlatformStorageLimitBootstrapper>();
         services.AddHostedService<MinioBucketBootstrapper>();
         services.AddHostedService<ExpiredUploadCleanupService>();
         services.AddHostedService<RecycleBinPurgeService>();

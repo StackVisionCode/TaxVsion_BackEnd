@@ -26,6 +26,10 @@ public sealed class ScribeBaseLayoutSeeder(
     ILogger<ScribeBaseLayoutSeeder> logger
 ) : IHostedService
 {
+    // CloudStorage scans every uploaded asset with ClamAV. Its configured timeout is
+    // 120 seconds, so a 30-second polling window can abandon a healthy slow scan.
+    private const int DownloadableWaitAttempts = 180;
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         // TemplateStorageService.UploadAsync publica un evento vía Wolverine, y Wolverine recién se
@@ -234,7 +238,7 @@ public sealed class ScribeBaseLayoutSeeder(
         CancellationToken ct
     )
     {
-        for (var attempt = 1; attempt <= 30; attempt++)
+        for (var attempt = 1; attempt <= DownloadableWaitAttempts; attempt++)
         {
             var download = await storageService.DownloadTextAsync(fileId, null, ct);
             if (download.IsSuccess)

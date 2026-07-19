@@ -9,6 +9,7 @@ using TaxVision.Scribe.Application.Templates.Seed;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.EventMappings;
+using TaxVision.Scribe.Domain.Layouts;
 using TaxVision.Scribe.Domain.Templates;
 using TaxVision.Scribe.Domain.ValueObjects;
 using TaxVision.Scribe.Infrastructure.Persistence;
@@ -30,6 +31,8 @@ public sealed class ScribeNotificationTemplateSeeder(
     ILogger<ScribeNotificationTemplateSeeder> logger
 ) : IHostedService
 {
+    private const int SeedDependencyWaitAttempts = 180;
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         // Mismo motivo que ScribeBaseLayoutSeeder: SeedIfMissingAsync sube a CloudStorage y eso
@@ -48,19 +51,29 @@ public sealed class ScribeNotificationTemplateSeeder(
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
             var systemBaseKey = LayoutKey.Create("system-base").Value;
-            var systemBaseLayout = await dbContext
-                .EmailLayouts.Include(l => l.Versions)
-                .FirstOrDefaultAsync(
-                    l => l.Scope == TemplateScope.System && l.LayoutKey == systemBaseKey,
-                    cancellationToken
+            EmailLayout? systemBaseLayout = null;
+            EmailLayoutVersion? publishedLayoutVersion = null;
+            for (var attempt = 1; attempt <= SeedDependencyWaitAttempts; attempt++)
+            {
+                systemBaseLayout = await dbContext
+                    .EmailLayouts.Include(l => l.Versions)
+                    .FirstOrDefaultAsync(
+                        l => l.Scope == TemplateScope.System && l.LayoutKey == systemBaseKey,
+                        cancellationToken
+                    );
+                publishedLayoutVersion = systemBaseLayout?.Versions.FirstOrDefault(v =>
+                    v.Status == EmailVersionStatus.Published
                 );
-            var publishedLayoutVersion = systemBaseLayout?.Versions.FirstOrDefault(v =>
-                v.Status == EmailVersionStatus.Published
-            );
+                if (publishedLayoutVersion is not null)
+                    break;
+
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
             if (systemBaseLayout is null || publishedLayoutVersion is null)
             {
                 logger.LogWarning(
-                    "ScribeNotificationTemplateSeeder skipped: 'system-base' layout is not published yet."
+                    "ScribeNotificationTemplateSeeder skipped after waiting {Seconds}s: 'system-base' layout is not published.",
+                    SeedDependencyWaitAttempts
                 );
                 return;
             }
@@ -309,7 +322,7 @@ public sealed class ScribeNotificationTemplateSeeder(
         CancellationToken ct
     )
     {
-        for (var attempt = 1; attempt <= 30; attempt++)
+        for (var attempt = 1; attempt <= SeedDependencyWaitAttempts; attempt++)
         {
             var download = await storageService.DownloadTextAsync(fileId, null, ct);
             if (download.IsSuccess)
