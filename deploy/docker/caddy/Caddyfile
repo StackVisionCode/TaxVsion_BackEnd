@@ -35,9 +35,10 @@
 	}
 }
 
-# Origen HTTP usado por la ruta publicada del Cloudflare Tunnel. Todo lo que
-# no sea un objeto de MinIO entra exclusivamente por el API Gateway.
-http://{$TAXVISION_DOMAIN:api.taxprocore.com} {
+# Origen HTTP usado por las rutas publicadas del Cloudflare Tunnel. Incluye
+# tanto la API como los hosts dinamicos de tenant; Cloudflare conserva el Host
+# original y Auth lo utiliza para resolver el tenant correspondiente.
+http://{$TAXVISION_DOMAIN:api.taxprocore.com}, http://*.{$TAXVISION_BASE_DOMAIN:taxprocore.com} {
 	import taxvision_upstreams
 }
 

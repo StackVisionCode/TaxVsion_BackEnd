@@ -118,12 +118,76 @@ public sealed class ScribeNotificationTemplateSeeder(
         var templateKey = templateKeyResult.Value;
         var eventKey = eventKeyResult.Value;
 
-        var alreadySeeded = await dbContext.EmailTemplates.AnyAsync(
+        var existingTemplate = await dbContext.EmailTemplates.Include(t => t.Versions).FirstOrDefaultAsync(
             t => t.Scope == TemplateScope.System && t.TemplateKey == templateKey,
             ct
         );
-        if (alreadySeeded)
-            return false;
+        if (existingTemplate is not null)
+        {
+            var publishedVersion = existingTemplate
+                .Versions.Where(v => v.Status == EmailVersionStatus.Published)
+                .OrderByDescending(v => v.VersionNumber)
+                .FirstOrDefault();
+            if (publishedVersion?.HtmlFileId is Guid htmlFileId)
+            {
+                var download = await storageService.DownloadTextAsync(htmlFileId, tenantId: null, ct);
+                if (download.IsSuccess)
+                    return false;
+
+                logger.LogWarning(
+                    "Published template '{TemplateKey}' references missing CloudStorage file {FileId}; repairing it.",
+                    definition.TemplateKey,
+                    htmlFileId
+                );
+            }
+
+            var repairUpload = await storageService.UploadAsync(
+                tenantId: null,
+                TemplateArtifactKind.Html,
+                Encoding.UTF8.GetBytes(definition.Html),
+                PlatformTenant.Id,
+                ct
+            );
+            if (repairUpload.IsFailure)
+            {
+                logger.LogError(
+                    "Failed to repair template '{TemplateKey}': {Error}",
+                    definition.TemplateKey,
+                    repairUpload.Error.Message
+                );
+                return false;
+            }
+
+            var repairVersion = existingTemplate.AddDraftVersion(
+                definition.Subject,
+                repairUpload.Value.StorageKey,
+                repairUpload.Value.FileId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                layoutId,
+                layoutVersionNumber,
+                definition.Variables,
+                DateTime.UtcNow
+            );
+            if (repairVersion.IsFailure)
+            {
+                logger.LogError(
+                    "Failed to create repaired version for template '{TemplateKey}': {Error}",
+                    definition.TemplateKey,
+                    repairVersion.Error.Message
+                );
+                return false;
+            }
+
+            existingTemplate.PublishVersion(repairVersion.Value.Id, PlatformTenant.Id, DateTime.UtcNow);
+            await unitOfWork.SaveChangesAsync(ct);
+            logger.LogInformation("Repaired and published template '{TemplateKey}'.", definition.TemplateKey);
+            return true;
+        }
 
         var uploadResult = await storageService.UploadAsync(
             tenantId: null,
