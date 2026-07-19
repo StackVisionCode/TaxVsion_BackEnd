@@ -59,6 +59,13 @@ public enum FolderType
     /// TemplateKey/VersionNumber en la BD de Scribe, no por año.
     /// </summary>
     Templates,
+
+    /// <summary>
+    /// Logo del tenant embebido por Postmaster como inline attachment CID en cada correo saliente
+    /// (Tenant_Service_LogoSupport_Plan.md). Sin RequiresYear — no es un documento fiscal, se
+    /// reemplaza in-place (un logo activo por tenant).
+    /// </summary>
+    Branding,
     Other,
 }
 

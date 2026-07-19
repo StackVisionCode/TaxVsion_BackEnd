@@ -13,8 +13,8 @@
 # Los access keys y los nombres de variable *_MINIO_SECRET de abajo son EXACTAMENTE
 # los que consume deploy/docker/docker-compose.yml (Signature__Minio__AccessKey,
 # TRANSCRIPT_WORKER_MINIO_ACCESS_KEY, Customer__Minio__AccessKey,
-# Correspondence__Minio__AccessKey, Scribe__Minio__AccessKey) — si los cambias aca,
-# cambialos tambien alla o los servicios dejan de poder autenticarse.
+# Correspondence__Minio__AccessKey, Scribe__Minio__AccessKey, Tenant__Minio__AccessKey) —
+# si los cambias aca, cambialos tambien alla o los servicios dejan de poder autenticarse.
 #
 # Se ejecuta automaticamente como parte del deploy (ver el servicio "minio-provision"
 # en docker-compose.yml, profile "tools", y el workflow deploy.yml) DESPUES de que
@@ -26,6 +26,7 @@
 #   MINIO_ROOT_USER=... MINIO_ROOT_PASSWORD=... \
 #   SIGNATURE_MINIO_SECRET=... TRANSCRIPT_WORKER_MINIO_SECRET=... \
 #   CUSTOMER_MINIO_SECRET=... CORRESPONDENCE_MINIO_SECRET=... SCRIBE_MINIO_SECRET=... \
+#   TENANT_MINIO_SECRET=... \
 #   ./provision-service-accounts.sh
 #
 # Los *_MINIO_SECRET son las contrasenas que despues van en cada servicio como
@@ -62,5 +63,7 @@ provision "correspondence" "correspondence-worker" "${CORRESPONDENCE_MINIO_SECRE
   "$(dirname "$0")/policies/correspondence-source.json"
 provision "scribe" "scribe-worker" "${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET}" \
   "$(dirname "$0")/policies/scribe-source.json"
+provision "tenant" "tenant-worker" "${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET}" \
+  "$(dirname "$0")/policies/tenant-source.json"
 
 echo "Done. Set Minio__AccessKey/Minio__SecretKey in each service to the access-key/secret used above."

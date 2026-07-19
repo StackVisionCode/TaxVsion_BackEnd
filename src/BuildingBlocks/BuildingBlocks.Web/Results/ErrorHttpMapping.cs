@@ -40,6 +40,7 @@ public static class ErrorHttpMapping
             or "EmailThread.NotFound"
             or "Draft.NotFound"
             or "EventTemplateMapping.NotFound"
+            or "Tenant.Logo.NotFound"
             // Fase 16.5 (hardening Postmaster): los 4 códigos NotFound propios de Postmaster no
             // tenían entrada explícita y caían al default (400) en vez del 404 semánticamente
             // correcto — mismo gap exacto que EventTemplateMapping.NotFound tuvo en Scribe Fase 10.5.
@@ -118,14 +119,18 @@ public static class ErrorHttpMapping
             or "CloudStorageClient.UnexpectedStatus"
             or "CorrespondenceTempBucketUploader.UploadFailed"
             or "PostmasterClient.EmptyResponse"
-            or "PostmasterClient.UnexpectedStatus" => StatusCodes.Status502BadGateway,
+            or "PostmasterClient.UnexpectedStatus"
+            or "Tenant.Logo.Storage.Upload"
+            or "Tenant.Logo.Storage.Download"
+            or "Tenant.Logo.Storage.Delete" => StatusCodes.Status502BadGateway,
             "ConnectorsClient.ServiceAuthUnavailable"
             or "ConnectorsClient.Unavailable"
             or "ConnectorsClient.RequestFailed"
             or "CloudStorageClient.ServiceAuthUnavailable"
             or "CloudStorageClient.RequestFailed"
             or "PostmasterClient.ServiceAuthUnavailable"
-            or "PostmasterClient.RequestFailed" => StatusCodes.Status503ServiceUnavailable,
+            or "PostmasterClient.RequestFailed"
+            or "Tenant.Logo.Storage.Auth" => StatusCodes.Status503ServiceUnavailable,
             "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
                 StatusCodes.Status504GatewayTimeout,
             "GetMessageBodyHandler.RateLimited"

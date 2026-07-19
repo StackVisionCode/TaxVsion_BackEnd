@@ -153,6 +153,116 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "UploadTenantLogo",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						}
+					]
+				},
+				"url": {
+					"raw": "{{UrlBase}}/tenants/{{tenantId}}/logo",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"tenants",
+						"{{tenantId}}",
+						"logo"
+					]
+				},
+				"description": "Sube/reemplaza el logo del tenant (Tenant_Service_LogoSupport_Plan.md). image/png, image/jpeg o image/svg+xml, max 500KB. Requiere permiso branding.manage sobre el tenant propio (o PlatformAdmin). 202 Accepted: el archivo va directo a MinIO y se escanea de forma asincrona (ClamAV + politica de contenido) antes de confirmarse - GetTenantLogo devuelve 404 hasta que se confirma."
+			},
+			"response": [],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "GetTenantLogo",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/tenants/{{tenantId}}/logo",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"tenants",
+						"{{tenantId}}",
+						"logo"
+					]
+				},
+				"description": "Devuelve un download-url presignado (URL + expiracion) para el logo confirmado del tenant. 404 (Tenant.Logo.NotFound) si el tenant no tiene logo o el upload todavia esta en escaneo. Requiere solo autenticacion (cualquier usuario del propio tenant), sin permiso branding.manage."
+			},
+			"response": []
+		},
+		{
+			"name": "RemoveTenantLogo",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/tenants/{{tenantId}}/logo",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"tenants",
+						"{{tenantId}}",
+						"logo"
+					]
+				},
+				"description": "Quita el logo del tenant (borra el archivo en CloudStorage y limpia los campos Logo* del aggregate). Idempotente - 204 aunque no hubiera logo. Requiere permiso branding.manage."
+			},
+			"response": [],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+						]
+					}
+				}
+			]
 		}
 	]
 }

@@ -21,6 +21,7 @@ public static class PermissionCatalog
     public const string BillingManage = "billing.manage";
     public const string SubscriptionManage = "subscription.manage";
     public const string TenantDomainsManage = "tenant.domains.manage";
+    public const string BrandingManage = "branding.manage";
 
     // Módulos operativos
     public const string CustomersView = CustomersPermissions.View;
@@ -1145,6 +1146,13 @@ public static class PermissionCatalog
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000122"),
+            BrandingManage,
+            "branding",
+            "Gestionar el logo/branding del tenant",
+            false
         ),
     ];
 

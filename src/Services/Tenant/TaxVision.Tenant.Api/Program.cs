@@ -1,17 +1,23 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
+using TaxVision.Tenant.Api.Authorization;
+using TaxVision.Tenant.Api.Common;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Infrastructure;
 using TaxVision.Tenant.Infrastructure.Persistence;
@@ -49,6 +55,11 @@ builder.Services.AddTenantInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-service");
 
+// Autorización por permiso ([HasPermission(...)], ver TenantBrandingController) — mismo mecanismo
+// que Postmaster/Signature/Notification/Customer. Coexiste con las policies nombradas de abajo:
+// PermissionPolicyProvider solo intercepta el prefijo "perm:", el resto cae al provider default.
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
 // Acepta el ticket firmado por Auth (ReserveSubdomainHandler, claim reg_slug) o un
 // PlatformAdmin creando un tenant directamente — ver TenantController.Create.
 builder
@@ -74,6 +85,23 @@ builder.Services.AddRateLimiter(options =>
                 {
                     PermitLimit = 5,
                     Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    // Tenant_Service_LogoSupport_Plan.md §10 — 10 uploads/hora, particionado por tenant (no por IP,
+    // a diferencia de tenant-registration) para que un tenant ruidoso no consuma el cupo de otro
+    // detrás del mismo NAT/proxy corporativo.
+    options.AddPolicy(
+        "tenant-logo-upload",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                context.User.TryGetTenantId(out var tid) ? tid.ToString() : "anonymous",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromHours(1),
                     QueueLimit = 0,
                 }
             )
@@ -111,6 +139,9 @@ builder.Host.UseWolverine(options =>
 
     options.PublishMessage<TenantCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantLogoUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantLogoRemovedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options
         .Policies.OnException<Exception>()

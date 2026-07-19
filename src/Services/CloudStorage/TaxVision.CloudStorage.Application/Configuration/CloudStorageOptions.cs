@@ -164,6 +164,7 @@ public sealed class CloudStorageOptions
             [FolderType.Transcripts] = TranscriptsPolicy(),
             [FolderType.Backups] = BackupsPolicy(),
             [FolderType.Templates] = TemplatesPolicy(),
+            [FolderType.Branding] = BrandingPolicy(),
             [FolderType.Other] = OtherPolicy(),
         };
 
@@ -351,6 +352,21 @@ public sealed class CloudStorageOptions
             MaxSizeBytes = 5L * 1024 * 1024,
             AllowedExtensions = [".html", ".txt", ".json", ".png"],
             AllowedContentTypes = ["text/html", "text/plain", "application/json", "image/png"],
+        };
+
+    /// <summary>
+    /// Logo del tenant embebido inline (CID) en cada correo saliente (Tenant_Service_LogoSupport_Plan.md
+    /// §4/§8). 500KB da margen para un PNG con transparencia en retina (2x) sin acercarse al cap total
+    /// de 5MB que Postmaster ya aplica a la suma de inline assets de un mismo email
+    /// (SentMessage.MaxTotalInlineAssetsBytes) — subido 2.5x respecto al borrador original de 200KB del
+    /// plan a pedido explicito, sigue siendo chico frente a ese techo real.
+    /// </summary>
+    private static StorageFolderTypePolicy BrandingPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 500L * 1024,
+            AllowedExtensions = [".png", ".jpg", ".jpeg", ".svg"],
+            AllowedContentTypes = ["image/png", "image/jpeg", "image/svg+xml"],
         };
 
     private static StorageFolderTypePolicy BackupsPolicy() =>

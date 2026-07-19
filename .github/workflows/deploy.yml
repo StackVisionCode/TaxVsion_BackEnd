@@ -108,6 +108,11 @@ jobs:
           SCRIBE_SERVICE_CLIENT_SECRET=${{ secrets.SCRIBE_SERVICE_CLIENT_SECRET }}
           POSTMASTER_SERVICE_CLIENT_ID=${{ secrets.POSTMASTER_SERVICE_CLIENT_ID }}
           POSTMASTER_SERVICE_CLIENT_SECRET=${{ secrets.POSTMASTER_SERVICE_CLIENT_SECRET }}
+          TENANT_SERVICE_CLIENT_ID=${{ secrets.TENANT_SERVICE_CLIENT_ID }}
+          TENANT_SERVICE_CLIENT_SECRET=${{ secrets.TENANT_SERVICE_CLIENT_SECRET }}
+
+          # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
+          TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}
 
           # ---------- Signature (PAdES-B sealing) ----------
           SIGNATURE_PFX_PASSWORD=${{ secrets.SIGNATURE_PFX_PASSWORD }}
@@ -193,8 +198,20 @@ jobs:
           echo "${{ secrets.SIGNATURE_SEALING_PFX_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/signature-sealing.pfx"
           chmod 600 "$TAXVISION_SECRETS_DIR"/jwt-private.pem "$TAXVISION_SECRETS_DIR"/jwt-public.pem "$TAXVISION_SECRETS_DIR"/signature-sealing.pfx
 
+      # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este
+      # build por completo (Compose ignora servicios cuyo profile no está activo, en
+      # CUALQUIER comando, no solo `up`). El runner self-hosted conserva el tag
+      # taxvision/migrations:dev entre corridas, así que el paso "Apply .NET EF Core
+      # migrations" de más abajo (`docker compose run --rm migrations`) reutilizaba esa
+      # imagen vieja sin reconstruirla — `run` solo compila si el tag no existe todavía.
+      # Resultado real: cada migración nueva (ej. Scribe, y ahora Tenant AddTenantLogoFields)
+      # nunca se compilaba dentro del contenedor que corre `dotnet ef database update
+      # --no-build`, así que el comando terminaba en éxito sin aplicar nada nuevo — sin
+      # ningún error visible en el job. Root cause real, no un parche: reconstruir SIEMPRE
+      # con --profile tools para que migrations (y cualquier futuro servicio de ese
+      # profile) se compile desde el checkout actual en cada deploy.
       - name: Build images
-        run: docker compose -f "$COMPOSE_FILE" --env-file .env build
+        run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools build
 
       # RABBITMQ_DEFAULT_USER/PASS solo se aplican cuando el volumen de RabbitMQ
       # se crea por primera vez. Si las credenciales cambian en GitHub Secrets,

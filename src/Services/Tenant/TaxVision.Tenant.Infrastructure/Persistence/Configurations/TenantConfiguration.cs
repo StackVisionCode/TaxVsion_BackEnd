@@ -21,6 +21,10 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
         // El subdominio es único globalmente (a diferencia del email por tenant).
         b.HasIndex(t => t.SubDomain).IsUnique();
 
+        // Logo por tenant (Tenant_Service_LogoSupport_Plan.md) — todos nullable, sin backfill:
+        // un tenant sin logo cae a fallback de sistema en Scribe (LogoResolver).
+        b.Property(t => t.LogoContentType).HasMaxLength(100);
+
         b.HasData(
             new
             {

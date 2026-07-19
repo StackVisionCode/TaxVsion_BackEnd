@@ -249,6 +249,22 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Logo del tenant (Tenant_Service_LogoSupport_Plan.md) — cliente M2M para pedir el
+      # download-url presignado y borrar el logo reemplazado/quitado (registrado en auth-api,
+      # ServiceAuth__Clients__8 mas abajo).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${TENANT_SERVICE_CLIENT_ID:-tenant-worker}
+      ServiceAuthClient__ClientSecret: ${TENANT_SERVICE_CLIENT_SECRET:-}
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
+      # Fase D1 — credenciales MinIO propias para subir el logo (IAM scoped a
+      # taxvision-temp/tenant-branding/*, ver deploy/docker/minio/policies/tenant-source.json
+      # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
+      Tenant__Minio__Endpoint: minio:9000
+      Tenant__Minio__UseTls: "false"
+      Tenant__Minio__AccessKey: tenant-worker
+      Tenant__Minio__SecretKey: ${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET in .env}
+      Tenant__Minio__TempBucket: taxvision-temp
+      Tenant__Minio__SourcePrefix: tenant-branding
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -259,6 +275,8 @@ services:
       rabbitmq:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -359,6 +377,14 @@ services:
       ServiceAuth__Clients__7__Permissions__0: cloudstorage.file.upload
       ServiceAuth__Clients__7__Permissions__1: cloudstorage.file.download
       ServiceAuth__Clients__7__Permissions__2: cloudstorage.file.view
+      # Cliente de servicio (M2M) para Tenant (Tenant_Service_LogoSupport_Plan.md): sube el logo
+      # directo a MinIO con credenciales propias (Fase D1, ver Tenant__Minio__* mas abajo) y solo
+      # usa este token para pedir el download-url presignado y borrar el logo reemplazado/quitado.
+      # Nunca sube via CloudStorage HTTP, por eso sin cloudstorage.file.upload.
+      ServiceAuth__Clients__8__ClientId: ${TENANT_SERVICE_CLIENT_ID:-tenant-worker}
+      ServiceAuth__Clients__8__Secret: ${TENANT_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__8__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__8__Permissions__1: cloudstorage.file.delete
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1107,6 +1133,7 @@ services:
       CUSTOMER_MINIO_SECRET: ${CUSTOMER_MINIO_SECRET:?Set CUSTOMER_MINIO_SECRET in .env}
       CORRESPONDENCE_MINIO_SECRET: ${CORRESPONDENCE_MINIO_SECRET:?Set CORRESPONDENCE_MINIO_SECRET in .env}
       SCRIBE_MINIO_SECRET: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
+      TENANT_MINIO_SECRET: ${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET in .env}
     volumes:
       - ./minio:/provision:ro
     depends_on:
