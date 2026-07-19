@@ -143,6 +143,23 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantLogoUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoRemovedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
+    // Bug real de produccion (2026-07-19): Tenant nunca tuvo una cola de entrada bindeada al
+    // fanout "taxvision-events" — solo publicaba, nunca escuchaba. TenantBrandingFileScanResultConsumer
+    // (Handle de FileAvailable/FileInfectedDetected/FileBlockedByPolicy, publicados por CloudStorage
+    // tras subir el logo del tenant) nunca corrio ni una sola vez desde que se implemento: Wolverine
+    // descubre el handler en el assembly (Discovery.IncludeAssembly de arriba), pero sin un listener
+    // RabbitMQ real no hay de donde recibir el mensaje. Mismo patron que cloudstorage-events/
+    // scribe-events/subscription-events en los otros servicios.
+    options
+        .ListenToRabbitQueue(
+            "tenant-events",
+            queue =>
+            {
+                queue.BindExchange("taxvision-events", string.Empty);
+            }
+        )
+        .UseDurableInbox();
+
     options
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
