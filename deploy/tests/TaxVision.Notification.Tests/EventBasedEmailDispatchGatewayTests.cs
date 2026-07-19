@@ -109,6 +109,55 @@ public sealed class EventBasedEmailDispatchGatewayTests
         Assert.Equal(8_192, published.SizeBytes);
     }
 
+    /// <summary>
+    /// Regresión (2026-07-19): un reintento de Wolverine sobre el mismo evento de origen (mismo
+    /// RelatedEventId, ej. UserRegisteredIntegrationEvent.EventId) tiene que producir la MISMA
+    /// IdempotencyKey en cada intento, para que SqlIdempotencyGuard (Postmaster) pueda dedupear el
+    /// envío real. Antes de este fix, la clave caía a log.Id/attempt.Id — GUIDs frescos en cada
+    /// llamada — así que cada reintento se veía "nuevo" para el guard y se enviaba un correo
+    /// duplicado de verdad (causa real de 4 correos por un solo registro de tenant).
+    /// </summary>
+    [Fact]
+    public async Task QueueEmailAsync_derives_a_stable_idempotency_key_from_RelatedEventId_across_retries()
+    {
+        var relatedEventId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        string CaptureKey()
+        {
+            var publisher = new RecordingIntegrationEventPublisher();
+            var gateway = new EventBasedEmailDispatchGateway(
+                publisher,
+                new RecordingNotificationLogRepository(),
+                new NoOpUnitOfWork(),
+                NullLogger<EventBasedEmailDispatchGateway>.Instance
+            );
+            var request = new EmailDispatchRequest(
+                TenantId: tenantId,
+                To: "customer@test.com",
+                Subject: "Welcome",
+                HtmlBody: "<p>Hi</p>",
+                TextBody: "Hi",
+                TemplateKey: "auth.welcome",
+                RelatedEventId: relatedEventId,
+                CorrelationId: "corr-retry"
+            );
+            gateway.QueueEmailAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+            var evt = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(
+                Assert.Single(publisher.Published)
+            );
+            return evt.IdempotencyKey;
+        }
+
+        // Simula 4 intentos de Wolverine (1 inicial + 3 reintentos de RetryWithCooldown) para el
+        // MISMO evento de origen — cada uno crea su propio NotificationLog/Attempt (GUIDs distintos
+        // por diseño), pero la IdempotencyKey publicada debe ser idéntica en los 4.
+        var keys = Enumerable.Range(0, 4).Select(_ => CaptureKey()).ToList();
+
+        Assert.All(keys, key => Assert.Equal(relatedEventId.ToString("N"), key));
+        Assert.Single(keys.Distinct());
+    }
+
     [Fact]
     public async Task SucceededCallback_transitions_attempt_to_Sent()
     {
