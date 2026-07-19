@@ -28,11 +28,11 @@ export class HmacTurnCredentialFactory implements TurnCredentialFactory {
     ttlSeconds: number;
   }): { readonly iceServers: readonly IceServer[]; readonly expiresAtUtc: string } {
     const secret = config.turn.staticAuthSecret;
-    const turnUrl = config.turn.url;
+    const turnUrls = config.turn.urls;
     const expiresUnix = Math.floor(Date.now() / 1000) + input.ttlSeconds;
     const expiresAtUtc = new Date(expiresUnix * 1000).toISOString();
 
-    if (!secret || !turnUrl) {
+    if (!secret || turnUrls.length === 0) {
       logger.warn({ tenantId: input.tenantId }, 'TURN not configured — returning public STUN only');
       return {
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -49,10 +49,18 @@ export class HmacTurnCredentialFactory implements TurnCredentialFactory {
     const username = `${expiresUnix}:${hashedId}`;
     const credential = createHmac('sha1', secret).update(username).digest('base64');
 
-    const stunFromTurn = deriveStunFromTurn(turnUrl);
+    // Mismo username/credential sirve para cada URL — coturn valida el HMAC
+    // contra el shared secret, no por listener. Se ofrece turn: y turns: como
+    // ICE servers separados (si ambos estan configurados) para que el
+    // navegador pueda caer a turns: (TLS, puerto 5349) en redes que bloquean
+    // UDP generico pero dejan pasar TLS saliente.
+    // turnUrls.length === 0 ya retorno arriba, asi que el primer elemento existe.
+    const stunFromTurn = deriveStunFromTurn(turnUrls[0]!);
     const iceServers: IceServer[] = [];
     if (stunFromTurn) iceServers.push({ urls: stunFromTurn });
-    iceServers.push({ urls: turnUrl, username, credential });
+    for (const url of turnUrls) {
+      iceServers.push({ urls: url, username, credential });
+    }
     iceServers.push({ urls: 'stun:stun.l.google.com:19302' });
 
     return { iceServers, expiresAtUtc };
