@@ -208,12 +208,30 @@ jobs:
           domain="${{ secrets.TAXVISION_DOMAIN }}"
           domain="${domain:-api.taxprocore.com}"
           for i in $(seq 1 20); do
-            if curl -sf "https://${domain}/health/ready" >/dev/null; then
+            status="$(curl -sS -o /tmp/taxvision-ready.txt -w '%{http_code}' "https://${domain}/health/ready" || true)"
+            if [ "$status" = "200" ]; then
               echo "Gateway healthy after ${i} intentos."
               exit 0
             fi
-            echo "Intento ${i}/20: aun no responde, esperando 5s..."
+            echo "Intento ${i}/20: /health/ready respondio HTTP ${status:-000}; esperando 5s..."
             sleep 5
           done
-          echo "Gateway no respondio saludable a tiempo — revisar logs con: docker compose -f $COMPOSE_FILE logs --tail=200"
+          echo "::error::Gateway no respondio saludable a tiempo (ultimo HTTP ${status:-000})."
+          echo "Respuesta publica:"
+          cat /tmp/taxvision-ready.txt || true
+
+          echo "Estado de los contenedores:"
+          docker compose -f "$COMPOSE_FILE" --env-file .env ps || true
+
+          echo "Readiness individual desde la red Docker:"
+          for service in auth-api tenant-api customer-api cloudstorage-api; do
+            echo "--- ${service} ---"
+            docker compose -f "$COMPOSE_FILE" --env-file .env exec -T caddy \
+              wget -q -S -O- "http://${service}:8080/health/ready" 2>&1 || true
+            echo
+          done
+
+          echo "Logs de los servicios que participan en readiness:"
+          docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=200 \
+            gateway auth-api tenant-api customer-api cloudstorage-api caddy || true
           exit 1
