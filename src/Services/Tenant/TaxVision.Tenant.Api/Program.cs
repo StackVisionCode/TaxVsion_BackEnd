@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
@@ -9,6 +10,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Infrastructure;
@@ -46,6 +48,37 @@ builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddTenantInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-service");
+
+// Acepta el ticket firmado por Auth (ReserveSubdomainHandler, claim reg_slug) o un
+// PlatformAdmin creando un tenant directamente — ver TenantController.Create.
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy(
+        "TenantRegistration",
+        policy =>
+            policy.RequireAssertion(context =>
+                context.User.HasClaim("purpose", "tenant-registration") || context.User.IsInRole("PlatformAdmin")
+            )
+    );
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy(
+        "tenant-registration",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+});
 
 var tenantRabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
@@ -108,6 +141,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapControllers();

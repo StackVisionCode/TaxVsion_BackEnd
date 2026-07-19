@@ -1,7 +1,6 @@
 using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.Projections;
@@ -10,22 +9,24 @@ namespace TaxVision.Scribe.Tests.Rendering;
 
 public sealed class LogoResolverTests
 {
-    private static readonly SystemAssetsOptions SystemAssets = new()
-    {
-        HeaderLogoFileId = Guid.NewGuid(),
-        HeaderLogoContentType = "image/png",
-        HeaderLogoSizeBytes = 2048,
-    };
+    private static readonly SystemAssetRef SystemLogo = SystemAssetRef.Create(
+        SystemAssetKeys.HeaderLogo,
+        Guid.NewGuid(),
+        "image/png",
+        2048,
+        DateTime.UtcNow
+    );
 
     private static LogoResolver BuildResolver(
         FakeTenantLogoRefRepository logoRefs,
         FakeTenantLogoMissingNotificationRepository notifications,
-        FakeMessageBus messageBus
+        FakeMessageBus messageBus,
+        FakeSystemAssetRefRepository? systemAssets = null
     ) =>
         new(
             logoRefs,
             notifications,
-            Options.Create(SystemAssets),
+            systemAssets ?? FakeSystemAssetRefRepository.WithHeaderLogo(SystemLogo),
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeUnitOfWork(),
             messageBus,
@@ -44,8 +45,26 @@ public sealed class LogoResolverTests
 
         var result = await resolver.ResolveAsync(LogoScope.System, Guid.NewGuid());
 
-        Assert.Equal(SystemAssets.HeaderLogoFileId, result.CloudStorageFileId);
+        Assert.Equal(SystemLogo.CloudStorageFileId, result.CloudStorageFileId);
         Assert.False(result.IsFallback);
+        Assert.Empty(messageBus.Published);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_system_scope_without_a_seeded_logo_returns_empty_without_throwing()
+    {
+        var messageBus = new FakeMessageBus();
+        var resolver = BuildResolver(
+            new FakeTenantLogoRefRepository(),
+            new FakeTenantLogoMissingNotificationRepository(),
+            messageBus,
+            new FakeSystemAssetRefRepository()
+        );
+
+        var result = await resolver.ResolveAsync(LogoScope.System, Guid.NewGuid());
+
+        Assert.Equal(Guid.Empty, result.CloudStorageFileId);
+        Assert.True(result.IsFallback);
         Assert.Empty(messageBus.Published);
     }
 
@@ -61,7 +80,7 @@ public sealed class LogoResolverTests
         var result = await resolver.ResolveAsync(LogoScope.Tenant, tenantId);
 
         Assert.False(result.IsFallback);
-        Assert.NotEqual(SystemAssets.HeaderLogoFileId, result.CloudStorageFileId);
+        Assert.NotEqual(SystemLogo.CloudStorageFileId, result.CloudStorageFileId);
         Assert.Empty(messageBus.Published);
     }
 
@@ -79,7 +98,7 @@ public sealed class LogoResolverTests
         var result = await resolver.ResolveAsync(LogoScope.Tenant, tenantId);
 
         Assert.True(result.IsFallback);
-        Assert.Equal(SystemAssets.HeaderLogoFileId, result.CloudStorageFileId);
+        Assert.Equal(SystemLogo.CloudStorageFileId, result.CloudStorageFileId);
         var published = Assert.Single(messageBus.Published);
         var evt = Assert.IsType<ScribeTenantLogoMissingDetectedIntegrationEvent>(published);
         Assert.Equal(tenantId, evt.TenantId);

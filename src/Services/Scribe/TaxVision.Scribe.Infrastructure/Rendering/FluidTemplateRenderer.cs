@@ -100,7 +100,7 @@ public sealed partial class FluidTemplateRenderer(
             version,
             layoutResult.Value.LayoutKey.Value,
             layoutVersion,
-            request.TenantId,
+            templateResult.Value.TenantId,
             request.Locale?.Value,
             request.LogoScope,
             request.Variables,
@@ -330,10 +330,14 @@ public sealed partial class FluidTemplateRenderer(
         if (textResult.IsFailure)
             return Result.Failure<RenderedContent>(textResult.Error);
 
-        var inlineAssets = new List<InlineAsset>
-        {
-            new("logo-header", logoAsset.CloudStorageFileId, logoAsset.ContentType, logoAsset.SizeBytes),
-        };
+        // Guid.Empty = LogoResolver no encontró un SystemAssetRef sembrado todavía (arranque en
+        // frío antes de que ScribeSystemAssetSeeder termine, o seed nunca corrido). No referenciar
+        // un FileId inexistente — el envío tiene que seguir funcionando sin logo, no romperse.
+        var inlineAssets = new List<InlineAsset>();
+        if (logoAsset.CloudStorageFileId != Guid.Empty)
+            inlineAssets.Add(
+                new("logo-header", logoAsset.CloudStorageFileId, logoAsset.ContentType, logoAsset.SizeBytes)
+            );
 
         return Result.Success(
             new RenderedContent(subjectResult.Value, finalHtmlResult.Value, textResult.Value, inlineAssets)

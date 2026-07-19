@@ -30,6 +30,14 @@ public interface IJwtTokenGenerator
         IReadOnlyCollection<string> permissions,
         int lifetimeMinutes
     );
+
+    /// <summary>
+    /// Emite un ticket de un solo propósito: prueba criptográfica de que <paramref name="email"/>
+    /// reservó <paramref name="slug"/> en Auth (ver ReserveSubdomainHandler). TaxVision.Tenant.Api
+    /// lo valida localmente vía su policy de autorización (claim "purpose"), sin llamar de vuelta
+    /// a Auth por HTTP. No lleva usuario/sesión — es una capability, no una identidad.
+    /// </summary>
+    AccessToken GenerateTenantRegistrationTicket(string slug, string email, DateTime expiresAtUtc);
 }
 
 /// <summary>Expone el JSON Web Key Set público cuando se firma con RS256.</summary>

@@ -20,7 +20,18 @@ namespace TaxVision.Auth.Application.TenantDomains.Commands;
 /// </summary>
 public sealed record ReserveSubdomainCommand(string? Slug, string? Email);
 
-public sealed record SubdomainReservationResponse(string Slug, string ReservedByEmail, DateTime ExpiresAtUtc);
+/// <summary>
+/// <paramref name="RegistrationTicket"/> es el JWT que TaxVision.Tenant.Api exige (policy
+/// "TenantRegistration") para aceptar el POST de creación de tenant sin requerir un rol
+/// PlatformAdmin: prueba que este slug/email fue reservado en Auth, sin que Tenant tenga
+/// que llamar de vuelta a Auth por HTTP.
+/// </summary>
+public sealed record SubdomainReservationResponse(
+    string Slug,
+    string ReservedByEmail,
+    DateTime ExpiresAtUtc,
+    string RegistrationTicket
+);
 
 public static class ReserveSubdomainHandler
 {
@@ -31,6 +42,7 @@ public static class ReserveSubdomainHandler
         IOptions<TenantDomainOptions> options,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        IJwtTokenGenerator jwt,
         CancellationToken ct
     )
     {
@@ -75,11 +87,18 @@ public static class ReserveSubdomainHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
+        var ticket = jwt.GenerateTenantRegistrationTicket(
+            reservation.SubdomainSlug,
+            reservation.ReservedByEmail,
+            reservation.ExpiresAtUtc
+        );
+
         return Result.Success(
             new SubdomainReservationResponse(
                 reservation.SubdomainSlug,
                 reservation.ReservedByEmail,
-                reservation.ExpiresAtUtc
+                reservation.ExpiresAtUtc,
+                ticket.Token
             )
         );
     }

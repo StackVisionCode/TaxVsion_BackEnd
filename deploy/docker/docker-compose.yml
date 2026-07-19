@@ -87,8 +87,8 @@ services:
 
   # SQL Server 2022 Developer edition — gratis para no-produccion-comercial-interna
   # (uso propio del negocio, sin redistribuir), version completa sin los limites de
-  # Express. Solo alcanzable via loopback (127.0.0.1) + VPN al server, nunca en la
-  # interfaz publica — ver seccion 3 del plan de deploy.
+  # Express. En local usa loopback; produccion lo enlaza exclusivamente a la IP
+  # privada anunciada por Cloudflare WARP, nunca a 0.0.0.0 ni a la IP publica.
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: taxvision-sqlserver
@@ -97,7 +97,7 @@ services:
       MSSQL_PID: Developer
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     ports:
-      - "127.0.0.1:1433:1433"
+      - "${SQLSERVER_BIND_ADDRESS:-127.0.0.1}:1433:1433"
     volumes:
       - sqlserver-data:/var/opt/mssql
     networks:
@@ -369,6 +369,17 @@ services:
       PlatformBootstrap__Enabled: ${PLATFORM_BOOTSTRAP_ENABLED:-false}
       PlatformBootstrap__Email: ${PLATFORM_BOOTSTRAP_EMAIL:-}
       PlatformBootstrap__InvitationToken: ${PLATFORM_BOOTSTRAP_INVITATION_TOKEN:-}
+      # Recovery path (PlatformAdminEmergencyAccessService.cs): crea un PlatformAdmin directo
+      # (sin invitación) cuando no hay ningún PlatformAdmin operativo para invitar a otro.
+      # Mismo riesgo de arranque que PlatformBootstrap arriba si Enabled=true sin los demás
+      # campos completos — dejar en false salvo el deploy puntual que necesita el recovery.
+      # Idempotente por email: no pisa un usuario ya creado, así que puede quedar en true
+      # sin riesgo despues del primer uso exitoso (aunque igual conviene apagarlo).
+      PlatformEmergencyAccess__Enabled: ${PLATFORM_EMERGENCY_ENABLED:-false}
+      PlatformEmergencyAccess__Email: ${PLATFORM_EMERGENCY_EMAIL:-}
+      PlatformEmergencyAccess__Name: ${PLATFORM_EMERGENCY_NAME:-}
+      PlatformEmergencyAccess__LastName: ${PLATFORM_EMERGENCY_LASTNAME:-}
+      PlatformEmergencyAccess__PasswordHash: ${PLATFORM_EMERGENCY_PASSWORD_HASH:-}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -561,6 +572,18 @@ services:
       Postmaster__CloudStorage__BaseUrl: http://cloudstorage-api:8080
       # Canal de envío #3 (TenantOAuth, D3) — M2M a Connectors para enviar vía Gmail/Graph conectado.
       Postmaster__Connectors__BaseUrl: http://connectors-api:8080
+      # Proveedor SMTP real de plataforma (SystemEmailProviderSeeder.cs) — reconcilia la fila
+      # "smtp-default" en cada boot si SYSTEM_EMAIL_HOST viene seteado, sin pasar por el endpoint
+      # admin (util cuando no hay acceso PlatformAdmin). Vacio = queda el placeholder de siempre,
+      # no rompe nada. El password viaja cifrado a la base via Encryption__MasterKey de arriba.
+      SystemEmailProvider__Host: ${SYSTEM_EMAIL_HOST:-}
+      SystemEmailProvider__Port: ${SYSTEM_EMAIL_PORT:-587}
+      SystemEmailProvider__UseTls: ${SYSTEM_EMAIL_USE_TLS:-true}
+      SystemEmailProvider__Username: ${SYSTEM_EMAIL_USERNAME:-}
+      SystemEmailProvider__Password: ${SYSTEM_EMAIL_PASSWORD:-}
+      SystemEmailProvider__FromAddressDefault: ${SYSTEM_EMAIL_FROM_ADDRESS:-}
+      SystemEmailProvider__FromDisplayNameDefault: ${SYSTEM_EMAIL_FROM_NAME:-}
+      SystemEmailProvider__DisplayName: ${SYSTEM_EMAIL_DISPLAY_NAME:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -739,6 +762,7 @@ services:
   cloudstorage-api:
     image: taxvision/cloudstorage-api:dev
     container_name: taxvision-cloudstorage-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/CloudStorage/TaxVision.CloudStorage.Api/Dockerfile
@@ -1192,6 +1216,9 @@ services:
       context: ./caddy
     container_name: taxvision-caddy
     environment:
+      # Host publico de la API. Cloudflare Tunnel lo entrega por HTTP al puerto
+      # 80 del host; el Caddyfile lo envia a gateway:8080 sin redireccionarlo.
+      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxprocore.com}
       TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
       # Zone:DNS:Edit sobre la zona — SOLO para el reto DNS-01 del certificado
       # wildcard. Token distinto (y con permisos mas chicos) que el que usa

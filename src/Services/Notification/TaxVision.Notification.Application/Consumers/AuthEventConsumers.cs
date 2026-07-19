@@ -38,8 +38,7 @@ public static class InvitationCreatedConsumer
             var tenantPortalUrl = string.IsNullOrWhiteSpace(evt.TenantSubdomain)
                 ? portal.Value.BaseUrl.TrimEnd('/')
                 : $"https://{evt.TenantSubdomain.Trim().ToLowerInvariant()}.{portal.Value.BaseDomain.Trim().Trim('.')}";
-            var inviteLink =
-                $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(evt.RawToken)}";
+            var inviteLink = $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(evt.RawToken)}";
 
             var render = (
                 await scribeClient.RenderAsync(

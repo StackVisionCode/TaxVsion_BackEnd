@@ -48,6 +48,9 @@ public static class DependencyInjection
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<IOAuthProviderResolver, OAuthProviderResolver>();
         services.AddScoped<IIdempotencyGuard, SqlIdempotencyGuard>();
+        services.Configure<SystemEmailProviderOptions>(
+            configuration.GetSection(SystemEmailProviderOptions.SectionName)
+        );
         services.AddHostedService<SystemEmailProviderSeeder>();
 
         services.AddSingleton<ProviderCircuitBreakerRegistry>();

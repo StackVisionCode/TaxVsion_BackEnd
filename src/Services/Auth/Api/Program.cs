@@ -45,6 +45,10 @@ builder.Services.Configure<PlatformBootstrapOptions>(
     builder.Configuration.GetSection(PlatformBootstrapOptions.SectionName)
 );
 builder.Services.AddHostedService<PlatformAdminBootstrapService>();
+builder.Services.Configure<PlatformEmergencyAccessOptions>(
+    builder.Configuration.GetSection(PlatformEmergencyAccessOptions.SectionName)
+);
+builder.Services.AddHostedService<PlatformAdminEmergencyAccessService>();
 builder.Services.AddHostedService<SystemRolePermissionsSyncService>();
 builder.Services.AddHostedService<TenantDomainBackfillService>();
 builder.Services.AddHostedService<TenantDomainProvisioningPoller>();

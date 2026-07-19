@@ -170,7 +170,16 @@ export const config = {
   },
 
   turn: {
-    url: rawEnv.COMMUNICATION_TURN_URL,
+    // COMMUNICATION_TURN_URL admite una o varias URLs separadas por coma
+    // (ej. "turn:host:3478,turns:host:5349?transport=tcp") — se ofrecen todas
+    // como ICE servers distintos con las mismas credenciales HMAC, asi el
+    // navegador puede caer a turns: (parece HTTPS, puerto 5349) en redes que
+    // bloquean UDP generico pero dejan pasar TLS saliente.
+    urls: rawEnv.COMMUNICATION_TURN_URL
+      ? rawEnv.COMMUNICATION_TURN_URL.split(',')
+          .map((u) => u.trim())
+          .filter(Boolean)
+      : [],
     staticAuthSecret: rawEnv.COMMUNICATION_TURN_STATIC_AUTH_SECRET,
     ttlSeconds: rawEnv.COMMUNICATION_TURN_TTL_SECONDS,
   },

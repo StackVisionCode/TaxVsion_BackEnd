@@ -1532,6 +1532,23 @@
 				},
 				{
 					"name": "ReserveSubdomain",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"",
+									"const response = pm.response.json();",
+									"",
+									"pm.environment.set(\"registrationTicket\", response.registrationTicket);",
+									""
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [],
@@ -1555,7 +1572,7 @@
 								"reserve"
 							]
 						},
-						"description": "Publico, sin auth. Bloquea el slug para ese email por un TTL corto (15 min por defecto) mientras se completa el alta de la oficina."
+						"description": "Publico, sin auth. Bloquea el slug para ese email por un TTL corto (15 min por defecto) mientras se completa el alta de la oficina. La respuesta trae registrationTicket: el JWT que TaxVision.Tenant.Api exige (policy TenantRegistration) para aceptar POST /tenants sin ser PlatformAdmin — guardado aca en la variable de environment registrationTicket."
 					},
 					"response": []
 				}

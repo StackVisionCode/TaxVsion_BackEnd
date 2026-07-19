@@ -33,6 +33,11 @@
 						"key": "Content",
 						"value": "application/json",
 						"type": "text"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{registrationTicket}}",
+						"type": "text"
 					}
 				],
 				"body": {
@@ -52,7 +57,8 @@
 					"path": [
 						"tenants"
 					]
-				}
+				},
+				"description": "Requiere el registrationTicket de Auth/ReserveSubdomain (ejecutar esa request primero) o, alternativamente, un access token de un PlatformAdmin en Authorization. subdomain/adminEmail del body se ignoran cuando el ticket esta presente — Tenant los toma de sus claims (reg_slug/reg_email)."
 			},
 			"response": []
 		},

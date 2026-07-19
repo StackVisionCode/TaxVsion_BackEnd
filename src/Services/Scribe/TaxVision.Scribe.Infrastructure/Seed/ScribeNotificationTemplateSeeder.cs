@@ -9,6 +9,7 @@ using TaxVision.Scribe.Application.Templates.Seed;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.EventMappings;
+using TaxVision.Scribe.Domain.Layouts;
 using TaxVision.Scribe.Domain.Templates;
 using TaxVision.Scribe.Domain.ValueObjects;
 using TaxVision.Scribe.Infrastructure.Persistence;
@@ -30,6 +31,8 @@ public sealed class ScribeNotificationTemplateSeeder(
     ILogger<ScribeNotificationTemplateSeeder> logger
 ) : IHostedService
 {
+    private const int SeedDependencyWaitAttempts = 180;
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         // Mismo motivo que ScribeBaseLayoutSeeder: SeedIfMissingAsync sube a CloudStorage y eso
@@ -48,19 +51,29 @@ public sealed class ScribeNotificationTemplateSeeder(
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
             var systemBaseKey = LayoutKey.Create("system-base").Value;
-            var systemBaseLayout = await dbContext
-                .EmailLayouts.Include(l => l.Versions)
-                .FirstOrDefaultAsync(
-                    l => l.Scope == TemplateScope.System && l.LayoutKey == systemBaseKey,
-                    cancellationToken
+            EmailLayout? systemBaseLayout = null;
+            EmailLayoutVersion? publishedLayoutVersion = null;
+            for (var attempt = 1; attempt <= SeedDependencyWaitAttempts; attempt++)
+            {
+                systemBaseLayout = await dbContext
+                    .EmailLayouts.Include(l => l.Versions)
+                    .FirstOrDefaultAsync(
+                        l => l.Scope == TemplateScope.System && l.LayoutKey == systemBaseKey,
+                        cancellationToken
+                    );
+                publishedLayoutVersion = systemBaseLayout?.Versions.FirstOrDefault(v =>
+                    v.Status == EmailVersionStatus.Published
                 );
-            var publishedLayoutVersion = systemBaseLayout?.Versions.FirstOrDefault(v =>
-                v.Status == EmailVersionStatus.Published
-            );
+                if (publishedLayoutVersion is not null)
+                    break;
+
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
             if (systemBaseLayout is null || publishedLayoutVersion is null)
             {
                 logger.LogWarning(
-                    "ScribeNotificationTemplateSeeder skipped: 'system-base' layout is not published yet."
+                    "ScribeNotificationTemplateSeeder skipped after waiting {Seconds}s: 'system-base' layout is not published.",
+                    SeedDependencyWaitAttempts
                 );
                 return;
             }
@@ -118,12 +131,85 @@ public sealed class ScribeNotificationTemplateSeeder(
         var templateKey = templateKeyResult.Value;
         var eventKey = eventKeyResult.Value;
 
-        var alreadySeeded = await dbContext.EmailTemplates.AnyAsync(
-            t => t.Scope == TemplateScope.System && t.TemplateKey == templateKey,
-            ct
-        );
-        if (alreadySeeded)
-            return false;
+        var existingTemplate = await dbContext
+            .EmailTemplates.Include(t => t.Versions)
+            .FirstOrDefaultAsync(t => t.Scope == TemplateScope.System && t.TemplateKey == templateKey, ct);
+        if (existingTemplate is not null)
+        {
+            var publishedVersion = existingTemplate
+                .Versions.Where(v => v.Status == EmailVersionStatus.Published)
+                .OrderByDescending(v => v.VersionNumber)
+                .FirstOrDefault();
+            if (publishedVersion?.HtmlFileId is Guid htmlFileId)
+            {
+                var download = await storageService.DownloadTextAsync(htmlFileId, tenantId: null, ct);
+                if (download.IsSuccess)
+                    return false;
+
+                logger.LogWarning(
+                    "Published template '{TemplateKey}' references missing CloudStorage file {FileId}; repairing it.",
+                    definition.TemplateKey,
+                    htmlFileId
+                );
+            }
+
+            var repairUpload = await storageService.UploadAsync(
+                tenantId: null,
+                TemplateArtifactKind.Html,
+                Encoding.UTF8.GetBytes(definition.Html),
+                PlatformTenant.Id,
+                ct
+            );
+            if (repairUpload.IsFailure)
+            {
+                logger.LogError(
+                    "Failed to repair template '{TemplateKey}': {Error}",
+                    definition.TemplateKey,
+                    repairUpload.Error.Message
+                );
+                return false;
+            }
+
+            if (!await WaitUntilDownloadableAsync(storageService, repairUpload.Value.FileId, ct))
+            {
+                logger.LogError(
+                    "CloudStorage did not catalogue repaired template '{TemplateKey}' file {FileId} in time.",
+                    definition.TemplateKey,
+                    repairUpload.Value.FileId
+                );
+                return false;
+            }
+
+            var repairVersion = existingTemplate.AddDraftVersion(
+                definition.Subject,
+                repairUpload.Value.StorageKey,
+                repairUpload.Value.FileId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                layoutId,
+                layoutVersionNumber,
+                definition.Variables,
+                DateTime.UtcNow
+            );
+            if (repairVersion.IsFailure)
+            {
+                logger.LogError(
+                    "Failed to create repaired version for template '{TemplateKey}': {Error}",
+                    definition.TemplateKey,
+                    repairVersion.Error.Message
+                );
+                return false;
+            }
+
+            existingTemplate.PublishVersion(repairVersion.Value.Id, PlatformTenant.Id, DateTime.UtcNow);
+            await unitOfWork.SaveChangesAsync(ct);
+            logger.LogInformation("Repaired and published template '{TemplateKey}'.", definition.TemplateKey);
+            return true;
+        }
 
         var uploadResult = await storageService.UploadAsync(
             tenantId: null,
@@ -138,6 +224,16 @@ public sealed class ScribeNotificationTemplateSeeder(
                 "Failed to upload template '{TemplateKey}': {Error}",
                 definition.TemplateKey,
                 uploadResult.Error.Message
+            );
+            return false;
+        }
+
+        if (!await WaitUntilDownloadableAsync(storageService, uploadResult.Value.FileId, ct))
+        {
+            logger.LogError(
+                "CloudStorage did not catalogue template '{TemplateKey}' file {FileId} in time.",
+                definition.TemplateKey,
+                uploadResult.Value.FileId
             );
             return false;
         }
@@ -217,6 +313,24 @@ public sealed class ScribeNotificationTemplateSeeder(
             definition.EventKey
         );
         return true;
+    }
+
+    private static async Task<bool> WaitUntilDownloadableAsync(
+        ITemplateStorageService storageService,
+        Guid fileId,
+        CancellationToken ct
+    )
+    {
+        for (var attempt = 1; attempt <= SeedDependencyWaitAttempts; attempt++)
+        {
+            var download = await storageService.DownloadTextAsync(fileId, null, ct);
+            if (download.IsSuccess)
+                return true;
+
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
+
+        return false;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -44,6 +44,7 @@ public sealed class TemplateStorageService(ICloudStorageClient cloudStorageClien
             TemplateArtifactKind.Text => ($"body-{fileId:N}.txt", "text/plain"),
             TemplateArtifactKind.DesignJson => ($"design-{fileId:N}.json", "application/json"),
             TemplateArtifactKind.PreviewImage => ($"preview-{fileId:N}.png", "image/png"),
+            TemplateArtifactKind.SystemLogo => ($"system-logo-{fileId:N}.png", "image/png"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
 }

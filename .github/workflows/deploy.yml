@@ -47,6 +47,9 @@ jobs:
           PAYMENTAPP_DB_CONNECTION=${{ secrets.PAYMENTAPP_DB_CONNECTION }}
           PAYMENTCLIENT_DB_CONNECTION=${{ secrets.PAYMENTCLIENT_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
+          # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
+          # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
+          SQLSERVER_BIND_ADDRESS=192.168.100.10
 
           # ---------- RabbitMQ / MinIO / Grafana ----------
           RABBITMQ_CONNECTION=${{ secrets.RABBITMQ_CONNECTION }}
@@ -144,6 +147,26 @@ jobs:
           PLATFORM_BOOTSTRAP_ENABLED=${{ secrets.PLATFORM_BOOTSTRAP_ENABLED }}
           PLATFORM_BOOTSTRAP_EMAIL=${{ secrets.PLATFORM_BOOTSTRAP_EMAIL }}
           PLATFORM_BOOTSTRAP_INVITATION_TOKEN=${{ secrets.PLATFORM_BOOTSTRAP_INVITATION_TOKEN }}
+          # Recovery path (PlatformAdminEmergencyAccessService.cs) — crea un PlatformAdmin
+          # directo (sin invitacion) cuando no hay ninguno operativo para invitar a otro.
+          # Mismo criterio que PLATFORM_BOOTSTRAP_ENABLED: dejar en false/vacio salvo el
+          # deploy puntual que necesita el recovery. Idempotente por email.
+          PLATFORM_EMERGENCY_ENABLED=${{ secrets.PLATFORM_EMERGENCY_ENABLED }}
+          PLATFORM_EMERGENCY_EMAIL=${{ secrets.PLATFORM_EMERGENCY_EMAIL }}
+          PLATFORM_EMERGENCY_NAME=${{ secrets.PLATFORM_EMERGENCY_NAME }}
+          PLATFORM_EMERGENCY_LASTNAME=${{ secrets.PLATFORM_EMERGENCY_LASTNAME }}
+          PLATFORM_EMERGENCY_PASSWORD_HASH=${{ secrets.PLATFORM_EMERGENCY_PASSWORD_HASH }}
+          # SystemEmailProviderSeeder.cs (Postmaster) — proveedor SMTP real de plataforma.
+          # Vacio = placeholder de siempre, no rompe nada. Con Host seteado, reconcilia la
+          # fila "smtp-default" en cada boot (upsert), sin pasar por el endpoint admin.
+          SYSTEM_EMAIL_HOST=${{ secrets.SYSTEM_EMAIL_HOST }}
+          SYSTEM_EMAIL_PORT=${{ secrets.SYSTEM_EMAIL_PORT }}
+          SYSTEM_EMAIL_USE_TLS=${{ secrets.SYSTEM_EMAIL_USE_TLS }}
+          SYSTEM_EMAIL_USERNAME=${{ secrets.SYSTEM_EMAIL_USERNAME }}
+          SYSTEM_EMAIL_PASSWORD=${{ secrets.SYSTEM_EMAIL_PASSWORD }}
+          SYSTEM_EMAIL_FROM_ADDRESS=${{ secrets.SYSTEM_EMAIL_FROM_ADDRESS }}
+          SYSTEM_EMAIL_FROM_NAME=${{ secrets.SYSTEM_EMAIL_FROM_NAME }}
+          SYSTEM_EMAIL_DISPLAY_NAME=${{ secrets.SYSTEM_EMAIL_DISPLAY_NAME }}
           TAXVISION_DOMAIN=${{ secrets.TAXVISION_DOMAIN }}
           # Fase X1 (completitud plan v2) — dominio raiz para el cert WILDCARD de Caddy
           # (*.TAXVISION_BASE_DOMAIN) + token DNS-01 de Cloudflare, ver README sec 20.
@@ -172,6 +195,54 @@ jobs:
 
       - name: Build images
         run: docker compose -f "$COMPOSE_FILE" --env-file .env build
+
+      # RABBITMQ_DEFAULT_USER/PASS solo se aplican cuando el volumen de RabbitMQ
+      # se crea por primera vez. Si las credenciales cambian en GitHub Secrets,
+      # el volumen conserva la clave anterior y todos los servicios reciben
+      # ACCESS_REFUSED aunque el contenedor figure como healthy. Reconciliar el
+      # usuario es idempotente y conserva exchanges, colas, mensajes y volumen.
+      - name: Reconcile persisted RabbitMQ credentials
+        run: |
+          docker compose -f "$COMPOSE_FILE" --env-file .env up -d rabbitmq
+          # `up -d` deja intacto un contenedor ya Running. Un backend interno de
+          # usuarios caido responde `{error,noproc}` aunque AMQP y el healthcheck
+          # sigan aceptando conexiones. Reiniciar recupera esos procesos Erlang;
+          # el volumen nombrado (colas/mensajes/definitions) no se elimina.
+          docker compose -f "$COMPOSE_FILE" --env-file .env restart rabbitmq
+          for i in $(seq 1 30); do
+            if docker compose -f "$COMPOSE_FILE" --env-file .env exec -T rabbitmq \
+              rabbitmqctl await_startup --timeout 5 >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$i" = "30" ]; then
+              echo "::error::RabbitMQ no estuvo disponible para reconciliar credenciales."
+              exit 1
+            fi
+            sleep 2
+          done
+
+          reconciled=false
+          for i in $(seq 1 15); do
+            if docker compose -f "$COMPOSE_FILE" --env-file .env exec -T rabbitmq sh -ec '
+              users="$(rabbitmqctl -q list_users)"
+              if printf "%s\n" "$users" | cut -f1 | grep -Fxq "$RABBITMQ_DEFAULT_USER"; then
+                rabbitmqctl change_password "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS"
+              else
+                rabbitmqctl add_user "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS"
+              fi
+              rabbitmqctl set_permissions -p / "$RABBITMQ_DEFAULT_USER" ".*" ".*" ".*"
+            '; then
+              reconciled=true
+              break
+            fi
+            echo "RabbitMQ aun no acepta comandos administrativos (${i}/15); reintentando..."
+            sleep 3
+          done
+          if [ "$reconciled" != "true" ]; then
+            echo "::error::No fue posible reconciliar las credenciales persistidas de RabbitMQ."
+            docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=100 rabbitmq || true
+            exit 1
+          fi
 
       # ---------------------------------------------------------------------
       # Crea/actualiza las cuentas de servicio scoped de MinIO (Signature/
@@ -208,12 +279,30 @@ jobs:
           domain="${{ secrets.TAXVISION_DOMAIN }}"
           domain="${domain:-api.taxprocore.com}"
           for i in $(seq 1 20); do
-            if curl -sf "https://${domain}/health/ready" >/dev/null; then
+            status="$(curl -sS -o /tmp/taxvision-ready.txt -w '%{http_code}' "https://${domain}/health/ready" || true)"
+            if [ "$status" = "200" ]; then
               echo "Gateway healthy after ${i} intentos."
               exit 0
             fi
-            echo "Intento ${i}/20: aun no responde, esperando 5s..."
+            echo "Intento ${i}/20: /health/ready respondio HTTP ${status:-000}; esperando 5s..."
             sleep 5
           done
-          echo "Gateway no respondio saludable a tiempo — revisar logs con: docker compose -f $COMPOSE_FILE logs --tail=200"
+          echo "::error::Gateway no respondio saludable a tiempo (ultimo HTTP ${status:-000})."
+          echo "Respuesta publica:"
+          cat /tmp/taxvision-ready.txt || true
+
+          echo "Estado de los contenedores:"
+          docker compose -f "$COMPOSE_FILE" --env-file .env ps || true
+
+          echo "Readiness individual desde la red Docker:"
+          for service in auth-api tenant-api customer-api cloudstorage-api; do
+            echo "--- ${service} ---"
+            docker compose -f "$COMPOSE_FILE" --env-file .env exec -T caddy \
+              wget -q -S -O- "http://${service}:8080/health/ready" 2>&1 || true
+            echo
+          done
+
+          echo "Logs de los servicios que participan en readiness:"
+          docker compose -f "$COMPOSE_FILE" --env-file .env logs --tail=200 \
+            gateway auth-api tenant-api customer-api cloudstorage-api caddy || true
           exit 1

@@ -26,4 +26,13 @@
     <ProjectReference Include="..\TaxVision.Scribe.Infrastructure\TaxVision.Scribe.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
   </ItemGroup>
+
+  <!-- Logo de plataforma leído por ScribeSystemAssetSeeder al arrancar (Assets/SystemLogo/deploy.png). -->
+  <ItemGroup>
+    <Content
+      Include="Assets\SystemLogo\**"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+    />
+  </ItemGroup>
 </Project>

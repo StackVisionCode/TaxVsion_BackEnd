@@ -4,12 +4,42 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.TenantDomains.Commands;
 using TaxVision.Auth.Domain.TenantDomains;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>Fase A7 — ReserveSubdomand bloquea un slug para un email mientras el registro se completa.</summary>
 public sealed class ReserveSubdomainHandlerTests
 {
+    private sealed class FakeJwtTokenGenerator : IJwtTokenGenerator
+    {
+        public string? LastTicketSlug { get; private set; }
+        public string? LastTicketEmail { get; private set; }
+
+        public AccessToken Generate(
+            User user,
+            string effectiveTimeZoneId,
+            Guid sessionId,
+            IReadOnlyCollection<string> roles,
+            IReadOnlyCollection<string> permissions,
+            IReadOnlyCollection<string> authMethods
+        ) => new("fake-access-token", 900);
+
+        public AccessToken GenerateServiceToken(
+            Guid tenantId,
+            string clientId,
+            IReadOnlyCollection<string> permissions,
+            int lifetimeMinutes
+        ) => new("fake-service-token", lifetimeMinutes * 60);
+
+        public AccessToken GenerateTenantRegistrationTicket(string slug, string email, DateTime expiresAtUtc)
+        {
+            LastTicketSlug = slug;
+            LastTicketEmail = email;
+            return new AccessToken("fake-registration-ticket", 900);
+        }
+    }
+
     private sealed class FakeTenantDomainRepository : ITenantDomainRepository
     {
         public bool SlugTaken { get; set; }
@@ -69,6 +99,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
 
@@ -90,6 +121,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
 
@@ -118,6 +150,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
 
@@ -132,6 +165,7 @@ public sealed class ReserveSubdomainHandlerTests
         var reservations = new FakeReservationRepository();
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
+        var jwt = new FakeJwtTokenGenerator();
 
         var result = await ReserveSubdomainHandler.Handle(
             new ReserveSubdomainCommand("Oficina1", "Admin@Oficina1.com"),
@@ -140,12 +174,16 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             unitOfWork,
             bus,
+            jwt,
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("oficina1", result.Value.Slug);
         Assert.Equal("admin@oficina1.com", result.Value.ReservedByEmail);
+        Assert.Equal("fake-registration-ticket", result.Value.RegistrationTicket);
+        Assert.Equal("oficina1", jwt.LastTicketSlug);
+        Assert.Equal("admin@oficina1.com", jwt.LastTicketEmail);
         Assert.NotNull(reservations.Added);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
         Assert.Single(

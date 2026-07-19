@@ -61,7 +61,24 @@ public sealed class EventBasedEmailDispatchGateway(
 
         // El log queda en estado Pending y el attempt en Queued hasta que Postmaster devuelva
         // el callback. Nunca invocamos MarkSent aquí — solo el consumer de succeeded lo hará.
-        var idempotencyKey = request.IdempotencyKey ?? $"{log.Id:N}:{attempt.Id:N}";
+        //
+        // BUG (2026-07-19, encontrado por duplicados reales en producción — 4 correos por un solo
+        // registro de tenant): este método crea un NotificationLog/DispatchAttempt con GUIDs nuevos
+        // en CADA llamada, sin chequear si ya existe uno para el mismo evento de origen. Si Wolverine
+        // reintenta el consumer (RetryWithCooldown en Program.cs, hasta 4 intentos totales) por una
+        // falla transitoria — típicamente Scribe/auth-api no disponibles al arrancar, exactamente lo
+        // que se vio en logs de scribe-api ese día — cada reintento volvía a caer acá y generaba un
+        // log.Id/attempt.Id nuevos. Al no pasar IdempotencyKey (ningún consumer de AuthEventConsumers
+        // lo hace), la clave de idempotencia caía a esos GUIDs recién generados: distinta en cada
+        // intento. SqlIdempotencyGuard (Postmaster) SÍ dedupea correctamente por (TenantId,
+        // IdempotencyKey) — el problema nunca fue el guard, fue que cada intento le mandaba una clave
+        // distinta, así que cada uno pasaba como "nueva" y se enviaba un correo real de verdad.
+        // Fix: preferir RelatedEventId (el EventId del evento de dominio original — UserRegistered,
+        // InvitationCreated, etc. — que SÍ es estable entre reintentos porque viene deserializado del
+        // mismo payload) antes de caer a GUIDs frescos. Solo los despachos sin evento de origen
+        // (ninguno hoy, pero el contrato lo permite) siguen usando el fallback anterior.
+        var idempotencyKey =
+            request.IdempotencyKey ?? request.RelatedEventId?.ToString("N") ?? $"{log.Id:N}:{attempt.Id:N}";
         var evt = new NotificationsEmailSendRequestedIntegrationEvent
         {
             TenantId = request.TenantId,

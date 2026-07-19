@@ -2,6 +2,8 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using TaxVision.Tenant.Api.Common;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Application.Tenants.Queries;
 using TaxVision.Tenant.Domain.Enums;
@@ -13,11 +15,29 @@ namespace TaxVision.Tenant.Api.Controllers;
 [Route("tenants")]
 public sealed class TenantController(IMessageBus bus) : ControllerBase
 {
+    /// <summary>
+    /// Requiere una de dos cosas: el ticket firmado que Auth emite al reservar el
+    /// subdominio (ReserveSubdomainHandler, claims reg_slug/reg_email), o el rol
+    /// PlatformAdmin creando un tenant directamente. Ver policy "TenantRegistration".
+    /// </summary>
     [HttpPost]
+    [Authorize(Policy = "TenantRegistration")]
+    [EnableRateLimiting("tenant-registration")]
     [ProducesResponseType<CreateTenantResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Create([FromBody] CreateTenantCommand command, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create([FromBody] CreateTenantRequest request, CancellationToken cancellationToken)
     {
+        var resolved = EffectiveTenantRegistrationResolver.Resolve(User, request);
+        if (resolved.IsFailure)
+            return StatusCode(resolved.Error.ToHttpStatusCode(), resolved.Error);
+
+        var command = new CreateTenantCommand(
+            request.Name,
+            resolved.Value.Subdomain,
+            resolved.Value.AdminEmail,
+            request.DefaultTimeZoneId
+        );
+
         Result<CreateTenantResponse>? result = await bus.InvokeAsync<Result<CreateTenantResponse>>(
             command,
             cancellationToken

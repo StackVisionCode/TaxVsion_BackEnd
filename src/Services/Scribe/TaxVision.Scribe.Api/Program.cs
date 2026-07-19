@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
@@ -52,6 +53,10 @@ builder.Services.AddHostedService<ScribeBaseLayoutSeeder>();
 // Corre después del seeder de layouts — IHostedService.StartAsync se ejecuta en orden de registro.
 builder.Services.AddHostedService<ScribeNotificationTemplateSeeder>();
 
+// Sube el logo de header de plataforma (Assets/SystemLogo/deploy.png) y persiste el FileId en
+// SystemAssetRef — reemplaza la config estática Scribe:SystemAssets.
+builder.Services.AddHostedService<ScribeSystemAssetSeeder>();
+
 // Precarga en cache (L1+L2) todo template Published (Fase 6) — corre después del seeder.
 builder.Services.AddHostedService<TemplateWarmupService>();
 
@@ -100,6 +105,10 @@ builder.Host.UseWolverine(options =>
 
     // Publica los eventos propios del microservicio al exchange fan-out del ecosistema.
     options.PublishMessage<ScribeTenantLogoMissingDetectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Las subidas de templates/layouts se hacen primero a MinIO y CloudStorage debe
+    // catalogarlas antes de que Scribe publique la version. Sin esta ruta Wolverine
+    // no envia SaveFileRequestedIntegrationEvent y el archivo nunca existe en Files.
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options
         .Policies.OnException<Exception>()
