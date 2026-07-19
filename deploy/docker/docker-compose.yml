@@ -489,6 +489,7 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
+      Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
       # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
       # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:
       # módulo de mailbox/sync duplicado, self-service de templates por HTTP, y el transporte SMTP

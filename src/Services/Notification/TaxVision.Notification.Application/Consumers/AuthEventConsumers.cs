@@ -35,8 +35,11 @@ public static class InvitationCreatedConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var office = string.IsNullOrWhiteSpace(evt.TenantName) ? portal.Value.ProductName : evt.TenantName!;
+            var tenantPortalUrl = string.IsNullOrWhiteSpace(evt.TenantSubdomain)
+                ? portal.Value.BaseUrl.TrimEnd('/')
+                : $"https://{evt.TenantSubdomain.Trim().ToLowerInvariant()}.{portal.Value.BaseDomain.Trim().Trim('.')}";
             var inviteLink =
-                $"{portal.Value.BaseUrl.TrimEnd('/')}/accept-invitation?token={Uri.EscapeDataString(evt.RawToken)}";
+                $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(evt.RawToken)}";
 
             var render = (
                 await scribeClient.RenderAsync(
