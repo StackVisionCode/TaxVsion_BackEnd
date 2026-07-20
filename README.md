@@ -2742,10 +2742,12 @@ Archivos:
 
 Folders (ver sec 27.9):
 
-- `GET /storage/folders`
-- `POST /storage/folders`
+- `GET /storage/folders` — un nivel (navegación por clicks)
+- `GET /storage/folders/tree` — árbol completo de una sola vez (sidebar expandible)
+- `POST /storage/folders` — crear (get-or-create si se pasa `category`)
 - `PUT /storage/folders/{folderId}/rename`
 - `PUT /storage/folders/{folderId}/move`
+- `DELETE /storage/folders/{folderId}` — solo si está vacía (409 si no)
 
 Sharing (ver sec 27.10):
 
@@ -2923,18 +2925,98 @@ sobre una sesion multiparte nunca ensamblada).
 
 `FoldersController.cs` (`storage/folders`) expone un arbol de carpetas puramente logico en base
 de datos — distinto del `FolderType` (enum fijo usado para componer la clave fisica en MinIO, ver
-sec 27.1/27.6) y sin tocar el storage fisico:
+sec 27.1/27.6) y **sin tocar el storage fisico en ningun momento**: `Folder.Id`/`RelativePath`
+nunca aparecen en el `ObjectKey` de un archivo (`tenants/{tenantId}/{owner}/{folderType}/{año}/
+{fileId}{ext}`, ver `DefaultObjectKeyBuilder`), asi que renombrar/mover una carpeta es un `UPDATE`
+en SQL Server, nunca una operacion contra MinIO. Es intencional: S3/MinIO no tiene "carpetas"
+reales ni un "mover" atomico (solo copy+delete, dos llamadas separadas), y el `ObjectKey` ya es
+una referencia persistida por otros microservicios (ej. `FileMetadataRef` en Signature) — cambiarlo
+al reorganizar carpetas rompería esas referencias.
 
-- `GET /storage/folders?parentFolderId=` — contenido de una carpeta.
-- `POST /storage/folders` — crear, con `OwnerType`/`OwnerId`.
-- `PUT /storage/folders/{folderId}/rename` — renombrar.
-- `PUT /storage/folders/{folderId}/move` — mover a otro padre.
+### Crear una carpeta — `POST /storage/folders`
+
+Requiere `cloudstorage.folder.manage`. Body:
+
+```json
+{
+  "parentFolderId": null,
+  "name": "Declaraciones 2025",
+  "ownerType": "Customer",
+  "ownerId": "{{customerId}}",
+  "category": null
+}
+```
+
+- `parentFolderId` (`guid|null`): carpeta padre; `null` = raíz del owner.
+- `name` (`string`, requerido, max 255): nombre visible; no puede contener `/` ni `\`.
+- `ownerType` (`string`, requerido): `Tenant`\|`Customer`\|`User`\|`Signature`\|`Invoice`\|`Communication`.
+- `ownerId` (`guid|null`): requerido si `ownerType != Tenant`.
+- `category` (`string|null`, opcional): ver más abajo.
+
+### Navegación — `GET /storage/folders` vs `GET /storage/folders/tree`
+
+- `GET /storage/folders?parentFolderId=&ownerType=&ownerId=` — **un nivel por llamada** (subcarpetas
+  + archivos directos de `parentFolderId`, `null` = raíz), pensado para navegación por clicks tipo
+  Explorer/Drive. `ownerType`/`ownerId` son opcionales y solo tienen efecto para staff interno: sin
+  ellos, la raíz de un tenant devuelve TODOS los dueños mezclados (folders del tenant + de cada
+  customer); con ellos, se filtra a un solo dueño. El portal de cliente (`Scope.IsCustomerPortal`)
+  ignora estos dos parámetros — siempre ve únicamente lo suyo, sin excepción.
+- `GET /storage/folders/tree?ownerType=&ownerId=` — **árbol completo de una sola vez** (para un
+  sidebar expandible), una única query plana (`ListAllForOwnerScopeAsync`) armada en memoria vía
+  `GetFolderTreeHandler.BuildTree`. Devuelve `FolderTreeNode[]` anidado
+  (`{ id, name, relativePath, category, children: [...] }`), hijos ordenados alfabéticamente. El
+  portal de cliente que pide explícitamente otro `ownerType`/`ownerId` que no sea el suyo recibe
+  `Folder.Forbidden` (rechazo explícito, no un re-acotado silencioso).
 
 El agregado `Folder` (`Domain/Folders/Folder.cs`, `TenantEntity`) mantiene un `RelativePath`
 materializado (p. ej. `/Clientes/Oficina A/Recibos`) para evitar recorridos recursivos en cada
 listado o movimiento. Al renombrar o mover una carpeta, `FolderPathCascader.CascadeAsync`
 reescribe el `RelativePath` de todos los descendientes sustituyendo el prefijo antiguo por el
 nuevo (`RebasePath`), compartido por `RenameFolderHandler` y `MoveFolderHandler`.
+
+### `Category` — carpeta "ancla" get-or-create por dueño (2026-07-20)
+
+Gap real auditado: dos interfaces distintas del frontend (ej. el módulo de gestión documental del
+perfil de un cliente, y cualquier otra pantalla) creando cada una "la" carpeta raíz de un mismo
+cliente terminaban con folders duplicados y huérfanos entre sí — no había forma de pedirle a
+CloudStorage "dame el folder ancla de este dueño", y además la unicidad de `Name` solo miraba
+`(TenantId, ParentFolderId)`, así que dos dueños distintos (dos clientes) ni siquiera podían tener
+cada uno un folder raíz llamado "Documentos" sin chocar con un falso `NameAlreadyExists`.
+
+Solución, sin agrandar la superficie de endpoints (mismo `POST /storage/folders` de siempre):
+
+- `Folder.Category` (`string?`, VO `FolderCategory`, max 100 chars, slug técnico en minúsculas +
+  dígitos + `.`/`-`/`_`) — cada módulo consumidor define su propia constante (ej.
+  `"customer.documents"`). No es un enum fijo en CloudStorage: cualquier módulo futuro inventa la
+  suya sin requerir un cambio de código acá. Folders organizados libremente por el usuario dejan
+  `Category = null` — solo las carpetas "ancla" de un módulo específico lo usan.
+- Índice único filtrado en SQL Server: `IX_Folders_Owner_Category` sobre
+  `(TenantId, OwnerType, OwnerId, Category) WHERE Category IS NOT NULL` — garantiza a nivel de BD
+  que un dueño tiene como máximo una carpeta por categoría, para siempre.
+- `POST /storage/folders` con `category` informado gana semántica **get-or-create real**: si dos
+  requests concurrentes (dos interfaces distintas pidiendo la ancla del mismo dueño) chocan contra
+  el índice único, `CreateFolderHandler.PersistOrReturnExisting` captura el `ConflictException` (el
+  mismo que lanza `CloudStorageDbContext.SaveChangesAsync` ante SQL 2601/2627) y devuelve la
+  carpeta que ya existe — mismo patrón que `StartCustomerImportHandler` (Customer) para el race de
+  `IdempotencyKey`. No hace falta un comando/endpoint nuevo tipo `GetOrCreateRootFolder`.
+- `NameExistsUnderParentAsync` se ensanchó para filtrar también por `OwnerType`/`OwnerId` —
+  independiente de `Category`, cierra el falso choque cross-owner para TODOS los folders.
+
+Flujo recomendado para un módulo que necesita "la" carpeta de un dueño (ej. gestión documental de
+cliente): llamar siempre `POST /storage/folders` con el mismo `(ownerType, ownerId, category)` —
+la primera vez la crea, las siguientes devuelven la misma, sin necesidad de guardar el `folderId`
+en otro microservicio ni coordinar entre interfaces.
+
+### Borrar una carpeta — `DELETE /storage/folders/{folderId}`
+
+Requiere `cloudstorage.folder.manage`. **Solo borra carpetas vacías** — decisión explícita (no
+cascada, no mover el contenido a la raíz): si la carpeta todavía tiene subcarpetas o archivos
+directos adentro, `DeleteFolderHandler.EnsureEmpty` la rechaza con `Folder.NotEmpty` → **409
+Conflict**. El llamador debe vaciarla primero — mover el contenido a otro lado (`PUT
+.../move`/`PUT storage/files/{fileId}/folder`) o borrarlo (los archivos individuales ya tienen su
+propia papelera recuperable de 30 días, Fase C1, `DELETE /storage/files/{fileId}`). Se eligió así
+en vez de una cascada de un solo click porque el blast radius de borrar-todo-de-un-golpe es
+grande y silencioso; el usuario ve exactamente qué falta vaciar antes de poder borrar.
 
 ## 27.10 Sharing / ShareLinks
 

@@ -63,12 +63,18 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         CancellationToken ct
     ) =>
         Task.FromResult<IReadOnlyList<FileObject>>(
             _byId
                 .Values.Where(file =>
-                    file.TenantId == tenantId && file.FolderId == folderId && file.Status != FileStatus.SoftDeleted
+                    file.TenantId == tenantId
+                    && file.FolderId == folderId
+                    && file.Status != FileStatus.SoftDeleted
+                    && (ownerType == null || file.OwnerType == ownerType)
+                    && (ownerId == null || file.OwnerId == ownerId)
                 )
                 .ToList()
         );
@@ -97,7 +103,22 @@ internal sealed class FakeFolderRepository : IFolderRepository
 
     public void Seed(Folder folder) => _byId[folder.Id] = folder;
 
-    public void Add(Folder folder) => _byId[folder.Id] = folder;
+    /// <summary>
+    /// Simula que la fila de un Add() nunca llega a persistirse (la transaccion del
+    /// "perdedor" de una carrera hace rollback en SaveChangesAsync) — sin esto, un test de
+    /// race condition dejaria dos filas visibles para el mismo (dueno, categoria) en el
+    /// diccionario del fake, cosa que jamas pasaria contra SQL Server real (una query
+    /// posterior a un SaveChanges fallido no ve filas de una transaccion que no comiteo).
+    /// </summary>
+    public bool SimulateAddNeverPersists { get; set; }
+
+    public void Add(Folder folder)
+    {
+        if (!SimulateAddNeverPersists)
+            _byId[folder.Id] = folder;
+    }
+
+    public void Remove(Folder folder) => _byId.Remove(folder.Id);
 
     public Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct) =>
         Task.FromResult(_byId.TryGetValue(folderId, out var folder) && folder.TenantId == tenantId ? folder : null);
@@ -106,10 +127,19 @@ internal sealed class FakeFolderRepository : IFolderRepository
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         CancellationToken ct
     ) =>
         Task.FromResult<IReadOnlyList<Folder>>(
-            _byId.Values.Where(f => f.TenantId == tenantId && f.ParentFolderId == parentFolderId).ToList()
+            _byId
+                .Values.Where(f =>
+                    f.TenantId == tenantId
+                    && f.ParentFolderId == parentFolderId
+                    && (ownerType == null || f.OwnerType == ownerType)
+                    && (ownerId == null || f.OwnerId == ownerId)
+                )
+                .ToList()
         );
 
     public Task<IReadOnlyList<Folder>> ListByPathPrefixAsync(
@@ -128,6 +158,8 @@ internal sealed class FakeFolderRepository : IFolderRepository
         Guid tenantId,
         Guid? parentFolderId,
         string name,
+        OwnerType ownerType,
+        Guid? ownerId,
         Guid? excludeFolderId,
         CancellationToken ct
     ) =>
@@ -136,8 +168,39 @@ internal sealed class FakeFolderRepository : IFolderRepository
                 f.TenantId == tenantId
                 && f.ParentFolderId == parentFolderId
                 && f.Name == name
+                && f.OwnerType == ownerType
+                && f.OwnerId == ownerId
                 && f.Id != (excludeFolderId ?? Guid.Empty)
             )
+        );
+
+    public Task<Folder?> GetByOwnerAndCategoryAsync(
+        Guid tenantId,
+        OwnerType ownerType,
+        Guid? ownerId,
+        string category,
+        CancellationToken ct
+    ) =>
+        Task.FromResult(
+            _byId.Values.FirstOrDefault(f =>
+                f.TenantId == tenantId && f.OwnerType == ownerType && f.OwnerId == ownerId && f.Category == category
+            )
+        );
+
+    public Task<IReadOnlyList<Folder>> ListAllForOwnerScopeAsync(
+        Guid tenantId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<Folder>>(
+            _byId
+                .Values.Where(f =>
+                    f.TenantId == tenantId
+                    && (ownerType == null || f.OwnerType == ownerType)
+                    && (ownerId == null || f.OwnerId == ownerId)
+                )
+                .ToList()
         );
 }
 
@@ -418,9 +481,22 @@ internal sealed class FakeUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
 {
     public int SaveChangesCallCount { get; private set; }
 
+    /// <summary>
+    /// Simula el ConflictException real que CloudStorageDbContext.SaveChangesAsync lanza
+    /// ante una violacion de indice unico (ej. IX_Folders_Owner_Category en una carrera
+    /// real) — se resetea despues de dispararse una vez, igual que en producción una
+    /// segunda llamada (la del handler buscando al ganador) no vuelve a chocar.
+    /// </summary>
+    public bool ThrowConflictOnNextSave { get; set; }
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         SaveChangesCallCount++;
+        if (ThrowConflictOnNextSave)
+        {
+            ThrowConflictOnNextSave = false;
+            throw new BuildingBlocks.Results.ConflictException("Persistence.UniqueConstraint", "Simulated race.");
+        }
         return Task.FromResult(1);
     }
 }

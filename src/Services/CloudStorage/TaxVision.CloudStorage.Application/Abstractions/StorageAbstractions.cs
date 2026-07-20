@@ -27,11 +27,20 @@ public interface IFileObjectRepository
     /// <summary>Candidatos a purga definitiva (Fase C1, cross-tenant): SoftDeleted cuyo SoftDeleteExpiresAtUtc ya paso.</summary>
     Task<IReadOnlyList<FileObject>> ListPurgeablePastRetentionAsync(DateTime nowUtc, int take, CancellationToken ct);
 
-    /// <summary>Fase C2 — archivos directamente dentro de una carpeta navegable (null = raiz), sin los borrados de la papelera.</summary>
+    /// <summary>
+    /// Fase C2 — archivos directamente dentro de una carpeta navegable (null = raiz), sin los
+    /// borrados de la papelera. <paramref name="restrictedCustomerId"/> es el limite de
+    /// seguridad del portal de cliente (siempre aplicado si viene, nunca opcional); ownerType/
+    /// ownerId (2026-07-20, cierre de gap de navegacion por dueno) son un filtro adicional
+    /// solo para staff interno — cuando el caller es portal de cliente estos se ignoran, ya
+    /// que restrictedCustomerId ya fuerza el alcance real.
+    /// </summary>
     Task<IReadOnlyList<FileObject>> ListInFolderAsync(
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         CancellationToken ct
     );
 
@@ -53,13 +62,22 @@ public interface IFileObjectRepository
 public interface IFolderRepository
 {
     void Add(Folder folder);
+
+    /// <summary>2026-07-20 — usado por DeleteFolderHandler. El llamador ya validó que la carpeta está vacía (sin subfolders ni archivos directos) antes de llegar acá.</summary>
+    void Remove(Folder folder);
     Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct);
 
-    /// <summary>Subcarpetas directas de parentFolderId (null = raiz del owner).</summary>
+    /// <summary>
+    /// Subcarpetas directas de parentFolderId (null = raiz del owner). Ver nota de
+    /// ownerType/ownerId en <see cref="IFileObjectRepository.ListInFolderAsync"/> — mismo
+    /// criterio de seguridad exactamente igual acá.
+    /// </summary>
     Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         CancellationToken ct
     );
 
@@ -72,11 +90,46 @@ public interface IFolderRepository
     /// </summary>
     Task<IReadOnlyList<Folder>> ListByPathPrefixAsync(Guid tenantId, string relativePathPrefix, CancellationToken ct);
 
+    /// <summary>
+    /// 2026-07-20 — el chequeo de unicidad de Name ahora tambien scopea por dueno: antes
+    /// solo miraba (TenantId, ParentFolderId, Name), asi que dos duenos distintos (ej. dos
+    /// clientes) no podian tener cada uno un folder raiz "Documentos" sin chocar entre si
+    /// con un falso NameAlreadyExists. Gap real auditado, ver FolderCategory.cs.
+    /// </summary>
     Task<bool> NameExistsUnderParentAsync(
         Guid tenantId,
         Guid? parentFolderId,
         string name,
+        OwnerType ownerType,
+        Guid? ownerId,
         Guid? excludeFolderId,
+        CancellationToken ct
+    );
+
+    /// <summary>
+    /// 2026-07-20 — lookup del get-or-create por (dueno, categoria), respaldado por el
+    /// indice unico filtrado IX_Folders_Owner_Category. Usado por CreateFolderHandler tanto
+    /// para el pre-check optimista como para el fallback tras un ConflictException (carrera
+    /// real entre dos requests concurrentes creando la misma categoria).
+    /// </summary>
+    Task<Folder?> GetByOwnerAndCategoryAsync(
+        Guid tenantId,
+        OwnerType ownerType,
+        Guid? ownerId,
+        string category,
+        CancellationToken ct
+    );
+
+    /// <summary>
+    /// 2026-07-20 — TODO el arbol de un tenant (o de un dueno especifico) en una sola
+    /// query plana, sin paginar por nivel — lo consume GetFolderTreeHandler para armar el
+    /// arbol completo en memoria (sidebar expandible). ownerType/ownerId nulos = todo el
+    /// tenant (solo para staff interno, nunca para portal de cliente — ver el handler).
+    /// </summary>
+    Task<IReadOnlyList<Folder>> ListAllForOwnerScopeAsync(
+        Guid tenantId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         CancellationToken ct
     );
 }

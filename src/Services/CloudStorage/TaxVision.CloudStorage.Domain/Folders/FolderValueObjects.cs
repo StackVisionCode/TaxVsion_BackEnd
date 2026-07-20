@@ -26,6 +26,10 @@ public sealed record FolderName
 public static class FolderErrors
 {
     public static readonly Error InvalidName = new("Folder.InvalidName", "The folder name is invalid.");
+    public static readonly Error InvalidCategory = new(
+        "Folder.InvalidCategory",
+        "The folder category must be 1-100 chars of lowercase ascii letters, digits, '.', '-' or '_'."
+    );
     public static readonly Error OwnerRequired = new(
         "Folder.OwnerRequired",
         "An owner identifier is required for this owner type."
@@ -47,5 +51,9 @@ public static class FolderErrors
     public static readonly Error Forbidden = new(
         "Folder.Forbidden",
         "The actor cannot access folders owned by another customer."
+    );
+    public static readonly Error NotEmpty = new(
+        "Folder.NotEmpty",
+        "The folder still contains subfolders or files. Empty it before deleting."
     );
 }

@@ -183,7 +183,10 @@ public static class ErrorHttpMapping
             or "EmailLayout.NameConflict"
             or "EmailAccount.Conflict"
             or "ShareLink.AlreadyRevoked"
-            or "TenantPaymentConfig.AlreadyExists" => StatusCodes.Status409Conflict,
+            or "TenantPaymentConfig.AlreadyExists"
+            // 2026-07-20 — DeleteFolderHandler: la carpeta tiene subfolders o archivos directos,
+            // el llamador debe vaciarla primero. Sin esta entrada caía al default 400.
+            or "Folder.NotEmpty" => StatusCodes.Status409Conflict,
             "Auth.LockedOut"
             or "Auth.OtpThrottled"
             or "Invitation.ResendLimit"

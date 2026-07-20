@@ -53,6 +53,7 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Property(folder => folder.OwnerType).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(folder => folder.Name).HasMaxLength(255).IsRequired();
         builder.Property(folder => folder.RelativePath).HasMaxLength(2048).IsRequired();
+        builder.Property(folder => folder.Category).HasMaxLength(100);
 
         // Listar subcarpetas de un padre (raiz = ParentFolderId null).
         builder.HasIndex(folder => new
@@ -63,6 +64,20 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         });
         // Cascadear rename/move a todo el subarbol via prefijo de RelativePath.
         builder.HasIndex(folder => new { folder.TenantId, folder.RelativePath });
+        // Get-or-create por (dueno, categoria) — ver FolderCategory.cs. Filtrado a
+        // Category NOT NULL: folders organizados libremente por el usuario (Category
+        // null) nunca chocan entre si por este indice, solo las "anclas" de un modulo.
+        builder
+            .HasIndex(folder => new
+            {
+                folder.TenantId,
+                folder.OwnerType,
+                folder.OwnerId,
+                folder.Category,
+            })
+            .IsUnique()
+            .HasFilter("[Category] IS NOT NULL")
+            .HasDatabaseName("IX_Folders_Owner_Category");
     }
 }
 

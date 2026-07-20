@@ -80,6 +80,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         Guid tenantId,
         Guid? folderId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         CancellationToken ct
     ) =>
         await db
@@ -92,6 +94,10 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                     restrictedCustomerId == null
                     || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
                 )
+                // Filtro adicional solo-staff (2026-07-20) — jamas se evalua si restrictedCustomerId
+                // ya acoto el alcance arriba, portal de cliente siempre gana.
+                && (restrictedCustomerId != null || ownerType == null || file.OwnerType == ownerType)
+                && (restrictedCustomerId != null || ownerId == null || file.OwnerId == ownerId)
             )
             .OrderByDescending(file => file.CreatedAtUtc)
             .ToListAsync(ct);
@@ -121,6 +127,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
 {
     public void Add(Folder folder) => db.Folders.Add(folder);
 
+    public void Remove(Folder folder) => db.Folders.Remove(folder);
+
     public Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct) =>
         db.Folders.SingleOrDefaultAsync(folder => folder.TenantId == tenantId && folder.Id == folderId, ct);
 
@@ -128,6 +136,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         Guid tenantId,
         Guid? parentFolderId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         CancellationToken ct
     ) =>
         await db
@@ -139,6 +149,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                     restrictedCustomerId == null
                     || (folder.OwnerType == OwnerType.Customer && folder.OwnerId == restrictedCustomerId)
                 )
+                && (restrictedCustomerId != null || ownerType == null || folder.OwnerType == ownerType)
+                && (restrictedCustomerId != null || ownerId == null || folder.OwnerId == ownerId)
             )
             .OrderBy(folder => folder.Name)
             .ToListAsync(ct);
@@ -159,6 +171,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         Guid tenantId,
         Guid? parentFolderId,
         string name,
+        OwnerType ownerType,
+        Guid? ownerId,
         Guid? excludeFolderId,
         CancellationToken ct
     ) =>
@@ -167,9 +181,42 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                 folder.TenantId == tenantId
                 && folder.ParentFolderId == parentFolderId
                 && folder.Name == name
+                && folder.OwnerType == ownerType
+                && folder.OwnerId == ownerId
                 && folder.Id != (excludeFolderId ?? Guid.Empty),
             ct
         );
+
+    public Task<Folder?> GetByOwnerAndCategoryAsync(
+        Guid tenantId,
+        OwnerType ownerType,
+        Guid? ownerId,
+        string category,
+        CancellationToken ct
+    ) =>
+        db.Folders.SingleOrDefaultAsync(
+            folder =>
+                folder.TenantId == tenantId
+                && folder.OwnerType == ownerType
+                && folder.OwnerId == ownerId
+                && folder.Category == category,
+            ct
+        );
+
+    public async Task<IReadOnlyList<Folder>> ListAllForOwnerScopeAsync(
+        Guid tenantId,
+        OwnerType? ownerType,
+        Guid? ownerId,
+        CancellationToken ct
+    ) =>
+        await db
+            .Folders.AsNoTracking()
+            .Where(folder =>
+                folder.TenantId == tenantId
+                && (ownerType == null || folder.OwnerType == ownerType)
+                && (ownerId == null || folder.OwnerId == ownerId)
+            )
+            .ToListAsync(ct);
 }
 
 public sealed class StorageLimitRepository(CloudStorageDbContext db) : IStorageLimitRepository

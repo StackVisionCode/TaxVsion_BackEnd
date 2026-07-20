@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Domain\TaxVision.Tenant.Domain.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Application\TaxVision.Tenant.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Api\TaxVision.Tenant.Api.csproj" />
   </ItemGroup>
 </Project>

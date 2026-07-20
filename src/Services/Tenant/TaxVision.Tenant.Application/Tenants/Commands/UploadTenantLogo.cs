@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tenant.Application.Tenants;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 
 namespace TaxVision.Tenant.Application.Tenants.Commands;
@@ -44,7 +45,8 @@ public static class UploadTenantLogoHandler
             return Result.Failure<UploadTenantLogoResponse>(uploadResult.Error);
 
         var fileId = uploadResult.Value;
-        var setResult = tenant.SetLogoPending(fileId, cmd.ContentType, cmd.Content.LongLength, null, null);
+        var (width, height) = LogoImageDimensionReader.TryRead(cmd.Content, cmd.ContentType);
+        var setResult = tenant.SetLogoPending(fileId, cmd.ContentType, cmd.Content.LongLength, width, height);
         if (setResult.IsFailure)
             return Result.Failure<UploadTenantLogoResponse>(setResult.Error);
 
