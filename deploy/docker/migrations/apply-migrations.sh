@@ -94,4 +94,10 @@ apply_migration \
   "src/Services/PaymentClient/TaxVision.PaymentClient.Api/TaxVision.PaymentClient.Api.csproj" \
   "$PAYMENTCLIENT_DB_CONNECTION"
 
+apply_migration \
+  "Growth" \
+  "src/Services/Growth/TaxVision.Growth.Infrastructure/TaxVision.Growth.Infrastructure.csproj" \
+  "src/Services/Growth/TaxVision.Growth.Api/TaxVision.Growth.Api.csproj" \
+  "$GROWTH_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

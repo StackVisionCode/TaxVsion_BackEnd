@@ -385,6 +385,30 @@ services:
       ServiceAuth__Clients__8__Secret: ${TENANT_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__8__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__8__Permissions__1: cloudstorage.file.delete
+      # Clientes M2M de Payment para el protocolo quote/reserve/commit/cancel.
+      # Audience y scopes son obligatorios; Growth no acepta un token genérico de servicios.
+      ServiceAuth__Clients__9__ClientId: ${PAYMENTAPP_GROWTH_CLIENT_ID:-payment-app-growth}
+      ServiceAuth__Clients__9__Secret: ${PAYMENTAPP_GROWTH_CLIENT_SECRET:-}
+      ServiceAuth__Clients__9__Audience: taxvision-growth
+      ServiceAuth__Clients__9__Scopes__0: growth.codes.quote
+      ServiceAuth__Clients__9__Scopes__1: growth.codes.reserve
+      ServiceAuth__Clients__9__Scopes__2: growth.codes.commit
+      ServiceAuth__Clients__9__Scopes__3: growth.codes.cancel
+      ServiceAuth__Clients__9__Scopes__4: growth.codes.compensate
+      ServiceAuth__Clients__9__Scopes__5: growth.referrals.qualify
+      ServiceAuth__Clients__10__ClientId: ${PAYMENTCLIENT_GROWTH_CLIENT_ID:-payment-client-growth}
+      ServiceAuth__Clients__10__Secret: ${PAYMENTCLIENT_GROWTH_CLIENT_SECRET:-}
+      ServiceAuth__Clients__10__Audience: taxvision-growth
+      ServiceAuth__Clients__10__Scopes__0: growth.codes.quote
+      ServiceAuth__Clients__10__Scopes__1: growth.codes.reserve
+      ServiceAuth__Clients__10__Scopes__2: growth.codes.commit
+      ServiceAuth__Clients__10__Scopes__3: growth.codes.cancel
+      ServiceAuth__Clients__10__Scopes__4: growth.codes.compensate
+      ServiceAuth__Clients__11__ClientId: ${SUBSCRIPTION_GROWTH_CLIENT_ID:-subscription-growth}
+      ServiceAuth__Clients__11__Secret: ${SUBSCRIPTION_GROWTH_CLIENT_SECRET:-}
+      ServiceAuth__Clients__11__Audience: taxvision-growth
+      ServiceAuth__Clients__11__Scopes__0: growth.referrals.reward.confirm
+      ServiceAuth__Clients__11__Scopes__1: growth.grants.confirm
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -978,6 +1002,40 @@ services:
     networks:
       - taxvision-network
 
+  growth-api:
+    image: taxvision/growth-api:dev
+    container_name: taxvision-growth-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Growth/TaxVision.Growth.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${GROWTH_DB_CONNECTION:?Set GROWTH_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Jwt__ValidAudiences__0: TaxVision.Services
+      Jwt__ValidAudiences__1: taxvision-growth
+      Growth__Codes__TokenHashing__Pepper: ${GROWTH_CODE_TOKEN_PEPPER:?Set GROWTH_CODE_TOKEN_PEPPER in .env}
+      Growth__Referrals__TokenHashing__Pepper: ${GROWTH_REFERRAL_CODE_TOKEN_PEPPER:?Set GROWTH_REFERRAL_CODE_TOKEN_PEPPER in .env}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   communication-api:
     image: taxvision/communication-api:dev
     container_name: taxvision-communication-api
@@ -1165,6 +1223,7 @@ services:
       CORRESPONDENCE_DB_CONNECTION: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
       PAYMENTAPP_DB_CONNECTION: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
       PAYMENTCLIENT_DB_CONNECTION: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
+      GROWTH_DB_CONNECTION: ${GROWTH_DB_CONNECTION:?Set GROWTH_DB_CONNECTION in .env}
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -1211,6 +1270,7 @@ services:
       ReverseProxy__Clusters__communication__Destinations__communication1__Address: http://communication-api:5350/
       ReverseProxy__Clusters__paymentapp__Destinations__paymentapp1__Address: http://payment-app-api:8080/
       ReverseProxy__Clusters__paymentclient__Destinations__paymentclient1__Address: http://payment-client-api:8080/
+      ReverseProxy__Clusters__growth__Destinations__growth1__Address: http://growth-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1229,6 +1289,7 @@ services:
       - communication-api
       - payment-app-api
       - payment-client-api
+      - growth-api
       - otel-collector
     networks:
       - taxvision-network

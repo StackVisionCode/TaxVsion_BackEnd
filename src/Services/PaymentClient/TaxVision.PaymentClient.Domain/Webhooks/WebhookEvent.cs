@@ -102,4 +102,16 @@ public sealed class WebhookEvent : TenantEntity
         ProcessedAtUtc = nowUtc;
         return Result.Success();
     }
+
+    public Result MarkStale(Guid? relatedTenantPaymentId, string reason, DateTime nowUtc)
+    {
+        if (Status != WebhookEventStatus.Processing)
+            return Result.Failure(new Error("WebhookEvent.InvalidTransition", $"Cannot mark stale from {Status}."));
+
+        Status = WebhookEventStatus.Stale;
+        RelatedTenantPaymentId = relatedTenantPaymentId;
+        ProcessingError = reason;
+        ProcessedAtUtc = nowUtc;
+        return Result.Success();
+    }
 }

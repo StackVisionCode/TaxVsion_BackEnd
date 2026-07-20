@@ -209,6 +209,27 @@ public static class PermissionCatalog
     public const string PaymentClientRecurringManage = PaymentClientPermissions.RecurringManage;
     public const string PaymentClientAdminCrossTenant = PaymentClientPermissions.AdminCrossTenant;
 
+    // Growth — Codes y Referrals comparten deployment, pero conservan permisos de dominio
+    // separados. AdminCrossTenant nunca se asigna a roles de tenant.
+    public const string GrowthCodesRead = GrowthPermissions.CodesRead;
+    public const string GrowthCodesManage = GrowthPermissions.CodesManage;
+    public const string GrowthCodesIssue = GrowthPermissions.CodesIssue;
+    public const string GrowthCodesActivate = GrowthPermissions.CodesActivate;
+    public const string GrowthCodesRevoke = GrowthPermissions.CodesRevoke;
+    public const string GrowthCodesAuditRead = GrowthPermissions.CodesAuditRead;
+    public const string GrowthCodesRedemptionRead = GrowthPermissions.CodesRedemptionRead;
+    public const string GrowthCodesCompensationManage = GrowthPermissions.CodesCompensationManage;
+    public const string GrowthReferralsOwnRead = GrowthPermissions.ReferralsOwnRead;
+    public const string GrowthReferralsProgramRead = GrowthPermissions.ReferralsProgramRead;
+    public const string GrowthReferralsProgramManage = GrowthPermissions.ReferralsProgramManage;
+    public const string GrowthReferralsAttributionRead = GrowthPermissions.ReferralsAttributionRead;
+    public const string GrowthReferralsFraudRead = GrowthPermissions.ReferralsFraudRead;
+    public const string GrowthReferralsFraudManage = GrowthPermissions.ReferralsFraudManage;
+    public const string GrowthReferralsRewardRead = GrowthPermissions.ReferralsRewardRead;
+    public const string GrowthReferralsRewardManage = GrowthPermissions.ReferralsRewardManage;
+    public const string GrowthReferralsAuditRead = GrowthPermissions.ReferralsAuditRead;
+    public const string GrowthAdminCrossTenant = GrowthPermissions.AdminCrossTenant;
+
     public sealed record PermissionDefinition(
         Guid Id,
         string Code,
@@ -1153,6 +1174,32 @@ public static class PermissionCatalog
             "branding",
             "Gestionar el logo/branding del tenant",
             false
+        ),
+        new(new Guid("a1000000-0000-0000-0000-000000000123"), GrowthCodesRead, "codes", "Ver códigos del propio tenant", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000124"), GrowthCodesManage, "codes", "Gestionar códigos del propio tenant", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000125"), GrowthCodesIssue, "codes", "Emitir códigos de beneficio", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000126"), GrowthCodesActivate, "codes", "Activar códigos", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000127"), GrowthCodesRevoke, "codes", "Revocar códigos", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000128"), GrowthCodesAuditRead, "codes", "Consultar auditoría de códigos", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000129"), GrowthCodesRedemptionRead, "codes", "Consultar redemptions", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000130"), GrowthCodesCompensationManage, "codes", "Gestionar compensaciones promocionales", false, IsAssignableByTenant: false),
+        new(new Guid("a1000000-0000-0000-0000-000000000131"), GrowthReferralsOwnRead, "referrals", "Ver referidos propios", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000132"), GrowthReferralsProgramRead, "referrals", "Ver programas de referidos", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000133"), GrowthReferralsProgramManage, "referrals", "Gestionar programas de referidos", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000134"), GrowthReferralsAttributionRead, "referrals", "Consultar atribuciones", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000135"), GrowthReferralsFraudRead, "referrals", "Consultar revisiones antifraude", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000136"), GrowthReferralsFraudManage, "referrals", "Gestionar revisiones antifraude", false, IsAssignableByTenant: false),
+        new(new Guid("a1000000-0000-0000-0000-000000000137"), GrowthReferralsRewardRead, "referrals", "Consultar rewards", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000138"), GrowthReferralsRewardManage, "referrals", "Gestionar rewards no monetarios", false, IsAssignableByTenant: false),
+        new(new Guid("a1000000-0000-0000-0000-000000000139"), GrowthReferralsAuditRead, "referrals", "Consultar auditoría de referidos", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000140"),
+            GrowthAdminCrossTenant,
+            "growth",
+            "Operar recursos Growth de cualquier tenant",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
     ];
 

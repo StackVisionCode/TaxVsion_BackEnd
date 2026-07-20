@@ -270,6 +270,80 @@
             "description": "Detalle de un TenantPayment del tenant autenticado. Requiere payment_client.payment.read."
           },
           "response": []
+        },
+        {
+          "name": "ChargeTenantPayment - ZeroAmount (100% discount)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+                  "\r",
+                  "const paymentId = pm.response.json();\r",
+                  "if (paymentId) {\r",
+                  "    pm.environment.set('zeroAmountTenantPaymentId', paymentId);\r",
+                  "    console.log('zeroAmountTenantPaymentId:', paymentId);\r",
+                  "}\r"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"providerCode\": \"Stripe\",\n  \"amountCents\": 0,\n  \"currency\": \"USD\",\n  \"taxpayerId\": null,\n  \"purposeKind\": \"InvoicePayment\",\n  \"purposeExternalReferenceId\": \"inv-postman-100pct-off\",\n  \"paymentMethodReference\": \"pm_card_visa\",\n  \"receiptEmail\": null,\n  \"idempotencyKey\": \"postman-zero-{{$guid}}\",\n  \"platformFeeAmountCents\": null,\n  \"platformFeeReference\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payments",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payments"]
+            },
+            "description": "Un monto final de $0 (p.ej. un codigo de Growth al 100% de descuento) NUNCA debe llegar a Stripe -- un PaymentIntent de $0 es invalido para su API. TenantPayment.CreateAlreadySucceeded nace directo en Succeeded sin tocar el provider, tanto en modo DirectApiKeys como Connect. Prerrequisito: Config > CreateConfig + UpdateSecrets ya corridos para el tenant (config activo). Requiere payment_client.payment.charge. Devuelve el Guid del TenantPayment creado."
+          },
+          "response": []
+        },
+        {
+          "name": "GetTenantPayment - ZeroAmount (assert Succeeded, no provider touched)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+                  "\r",
+                  "const payment = pm.response.json();\r",
+                  "pm.test('Payment succeeded without ever touching the provider', () => {\r",
+                  "    pm.expect(payment.status).to.eql('Succeeded');\r",
+                  "    pm.expect(payment.amountCents).to.eql(0);\r",
+                  "    pm.expect(payment.externalChargeReference).to.be.null;\r",
+                  "    pm.expect(payment.providerChargeReferenceOnConnect).to.be.null;\r",
+                  "    pm.expect(payment.failureCode).to.be.null;\r",
+                  "});\r"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/payments-client/payments/{{zeroAmountTenantPaymentId}}",
+              "host": ["{{UrlBase}}"],
+              "path": ["payments-client", "payments", "{{zeroAmountTenantPaymentId}}"]
+            },
+            "description": "Verifica el resultado del cobro de monto cero: debe quedar Succeeded de inmediato, sin ExternalChargeReference/ProviderChargeReferenceOnConnect ni FailureCode -- prueba de que ni Direct ni Connect llegaron a ejecutarse. Requiere payment_client.payment.read.\n\nNota: PaymentLink NO admite monto cero (PaymentLink.Create rechaza AmountCents<=0 por diseno, igual que TenantPayment.Create) -- un link de $0 nunca se puede crear, asi que ese camino no aplica y no se prueba aqui."
+          },
+          "response": []
         }
       ]
     },

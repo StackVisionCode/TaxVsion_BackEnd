@@ -141,9 +141,24 @@ public static class ProcessStripeWebhookHandler
 
         await throttle.RegisterWebhookAttemptAsync(payment.TenantId, ct);
 
-        ApplyPayload(payment, payload, verification.EventType, metrics);
+        var transitionResult = ApplyPayload(payment, payload, metrics);
+        if (transitionResult.IsFailure)
+        {
+            webhookEvent.MarkStale(payment.Id, transitionResult.Error.Code, DateTime.UtcNow);
+            await unitOfWork.SaveChangesAsync(ct);
+            logger.LogInformation(
+                "Stripe webhook {EventType} ({ProviderEventId}) is stale for SaaSPayment {SaaSPaymentId}: {ErrorCode}.",
+                verification.EventType,
+                verification.ProviderEventId,
+                payment.Id,
+                transitionResult.Error.Code
+            );
+            return Result.Success();
+        }
 
-        webhookEvent.MarkApplied(payment.Id, DateTime.UtcNow);
+        var appliedResult = webhookEvent.MarkApplied(payment.Id, DateTime.UtcNow);
+        if (appliedResult.IsFailure)
+            return appliedResult;
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -178,23 +193,17 @@ public static class ProcessStripeWebhookHandler
         return Result.Success();
     }
 
-    private static void ApplyPayload(
-        SaaSPayment payment,
-        WebhookEventPayload payload,
-        string eventType,
-        IPaymentAppMetrics metrics
-    )
+    private static Result ApplyPayload(SaaSPayment payment, WebhookEventPayload payload, IPaymentAppMetrics metrics)
     {
         var nowUtc = DateTime.UtcNow;
 
         switch (payload.Status)
         {
             case PaymentStatus.Succeeded:
-                payment.MarkSucceeded(nowUtc, Guid.Empty);
-                break;
+                return payment.MarkSucceeded(nowUtc, Guid.Empty);
 
             case PaymentStatus.Failed:
-                payment.MarkFailed(
+                return payment.MarkFailed(
                     payload.FailureCode ?? "Provider.Unknown",
                     payload.FailureMessage ?? "The provider declined the charge.",
                     willRetry: false,
@@ -202,20 +211,28 @@ public static class ProcessStripeWebhookHandler
                     Guid.Empty,
                     nowUtc
                 );
-                break;
 
             case PaymentStatus.Cancelled:
-                payment.CancelByAdmin("ProviderCancelled", Guid.Empty, nowUtc);
-                break;
+                return payment.CancelByAdmin("ProviderCancelled", Guid.Empty, nowUtc);
 
             case PaymentStatus.Refunded when payload.RefundedAmountCents is { } refundedCents:
-                ApplyRefund(payment, refundedCents, nowUtc, metrics);
-                break;
+                return ApplyRefund(payment, refundedCents, nowUtc, metrics);
 
             case PaymentStatus.ChargedBack:
-                payment.MarkChargedBack(nowUtc, payload.FailureMessage ?? "Chargeback dispute created.", Guid.Empty);
+                var chargedBack = payment.MarkChargedBack(
+                    nowUtc,
+                    payload.FailureMessage ?? "Chargeback dispute created.",
+                    Guid.Empty
+                );
+                if (chargedBack.IsFailure)
+                    return chargedBack;
                 metrics.RecordChargedBack(payment.ProviderCode.ToString());
-                break;
+                return Result.Success();
+
+            default:
+                return Result.Failure(
+                    new Error("WebhookEvent.UnsupportedPaymentStatus", $"Payment status {payload.Status} is not actionable.")
+                );
         }
     }
 
@@ -224,7 +241,7 @@ public static class ProcessStripeWebhookHandler
     /// registra <c>refunded_total</c> si esto es una novedad para nosotros — un refund ya
     /// iniciado por <c>RefundSaaSPaymentHandler</c> (admin) ya lo contó ahí, esto evita
     /// contarlo dos veces cuando Stripe confirma por webhook lo que ya sabíamos.</summary>
-    private static void ApplyRefund(
+    private static Result ApplyRefund(
         SaaSPayment payment,
         long totalRefundedCents,
         DateTime nowUtc,
@@ -237,15 +254,23 @@ public static class ProcessStripeWebhookHandler
 
         var deltaCents = totalRefundedCents - alreadyTracked;
         if (deltaCents <= 0)
-            return;
-
-        metrics.RecordRefunded(payment.ProviderCode.ToString());
+            return Result.Success();
 
         var deltaMoney = Money.Create(deltaCents, payment.Amount.Currency);
         if (deltaMoney.IsFailure)
-            return;
+            return Result.Failure(deltaMoney.Error);
 
-        payment.RefundPartial(deltaMoney.Value, "Refunded via Stripe webhook.", Guid.Empty, nowUtc);
+        var refundResult = payment.RefundPartial(
+            deltaMoney.Value,
+            "Refunded via Stripe webhook.",
+            Guid.Empty,
+            nowUtc
+        );
+        if (refundResult.IsFailure)
+            return refundResult;
+
+        metrics.RecordRefunded(payment.ProviderCode.ToString());
+        return Result.Success();
     }
 
     private static PaymentAuditAction MapAuditAction(PaymentStatus status) =>

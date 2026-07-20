@@ -50,6 +50,15 @@
     <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Domain/TaxVision.PaymentClient.Domain.csproj" />
     <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Infrastructure/TaxVision.PaymentClient.Infrastructure.csproj" />
   </Folder>
+  <!-- GrowthService: modular deployment, bounded contexts remain independently extractable -->
+  <Folder Name="/src/Services/Growth/">
+    <Project Path="src/Services/Growth/TaxVision.Codes.Application/TaxVision.Codes.Application.csproj" />
+    <Project Path="src/Services/Growth/TaxVision.Codes.Domain/TaxVision.Codes.Domain.csproj" />
+    <Project Path="src/Services/Growth/TaxVision.Growth.Api/TaxVision.Growth.Api.csproj" />
+    <Project Path="src/Services/Growth/TaxVision.Growth.Infrastructure/TaxVision.Growth.Infrastructure.csproj" />
+    <Project Path="src/Services/Growth/TaxVision.Referrals.Application/TaxVision.Referrals.Application.csproj" />
+    <Project Path="src/Services/Growth/TaxVision.Referrals.Domain/TaxVision.Referrals.Domain.csproj" />
+  </Folder>
   <!-- NotificationService -->
   <Folder Name="/src/Services/Notification/">
     <Project Path="src/Services/Notification/TaxVision.Notification.Api/TaxVision.Notification.Api.csproj" />
@@ -80,7 +89,6 @@
   </Folder>
   <!-- ScribeService -->
   <Folder Name="/src/Services/Scribe/">
-    <Project Path="src/Services/Scribe/TaxVision.Scribe.Api/TaxVision.Scribe.Api.csproj" />
     <Project Path="src/Services/Scribe/TaxVision.Scribe.Application/TaxVision.Scribe.Application.csproj" />
     <Project Path="src/Services/Scribe/TaxVision.Scribe.Domain/TaxVision.Scribe.Domain.csproj" />
     <Project Path="src/Services/Scribe/TaxVision.Scribe.Infrastructure/TaxVision.Scribe.Infrastructure.csproj" />
@@ -99,12 +107,14 @@
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Domain/TaxVision.Tenant.Domain.csproj" />
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Infrastructure/TaxVision.Tenant.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/deploy/" />
   <Folder Name="/deploy/tests/">
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Growth.Tests/TaxVision.Growth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentApp.Tests/TaxVision.PaymentApp.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentClient.Tests/TaxVision.PaymentClient.Tests.csproj" />

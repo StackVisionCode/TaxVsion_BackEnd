@@ -1892,6 +1892,204 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "branding",
                             PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000123"),
+                            Code = "codes.code.read",
+                            Description = "Ver códigos del propio tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000124"),
+                            Code = "codes.code.manage",
+                            Description = "Gestionar códigos del propio tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000125"),
+                            Code = "codes.code.issue",
+                            Description = "Emitir códigos de beneficio",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000126"),
+                            Code = "codes.code.activate",
+                            Description = "Activar códigos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000127"),
+                            Code = "codes.code.revoke",
+                            Description = "Revocar códigos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000128"),
+                            Code = "codes.audit.read",
+                            Description = "Consultar auditoría de códigos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000129"),
+                            Code = "codes.redemption.read",
+                            Description = "Consultar redemptions",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000130"),
+                            Code = "codes.compensation.manage",
+                            Description = "Gestionar compensaciones promocionales",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000131"),
+                            Code = "referrals.own.read",
+                            Description = "Ver referidos propios",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000132"),
+                            Code = "referrals.program.read",
+                            Description = "Ver programas de referidos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000133"),
+                            Code = "referrals.program.manage",
+                            Description = "Gestionar programas de referidos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000134"),
+                            Code = "referrals.attribution.read",
+                            Description = "Consultar atribuciones",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000135"),
+                            Code = "referrals.fraud.read",
+                            Description = "Consultar revisiones antifraude",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000136"),
+                            Code = "referrals.fraud.manage",
+                            Description = "Gestionar revisiones antifraude",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000137"),
+                            Code = "referrals.reward.read",
+                            Description = "Consultar rewards",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000138"),
+                            Code = "referrals.reward.manage",
+                            Description = "Gestionar rewards no monetarios",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000139"),
+                            Code = "referrals.audit.read",
+                            Description = "Consultar auditoría de referidos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000140"),
+                            Code = "growth.admin.cross_tenant",
+                            Description = "Operar recursos Growth de cualquier tenant",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "growth",
+                            PlatformOnly = true
                         });
                 });
 

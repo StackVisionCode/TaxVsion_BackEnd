@@ -74,6 +74,23 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         string clientId,
         IReadOnlyCollection<string> permissions,
         int lifetimeMinutes
+    ) =>
+        GenerateScopedServiceToken(
+            tenantId,
+            clientId,
+            permissions,
+            [],
+            _options.Audience,
+            lifetimeMinutes
+        );
+
+    public AccessToken GenerateScopedServiceToken(
+        Guid tenantId,
+        string clientId,
+        IReadOnlyCollection<string> permissions,
+        IReadOnlyCollection<string> scopes,
+        string audience,
+        int lifetimeMinutes
     )
     {
         var now = DateTime.UtcNow;
@@ -88,10 +105,11 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
             new("client_id", clientId),
         };
         claims.AddRange(permissions.Select(permission => new Claim("perm", permission)));
+        claims.AddRange(scopes.Select(scope => new Claim("scope", scope)));
 
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
-            audience: _options.Audience,
+            audience: string.IsNullOrWhiteSpace(audience) ? _options.Audience : audience,
             claims: claims,
             notBefore: now,
             expires: now.AddMinutes(lifetimeMinutes),
