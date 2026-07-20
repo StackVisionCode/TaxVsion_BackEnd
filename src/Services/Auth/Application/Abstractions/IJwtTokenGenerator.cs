@@ -32,6 +32,19 @@ public interface IJwtTokenGenerator
     );
 
     /// <summary>
+    /// Variante M2M con audience y scopes explícitos. La implementación por defecto
+    /// conserva compatibilidad con generadores de prueba y clientes legacy.
+    /// </summary>
+    AccessToken GenerateScopedServiceToken(
+        Guid tenantId,
+        string clientId,
+        IReadOnlyCollection<string> permissions,
+        IReadOnlyCollection<string> scopes,
+        string audience,
+        int lifetimeMinutes
+    ) => GenerateServiceToken(tenantId, clientId, permissions, lifetimeMinutes);
+
+    /// <summary>
     /// Emite un ticket de un solo propósito: prueba criptográfica de que <paramref name="email"/>
     /// reservó <paramref name="slug"/> en Auth (ver ReserveSubdomainHandler). TaxVision.Tenant.Api
     /// lo valida localmente vía su policy de autorización (claim "purpose"), sin llamar de vuelta

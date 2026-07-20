@@ -41,10 +41,12 @@ public static class IssueServiceTokenHandler
                 )
             );
 
-        var token = tokens.GenerateServiceToken(
+        var token = tokens.GenerateScopedServiceToken(
             command.TenantId,
             client.ClientId,
             client.Permissions,
+            client.Scopes,
+            client.Audience,
             settings.TokenLifetimeMinutes
         );
 

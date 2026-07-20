@@ -19,4 +19,6 @@ public sealed class ServiceClientConfig
     public string ClientId { get; set; } = string.Empty;
     public string Secret { get; set; } = string.Empty;
     public List<string> Permissions { get; set; } = [];
+    public string Audience { get; set; } = "TaxVision.Services";
+    public List<string> Scopes { get; set; } = [];
 }

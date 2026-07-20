@@ -91,6 +91,55 @@ public sealed class TenantPayment : TenantEntity
         return Result.Success(payment);
     }
 
+    /// <summary>Un pago cuyo monto quedó en cero tras aplicar un descuento (p.ej. un código de
+    /// Growth al 100%) no representa un intento de cobro — no hay nada que un provider como
+    /// Stripe pueda o deba procesar (un <c>PaymentIntent</c> de $0 es inválido para su API). Este
+    /// factory nace directo en <see cref="PaymentStatus.Succeeded"/>, saltándose
+    /// Pending→Processing, para dejar constancia auditable de "nada que cobrar" sin llamar al
+    /// provider. <see cref="Create"/> mantiene su invariante de que Amount debe ser positivo
+    /// porque ese método sí representa un intento de cobro real.</summary>
+    public static Result<TenantPayment> CreateAlreadySucceeded(
+        Guid tenantId,
+        IdempotencyKey key,
+        Money amount,
+        Guid? taxpayerId,
+        PaymentPurpose purpose,
+        PaymentProviderCode provider,
+        StatementDescriptor descriptor,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        if (tenantId == Guid.Empty)
+            return Result.Failure<TenantPayment>(new Error("TenantPayment.InvalidTenant", "TenantId is required."));
+
+        if (amount.AmountCents != 0)
+            return Result.Failure<TenantPayment>(
+                new Error(
+                    "TenantPayment.NotZeroAmount",
+                    "CreateAlreadySucceeded is only for payments with a zero amount."
+                )
+            );
+
+        var payment = new TenantPayment
+        {
+            IdempotencyKey = key,
+            Amount = amount,
+            TaxpayerId = taxpayerId,
+            Purpose = purpose,
+            ProviderCode = provider,
+            Status = PaymentStatus.Succeeded,
+            StatementDescriptor = descriptor,
+            PaidAtUtc = nowUtc,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
+        payment.SetTenant(tenantId);
+        return Result.Success(payment);
+    }
+
     public Result MarkProcessing(
         ExternalPaymentReference reference,
         string? providerResponseCode,

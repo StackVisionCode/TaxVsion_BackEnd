@@ -62,18 +62,24 @@ public static class ChargeTenantPaymentHandler
         var payment = preparedResult.Value;
         await payments.AddAsync(payment, ct);
 
-        if (config.Mode == TenantPaymentMode.Connect)
-            await ExecuteConnectChargeAsync(
-                payment,
-                config,
-                command,
-                connectAccounts,
-                providerFactory,
-                platformCredentials.Value,
-                ct
-            );
-        else
-            await ExecuteDirectChargeAsync(payment, config, command, providerFactory, secretProtector, ct);
+        // Un pago de monto cero (p.ej. un código de descuento al 100%) nace directo en
+        // Succeeded vía TenantPayment.CreateAlreadySucceeded — no hay nada que cobrarle a
+        // ningún provider, así que ni Connect ni Direct se ejecutan para él.
+        if (payment.Status == PaymentStatus.Pending)
+        {
+            if (config.Mode == TenantPaymentMode.Connect)
+                await ExecuteConnectChargeAsync(
+                    payment,
+                    config,
+                    command,
+                    connectAccounts,
+                    providerFactory,
+                    platformCredentials.Value,
+                    ct
+                );
+            else
+                await ExecuteDirectChargeAsync(payment, config, command, providerFactory, secretProtector, ct);
+        }
 
         if (payment.Status == PaymentStatus.Succeeded)
         {
@@ -273,16 +279,30 @@ public static class ChargeTenantPaymentHandler
         if (purposeResult.IsFailure)
             return Result.Failure<TenantPayment>(purposeResult.Error);
 
-        return TenantPayment.Create(
-            command.TenantId,
-            keyResult.Value,
-            amountResult.Value,
-            command.TaxpayerId,
-            purposeResult.Value,
-            command.ProviderCode,
-            descriptor,
-            command.ActorUserId,
-            DateTime.UtcNow
-        );
+        var nowUtc = DateTime.UtcNow;
+
+        return amountResult.Value.AmountCents == 0
+            ? TenantPayment.CreateAlreadySucceeded(
+                command.TenantId,
+                keyResult.Value,
+                amountResult.Value,
+                command.TaxpayerId,
+                purposeResult.Value,
+                command.ProviderCode,
+                descriptor,
+                command.ActorUserId,
+                nowUtc
+            )
+            : TenantPayment.Create(
+                command.TenantId,
+                keyResult.Value,
+                amountResult.Value,
+                command.TaxpayerId,
+                purposeResult.Value,
+                command.ProviderCode,
+                descriptor,
+                command.ActorUserId,
+                nowUtc
+            );
     }
 }

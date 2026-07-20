@@ -27,6 +27,7 @@ public static class JwtAuthenticationRegistration
     {
         var issuer = configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer is missing.");
         var audience = configuration["Jwt:Audience"] ?? throw new InvalidOperationException("Jwt:Audience is missing.");
+        var validAudiences = configuration.GetSection("Jwt:ValidAudiences").Get<string[]>();
 
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -40,6 +41,7 @@ public static class JwtAuthenticationRegistration
                     ValidateIssuerSigningKey = true,
                     ValidIssuer = issuer,
                     ValidAudience = audience,
+                    ValidAudiences = validAudiences is { Length: > 0 } ? validAudiences : null,
                     ClockSkew = TimeSpan.FromSeconds(30),
                 };
             });

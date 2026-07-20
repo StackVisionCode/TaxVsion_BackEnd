@@ -100,4 +100,16 @@ public sealed class WebhookEvent : BaseEntity
         ProcessedAtUtc = nowUtc;
         return Result.Success();
     }
+
+    public Result MarkStale(Guid? relatedSaaSPaymentId, string reason, DateTime nowUtc)
+    {
+        if (Status != WebhookEventStatus.Processing)
+            return Result.Failure(new Error("WebhookEvent.InvalidTransition", $"Cannot mark stale from {Status}."));
+
+        Status = WebhookEventStatus.Stale;
+        RelatedSaaSPaymentId = relatedSaaSPaymentId;
+        ProcessingError = reason;
+        ProcessedAtUtc = nowUtc;
+        return Result.Success();
+    }
 }

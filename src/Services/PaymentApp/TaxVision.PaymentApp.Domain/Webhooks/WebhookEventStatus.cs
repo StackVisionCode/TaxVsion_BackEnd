@@ -8,4 +8,5 @@ public enum WebhookEventStatus
     Duplicate = 4,
     Rejected = 5,
     Failed = 6,
+    Stale = 7,
 }

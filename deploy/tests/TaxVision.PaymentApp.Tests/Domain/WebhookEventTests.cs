@@ -59,6 +59,21 @@ public sealed class WebhookEventTests
         Assert.Equal(WebhookEventStatus.Applied, webhookEvent.Status);
     }
 
+    [Fact]
+    public void MarkStale_from_processing_records_the_payment_and_reason()
+    {
+        var webhookEvent = CreateReceivedEvent();
+        var relatedPaymentId = Guid.NewGuid();
+        webhookEvent.MarkProcessing(DateTime.UtcNow);
+
+        var result = webhookEvent.MarkStale(relatedPaymentId, "SaaSPayment.InvalidState", DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WebhookEventStatus.Stale, webhookEvent.Status);
+        Assert.Equal(relatedPaymentId, webhookEvent.RelatedSaaSPaymentId);
+        Assert.Equal("SaaSPayment.InvalidState", webhookEvent.ProcessingError);
+    }
+
     private static WebhookEvent CreateReceivedEvent() =>
         WebhookEvent
             .Receive(

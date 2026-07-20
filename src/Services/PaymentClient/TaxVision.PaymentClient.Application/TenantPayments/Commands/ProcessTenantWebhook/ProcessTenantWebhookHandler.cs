@@ -152,9 +152,25 @@ public static class ProcessTenantWebhookHandler
         }
 
         var statusBeforeWebhook = payment.Status;
-        ApplyPayload(payment, payload, metrics);
+        var transitionResult = ApplyPayload(payment, payload, metrics);
+        if (transitionResult.IsFailure)
+        {
+            webhookEvent.MarkStale(payment.Id, transitionResult.Error.Code, DateTime.UtcNow);
+            await unitOfWork.SaveChangesAsync(ct);
+            logger.LogInformation(
+                "{Provider} webhook {EventType} ({ProviderEventId}) is stale for TenantPayment {TenantPaymentId}: {ErrorCode}.",
+                command.ProviderCode,
+                verification.EventType,
+                verification.ProviderEventId,
+                payment.Id,
+                transitionResult.Error.Code
+            );
+            return Result.Success();
+        }
 
-        webhookEvent.MarkApplied(payment.Id, DateTime.UtcNow);
+        var appliedResult = webhookEvent.MarkApplied(payment.Id, DateTime.UtcNow);
+        if (appliedResult.IsFailure)
+            return appliedResult;
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -199,18 +215,17 @@ public static class ProcessTenantWebhookHandler
         return Result.Success();
     }
 
-    private static void ApplyPayload(TenantPayment payment, WebhookEventPayload payload, IPaymentClientMetrics metrics)
+    private static Result ApplyPayload(TenantPayment payment, WebhookEventPayload payload, IPaymentClientMetrics metrics)
     {
         var nowUtc = DateTime.UtcNow;
 
         switch (payload.Status)
         {
             case PaymentStatus.Succeeded:
-                payment.MarkSucceeded(nowUtc, Guid.Empty);
-                break;
+                return payment.MarkSucceeded(nowUtc, Guid.Empty);
 
             case PaymentStatus.Failed:
-                payment.MarkFailed(
+                return payment.MarkFailed(
                     payload.FailureCode ?? "Provider.Unknown",
                     payload.FailureMessage ?? "The provider declined the charge.",
                     willRetry: false,
@@ -218,19 +233,24 @@ public static class ProcessTenantWebhookHandler
                     Guid.Empty,
                     nowUtc
                 );
-                break;
 
             case PaymentStatus.Cancelled:
-                payment.CancelByAdmin("ProviderCancelled", Guid.Empty, nowUtc);
-                break;
+                return payment.CancelByAdmin("ProviderCancelled", Guid.Empty, nowUtc);
 
             case PaymentStatus.Refunded when payload.RefundedAmountCents is { } refundedCents:
-                ApplyRefund(payment, refundedCents, nowUtc, metrics);
-                break;
+                return ApplyRefund(payment, refundedCents, nowUtc, metrics);
 
             case PaymentStatus.ChargedBack:
-                payment.MarkChargedBack(nowUtc, payload.FailureMessage ?? "Chargeback dispute created.", Guid.Empty);
-                break;
+                return payment.MarkChargedBack(
+                    nowUtc,
+                    payload.FailureMessage ?? "Chargeback dispute created.",
+                    Guid.Empty
+                );
+
+            default:
+                return Result.Failure(
+                    new Error("WebhookEvent.UnsupportedPaymentStatus", $"Payment status {payload.Status} is not actionable.")
+                );
         }
     }
 
@@ -294,7 +314,7 @@ public static class ProcessTenantWebhookHandler
 
     /// <summary><paramref name="totalRefundedCents"/> es el acumulado en el charge del
     /// provider, no el delta — se resta lo ya registrado localmente para no duplicar.</summary>
-    private static void ApplyRefund(
+    private static Result ApplyRefund(
         TenantPayment payment,
         long totalRefundedCents,
         DateTime nowUtc,
@@ -307,14 +327,23 @@ public static class ProcessTenantWebhookHandler
 
         var deltaCents = totalRefundedCents - alreadyTracked;
         if (deltaCents <= 0)
-            return;
+            return Result.Success();
 
         var deltaMoney = Money.Create(deltaCents, payment.Amount.Currency);
         if (deltaMoney.IsFailure)
-            return;
+            return Result.Failure(deltaMoney.Error);
 
-        payment.RefundPartial(deltaMoney.Value, "Refunded via provider webhook.", Guid.Empty, nowUtc);
+        var refundResult = payment.RefundPartial(
+            deltaMoney.Value,
+            "Refunded via provider webhook.",
+            Guid.Empty,
+            nowUtc
+        );
+        if (refundResult.IsFailure)
+            return refundResult;
+
         metrics.RecordRefund(payment.ProviderCode.ToString());
+        return Result.Success();
     }
 
     private static PaymentAuditAction MapAuditAction(PaymentStatus status) =>

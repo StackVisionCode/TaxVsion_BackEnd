@@ -20,6 +20,5 @@
     <ProjectReference Include="..\..\..\src\Services\Scribe\TaxVision.Scribe.Domain\TaxVision.Scribe.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Scribe\TaxVision.Scribe.Application\TaxVision.Scribe.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Scribe\TaxVision.Scribe.Infrastructure\TaxVision.Scribe.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\..\src\Services\Scribe\TaxVision.Scribe.Api\TaxVision.Scribe.Api.csproj" />
   </ItemGroup>
 </Project>

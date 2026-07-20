@@ -194,6 +194,46 @@ public static class ErrorHttpMapping
             "File.MultipartCompleteFailed"
             or "SendCorrespondenceMessageHandler.AllRecipientsSuppressed"
             or "SendCorrespondenceMessageHandler.SendInProgress" => StatusCodes.Status409Conflict,
+            var code
+                when (code.StartsWith("Codes.", StringComparison.Ordinal)
+                        || code.StartsWith("Referral", StringComparison.Ordinal))
+                    && code.EndsWith("NotFound", StringComparison.Ordinal) =>
+                StatusCodes.Status404NotFound,
+            "Codes.CodeQuote.Expired" or "Codes.CodeDefinition.Expired" =>
+                StatusCodes.Status410Gone,
+            "Persistence.ConcurrencyConflict"
+            or "Persistence.UniqueConstraint"
+            or "Codes.IdempotencyConflict"
+            or "Referrals.IdempotencyConflict"
+            or "Referrals.OperationInProgress"
+            or "Growth.Idempotency.FingerprintConflict"
+            or "Growth.Idempotency.OperationInProgress"
+            or "Growth.Idempotency.ReplayUnavailable" => StatusCodes.Status409Conflict,
+            var code
+                when (code.StartsWith("Codes.", StringComparison.Ordinal)
+                        || code.StartsWith("Referral", StringComparison.Ordinal))
+                    && (
+                        code.EndsWith("InvalidTransition", StringComparison.Ordinal)
+                        || code.EndsWith("Conflict", StringComparison.Ordinal)
+                        || code.EndsWith("LimitReached", StringComparison.Ordinal)
+                        || code.EndsWith("NoAvailability", StringComparison.Ordinal)
+                    ) =>
+                StatusCodes.Status409Conflict,
+            var code
+                when code
+                    is "Codes.CodeDefinition.NotActive"
+                        or "Codes.CodeDefinition.NotStarted"
+                        or "Codes.CodeDefinition.NotReservable"
+                        or "Codes.CodeDefinition.ScopeExcluded"
+                        or "Codes.CodeDefinition.ScopeNotIncluded"
+                        or "Codes.CodeDefinition.TenantScopeMismatch"
+                        or "Codes.CodeRuleVersion.MinimumPurchaseNotMet" =>
+                StatusCodes.Status422UnprocessableEntity,
+            var code
+                when code.StartsWith("Codes.PaymentOutcomeVerifier.", StringComparison.Ordinal) =>
+                StatusCodes.Status503ServiceUnavailable,
+            "Growth.Idempotency.ConcurrentClaimUnavailable"
+            or "Growth.Idempotency.SavepointsRequired" => StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status400BadRequest,
         };
 }

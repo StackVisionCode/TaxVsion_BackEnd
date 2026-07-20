@@ -35,6 +35,49 @@ public sealed class TenantPaymentTests
     }
 
     [Fact]
+    public void CreateAlreadySucceeded_with_a_zero_amount_starts_in_Succeeded_status()
+    {
+        var nowUtc = DateTime.UtcNow;
+        var payment = TenantPayment
+            .CreateAlreadySucceeded(
+                Guid.NewGuid(),
+                IdempotencyKey.Create("key-1").Value,
+                Money.Zero("USD"),
+                TaxpayerId(),
+                Purpose(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("ACME TAX SVC").Value,
+                Guid.Empty,
+                nowUtc
+            )
+            .Value;
+
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        Assert.Equal(nowUtc, payment.PaidAtUtc);
+        Assert.Empty(payment.Attempts);
+        Assert.Null(payment.ExternalChargeReference);
+    }
+
+    [Fact]
+    public void CreateAlreadySucceeded_with_a_non_zero_amount_fails()
+    {
+        var result = TenantPayment.CreateAlreadySucceeded(
+            Guid.NewGuid(),
+            IdempotencyKey.Create("key-1").Value,
+            Money.Create(1999, "USD").Value,
+            TaxpayerId(),
+            Purpose(),
+            PaymentProviderCode.Stripe,
+            StatementDescriptor.Create("ACME TAX SVC").Value,
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantPayment.NotZeroAmount", result.Error.Code);
+    }
+
+    [Fact]
     public void Create_allows_a_null_taxpayer_for_guest_checkout()
     {
         var payment = TenantPayment

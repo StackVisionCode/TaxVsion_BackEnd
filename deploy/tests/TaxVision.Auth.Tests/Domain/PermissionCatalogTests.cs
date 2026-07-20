@@ -87,6 +87,29 @@ public sealed class PermissionCatalogTests
         Assert.DoesNotContain(PermissionCatalog.CommunicationSettingsManage, defaults);
     }
 
+    [Fact]
+    public void Growth_cross_tenant_permission_is_platform_only_and_never_in_tenant_admin_defaults()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.GrowthAdminCrossTenant);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.DoesNotContain(PermissionCatalog.GrowthAdminCrossTenant, tenantAdminDefaults);
+    }
+
+    [Fact]
+    public void Growth_permissions_have_unique_codes_and_ids()
+    {
+        var growth = PermissionCatalog
+            .All.Where(definition => definition.Module is "growth" or "codes" or "referrals")
+            .ToArray();
+
+        Assert.Equal(18, growth.Length);
+        Assert.Equal(growth.Length, growth.Select(definition => definition.Code).Distinct().Count());
+        Assert.Equal(growth.Length, growth.Select(definition => definition.Id).Distinct().Count());
+    }
+
     [Theory]
     [InlineData("starter", PlanTier.Starter)]
     [InlineData("PRO", PlanTier.Pro)]
