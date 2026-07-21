@@ -94,7 +94,16 @@ public static class CreateReferralAttributionHandler
 
                 await attributions.AddAsync(created.Value, operationCt);
                 return Result.Success(
-                    new CreateReferralAttributionResult(created.Value.Id, created.Value.Status, WasReplay: false)
+                    new CreateReferralAttributionResult(
+                        created.Value.Id,
+                        created.Value.Status,
+                        WasReplay: false,
+                        program.Policy.RefereeBenefitType,
+                        program.Policy.RefereeBenefitPercentageBasisPoints,
+                        program.Policy.RefereeBenefitFixedAmountCents,
+                        program.Policy.RefereeBenefitCurrency,
+                        program.Policy.RefereeBenefitExpirationDays
+                    )
                 );
             },
             ct

@@ -99,6 +99,25 @@ public sealed class ReferralProgramConfiguration : IEntityTypeConfiguration<Refe
                     .HasColumnName("RewardDefinitionKey")
                     .HasMaxLength(100)
                     .IsRequired();
+                policy
+                    .Property(value => value.RefereeBenefitType)
+                    .HasColumnName("RefereeBenefitType")
+                    .HasConversion<string>()
+                    .HasMaxLength(20);
+                policy
+                    .Property(value => value.RefereeBenefitPercentageBasisPoints)
+                    .HasColumnName("RefereeBenefitPercentageBasisPoints");
+                policy
+                    .Property(value => value.RefereeBenefitFixedAmountCents)
+                    .HasColumnName("RefereeBenefitFixedAmountCents");
+                policy
+                    .Property(value => value.RefereeBenefitCurrency)
+                    .HasColumnName("RefereeBenefitCurrency")
+                    .HasColumnType("char(3)");
+                policy
+                    .Property(value => value.RefereeBenefitExpirationDays)
+                    .HasColumnName("RefereeBenefitExpirationDays")
+                    .IsRequired();
             }
         );
         builder.Navigation(program => program.Policy).IsRequired();
