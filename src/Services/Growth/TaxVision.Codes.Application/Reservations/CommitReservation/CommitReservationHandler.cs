@@ -57,11 +57,7 @@ public static class CommitReservationHandler
             fingerprint,
             async operationCt =>
             {
-                var reservation = await reservations.GetByIdAsync(
-                    command.TenantId,
-                    command.ReservationId,
-                    operationCt
-                );
+                var reservation = await reservations.GetByIdAsync(command.TenantId, command.ReservationId, operationCt);
                 if (reservation is null)
                     return Failure("Codes.CommitReservation.NotFound", "Reservation was not found.");
 
@@ -85,10 +81,7 @@ public static class CommitReservationHandler
                 // envelopes. The payment reference is immutable on the reservation,
                 // so an existing redemption is the authoritative business replay even
                 // when EventId/Idempotency-Key differ.
-                if (
-                    reservation.Status
-                    is CodeReservationStatus.Committed or CodeReservationStatus.Compensated
-                )
+                if (reservation.Status is CodeReservationStatus.Committed or CodeReservationStatus.Compensated)
                 {
                     var existingRedemption = await redemptions.GetByReservationIdAsync(
                         command.TenantId,
@@ -100,9 +93,7 @@ public static class CommitReservationHandler
                             "Codes.CommitReservation.InconsistentState",
                             "The reservation is committed but its redemption was not found."
                         )
-                        : Result.Success(
-                            CommitReservationResponse.From(existingRedemption)
-                        );
+                        : Result.Success(CommitReservationResponse.From(existingRedemption));
                 }
 
                 var definition = await definitions.GetApplicableByIdAsync(

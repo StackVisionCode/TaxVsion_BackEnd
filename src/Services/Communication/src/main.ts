@@ -23,6 +23,8 @@ import { bindSignatureConsumers } from './application/event-handlers/signature-c
 import { bindCustomerConsumers } from './application/event-handlers/customer-consumers.js';
 import { bindAuthConsumers } from './application/event-handlers/auth-consumers.js';
 import { bindCloudStorageConsumers } from './application/event-handlers/cloudstorage-consumers.js';
+import { bindCloudStorageNotificationConsumers } from './application/event-handlers/cloudstorage-notification-consumers.js';
+import { bindConnectorsConsumers } from './application/event-handlers/connectors-consumers.js';
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
@@ -30,6 +32,7 @@ import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-e
 import { startSessionDenylistWatcher } from './infrastructure/redis/session-denylist-watcher.js';
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
 import { redisSub } from './infrastructure/redis/redis-client.js';
+import { seedDefaultNotificationActionMappings } from './infrastructure/seed/seed-notification-action-mappings.js';
 
 async function main(): Promise<void> {
   // Fase Backend 11 — sin `announcedIp`, mediasoup (SFU, meetings >4
@@ -50,6 +53,7 @@ async function main(): Promise<void> {
   await connectPrisma();
 
   const container = buildContainer();
+  await seedDefaultNotificationActionMappings(container.notificationActionMappings);
   await container.sfu.start();
   const app = await buildHttpServer(container);
   const io = buildSocketServer(app.server);
@@ -64,7 +68,12 @@ async function main(): Promise<void> {
   container.emitter = emitter;
   const missedCalls = startMissedCallScheduler(
     { intervalSeconds: 30, ringingTimeoutSeconds: 60 },
-    { calls: container.calls, publisher: container.publisher, lock: container.distributedLock },
+    {
+      calls: container.calls,
+      publisher: container.publisher,
+      presence: container.presence,
+      lock: container.distributedLock,
+    },
   );
   const outbox = startOutboxDrainer({ intervalMs: 2000 }, { lock: container.distributedLock });
   const purge = startPurgeScheduler(
@@ -87,19 +96,36 @@ async function main(): Promise<void> {
 
   // Consumer runtime + registro de handlers Signature/Customer/Auth.
   const consumers = new ConsumerRuntime(container.processedEvents);
-  bindSignatureConsumers(consumers.register.bind(consumers), { notifications: container.notifications, emitter });
+  bindSignatureConsumers(consumers.register.bind(consumers), {
+    notifications: container.notifications,
+    emitter,
+    customerPortalAccounts: container.customerPortalAccounts,
+    actionMappings: container.notificationActionMappings,
+  });
   bindCustomerConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
     emitter,
     customerDirectory: container.customerDirectory,
+    customerPreparerAssignments: container.customerPreparerAssignments,
   });
   bindAuthConsumers(consumers.register.bind(consumers), {
     userPermissions: container.userPermissions,
     userDirectory: container.userDirectory,
+    rolePermissions: container.rolePermissions,
+    customerPortalAccounts: container.customerPortalAccounts,
   });
   bindSubscriptionConsumers(consumers.register.bind(consumers), { limits: container.limits });
   bindCloudStorageConsumers(consumers.register.bind(consumers), {
     attachmentTracking: container.attachmentTracking,
+    notifications: container.notifications,
+    emitter,
+  });
+  bindCloudStorageNotificationConsumers(consumers.register.bind(consumers), {
+    notifications: container.notifications,
+    emitter,
+  });
+  bindConnectorsConsumers(consumers.register.bind(consumers), {
+    notifications: container.notifications,
     emitter,
   });
   bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });

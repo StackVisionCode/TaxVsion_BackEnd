@@ -30,11 +30,7 @@ public sealed class ReferralRewardCaseConfiguration : IEntityTypeConfiguration<R
         builder.Property(reward => reward.FailureCode).HasMaxLength(100);
         builder.Property(reward => reward.StateReason).HasMaxLength(500);
         builder.Property(reward => reward.IdempotencyKey).HasMaxLength(200).IsRequired();
-        builder
-            .Property(reward => reward.PayloadFingerprint)
-            .HasColumnType("char(64)")
-            .IsFixedLength()
-            .IsRequired();
+        builder.Property(reward => reward.PayloadFingerprint).HasColumnType("char(64)").IsFixedLength().IsRequired();
         builder.Property(reward => reward.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(reward => reward.UpdatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(reward => reward.CreatedBy).IsRequired();

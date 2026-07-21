@@ -832,11 +832,25 @@ public static class RunCustomerImportHandler
         await using var scope = sf.CreateAsyncScope();
         var repo = scope.ServiceProvider.GetRequiredService<ICustomerImportRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
         var attempt = await repo.GetByIdAsync(attemptId, ct);
         if (attempt is null)
             return;
         attempt.Fail(reason);
+        var failedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow;
         await uow.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new CustomerImportFailedIntegrationEvent
+            {
+                TenantId = attempt.TenantId,
+                CorrelationId = correlation.CorrelationId,
+                ImportJobId = attempt.Id,
+                CreatedByUserId = attempt.CreatedByUserId,
+                Reason = attempt.FailureReason ?? reason,
+                FailedAtUtc = failedAtUtc,
+            }
+        );
     }
 
     private static IEnumerable<IReadOnlyList<ImportCustomerRow>> Chunk(

@@ -12,4 +12,11 @@ public static class CustomersPermissions
     /// el resto necesita este permiso otorgado explícitamente.
     /// </summary>
     public const string FiscalProfileReveal = "customers.fiscalprofile.reveal";
+
+    /// <summary>
+    /// Asignar/reasignar el preparador responsable de un customer. Separado de
+    /// <see cref="Manage"/> por la misma razón que <see cref="FiscalProfileReveal"/> —
+    /// un TenantAdmin puede delegarlo puntualmente sin dar acceso de edición completo.
+    /// </summary>
+    public const string PreparerManage = "customers.preparer.manage";
 }

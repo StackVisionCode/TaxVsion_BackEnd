@@ -70,8 +70,7 @@ public sealed record Money
         return Result.Success(AmountCents <= other.AmountCents ? this : other);
     }
 
-    private bool HasSameCurrency(Money other) =>
-        string.Equals(Currency, other.Currency, StringComparison.Ordinal);
+    private bool HasSameCurrency(Money other) => string.Equals(Currency, other.Currency, StringComparison.Ordinal);
 
     private static Result<Money> CurrencyMismatch() =>
         Result.Failure<Money>(

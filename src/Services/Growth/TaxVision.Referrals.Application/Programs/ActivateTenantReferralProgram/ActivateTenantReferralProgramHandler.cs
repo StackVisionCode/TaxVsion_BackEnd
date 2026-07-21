@@ -24,16 +24,10 @@ public static class ActivateTenantReferralProgramHandler
 
         if (command.ProgramId == Guid.Empty)
         {
-            return Failure(
-                "ReferralProgram.InvalidProgram",
-                "ProgramId is required."
-            );
+            return Failure("ReferralProgram.InvalidProgram", "ProgramId is required.");
         }
 
-        var fingerprint = CanonicalPayloadFingerprint.Compute(
-            command.ProgramId,
-            command.ActorUserId
-        );
+        var fingerprint = CanonicalPayloadFingerprint.Compute(command.ProgramId, command.ActorUserId);
 
         return await idempotency.ExecuteAsync(
             Operation,
@@ -42,23 +36,13 @@ public static class ActivateTenantReferralProgramHandler
             fingerprint,
             async operationCt =>
             {
-                var program = await programs.GetOwnedByIdAsync(
-                    PlatformTenant.Id,
-                    command.ProgramId,
-                    operationCt
-                );
+                var program = await programs.GetOwnedByIdAsync(PlatformTenant.Id, command.ProgramId, operationCt);
                 if (program is null)
                 {
-                    return Failure(
-                        "ReferralProgram.NotFound",
-                        "The platform-owned referral program was not found."
-                    );
+                    return Failure("ReferralProgram.NotFound", "The platform-owned referral program was not found.");
                 }
 
-                var activated = program.Activate(
-                    command.ActorUserId,
-                    timeProvider.GetUtcNow().UtcDateTime
-                );
+                var activated = program.Activate(command.ActorUserId, timeProvider.GetUtcNow().UtcDateTime);
                 return activated.IsFailure
                     ? Result.Failure<TenantReferralProgramResult>(activated.Error)
                     : Result.Success(TenantReferralProgramResult.From(program));
@@ -67,8 +51,6 @@ public static class ActivateTenantReferralProgramHandler
         );
     }
 
-    private static Result<TenantReferralProgramResult> Failure(
-        string code,
-        string message
-    ) => Result.Failure<TenantReferralProgramResult>(new Error(code, message));
+    private static Result<TenantReferralProgramResult> Failure(string code, string message) =>
+        Result.Failure<TenantReferralProgramResult>(new Error(code, message));
 }

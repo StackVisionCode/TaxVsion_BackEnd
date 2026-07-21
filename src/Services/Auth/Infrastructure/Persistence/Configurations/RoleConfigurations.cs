@@ -50,6 +50,7 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.Property(role => role.IsSystem).IsRequired();
         builder.Property(role => role.IsActive).IsRequired();
         builder.Property(role => role.CreatedAtUtc).IsRequired();
+        builder.Property(role => role.PermissionsVersion).IsRequired();
 
         builder.HasIndex(role => new { role.TenantId, role.Name }).IsUnique();
 

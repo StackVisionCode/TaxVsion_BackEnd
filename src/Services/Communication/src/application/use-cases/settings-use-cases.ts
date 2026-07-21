@@ -29,6 +29,7 @@ export interface UpdateSettingsCommand {
     screenshotsEnabled: boolean;
     internalGroupsEnabled: boolean;
     employeeToEmployeeChatEnabled: boolean;
+    restrictCustomerChatToAssignedPreparer: boolean;
     defaultCameraOff: boolean;
     defaultMicrophoneOff: boolean;
     persistChatOnEnd: boolean;

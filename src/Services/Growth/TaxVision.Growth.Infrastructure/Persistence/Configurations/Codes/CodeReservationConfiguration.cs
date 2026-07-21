@@ -32,11 +32,7 @@ public sealed class CodeReservationConfiguration : IEntityTypeConfiguration<Code
             .HasMaxLength(64)
             .IsFixedLength()
             .IsRequired();
-        builder
-            .Property(reservation => reservation.Status)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(reservation => reservation.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         ConfigureRequiredKey(
             builder.Property(reservation => reservation.ReservationIdempotencyKey),
             "ReservationIdempotencyKey"
@@ -101,11 +97,7 @@ public sealed class CodeReservationConfiguration : IEntityTypeConfiguration<Code
             .OnDelete(DeleteBehavior.Restrict);
 
         builder
-            .HasIndex(reservation => new
-            {
-                reservation.TenantId,
-                reservation.ReservationIdempotencyKey,
-            })
+            .HasIndex(reservation => new { reservation.TenantId, reservation.ReservationIdempotencyKey })
             .IsUnique()
             .HasDatabaseName("UX_CodeReservations_TenantId_IdempotencyKey");
         builder
@@ -113,10 +105,7 @@ public sealed class CodeReservationConfiguration : IEntityTypeConfiguration<Code
             .HasDatabaseName("IX_CodeReservations_Status_ExpiresAtUtc");
     }
 
-    private static void ConfigureKey(
-        PropertyBuilder<IdempotencyKey?> property,
-        string columnName
-    ) =>
+    private static void ConfigureKey(PropertyBuilder<IdempotencyKey?> property, string columnName) =>
         property
             .HasConversion(
                 value => value == null ? null : value.Value,
@@ -125,23 +114,14 @@ public sealed class CodeReservationConfiguration : IEntityTypeConfiguration<Code
             .HasColumnName(columnName)
             .HasMaxLength(200);
 
-    private static void ConfigureRequiredKey(
-        PropertyBuilder<IdempotencyKey> property,
-        string columnName
-    ) =>
+    private static void ConfigureRequiredKey(PropertyBuilder<IdempotencyKey> property, string columnName) =>
         property
-            .HasConversion(
-                value => value.Value,
-                value => IdempotencyKey.Create(value).Value
-            )
+            .HasConversion(value => value.Value, value => IdempotencyKey.Create(value).Value)
             .HasColumnName(columnName)
             .HasMaxLength(200)
             .IsRequired();
 
-    private static void ConfigureFingerprint(
-        PropertyBuilder<PayloadFingerprint?> property,
-        string columnName
-    ) =>
+    private static void ConfigureFingerprint(PropertyBuilder<PayloadFingerprint?> property, string columnName) =>
         property
             .HasConversion(
                 value => value == null ? null : value.Value,
@@ -151,15 +131,9 @@ public sealed class CodeReservationConfiguration : IEntityTypeConfiguration<Code
             .HasMaxLength(64)
             .IsFixedLength();
 
-    private static void ConfigureRequiredFingerprint(
-        PropertyBuilder<PayloadFingerprint> property,
-        string columnName
-    ) =>
+    private static void ConfigureRequiredFingerprint(PropertyBuilder<PayloadFingerprint> property, string columnName) =>
         property
-            .HasConversion(
-                value => value.Value,
-                value => PayloadFingerprint.Create(value).Value
-            )
+            .HasConversion(value => value.Value, value => PayloadFingerprint.Create(value).Value)
             .HasColumnName(columnName)
             .HasMaxLength(64)
             .IsFixedLength()

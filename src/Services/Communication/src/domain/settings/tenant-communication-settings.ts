@@ -16,6 +16,12 @@ export interface TenantCommunicationSettingsSnapshot {
   readonly screenshotsEnabled: boolean;
   readonly internalGroupsEnabled: boolean;
   readonly employeeToEmployeeChatEnabled: boolean;
+  /**
+   * Fase B5 (chat tipado) — si esta en true, un chat directo que involucra a
+   * un customer solo se permite si el otro lado es su preparador asignado
+   * (CustomerPreparerAssignment). Default false, opt-in por tenant.
+   */
+  readonly restrictCustomerChatToAssignedPreparer: boolean;
   readonly defaultCameraOff: boolean;
   readonly defaultMicrophoneOff: boolean;
   readonly persistChatOnEnd: boolean;
@@ -50,6 +56,7 @@ export class TenantCommunicationSettings {
       screenshotsEnabled: true,
       internalGroupsEnabled: false,
       employeeToEmployeeChatEnabled: false,
+      restrictCustomerChatToAssignedPreparer: false,
       defaultCameraOff: true,
       defaultMicrophoneOff: false,
       persistChatOnEnd: false,

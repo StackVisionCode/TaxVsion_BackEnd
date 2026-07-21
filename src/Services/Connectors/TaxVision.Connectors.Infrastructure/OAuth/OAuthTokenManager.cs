@@ -166,6 +166,7 @@ public sealed class OAuthTokenManager(
                 Reason = error.Message,
                 ErrorCode = error.Code,
                 FailedAtUtc = DateTime.UtcNow,
+                CreatedByUserId = accountResult.IsSuccess ? accountResult.Value.CreatedByUserId : Guid.Empty,
             }
         );
     }

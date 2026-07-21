@@ -71,7 +71,7 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
                 toPlan,
                 toPlanVersion,
                 evt.SaaSPaymentId,
-                actorUserId: Guid.Empty,
+                actorUserId: request.RequestedByUserId,
                 evt.PaidAtUtc
             );
             if (result.IsFailure)

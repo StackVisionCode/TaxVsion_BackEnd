@@ -78,6 +78,7 @@ public static class RestoreFileHandler
             {
                 TenantId = command.TenantId,
                 FileId = file.Id,
+                CreatedBy = file.CreatedBy,
                 CorrelationId = command.Audit.CorrelationId,
             }
         );

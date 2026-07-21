@@ -47,12 +47,7 @@ public sealed class CodesAdministrationApplicationTests
             CancellationToken.None
         );
         var platform = await CreateCodeDefinitionHandler.Handle(
-            CreatePercentageCommand(
-                PlatformTenant.Id,
-                CodeOwnerScope.Platform,
-                tenantScopeId: null,
-                "valid-platform"
-            ),
+            CreatePercentageCommand(PlatformTenant.Id, CodeOwnerScope.Platform, tenantScopeId: null, "valid-platform"),
             definitions,
             hasher,
             idempotency,

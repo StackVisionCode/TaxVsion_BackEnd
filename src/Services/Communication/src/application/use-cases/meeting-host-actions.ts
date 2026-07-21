@@ -3,6 +3,7 @@ import { Result, makeError } from '../../domain/shared/result.js';
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
 import {
   MeetingEventTypes,
   type MeetingParticipantAdmittedEvent,
@@ -31,7 +32,12 @@ export interface AdmitResult {
 
 export async function admitParticipant(
   cmd: AdmitCommand,
-  deps: { meetings: MeetingRepository; publisher: IntegrationEventPublisher; conversations: ConversationRepository },
+  deps: {
+    meetings: MeetingRepository;
+    publisher: IntegrationEventPublisher;
+    conversations: ConversationRepository;
+    userDirectory: UserDirectoryRepository;
+  },
 ): Promise<Result<AdmitResult>> {
   const meeting = await deps.meetings.findById(cmd.tenantId, cmd.meetingId);
   if (!meeting) return Result.fail(makeError('Meeting.NotFound', 'Meeting not found.'));
@@ -67,13 +73,16 @@ export async function admitParticipant(
   if (!target) return Result.fail(makeError('Meeting.NotFound', 'Target vanished after admit.'));
 
   // Best-effort — un fallo aca no debe deshacer la admision ya confirmada.
+  const targetActorType = await deps.userDirectory
+    .findByUserId(target.userId)
+    .then((entry) => entry?.actorType ?? 'TenantEmployee');
   const chatResult = await ensureMeetingConversation(
     {
       tenantId: cmd.tenantId,
       correlationId: cmd.correlationId,
       meetingId: cmd.meetingId,
       meetingTitle: snapshot.title,
-      member: { userId: target.userId, displayName: target.displayName, actorType: 'TenantEmployee' },
+      member: { userId: target.userId, displayName: target.displayName, actorType: targetActorType },
     },
     deps,
   );

@@ -17,7 +17,8 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 type: "char(3)",
                 nullable: true,
                 oldClrType: typeof(string),
-                oldType: "char(3)");
+                oldType: "char(3)"
+            );
         }
 
         /// <inheritdoc />
@@ -32,7 +33,8 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 defaultValue: "",
                 oldClrType: typeof(string),
                 oldType: "char(3)",
-                oldNullable: true);
+                oldNullable: true
+            );
         }
     }
 }

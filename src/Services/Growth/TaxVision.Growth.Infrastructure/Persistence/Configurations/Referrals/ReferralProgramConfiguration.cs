@@ -46,11 +46,7 @@ public sealed class ReferralProgramConfiguration : IEntityTypeConfiguration<Refe
         builder.Property(program => program.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(program => program.PolicyVersion).IsRequired();
         builder.Property(program => program.IdempotencyKey).HasMaxLength(200).IsRequired();
-        builder
-            .Property(program => program.PayloadFingerprint)
-            .HasColumnType("char(64)")
-            .IsFixedLength()
-            .IsRequired();
+        builder.Property(program => program.PayloadFingerprint).HasColumnType("char(64)").IsFixedLength().IsRequired();
         builder.Property(program => program.StartsAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(program => program.EndsAtUtc).HasColumnType("datetime2(7)");
         builder.Property(program => program.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
@@ -87,10 +83,7 @@ public sealed class ReferralProgramConfiguration : IEntityTypeConfiguration<Refe
                     .Property(value => value.MinimumPaymentCurrency)
                     .HasColumnName("MinimumPaymentCurrency")
                     .HasColumnType("char(3)");
-                policy
-                    .Property(value => value.WaitingPeriodDays)
-                    .HasColumnName("WaitingPeriodDays")
-                    .IsRequired();
+                policy.Property(value => value.WaitingPeriodDays).HasColumnName("WaitingPeriodDays").IsRequired();
                 policy
                     .Property(value => value.MaximumRewardsPerReferrerPerCalendarYear)
                     .HasColumnName("MaximumRewardsPerReferrerPerCalendarYear")

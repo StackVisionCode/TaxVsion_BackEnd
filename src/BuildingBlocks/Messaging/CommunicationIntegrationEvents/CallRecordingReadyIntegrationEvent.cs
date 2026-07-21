@@ -15,4 +15,8 @@ public sealed record CallRecordingReadyIntegrationEvent : IntegrationEvent
     public required Guid RecordingFileId { get; init; }
     public required double DurationSeconds { get; init; }
     public required DateTime ReadyAtUtc { get; init; }
+
+    /// <summary>Fase 1B — ambas partes, no un unico "actor": una Call no tiene dueño unico.</summary>
+    public required Guid CallerUserId { get; init; }
+    public required Guid CalleeUserId { get; init; }
 }

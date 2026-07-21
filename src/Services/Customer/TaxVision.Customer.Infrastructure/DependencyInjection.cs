@@ -32,6 +32,7 @@ public static class InfrastructureRegistration
         services.AddScoped<ICustomerRepository, CustomerRepository>();
         services.AddScoped<ICustomerReadService, CustomerReadService>();
         services.AddScoped<ICustomerAuditWriter, CustomerAuditWriter>();
+        services.AddScoped<ITenantEmployeeDirectoryRepository, TenantEmployeeDirectoryRepository>();
 
         services.AddSingleton<ISensitiveDataProtector, AesGcmSensitiveDataProtector>();
 

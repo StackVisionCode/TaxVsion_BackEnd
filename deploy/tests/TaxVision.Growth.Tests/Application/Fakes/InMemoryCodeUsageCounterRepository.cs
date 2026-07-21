@@ -6,7 +6,10 @@ namespace TaxVision.Growth.Tests.Application.Fakes;
 
 internal sealed class InMemoryCodeUsageCounterRepository : ICodeUsageCounterRepository
 {
-    private readonly Dictionary<(Guid TenantId, Guid DefinitionId, CodeUsageDimension Dimension, string Scope), CodeUsageCounter> _counters = [];
+    private readonly Dictionary<
+        (Guid TenantId, Guid DefinitionId, CodeUsageDimension Dimension, string Scope),
+        CodeUsageCounter
+    > _counters = [];
 
     internal IReadOnlyCollection<CodeUsageCounter> Counters => _counters.Values;
 
@@ -24,14 +27,7 @@ internal sealed class InMemoryCodeUsageCounterRepository : ICodeUsageCounterRepo
         if (_counters.TryGetValue(key, out var existing))
             return Task.FromResult(Result.Success(existing));
 
-        var created = CodeUsageCounter.Create(
-            tenantId,
-            codeDefinitionId,
-            dimension,
-            scopeKey,
-            maxRedemptions,
-            nowUtc
-        );
+        var created = CodeUsageCounter.Create(tenantId, codeDefinitionId, dimension, scopeKey, maxRedemptions, nowUtc);
         if (created.IsSuccess)
             _counters[key] = created.Value;
 

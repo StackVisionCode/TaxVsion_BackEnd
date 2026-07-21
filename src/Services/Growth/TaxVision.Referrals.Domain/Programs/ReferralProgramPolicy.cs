@@ -143,10 +143,7 @@ public sealed class ReferralProgramPolicy
         if (attributionWindowDays is < 1 or > 730)
         {
             return Result.Failure(
-                new Error(
-                    "ReferralPolicy.InvalidAttributionWindow",
-                    "AttributionWindowDays must be between 1 and 730."
-                )
+                new Error("ReferralPolicy.InvalidAttributionWindow", "AttributionWindowDays must be between 1 and 730.")
             );
         }
 
@@ -189,12 +186,7 @@ public sealed class ReferralProgramPolicy
 
         if (!Enum.IsDefined(rewardType))
         {
-            return Result.Failure(
-                new Error(
-                    "ReferralPolicy.InvalidRewardType",
-                    "RewardType is not supported."
-                )
-            );
+            return Result.Failure(new Error("ReferralPolicy.InvalidRewardType", "RewardType is not supported."));
         }
 
         if (string.IsNullOrWhiteSpace(rewardDefinitionKey) || rewardDefinitionKey.Trim().Length > 100)

@@ -5,22 +5,12 @@ using TaxVision.Codes.Domain.Quotes;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 
-public sealed class CodeQuoteRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : ICodeQuoteRepository
+public sealed class CodeQuoteRepository(GrowthDbContext dbContext, ITenantContext tenantContext) : ICodeQuoteRepository
 {
-    public Task<CodeQuote?> GetByIdAsync(
-        Guid tenantId,
-        Guid quoteId,
-        CancellationToken ct = default
-    ) =>
+    public Task<CodeQuote?> GetByIdAsync(Guid tenantId, Guid quoteId, CancellationToken ct = default) =>
         !TenantRepositoryGuard.Matches(tenantContext, tenantId) || quoteId == Guid.Empty
             ? Task.FromResult<CodeQuote?>(null)
-            : dbContext.CodeQuotes.FirstOrDefaultAsync(
-                quote => quote.Id == quoteId && quote.TenantId == tenantId,
-                ct
-            );
+            : dbContext.CodeQuotes.FirstOrDefaultAsync(quote => quote.Id == quoteId && quote.TenantId == tenantId, ct);
 
     public async Task AddAsync(CodeQuote quote, CancellationToken ct = default)
     {

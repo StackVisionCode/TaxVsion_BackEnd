@@ -7,6 +7,7 @@ public sealed record FileAvailableIntegrationEvent : IntegrationEvent
     public required string ContentType { get; init; }
     public required long SizeBytes { get; init; }
     public required string ChecksumSha256 { get; init; }
+    public required Guid CreatedBy { get; init; }
 }
 
 public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent
@@ -25,6 +26,7 @@ public sealed record FileBlockedByPolicyIntegrationEvent : IntegrationEvent
     public required Guid FileId { get; init; }
     public required string ObjectKey { get; init; }
     public required string PolicyReason { get; init; }
+    public required Guid CreatedBy { get; init; }
 }
 
 /// <summary>
@@ -43,6 +45,7 @@ public sealed record FilePendingReviewIntegrationEvent : IntegrationEvent
 public sealed record FileDeletedIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
+    public required Guid CreatedBy { get; init; }
 }
 
 /// <summary>
@@ -54,6 +57,7 @@ public sealed record FileDeletedIntegrationEvent : IntegrationEvent
 public sealed record FileRestoredIntegrationEvent : IntegrationEvent
 {
     public required Guid FileId { get; init; }
+    public required Guid CreatedBy { get; init; }
 }
 
 public sealed record StorageLimitExceededIntegrationEvent : IntegrationEvent
@@ -102,6 +106,9 @@ public sealed record ShareLinkFolderItemAddedIntegrationEvent : IntegrationEvent
     public required Guid FolderId { get; init; }
     public required Guid FileId { get; init; }
     public required bool AutoCovered { get; init; }
+
+    /// <summary>Dueño del archivo (FileObject.CreatedBy) — a quien le interesa saber que su archivo quedo cubierto por un link publico, no el creador del ShareLink.</summary>
+    public required Guid CreatedByUserId { get; init; }
 }
 
 /// <summary>Publicado cada vez que un link se resuelve exitosamente (publico o privado) y sirve una presigned URL.</summary>
@@ -110,6 +117,9 @@ public sealed record ShareLinkAccessedIntegrationEvent : IntegrationEvent
     public required Guid ShareLinkId { get; init; }
     public required Guid FileId { get; init; }
     public required string Channel { get; init; }
+
+    /// <summary>Dueño del archivo (FileObject.CreatedBy) — a quien le interesa saber que alguien accedio a su archivo compartido.</summary>
+    public required Guid CreatedByUserId { get; init; }
 }
 
 /// <summary>
@@ -139,6 +149,15 @@ public sealed record ShareLinkExpiredIntegrationEvent : IntegrationEvent
     public required Guid ShareLinkId { get; init; }
     public required Guid ResourceId { get; init; }
     public required DateTime ExpiresAtUtc { get; init; }
+
+    /// <summary>
+    /// Creador del ShareLink (ShareLink.CreatedByUserId), NO el dueño del archivo/carpeta —
+    /// a esta altura solo el link esta cargado en memoria (ResourceId puede ser un FileId o
+    /// un FolderId segun ResourceType), resolver el dueño real del recurso exigiria una
+    /// consulta nueva. El creador del link es quien de todas formas quiere saber que su
+    /// link vencio.
+    /// </summary>
+    public required Guid CreatedByUserId { get; init; }
 }
 
 /// <summary>Fase C4 (completitud) — publicado al cambiar el Permission de un link ya creado.</summary>
@@ -160,6 +179,7 @@ public sealed record FileBlockedByDmcaTakedownIntegrationEvent : IntegrationEven
 {
     public required Guid FileId { get; init; }
     public required Guid DmcaNoticeId { get; init; }
+    public required Guid CreatedBy { get; init; }
 }
 
 /// <summary>Fase L1.3 — publicado cuando el equipo legal reinstala un archivo tras resolver un expediente DMCA.</summary>
@@ -167,6 +187,40 @@ public sealed record FileReinstatedFromTakedownIntegrationEvent : IntegrationEve
 {
     public required Guid FileId { get; init; }
     public required Guid DmcaNoticeId { get; init; }
+    public required Guid CreatedBy { get; init; }
+}
+
+/// <summary>
+/// Fase 1B — publicado cuando el equipo legal coloca un legal hold sobre un archivo
+/// (retencion obligatoria, bloquea borrado/expiracion). SetLegalHoldHandler no
+/// publicaba nada antes, solo dejaba audit interno.
+/// </summary>
+public sealed record LegalHoldPlacedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+    public required Guid CreatedBy { get; init; }
+    public required Guid ActorId { get; init; }
+    public string? Reason { get; init; }
+}
+
+/// <summary>Fase 1B — contraparte de LegalHoldPlacedIntegrationEvent, publicado al levantar el hold.</summary>
+public sealed record LegalHoldLiftedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+    public required Guid CreatedBy { get; init; }
+    public required Guid ActorId { get; init; }
+}
+
+/// <summary>
+/// Fase 1B — publicado cuando el uploader/tenant disputa un takedown DMCA recibido
+/// (contranotificacion). SubmitDmcaCounterNoticeHandler no publicaba nada antes; el
+/// equipo legal solo se enteraba si consultaba la UI a mano.
+/// </summary>
+public sealed record DmcaCounterNoticeSubmittedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+    public required Guid DmcaNoticeId { get; init; }
+    public required Guid CreatedBy { get; init; }
 }
 
 /// <summary>

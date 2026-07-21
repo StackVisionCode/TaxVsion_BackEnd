@@ -27,6 +27,7 @@ public static class PermissionCatalog
     public const string CustomersView = CustomersPermissions.View;
     public const string CustomersManage = CustomersPermissions.Manage;
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
+    public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
     public const string SignaturesRequest = "signatures.request";
     public const string DocumentsView = "documents.view";
     public const string DocumentsManage = "documents.manage";
@@ -772,6 +773,13 @@ public static class PermissionCatalog
             false
         ),
         new(
+            new Guid("a1000000-0000-0000-0000-000000000141"),
+            CustomersPreparerManage,
+            "customers",
+            "Asignar o reasignar el preparador responsable de un customer",
+            false
+        ),
+        new(
             // Reservado: quien agrega/deshabilita dominios controla qué Host puede
             // autenticar como este tenant (Fase A5) — riesgo equivalente a
             // RolesManage/BillingManage. Nunca asignable a un rol custom.
@@ -1175,23 +1183,116 @@ public static class PermissionCatalog
             "Gestionar el logo/branding del tenant",
             false
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000123"), GrowthCodesRead, "codes", "Ver códigos del propio tenant", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000124"), GrowthCodesManage, "codes", "Gestionar códigos del propio tenant", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000125"), GrowthCodesIssue, "codes", "Emitir códigos de beneficio", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000123"),
+            GrowthCodesRead,
+            "codes",
+            "Ver códigos del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000124"),
+            GrowthCodesManage,
+            "codes",
+            "Gestionar códigos del propio tenant",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000125"),
+            GrowthCodesIssue,
+            "codes",
+            "Emitir códigos de beneficio",
+            false
+        ),
         new(new Guid("a1000000-0000-0000-0000-000000000126"), GrowthCodesActivate, "codes", "Activar códigos", false),
         new(new Guid("a1000000-0000-0000-0000-000000000127"), GrowthCodesRevoke, "codes", "Revocar códigos", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000128"), GrowthCodesAuditRead, "codes", "Consultar auditoría de códigos", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000129"), GrowthCodesRedemptionRead, "codes", "Consultar redemptions", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000130"), GrowthCodesCompensationManage, "codes", "Gestionar compensaciones promocionales", false, IsAssignableByTenant: false),
-        new(new Guid("a1000000-0000-0000-0000-000000000131"), GrowthReferralsOwnRead, "referrals", "Ver referidos propios", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000132"), GrowthReferralsProgramRead, "referrals", "Ver programas de referidos", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000133"), GrowthReferralsProgramManage, "referrals", "Gestionar programas de referidos", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000134"), GrowthReferralsAttributionRead, "referrals", "Consultar atribuciones", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000135"), GrowthReferralsFraudRead, "referrals", "Consultar revisiones antifraude", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000136"), GrowthReferralsFraudManage, "referrals", "Gestionar revisiones antifraude", false, IsAssignableByTenant: false),
-        new(new Guid("a1000000-0000-0000-0000-000000000137"), GrowthReferralsRewardRead, "referrals", "Consultar rewards", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000138"), GrowthReferralsRewardManage, "referrals", "Gestionar rewards no monetarios", false, IsAssignableByTenant: false),
-        new(new Guid("a1000000-0000-0000-0000-000000000139"), GrowthReferralsAuditRead, "referrals", "Consultar auditoría de referidos", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000128"),
+            GrowthCodesAuditRead,
+            "codes",
+            "Consultar auditoría de códigos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000129"),
+            GrowthCodesRedemptionRead,
+            "codes",
+            "Consultar redemptions",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000130"),
+            GrowthCodesCompensationManage,
+            "codes",
+            "Gestionar compensaciones promocionales",
+            false,
+            IsAssignableByTenant: false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000131"),
+            GrowthReferralsOwnRead,
+            "referrals",
+            "Ver referidos propios",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000132"),
+            GrowthReferralsProgramRead,
+            "referrals",
+            "Ver programas de referidos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000133"),
+            GrowthReferralsProgramManage,
+            "referrals",
+            "Gestionar programas de referidos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000134"),
+            GrowthReferralsAttributionRead,
+            "referrals",
+            "Consultar atribuciones",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000135"),
+            GrowthReferralsFraudRead,
+            "referrals",
+            "Consultar revisiones antifraude",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000136"),
+            GrowthReferralsFraudManage,
+            "referrals",
+            "Gestionar revisiones antifraude",
+            false,
+            IsAssignableByTenant: false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000137"),
+            GrowthReferralsRewardRead,
+            "referrals",
+            "Consultar rewards",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000138"),
+            GrowthReferralsRewardManage,
+            "referrals",
+            "Gestionar rewards no monetarios",
+            false,
+            IsAssignableByTenant: false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000139"),
+            GrowthReferralsAuditRead,
+            "referrals",
+            "Consultar auditoría de referidos",
+            false
+        ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000140"),
             GrowthAdminCrossTenant,

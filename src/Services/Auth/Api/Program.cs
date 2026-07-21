@@ -51,6 +51,7 @@ builder.Services.Configure<PlatformEmergencyAccessOptions>(
 builder.Services.AddHostedService<PlatformAdminEmergencyAccessService>();
 builder.Services.AddHostedService<SystemRolePermissionsSyncService>();
 builder.Services.AddHostedService<TenantDomainBackfillService>();
+builder.Services.AddHostedService<PermissionsBackfillService>();
 builder.Services.AddHostedService<TenantDomainProvisioningPoller>();
 builder.Services.AddHostedService<AuthMaintenanceService>();
 
@@ -139,7 +140,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<UserRegisteredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<InvitationCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<UserReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserRolesChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<RolePermissionsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PasswordResetRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<MfaChallengeRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SecurityAlertIntegrationEvent>().ToRabbitExchange("taxvision-events");

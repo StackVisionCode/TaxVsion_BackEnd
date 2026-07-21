@@ -29,25 +29,15 @@ public static class IssueTenantReferralCodeHandler
 
         if (command.TenantId == Guid.Empty || command.ProgramId == Guid.Empty)
         {
-            return Failure(
-                "ReferralCode.InvalidScope",
-                "TenantId and ProgramId are required."
-            );
+            return Failure("ReferralCode.InvalidScope", "TenantId and ProgramId are required.");
         }
 
         if (command.ExpiresAtUtc.Kind != DateTimeKind.Utc)
         {
-            return Failure(
-                "ReferralCode.InvalidUtcExpiry",
-                "ExpiresAtUtc must use DateTimeKind.Utc."
-            );
+            return Failure("ReferralCode.InvalidUtcExpiry", "ExpiresAtUtc must use DateTimeKind.Utc.");
         }
 
-        var generated = tokenGenerator.Generate(
-            command.ProgramId,
-            command.TenantId,
-            command.IdempotencyKey
-        );
+        var generated = tokenGenerator.Generate(command.ProgramId, command.TenantId, command.IdempotencyKey);
         if (generated.IsFailure)
             return Result.Failure<IssueTenantReferralCodeResult>(generated.Error);
 
@@ -71,10 +61,7 @@ public static class IssueTenantReferralCodeHandler
             fingerprint,
             async operationCt =>
             {
-                var program = await programs.GetForEvaluationAsync(
-                    command.ProgramId,
-                    operationCt
-                );
+                var program = await programs.GetForEvaluationAsync(command.ProgramId, operationCt);
                 if (
                     program is null
                     || program.ScopeType != ReferralProgramScope.Platform
@@ -130,8 +117,6 @@ public static class IssueTenantReferralCodeHandler
         );
     }
 
-    private static Result<IssueTenantReferralCodeResult> Failure(
-        string code,
-        string message
-    ) => Result.Failure<IssueTenantReferralCodeResult>(new Error(code, message));
+    private static Result<IssueTenantReferralCodeResult> Failure(string code, string message) =>
+        Result.Failure<IssueTenantReferralCodeResult>(new Error(code, message));
 }

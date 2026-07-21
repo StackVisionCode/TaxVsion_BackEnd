@@ -21,9 +21,7 @@ public sealed class CodeScope : TenantEntity
     )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<CodeScope>(
-                new Error("Codes.CodeScope.InvalidTenant", "TenantId is required.")
-            );
+            return Result.Failure<CodeScope>(new Error("Codes.CodeScope.InvalidTenant", "TenantId is required."));
 
         if (codeDefinitionId == Guid.Empty)
             return Result.Failure<CodeScope>(
@@ -42,12 +40,12 @@ public sealed class CodeScope : TenantEntity
             );
 
         var scope = new CodeScope
-            {
-                CodeDefinitionId = codeDefinitionId,
-                Type = type,
-                ScopeId = scopeId.Trim(),
-                Mode = mode,
-            };
+        {
+            CodeDefinitionId = codeDefinitionId,
+            Type = type,
+            ScopeId = scopeId.Trim(),
+            Mode = mode,
+        };
         scope.SetTenant(tenantId);
         return Result.Success(scope);
     }

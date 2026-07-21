@@ -17,6 +17,7 @@ import { registerDirectoryRoutes } from '../../api/http/routes/directory.route.j
 import { registerNotificationRoutes } from '../../api/http/routes/notifications.route.js';
 import { registerSupportRoutes } from '../../api/http/routes/support.route.js';
 import { registerSettingsRoutes } from '../../api/http/routes/settings.route.js';
+import { registerNotificationActionMappingRoutes } from '../../api/http/routes/notification-action-mappings.route.js';
 import { registerAnalyticsRoutes } from '../../api/http/routes/analytics.route.js';
 import type { AppContainer } from '../container.js';
 
@@ -100,6 +101,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await registerNotificationRoutes(app, container);
   await registerSupportRoutes(app, container);
   await registerSettingsRoutes(app, container);
+  await registerNotificationActionMappingRoutes(app, container);
   await registerAnalyticsRoutes(app, container);
 
   return app;

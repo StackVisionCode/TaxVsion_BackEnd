@@ -205,6 +205,7 @@ public sealed class DmcaHandlerTests
             audit,
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -231,6 +232,7 @@ public sealed class DmcaHandlerTests
             new FakeStorageAuditRepository(),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -276,6 +278,7 @@ public sealed class DmcaHandlerTests
             new FakeStorageAuditRepository(),
             new FakeSystemClock(DateTime.UtcNow),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 

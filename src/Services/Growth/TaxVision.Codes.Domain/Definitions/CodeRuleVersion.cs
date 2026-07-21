@@ -68,15 +68,15 @@ public sealed class CodeRuleVersion : TenantEntity
             );
 
         var rule = new CodeRuleVersion
-            {
-                CodeDefinitionId = codeDefinitionId,
-                Version = version,
-                Benefit = benefit,
-                MinimumPurchase = minimumPurchase,
-                AllowStacking = allowStacking,
-                PublishedBy = publishedBy,
-                PublishedAtUtc = publishedAtUtc,
-            };
+        {
+            CodeDefinitionId = codeDefinitionId,
+            Version = version,
+            Benefit = benefit,
+            MinimumPurchase = minimumPurchase,
+            AllowStacking = allowStacking,
+            PublishedBy = publishedBy,
+            PublishedAtUtc = publishedAtUtc,
+        };
         rule.SetTenant(tenantId);
         return Result.Success(rule);
     }

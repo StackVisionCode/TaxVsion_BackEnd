@@ -1,7 +1,3 @@
 namespace TaxVision.Codes.Application.Definitions.GetCodeDetails;
 
-public sealed record GetCodeDetailsQuery(
-    Guid OwnerTenantId,
-    Guid CodeDefinitionId,
-    Guid ActorUserId
-);
+public sealed record GetCodeDetailsQuery(Guid OwnerTenantId, Guid CodeDefinitionId, Guid ActorUserId);

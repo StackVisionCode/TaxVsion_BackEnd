@@ -19,6 +19,11 @@ public sealed class Role : TenantEntity
     public bool IsSystem { get; private set; }
     public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
+
+    /// <summary>Sube en cada <see cref="SetPermissions"/> — consumidores externos (ver
+    /// RolePermissionsChangedIntegrationEvent) la usan para saber que un set de permisos es
+    /// más reciente que el anterior. Mismo patrón que User.PermissionsVersion.</summary>
+    public int PermissionsVersion { get; private set; }
     public IReadOnlyCollection<RolePermission> Permissions => _permissions.AsReadOnly();
 
     public static Result<Role> Create(Guid tenantId, string name, string? description, bool isSystem = false)
@@ -65,6 +70,7 @@ public sealed class Role : TenantEntity
 
         _permissions.Clear();
         _permissions.AddRange(permissionIds.Distinct().Select(id => RolePermission.Create(Id, id)));
+        PermissionsVersion++;
         return Result.Success();
     }
 

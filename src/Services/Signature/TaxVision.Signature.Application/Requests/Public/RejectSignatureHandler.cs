@@ -55,6 +55,7 @@ public static class RejectSignatureHandler
                     TenantId = request.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     SignerId = signer.Id,
                     RejectedAtUtc = rejectedAtUtc,
                     RevocationEpoch = request.RevocationEpoch,

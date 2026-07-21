@@ -13,9 +13,8 @@ public sealed class GrowthAuthorizationTests
     [Fact]
     public async Task Service_policy_requires_actor_audience_and_exact_scope()
     {
-        var policy = await CreateProvider().GetPolicyAsync(
-            HasServiceScopeAttribute.PolicyPrefix + GrowthServiceScopes.CodesQuote
-        );
+        var policy = await CreateProvider()
+            .GetPolicyAsync(HasServiceScopeAttribute.PolicyPrefix + GrowthServiceScopes.CodesQuote);
         Assert.NotNull(policy);
 
         var complete = Principal(
@@ -66,17 +65,12 @@ public sealed class GrowthAuthorizationTests
     [Fact]
     public async Task Permission_policy_accepts_only_the_exact_permission_claim()
     {
-        var policy = await CreateProvider().GetPolicyAsync(
-            HasPermissionAttribute.PolicyPrefix + GrowthPermissions.ReferralsProgramManage
-        );
+        var policy = await CreateProvider()
+            .GetPolicyAsync(HasPermissionAttribute.PolicyPrefix + GrowthPermissions.ReferralsProgramManage);
         Assert.NotNull(policy);
 
-        var granted = Principal(
-            new Claim("perm", GrowthPermissions.ReferralsProgramManage)
-        );
-        var differentPermission = Principal(
-            new Claim("perm", GrowthPermissions.ReferralsProgramRead)
-        );
+        var granted = Principal(new Claim("perm", GrowthPermissions.ReferralsProgramManage));
+        var differentPermission = Principal(new Claim("perm", GrowthPermissions.ReferralsProgramRead));
 
         Assert.True((await AuthorizeAsync(granted, policy)).Succeeded);
         Assert.False((await AuthorizeAsync(differentPermission, policy)).Succeeded);
@@ -88,10 +82,7 @@ public sealed class GrowthAuthorizationTests
     private static ClaimsPrincipal Principal(params Claim[] claims) =>
         new(new ClaimsIdentity(claims, authenticationType: "test"));
 
-    private static async Task<AuthorizationResult> AuthorizeAsync(
-        ClaimsPrincipal principal,
-        AuthorizationPolicy policy
-    )
+    private static async Task<AuthorizationResult> AuthorizeAsync(ClaimsPrincipal principal, AuthorizationPolicy policy)
     {
         var services = new ServiceCollection();
         services.AddLogging();

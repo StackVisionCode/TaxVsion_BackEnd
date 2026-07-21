@@ -11,17 +11,11 @@ internal static class ApplicationGuards
 
     public static Result IdempotencyConflict() =>
         Result.Failure(
-            new Error(
-                "Referrals.IdempotencyConflict",
-                "The idempotency key was already used with a different payload."
-            )
+            new Error("Referrals.IdempotencyConflict", "The idempotency key was already used with a different payload.")
         );
 
     public static Result OperationInProgress() =>
         Result.Failure(
-            new Error(
-                "Referrals.OperationInProgress",
-                "An operation with this idempotency key is still in progress."
-            )
+            new Error("Referrals.OperationInProgress", "An operation with this idempotency key is still in progress.")
         );
 }

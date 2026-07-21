@@ -6,10 +6,8 @@ using TaxVision.Codes.Domain.ValueObjects;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 
-public sealed class CodeDefinitionRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : ICodeDefinitionRepository
+public sealed class CodeDefinitionRepository(GrowthDbContext dbContext, ITenantContext tenantContext)
+    : ICodeDefinitionRepository
 {
     public Task<CodeDefinition?> GetOwnedByIdAsync(
         Guid ownerTenantId,
@@ -17,19 +15,14 @@ public sealed class CodeDefinitionRepository(
         CancellationToken ct = default
     )
     {
-        if (
-            codeDefinitionId == Guid.Empty
-            || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
-        )
+        if (codeDefinitionId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId))
             return Task.FromResult<CodeDefinition?>(null);
 
         return dbContext
             .CodeDefinitions.Include(definition => definition.RuleVersions)
             .Include(definition => definition.Scopes)
             .FirstOrDefaultAsync(
-                definition =>
-                    definition.Id == codeDefinitionId
-                    && definition.TenantId == ownerTenantId,
+                definition => definition.Id == codeDefinitionId && definition.TenantId == ownerTenantId,
                 ct
             );
     }
@@ -55,20 +48,14 @@ public sealed class CodeDefinitionRepository(
         CancellationToken ct = default
     )
     {
-        if (
-            codeDefinitionId == Guid.Empty
-            || !TenantRepositoryGuard.Matches(tenantContext, consumingTenantId)
-        )
+        if (codeDefinitionId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, consumingTenantId))
             return Task.FromResult<CodeDefinition?>(null);
 
         return ApplicableDefinitions(consumingTenantId)
             .FirstOrDefaultAsync(definition => definition.Id == codeDefinitionId, ct);
     }
 
-    public async Task AddAsync(
-        CodeDefinition definition,
-        CancellationToken ct = default
-    )
+    public async Task AddAsync(CodeDefinition definition, CancellationToken ct = default)
     {
         TenantRepositoryGuard.EnsureMatches(tenantContext, definition.TenantId);
         await dbContext.CodeDefinitions.AddAsync(definition, ct);
@@ -80,13 +67,7 @@ public sealed class CodeDefinitionRepository(
             .Include(definition => definition.RuleVersions)
             .Include(definition => definition.Scopes)
             .Where(definition =>
-                (
-                    definition.TenantId == consumingTenantId
-                    || definition.TenantId == PlatformTenant.Id
-                )
-                && (
-                    definition.TenantScopeId == null
-                    || definition.TenantScopeId == consumingTenantId
-                )
+                (definition.TenantId == consumingTenantId || definition.TenantId == PlatformTenant.Id)
+                && (definition.TenantScopeId == null || definition.TenantScopeId == consumingTenantId)
             );
 }

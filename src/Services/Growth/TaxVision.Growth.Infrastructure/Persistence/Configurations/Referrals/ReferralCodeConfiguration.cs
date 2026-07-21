@@ -23,11 +23,7 @@ public sealed class ReferralCodeConfiguration : IEntityTypeConfiguration<Referra
         builder.Property(code => code.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(code => code.ExpiresAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(code => code.IdempotencyKey).HasMaxLength(200).IsRequired();
-        builder
-            .Property(code => code.PayloadFingerprint)
-            .HasColumnType("char(64)")
-            .IsFixedLength()
-            .IsRequired();
+        builder.Property(code => code.PayloadFingerprint).HasColumnType("char(64)").IsFixedLength().IsRequired();
         builder.Property(code => code.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(code => code.UpdatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(code => code.CreatedBy).IsRequired();

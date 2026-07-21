@@ -130,6 +130,8 @@ export interface MeetingRecordingReadyEvent extends IntegrationEvent {
   readonly durationSeconds: number;
   readonly participantCount: number;
   readonly readyAtUtc: string;
+  /** Fase 1B — antes ausente; Notification lo usaba como recipient simbolico `meeting:{id}`. */
+  readonly hostUserId: string;
   /**
    * Quien acepto/rechazo grabar. Presente cuando el meeting paso por el
    * flujo de consent (Fase Backend 3, publicado desde el consumer de
@@ -294,6 +296,8 @@ export interface MeetingRecordingFailedEvent extends IntegrationEvent {
   readonly meetingId: string;
   readonly reason: string;
   readonly failedAtUtc: string;
+  /** Fase 1B — antes ausente; Notification lo usaba como recipient simbolico `meeting:{id}`. */
+  readonly hostUserId: string;
 }
 
 /**

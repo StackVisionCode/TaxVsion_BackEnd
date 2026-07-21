@@ -28,31 +28,37 @@ datasource db {
 // TenantCommunicationSettings — comportamiento de Communication por tenant.
 // -----------------------------------------------------------------------------
 model TenantCommunicationSettings {
-  TenantId                    String   @id @db.UniqueIdentifier
+  TenantId                               String   @id @db.UniqueIdentifier
   // Canales habilitados por tenant admin.
-  ChatEnabled                 Boolean  @default(true)
-  CallsEnabled                Boolean  @default(true)
-  VideoCallsEnabled           Boolean  @default(true)
-  MeetingsEnabled             Boolean  @default(true)
-  SupportEnabled              Boolean  @default(true)
-  ScreenshotsEnabled          Boolean  @default(true)
-  InternalGroupsEnabled       Boolean  @default(false)
-  EmployeeToEmployeeChatEnabled Boolean @default(false)
+  ChatEnabled                            Boolean  @default(true)
+  CallsEnabled                           Boolean  @default(true)
+  VideoCallsEnabled                      Boolean  @default(true)
+  MeetingsEnabled                        Boolean  @default(true)
+  SupportEnabled                         Boolean  @default(true)
+  ScreenshotsEnabled                     Boolean  @default(true)
+  InternalGroupsEnabled                  Boolean  @default(false)
+  EmployeeToEmployeeChatEnabled          Boolean  @default(false)
+  // Fase B5 (chat tipado) — si esta en true, un chat directo donde uno de los
+  // dos lados es 'CustomerPortal' solo se permite si el otro lado es
+  // justamente el preparador asignado de ese customer (CustomerPreparerAssignment).
+  // Default false: mismo criterio que EmployeeToEmployeeChatEnabled, opt-in
+  // explicito del tenant admin, no rompe el comportamiento actual de nadie.
+  RestrictCustomerChatToAssignedPreparer Boolean  @default(false)
   // Meeting UX defaults (cierran fricción detectada en el frontend cliente).
-  DefaultCameraOff            Boolean  @default(true)
-  DefaultMicrophoneOff        Boolean  @default(false)
-  PersistChatOnEnd            Boolean  @default(false)
+  DefaultCameraOff                       Boolean  @default(true)
+  DefaultMicrophoneOff                   Boolean  @default(false)
+  PersistChatOnEnd                       Boolean  @default(false)
   // Retención y purge (feature-flag OFF por default).
-  MessageRetentionDays        Int      @default(365)
-  RecordingRetentionDays      Int      @default(90)
-  PurgeEnabled                Boolean  @default(false)
+  MessageRetentionDays                   Int      @default(365)
+  RecordingRetentionDays                 Int      @default(90)
+  PurgeEnabled                           Boolean  @default(false)
   // Politica de consentimiento de grabacion (Fase Backend 2) — ver
   // RecordingConsentPolicy en domain/recording/recording-consent.ts.
   // "AllAcceptedRequired" | "NoRejections" | "HostOverride"
-  RecordingConsentPolicy      String   @default("NoRejections") @db.NVarChar(32)
+  RecordingConsentPolicy                 String   @default("NoRejections") @db.NVarChar(32)
   // Auditoría.
-  CreatedAtUtc                DateTime @default(now()) @db.DateTime2
-  UpdatedAtUtc                DateTime @default(now()) @updatedAt @db.DateTime2
+  CreatedAtUtc                           DateTime @default(now()) @db.DateTime2
+  UpdatedAtUtc                           DateTime @default(now()) @updatedAt @db.DateTime2
 }
 
 // -----------------------------------------------------------------------------
@@ -60,16 +66,16 @@ model TenantCommunicationSettings {
 // effectiveLimit = min(planLimit, tenantSetting) se calcula en Application (PlanGuard).
 // -----------------------------------------------------------------------------
 model TenantCommunicationLimits {
-  TenantId                String   @id @db.UniqueIdentifier
-  PlanCode                String   @db.NVarChar(64)
-  MaxMeetingParticipants  Int      @default(4)
-  MaxMeetingMinutes       Int      @default(60)
-  MaxConcurrentCalls      Int      @default(2)
-  MaxMonthlyMinutes       Int      @default(600)
-  RecordingEnabled        Boolean  @default(false)
-  SupportEnabled          Boolean  @default(true)
-  IsSuspended             Boolean  @default(false)
-  UpdatedAtUtc            DateTime @default(now()) @updatedAt @db.DateTime2
+  TenantId               String   @id @db.UniqueIdentifier
+  PlanCode               String   @db.NVarChar(64)
+  MaxMeetingParticipants Int      @default(4)
+  MaxMeetingMinutes      Int      @default(60)
+  MaxConcurrentCalls     Int      @default(2)
+  MaxMonthlyMinutes      Int      @default(600)
+  RecordingEnabled       Boolean  @default(false)
+  SupportEnabled         Boolean  @default(true)
+  IsSuspended            Boolean  @default(false)
+  UpdatedAtUtc           DateTime @default(now()) @updatedAt @db.DateTime2
 }
 
 // -----------------------------------------------------------------------------
@@ -78,15 +84,40 @@ model TenantCommunicationLimits {
 // Se usa para autorizar acciones socket sin round-trip a Auth por evento.
 // -----------------------------------------------------------------------------
 model UserPermissionsProjection {
-  UserId          String   @id @db.UniqueIdentifier
-  TenantId        String   @db.UniqueIdentifier
-  Permissions     String   @db.NVarChar(Max) // JSON array de strings
-  PermVersion     Int      @default(1)
-  ActorType       String   @db.NVarChar(64)
-  IsActive        Boolean  @default(true)
-  UpdatedAtUtc    DateTime @default(now()) @updatedAt @db.DateTime2
+  UserId       String   @id @db.UniqueIdentifier
+  TenantId     String   @db.UniqueIdentifier
+  Permissions  String   @db.NVarChar(Max) // JSON array de strings
+  PermVersion  Int      @default(1)
+  // Fase 2 del plan de notificaciones dinamicas — RoleIds del usuario (JSON array de strings),
+  // para correlacionar "a este usuario le afecta este cambio" cuando llega
+  // RolePermissionsChangedIntegrationEvent, sin volver a preguntarle a Auth. Filtrado con
+  // `contains` sobre el string JSON entrecomillado (`"<roleId>"`) — un roleId nunca matchea
+  // parcialmente a otro porque los GUID son de largo fijo.
+  RoleIds      String   @default("[]") @db.NVarChar(Max)
+  ActorType    String   @db.NVarChar(64)
+  IsActive     Boolean  @default(true)
+  UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
+}
+
+// -----------------------------------------------------------------------------
+// RolePermissionsProjection — copia local de (RoleId -> PermissionCodes[] + version).
+// Alimentada por RolePermissionsChangedIntegrationEvent (Fase 2, plan de notificaciones
+// dinamicas). Existe para que, cuando cambian los permisos de UN rol, se pueda recomputar
+// correctamente la union de permisos de un usuario con VARIOS roles — sin esta cache,
+// sobrescribir UserPermissionsProjection.Permissions con solo los codigos del rol que
+// cambio perderia los permisos heredados de sus otros roles.
+// -----------------------------------------------------------------------------
+model RolePermissionsProjection {
+  RoleId             String   @id @db.UniqueIdentifier
+  TenantId           String   @db.UniqueIdentifier
+  RoleName           String   @db.NVarChar(60)
+  PermissionCodes    String   @db.NVarChar(Max) // JSON array de strings
+  PermissionsVersion Int      @default(1)
+  UpdatedAtUtc       DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@index([TenantId])
 }
 
 // -----------------------------------------------------------------------------
@@ -97,17 +128,17 @@ model UserPermissionsProjection {
 // UserPermissionsProjection (arriba).
 // -----------------------------------------------------------------------------
 model UserDirectoryEntry {
-  UserId          String   @id @db.UniqueIdentifier
-  TenantId        String   @db.UniqueIdentifier
-  DisplayName     String   @db.NVarChar(200)
-  Email           String   @db.NVarChar(320)
-  IsActive        Boolean  @default(true)
+  UserId       String   @id @db.UniqueIdentifier
+  TenantId     String   @db.UniqueIdentifier
+  DisplayName  String   @db.NVarChar(200)
+  Email        String   @db.NVarChar(320)
+  IsActive     Boolean  @default(true)
   // Fase Backend 10 — permite filtrar lookups a solo empleados de tenant
   // ("TenantEmployee") sin necesitar una proyeccion EmployeeDirectory
   // separada; ver docblock de CustomerDirectoryEntry para el contraste con
   // customers (proyeccion propia, source distinto).
-  ActorType       String   @default("TenantEmployee") @db.NVarChar(32)
-  UpdatedAtUtc    DateTime @default(now()) @updatedAt @db.DateTime2
+  ActorType    String   @default("TenantEmployee") @db.NVarChar(32)
+  UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])
 }
@@ -132,6 +163,25 @@ model CustomerDirectoryEntry {
 
   @@index([TenantId, IsActive])
   @@index([TenantId, DisplayName])
+}
+
+// -----------------------------------------------------------------------------
+// CustomerPreparerAssignment — proyeccion local de "que preparador (UserId de
+// Auth) tiene asignado este customer ahora mismo", alimentada por los
+// consumers de customer.preparer_assigned.v1 / customer.preparer_unassigned.v1
+// (fuente de verdad: Customer.AssignedPreparerUserId). CustomerId es @id
+// porque el invariante de negocio es "un customer tiene a lo sumo un
+// preparador activo a la vez" (mismo invariante que protege el aggregate
+// Customer). Consumida por start-direct-conversation.ts para calcular
+// isPrimaryPreparer y por el gate de RestrictCustomerChatToAssignedPreparer.
+// @since Fase B2 (chat tipado)
+model CustomerPreparerAssignment {
+  CustomerId     String   @id @db.UniqueIdentifier
+  TenantId       String   @db.UniqueIdentifier
+  PreparerUserId String   @db.UniqueIdentifier
+  AssignedAtUtc  DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@index([TenantId, PreparerUserId])
 }
 
 // -----------------------------------------------------------------------------
@@ -164,10 +214,10 @@ model AttachmentTracking {
 // Idempotencia por EventId; el consumer sólo procesa si no existe.
 // -----------------------------------------------------------------------------
 model ProcessedEvent {
-  EventId       String   @id @db.UniqueIdentifier
-  Source        String   @db.NVarChar(64)
-  EventType     String   @db.NVarChar(128)
-  TenantId      String?  @db.UniqueIdentifier
+  EventId        String   @id @db.UniqueIdentifier
+  Source         String   @db.NVarChar(64)
+  EventType      String   @db.NVarChar(128)
+  TenantId       String?  @db.UniqueIdentifier
   ProcessedAtUtc DateTime @default(now()) @db.DateTime2
 
   @@index([Source, EventType])
@@ -178,17 +228,17 @@ model ProcessedEvent {
 // El worker lee pendientes y los publica al exchange taxvision-events.
 // -----------------------------------------------------------------------------
 model OutboxMessage {
-  Id                 String   @id @default(uuid()) @db.UniqueIdentifier
-  EventId            String   @unique @db.UniqueIdentifier
-  TenantId           String   @db.UniqueIdentifier
-  EventType          String   @db.NVarChar(128)
-  Payload            String   @db.NVarChar(Max)
-  CorrelationId      String?  @db.NVarChar(64)
-  OccurredAtUtc      DateTime @db.DateTime2
-  PublishedAtUtc     DateTime? @db.DateTime2
-  Attempts           Int      @default(0)
-  LastError          String?  @db.NVarChar(Max)
-  CreatedAtUtc       DateTime @default(now()) @db.DateTime2
+  Id             String    @id @default(uuid()) @db.UniqueIdentifier
+  EventId        String    @unique @db.UniqueIdentifier
+  TenantId       String    @db.UniqueIdentifier
+  EventType      String    @db.NVarChar(128)
+  Payload        String    @db.NVarChar(Max)
+  CorrelationId  String?   @db.NVarChar(64)
+  OccurredAtUtc  DateTime  @db.DateTime2
+  PublishedAtUtc DateTime? @db.DateTime2
+  Attempts       Int       @default(0)
+  LastError      String?   @db.NVarChar(Max)
+  CreatedAtUtc   DateTime  @default(now()) @db.DateTime2
 
   @@index([PublishedAtUtc])
   @@index([TenantId])
@@ -201,12 +251,12 @@ model OutboxMessage {
 // para replay bit-a-bit del cliente.
 // -----------------------------------------------------------------------------
 model IdempotencyRecord {
-  TenantId       String   @db.UniqueIdentifier
-  UserId         String   @db.UniqueIdentifier
-  Scope          String   @db.NVarChar(64)
-  ClientKey      String   @db.NVarChar(128)
-  ResultPayload  String   @db.NVarChar(Max)
-  CreatedAtUtc   DateTime @default(now()) @db.DateTime2
+  TenantId      String   @db.UniqueIdentifier
+  UserId        String   @db.UniqueIdentifier
+  Scope         String   @db.NVarChar(64)
+  ClientKey     String   @db.NVarChar(128)
+  ResultPayload String   @db.NVarChar(Max)
+  CreatedAtUtc  DateTime @default(now()) @db.DateTime2
 
   @@id([TenantId, UserId, Scope, ClientKey])
   @@index([CreatedAtUtc])
@@ -228,48 +278,48 @@ model IdempotencyRecord {
 //   Meeting        — chat 1:1 con un Meeting (Fase 8); participantes sincronizados
 //                    con quien esta Joined en el meeting, nunca editados a mano.
 model Conversation {
-  Id                String    @id @default(uuid()) @db.UniqueIdentifier
-  TenantId          String    @db.UniqueIdentifier
+  Id               String    @id @default(uuid()) @db.UniqueIdentifier
+  TenantId         String    @db.UniqueIdentifier
   // "Direct" | "Group" | "Support" | "Meeting" — validado en dominio.
-  Kind              String    @db.NVarChar(32)
+  Kind             String    @db.NVarChar(32)
   // Group: nombre del grupo. Meeting: titulo del meeting (informativo). Direct/Support = null.
-  Title             String?   @db.NVarChar(120)
+  Title            String?   @db.NVarChar(120)
   // Direct: `direct:{userA}:{userB}` (ids ordenados) para lookup rapido.
   // Group: `group:{groupId}`. Support: `support:{ticketId}`.
-  UniquenessKey     String    @db.NVarChar(256)
-  IsArchived        Boolean   @default(false)
-  LastMessageAtUtc  DateTime? @db.DateTime2
-  CreatedByUserId   String    @db.UniqueIdentifier
-  CreatedAtUtc      DateTime  @default(now()) @db.DateTime2
-  UpdatedAtUtc      DateTime  @default(now()) @updatedAt @db.DateTime2
+  UniquenessKey    String    @db.NVarChar(256)
+  IsArchived       Boolean   @default(false)
+  LastMessageAtUtc DateTime? @db.DateTime2
+  CreatedByUserId  String    @db.UniqueIdentifier
+  CreatedAtUtc     DateTime  @default(now()) @db.DateTime2
+  UpdatedAtUtc     DateTime  @default(now()) @updatedAt @db.DateTime2
 
-  Participants  ConversationParticipant[]
-  Messages      Message[]
+  Participants ConversationParticipant[]
+  Messages     Message[]
 
   @@unique([TenantId, UniquenessKey])
   @@index([TenantId, IsArchived, LastMessageAtUtc(sort: Desc)])
 }
 
 model ConversationParticipant {
-  Id                 String   @id @default(uuid()) @db.UniqueIdentifier
-  ConversationId     String   @db.UniqueIdentifier
-  TenantId           String   @db.UniqueIdentifier
-  UserId             String   @db.UniqueIdentifier
-  DisplayName        String   @db.NVarChar(120)
-  ActorType          String   @db.NVarChar(32)
+  Id                String    @id @default(uuid()) @db.UniqueIdentifier
+  ConversationId    String    @db.UniqueIdentifier
+  TenantId          String    @db.UniqueIdentifier
+  UserId            String    @db.UniqueIdentifier
+  DisplayName       String    @db.NVarChar(120)
+  ActorType         String    @db.NVarChar(32)
   // "Owner" | "Member" — Owner es quien creo la conversacion; para Direct,
   // ambos son Members salvo Group/Support. No confundir con rol Auth.
-  Role               String   @default("Member") @db.NVarChar(32)
+  Role              String    @default("Member") @db.NVarChar(32)
   // Cierre del "Only Owner for now" del frontend cliente: marca al preparador
   // principal asignado al customer (Customer.PortalOwner). El FE puede elegir
   // multi-thread cuando exista, sin cambio de schema.
-  IsPrimaryPreparer  Boolean  @default(false)
-  IsMuted            Boolean  @default(false)
-  IsRemoved          Boolean  @default(false)
-  JoinedAtUtc        DateTime @default(now()) @db.DateTime2
-  RemovedAtUtc       DateTime? @db.DateTime2
-  LastReadAtUtc      DateTime? @db.DateTime2
-  LastReadMessageId  String?  @db.UniqueIdentifier
+  IsPrimaryPreparer Boolean   @default(false)
+  IsMuted           Boolean   @default(false)
+  IsRemoved         Boolean   @default(false)
+  JoinedAtUtc       DateTime  @default(now()) @db.DateTime2
+  RemovedAtUtc      DateTime? @db.DateTime2
+  LastReadAtUtc     DateTime? @db.DateTime2
+  LastReadMessageId String?   @db.UniqueIdentifier
 
   Conversation Conversation @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
 
@@ -284,36 +334,36 @@ model ConversationParticipant {
 // Reactions/threading NO se modelan aqui — solucion se documenta cuando llegue
 // su fase; nada de TODO en produccion.
 model Message {
-  Id                 String    @id @default(uuid()) @db.UniqueIdentifier
-  ConversationId     String    @db.UniqueIdentifier
-  TenantId           String    @db.UniqueIdentifier
-  SenderId           String    @db.UniqueIdentifier
+  Id                     String    @id @default(uuid()) @db.UniqueIdentifier
+  ConversationId         String    @db.UniqueIdentifier
+  TenantId               String    @db.UniqueIdentifier
+  SenderId               String    @db.UniqueIdentifier
   // Denormalizacion controlada: nunca perdemos "quien envio" aunque el usuario
   // se dé de baja en Auth (cierre CRIT-17 del legacy).
-  SenderDisplayName  String    @db.NVarChar(120)
-  Kind               String    @db.NVarChar(32)
+  SenderDisplayName      String    @db.NVarChar(120)
+  Kind                   String    @db.NVarChar(32)
   // Solo para Kind=Text; capado a 4000 chars a nivel dominio.
-  Body               String?   @db.NVarChar(4000)
+  Body                   String?   @db.NVarChar(4000)
   // Solo para Kind=Attachment: FileId en CloudStorage. Metadata (mime, size)
   // llega por FileMetadataRef en fases posteriores.
-  AttachmentFileId   String?   @db.UniqueIdentifier
+  AttachmentFileId       String?   @db.UniqueIdentifier
   // Optional reply-to (soporte trivial de citacion — no thread real).
-  ReplyToMessageId   String?   @db.UniqueIdentifier
+  ReplyToMessageId       String?   @db.UniqueIdentifier
   // Fase Backend 9 — forwarding. Ref al mensaje original en OTRA conversation.
   // No FK: la conversation origen podria estar en otro tenant en el futuro
   // (support cross-tenant), y una FK duro cascadearia deletes cross-tenant.
-  ForwardedFromMessageId String? @db.UniqueIdentifier
-  IsEdited           Boolean   @default(false)
-  IsDeleted          Boolean   @default(false)
+  ForwardedFromMessageId String?   @db.UniqueIdentifier
+  IsEdited               Boolean   @default(false)
+  IsDeleted              Boolean   @default(false)
   // Fase Backend 9 — pinned messages. Solo host/cohost puede pinear en groups;
   // ambos participantes pueden en Direct/Meeting/Support (autorizacion en el
   // use case, no en el aggregate — depende del ConversationKind).
-  IsPinned           Boolean   @default(false)
-  PinnedAtUtc        DateTime? @db.DateTime2
-  PinnedByUserId     String?   @db.UniqueIdentifier
-  DeletedAtUtc       DateTime? @db.DateTime2
-  CreatedAtUtc       DateTime  @default(now()) @db.DateTime2
-  EditedAtUtc        DateTime? @db.DateTime2
+  IsPinned               Boolean   @default(false)
+  PinnedAtUtc            DateTime? @db.DateTime2
+  PinnedByUserId         String?   @db.UniqueIdentifier
+  DeletedAtUtc           DateTime? @db.DateTime2
+  CreatedAtUtc           DateTime  @default(now()) @db.DateTime2
+  EditedAtUtc            DateTime? @db.DateTime2
 
   Conversation Conversation      @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
   Receipts     MessageReceipt[]
@@ -354,11 +404,11 @@ model MessageReaction {
 // receiver online; "Read" = destinatario lo abrio en su chat. Cierre del bug
 // legacy de N+1: se batchean en la Application layer y no se upsert por mensaje.
 model MessageReceipt {
-  MessageId       String   @db.UniqueIdentifier
-  UserId          String   @db.UniqueIdentifier
-  TenantId        String   @db.UniqueIdentifier
-  DeliveredAtUtc  DateTime? @db.DateTime2
-  ReadAtUtc       DateTime? @db.DateTime2
+  MessageId      String    @db.UniqueIdentifier
+  UserId         String    @db.UniqueIdentifier
+  TenantId       String    @db.UniqueIdentifier
+  DeliveredAtUtc DateTime? @db.DateTime2
+  ReadAtUtc      DateTime? @db.DateTime2
 
   Message Message @relation(fields: [MessageId], references: [Id], onDelete: Cascade)
 
@@ -375,30 +425,30 @@ model MessageReceipt {
 // StartedAtUtc <-> EndedAtUtc del participante Callee (aceptacion).
 
 model Call {
-  Id             String    @id @default(uuid()) @db.UniqueIdentifier
-  TenantId       String    @db.UniqueIdentifier
+  Id                 String    @id @default(uuid()) @db.UniqueIdentifier
+  TenantId           String    @db.UniqueIdentifier
   // "Audio" | "Video"
-  Kind           String    @db.NVarChar(16)
+  Kind               String    @db.NVarChar(16)
   // "Ringing" | "Accepted" | "Rejected" | "Cancelled" | "MissedCall" | "Active" | "Ended" | "Failed"
-  Status         String    @db.NVarChar(24)
-  CallerUserId   String    @db.UniqueIdentifier
-  CalleeUserId   String    @db.UniqueIdentifier
+  Status             String    @db.NVarChar(24)
+  CallerUserId       String    @db.UniqueIdentifier
+  CalleeUserId       String    @db.UniqueIdentifier
   // Referencia opcional a la conversation 1:1 asociada (si vino de un chat).
-  ConversationId String?   @db.UniqueIdentifier
-  RingingAtUtc   DateTime  @db.DateTime2
-  AcceptedAtUtc  DateTime? @db.DateTime2
-  StartedAtUtc   DateTime? @db.DateTime2 // ambos peers reportaron media-status active
-  EndedAtUtc     DateTime? @db.DateTime2
-  EndReason      String?   @db.NVarChar(64)  // "Hangup" | "Missed" | "Rejected" | "Cancelled" | "IceFailed"
-  DurationSeconds Int?
+  ConversationId     String?   @db.UniqueIdentifier
+  RingingAtUtc       DateTime  @db.DateTime2
+  AcceptedAtUtc      DateTime? @db.DateTime2
+  StartedAtUtc       DateTime? @db.DateTime2 // ambos peers reportaron media-status active
+  EndedAtUtc         DateTime? @db.DateTime2
+  EndReason          String?   @db.NVarChar(64) // "Hangup" | "Missed" | "Rejected" | "Cancelled" | "IceFailed"
+  DurationSeconds    Int?
   // Recording (opcional; feature flag por tenant).
-  RecordingRequested Boolean @default(false)
-  RecordingFileId    String? @db.UniqueIdentifier
+  RecordingRequested Boolean   @default(false)
+  RecordingFileId    String?   @db.UniqueIdentifier
   // Transcript STT (Fase 6) — lo llena el worker de transcripts via evento
   // communication.call.transcript_ready.v1, nunca escrito por el socket.
-  TranscriptFileId   String? @db.UniqueIdentifier
-  CreatedAtUtc   DateTime  @default(now()) @db.DateTime2
-  UpdatedAtUtc   DateTime  @default(now()) @updatedAt @db.DateTime2
+  TranscriptFileId   String?   @db.UniqueIdentifier
+  CreatedAtUtc       DateTime  @default(now()) @db.DateTime2
+  UpdatedAtUtc       DateTime  @default(now()) @updatedAt @db.DateTime2
 
   Participants CallParticipant[]
 
@@ -408,28 +458,28 @@ model Call {
 }
 
 model CallParticipant {
-  Id              String    @id @default(uuid()) @db.UniqueIdentifier
-  CallId          String    @db.UniqueIdentifier
-  TenantId        String    @db.UniqueIdentifier
-  UserId          String    @db.UniqueIdentifier
-  DisplayName     String    @db.NVarChar(120)
+  Id                      String    @id @default(uuid()) @db.UniqueIdentifier
+  CallId                  String    @db.UniqueIdentifier
+  TenantId                String    @db.UniqueIdentifier
+  UserId                  String    @db.UniqueIdentifier
+  DisplayName             String    @db.NVarChar(120)
   // "Caller" | "Callee"
-  Role            String    @db.NVarChar(16)
+  Role                    String    @db.NVarChar(16)
   // Server-assigned monotonic; el que tenga JoinOrder mayor es "polite" en la
   // perfect-negotiation regla del plan §9C.
-  JoinOrder       Int
-  JoinedAtUtc     DateTime  @default(now()) @db.DateTime2
-  LeftAtUtc       DateTime? @db.DateTime2
+  JoinOrder               Int
+  JoinedAtUtc             DateTime  @default(now()) @db.DateTime2
+  LeftAtUtc               DateTime? @db.DateTime2
   // Consolidado — sustituye eventos separados participant_muted /
   // participant_video_on|off / participant_screen_share_start|stop del legacy.
-  AudioEnabled    Boolean   @default(true)
-  VideoEnabled    Boolean   @default(true)
-  ScreenSharing   Boolean   @default(false)
+  AudioEnabled            Boolean   @default(true)
+  VideoEnabled            Boolean   @default(true)
+  ScreenSharing           Boolean   @default(false)
   // Fase Backend 7 — timestamp del inicio del share actual (para calcular
   // durationSeconds en CallScreenShareStoppedEvent). Null cuando no se esta
   // compartiendo.
   ScreenShareStartedAtUtc DateTime? @db.DateTime2
-  ConnectionQuality String  @default("Unknown") @db.NVarChar(16)
+  ConnectionQuality       String    @default("Unknown") @db.NVarChar(16)
 
   Call Call @relation(fields: [CallId], references: [Id], onDelete: Cascade)
 
@@ -481,30 +531,30 @@ model Meeting {
 }
 
 model MeetingParticipant {
-  Id                 String    @id @default(uuid()) @db.UniqueIdentifier
-  MeetingId          String    @db.UniqueIdentifier
-  TenantId           String    @db.UniqueIdentifier
-  UserId             String    @db.UniqueIdentifier
-  DisplayName        String    @db.NVarChar(120)
+  Id                String    @id @default(uuid()) @db.UniqueIdentifier
+  MeetingId         String    @db.UniqueIdentifier
+  TenantId          String    @db.UniqueIdentifier
+  UserId            String    @db.UniqueIdentifier
+  DisplayName       String    @db.NVarChar(120)
   // Espejo libre del claim JWT actor_type ("TenantEmployee"|"TenantAdmin"|
   // "Customer"|...). Fase Backend 5 agrega "Guest" para invitados sin cuenta
   // Auth que entran via join-by-token + shortLivedJoinTicket.
-  ActorType          String    @default("TenantEmployee") @db.NVarChar(32)
+  ActorType         String    @default("TenantEmployee") @db.NVarChar(32)
   // "Host" | "Cohost" | "Attendee"
-  Role               String    @db.NVarChar(16)
+  Role              String    @db.NVarChar(16)
   // "Waiting" | "Joined" | "Left" | "Removed"
-  Status             String    @db.NVarChar(16)
-  JoinOrder          Int
-  RequestedAtUtc     DateTime  @default(now()) @db.DateTime2
-  AdmittedAtUtc      DateTime? @db.DateTime2
-  JoinedAtUtc        DateTime? @db.DateTime2
-  LeftAtUtc          DateTime? @db.DateTime2
+  Status            String    @db.NVarChar(16)
+  JoinOrder         Int
+  RequestedAtUtc    DateTime  @default(now()) @db.DateTime2
+  AdmittedAtUtc     DateTime? @db.DateTime2
+  JoinedAtUtc       DateTime? @db.DateTime2
+  LeftAtUtc         DateTime? @db.DateTime2
   // Consolidado (peer_status)
-  AudioEnabled       Boolean   @default(true)
-  VideoEnabled       Boolean   @default(true)
-  ScreenSharing      Boolean   @default(false)
-  HandRaised         Boolean   @default(false)
-  ConnectionQuality  String    @default("Unknown") @db.NVarChar(16)
+  AudioEnabled      Boolean   @default(true)
+  VideoEnabled      Boolean   @default(true)
+  ScreenSharing     Boolean   @default(false)
+  HandRaised        Boolean   @default(false)
+  ConnectionQuality String    @default("Unknown") @db.NVarChar(16)
 
   Meeting Meeting @relation(fields: [MeetingId], references: [Id], onDelete: Cascade)
 
@@ -521,21 +571,21 @@ model MeetingParticipant {
 // operacionales (Conversation/Message/Call/Meeting) para reportes.
 
 model CommunicationAnalyticsSnapshot {
-  TenantId              String   @db.UniqueIdentifier
-  Day                   DateTime @db.Date
-  MessagesSent          Int      @default(0)
-  ConversationsStarted  Int      @default(0)
-  CallsStarted          Int      @default(0)
-  CallsEnded            Int      @default(0)
-  CallMinutes           Int      @default(0)
-  MissedCalls           Int      @default(0)
-  MeetingsScheduled     Int      @default(0)
-  MeetingsStarted       Int      @default(0)
-  MeetingsEnded         Int      @default(0)
-  MeetingMinutes        Int      @default(0)
-  SupportTicketsOpened  Int      @default(0)
-  SupportTicketsResolved Int     @default(0)
-  UpdatedAtUtc          DateTime @default(now()) @updatedAt @db.DateTime2
+  TenantId               String   @db.UniqueIdentifier
+  Day                    DateTime @db.Date
+  MessagesSent           Int      @default(0)
+  ConversationsStarted   Int      @default(0)
+  CallsStarted           Int      @default(0)
+  CallsEnded             Int      @default(0)
+  CallMinutes            Int      @default(0)
+  MissedCalls            Int      @default(0)
+  MeetingsScheduled      Int      @default(0)
+  MeetingsStarted        Int      @default(0)
+  MeetingsEnded          Int      @default(0)
+  MeetingMinutes         Int      @default(0)
+  SupportTicketsOpened   Int      @default(0)
+  SupportTicketsResolved Int      @default(0)
+  UpdatedAtUtc           DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@id([TenantId, Day])
 }
@@ -552,26 +602,26 @@ model CommunicationAnalyticsSnapshot {
 // se hace en application layer antes de tocar el aggregate.
 
 model SupportTicket {
-  Id                String    @id @default(uuid()) @db.UniqueIdentifier
-  TenantId          String    @db.UniqueIdentifier
+  Id              String    @id @default(uuid()) @db.UniqueIdentifier
+  TenantId        String    @db.UniqueIdentifier
   // PlatformTenant fijo (sembrado). Se persiste para permitir consultas eficientes
   // del agente "todos mis tickets" sin cross-tenant scan.
-  AgentTenantId     String    @db.UniqueIdentifier
+  AgentTenantId   String    @db.UniqueIdentifier
   // Usuario del tenant customer que abrio el ticket.
-  OpenedByUserId    String    @db.UniqueIdentifier
+  OpenedByUserId  String    @db.UniqueIdentifier
   // Agente asignado (null si aun no reclamado). Vive en AgentTenantId.
-  AssignedAgentId   String?   @db.UniqueIdentifier
+  AssignedAgentId String?   @db.UniqueIdentifier
   // ID de la Conversation Kind=Support asociada.
-  ConversationId    String    @unique @db.UniqueIdentifier
-  Subject           String    @db.NVarChar(200)
-  Category          String    @db.NVarChar(32) // "Billing"|"Technical"|"Account"|"Other"
-  Priority          String    @db.NVarChar(16) // "Low"|"Normal"|"High"|"Urgent"
-  Status            String    @db.NVarChar(24) // "Open"|"Claimed"|"WaitingCustomer"|"WaitingAgent"|"Resolved"|"Closed"
-  OpenedAtUtc       DateTime  @default(now()) @db.DateTime2
-  ClaimedAtUtc      DateTime? @db.DateTime2
-  ResolvedAtUtc     DateTime? @db.DateTime2
-  ClosedAtUtc       DateTime? @db.DateTime2
-  UpdatedAtUtc      DateTime  @default(now()) @updatedAt @db.DateTime2
+  ConversationId  String    @unique @db.UniqueIdentifier
+  Subject         String    @db.NVarChar(200)
+  Category        String    @db.NVarChar(32) // "Billing"|"Technical"|"Account"|"Other"
+  Priority        String    @db.NVarChar(16) // "Low"|"Normal"|"High"|"Urgent"
+  Status          String    @db.NVarChar(24) // "Open"|"Claimed"|"WaitingCustomer"|"WaitingAgent"|"Resolved"|"Closed"
+  OpenedAtUtc     DateTime  @default(now()) @db.DateTime2
+  ClaimedAtUtc    DateTime? @db.DateTime2
+  ResolvedAtUtc   DateTime? @db.DateTime2
+  ClosedAtUtc     DateTime? @db.DateTime2
+  UpdatedAtUtc    DateTime  @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, Status, OpenedAtUtc(sort: Desc)])
   @@index([AgentTenantId, Status, OpenedAtUtc(sort: Desc)])
@@ -589,24 +639,24 @@ model SupportTicket {
 // en esta tabla — llegan por un evento socket propio (cierre CRIT legacy).
 
 model NotificationEntry {
-  Id             String   @id @default(uuid()) @db.UniqueIdentifier
-  TenantId       String   @db.UniqueIdentifier
-  UserId         String   @db.UniqueIdentifier
+  Id              String    @id @default(uuid()) @db.UniqueIdentifier
+  TenantId        String    @db.UniqueIdentifier
+  UserId          String    @db.UniqueIdentifier
   // "signature.reminder_due" | "signature.completed" | "signature.canceled" |
   // "signature.push_challenge" | "customer.bulk_import_completed" | ...
-  Kind           String   @db.NVarChar(64)
-  Priority       String   @default("Normal") @db.NVarChar(16)   // "Low"|"Normal"|"High"|"Urgent"
-  Title          String   @db.NVarChar(200)
-  Body           String   @db.NVarChar(1000)
+  Kind            String    @db.NVarChar(64)
+  Priority        String    @default("Normal") @db.NVarChar(16) // "Low"|"Normal"|"High"|"Urgent"
+  Title           String    @db.NVarChar(200)
+  Body            String    @db.NVarChar(1000)
   // JSON con IDs/URLs para deep-link. Nunca PII.
-  MetadataJson   String   @db.NVarChar(Max)
+  MetadataJson    String    @db.NVarChar(Max)
   // Trace del evento originador.
-  SourceEventId  String   @db.UniqueIdentifier
-  SourceEventType String  @db.NVarChar(128)
-  CorrelationId  String?  @db.NVarChar(64)
-  ReadAtUtc      DateTime? @db.DateTime2
-  DismissedAtUtc DateTime? @db.DateTime2
-  CreatedAtUtc   DateTime  @default(now()) @db.DateTime2
+  SourceEventId   String    @db.UniqueIdentifier
+  SourceEventType String    @db.NVarChar(128)
+  CorrelationId   String?   @db.NVarChar(64)
+  ReadAtUtc       DateTime? @db.DateTime2
+  DismissedAtUtc  DateTime? @db.DateTime2
+  CreatedAtUtc    DateTime  @default(now()) @db.DateTime2
 
   @@unique([TenantId, SourceEventId, UserId])
   @@index([TenantId, UserId, ReadAtUtc, CreatedAtUtc(sort: Desc)])
@@ -616,25 +666,25 @@ model NotificationEntry {
 // generado por el server (32 bytes cripto-random). El token en claro NUNCA
 // vuelve a la BD ni al log — se emite en la respuesta de creacion una sola vez.
 model MeetingInvitation {
-  Id             String    @id @default(uuid()) @db.UniqueIdentifier
-  MeetingId      String    @db.UniqueIdentifier
-  TenantId       String    @db.UniqueIdentifier
+  Id                   String    @id @default(uuid()) @db.UniqueIdentifier
+  MeetingId            String    @db.UniqueIdentifier
+  TenantId             String    @db.UniqueIdentifier
   // "Employee" | "Customer" | "External" — determina como se resuelve el join:
   // Employee/Customer llevan cuenta Auth real (invitationToken solo destraba
   // el lock del meeting); External nunca tiene cuenta y entra 100% via
   // join-by-token + shortLivedJoinTicket como Guest (Fase Backend 5).
-  InviteeKind    String    @default("External") @db.NVarChar(16)
+  InviteeKind          String    @default("External") @db.NVarChar(16)
   // Cuando invitamos por email externo (no user Auth) guardamos el email.
-  InviteeEmail   String?   @db.NVarChar(320)
-  InviteeUserId  String?   @db.UniqueIdentifier
+  InviteeEmail         String?   @db.NVarChar(320)
+  InviteeUserId        String?   @db.UniqueIdentifier
   // Nombre para mostrar cuando no hay cuenta Auth que lo resuelva (Guest).
-  InviteeName    String?   @db.NVarChar(120)
-  InviteeExternalPhone String? @db.NVarChar(32)
-  TokenHash      String    @db.NVarChar(128)
-  ExpiresAtUtc   DateTime  @db.DateTime2
-  UsedAtUtc      DateTime? @db.DateTime2
-  RevokedAtUtc   DateTime? @db.DateTime2
-  CreatedAtUtc   DateTime  @default(now()) @db.DateTime2
+  InviteeName          String?   @db.NVarChar(120)
+  InviteeExternalPhone String?   @db.NVarChar(32)
+  TokenHash            String    @db.NVarChar(128)
+  ExpiresAtUtc         DateTime  @db.DateTime2
+  UsedAtUtc            DateTime? @db.DateTime2
+  RevokedAtUtc         DateTime? @db.DateTime2
+  CreatedAtUtc         DateTime  @default(now()) @db.DateTime2
 
   Meeting Meeting @relation(fields: [MeetingId], references: [Id], onDelete: Cascade)
 
@@ -688,4 +738,50 @@ model RecordingSession {
 
   @@unique([Scope, ScopeId])
   @@index([TenantId, Scope, ScopeId])
+}
+
+// -----------------------------------------------------------------------------
+// CustomerPortalAccount — proyeccion local de (CustomerId -> UserId de portal
+// activo). Fase 6 del plan de notificaciones dinamicas: un Signer de Signature
+// puede tener MappedCustomerId (cliente registrado), pero eso NO garantiza que
+// ese Customer tenga cuenta de portal — investigacion confirmo que
+// Auth.User.CustomerId es opcional, sin unicidad garantizada (indice NO
+// @@unique), y se crea via un flujo de invitacion desacoplado que puede tardar
+// anos o nunca aceptarse. Esta tabla resuelve la pregunta real ("este
+// CustomerId tiene HOY un usuario de portal activo") sin llamar a Auth.
+// Alimentada por auth.user.registered.v1 (ActorType=CustomerPortal) y
+// auth.user.deactivated.v1.
+// @since Fase 6 (notificaciones dinamicas)
+model CustomerPortalAccount {
+  CustomerId   String   @id @db.UniqueIdentifier
+  TenantId     String   @db.UniqueIdentifier
+  UserId       String   @db.UniqueIdentifier
+  IsActive     Boolean  @default(true)
+  UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@index([TenantId, IsActive])
+  // auth.user.deactivated.v1 solo trae UserId, no CustomerId.
+  @@index([UserId])
+}
+
+// -----------------------------------------------------------------------------
+// NotificationActionMapping — que accion (deep-link o ninguna) lleva una
+// notificacion in-app, indexada por (EventKey, AudienceRole) — NO solo por
+// EventKey, porque la misma "cosa que paso" necesita rutas distintas segun
+// quien la recibe (ej. signature.document.signed.v1 para el Preparer va a
+// /crm/firmas/{id}, para el CustomerSigner es solo informativo). Mismo
+// espiritu que EventTemplateMapping de Scribe: configurable en base de datos,
+// editable por un admin, sin tocar codigo. Sin TenantId a proposito — el plan
+// no pidio personalizacion por tenant, es config de plataforma.
+// @since Fase 6 (notificaciones dinamicas)
+model NotificationActionMapping {
+  Id           String   @id @default(uuid()) @db.UniqueIdentifier
+  EventKey     String   @db.NVarChar(100)
+  AudienceRole String   @db.NVarChar(50)
+  ActionType   String   @db.NVarChar(16) // "DeepLink" | "None"
+  UrlTemplate  String?  @db.NVarChar(500) // solo si ActionType = "DeepLink"; placeholders tipo {signatureRequestId}
+  CreatedAtUtc DateTime @default(now()) @db.DateTime2
+  UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
+
+  @@unique([EventKey, AudienceRole])
 }

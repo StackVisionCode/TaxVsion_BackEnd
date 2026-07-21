@@ -44,10 +44,7 @@ public static class ActivateCodeHandler
                 if (definition is null || definition.TenantId != command.OwnerTenantId)
                     return Failure("Codes.ActivateCode.NotFound", "Owned code definition was not found.");
 
-                var activateResult = definition.Activate(
-                    command.ActorUserId,
-                    timeProvider.GetUtcNow().UtcDateTime
-                );
+                var activateResult = definition.Activate(command.ActorUserId, timeProvider.GetUtcNow().UtcDateTime);
                 return activateResult.IsFailure
                     ? Result.Failure<CodeDefinitionStateResponse>(activateResult.Error)
                     : Result.Success(CodeDefinitionStateResponse.From(definition));
@@ -62,9 +59,7 @@ public static class ActivateCodeHandler
             return Result.Failure(new Error("Codes.ActivateCode.InvalidOwner", "OwnerTenantId is required."));
 
         if (command.CodeDefinitionId == Guid.Empty)
-            return Result.Failure(
-                new Error("Codes.ActivateCode.InvalidDefinition", "CodeDefinitionId is required.")
-            );
+            return Result.Failure(new Error("Codes.ActivateCode.InvalidDefinition", "CodeDefinitionId is required."));
 
         if (command.ActorUserId == Guid.Empty)
             return Result.Failure(new Error("Codes.ActivateCode.InvalidActor", "ActorUserId is required."));

@@ -47,8 +47,7 @@ public sealed class GrowthDbContext(
     public DbSet<ReferralRewardCase> ReferralRewardCases => Set<ReferralRewardCase>();
     public DbSet<ReferralRewardAttempt> ReferralRewardAttempts => Set<ReferralRewardAttempt>();
     public DbSet<ReferralFraudReview> ReferralFraudReviews => Set<ReferralFraudReview>();
-    public DbSet<ReferralRewardQuotaCounter> ReferralRewardQuotaCounters =>
-        Set<ReferralRewardQuotaCounter>();
+    public DbSet<ReferralRewardQuotaCounter> ReferralRewardQuotaCounters => Set<ReferralRewardQuotaCounter>();
     public DbSet<ReferralRewardQuotaReservation> ReferralRewardQuotaReservations =>
         Set<ReferralRewardQuotaReservation>();
 
@@ -115,10 +114,7 @@ public sealed class GrowthDbContext(
                     nameof(TenantFilterId),
                     BindingFlags.Instance | BindingFlags.NonPublic
                 ) ?? throw new InvalidOperationException("Tenant filter property was not found.");
-            var tenantFilterId = Expression.Property(
-                Expression.Constant(this),
-                tenantFilterIdProperty
-            );
+            var tenantFilterId = Expression.Property(Expression.Constant(this), tenantFilterIdProperty);
             var filter = Expression.Lambda(Expression.Equal(tenantProperty, tenantFilterId), parameter);
 
             modelBuilder.Entity(entity.ClrType).HasQueryFilter(filter);

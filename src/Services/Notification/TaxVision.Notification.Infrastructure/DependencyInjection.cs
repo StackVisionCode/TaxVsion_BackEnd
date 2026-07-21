@@ -7,6 +7,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Email.Sending;
 using TaxVision.Notification.Infrastructure.Email;
+using TaxVision.Notification.Infrastructure.Permissions;
 using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Persistence.Repositories;
 using TaxVision.Notification.Infrastructure.Push;
@@ -34,12 +35,37 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotificationDbContext>());
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
+
+        // Fase 4 del plan de notificaciones dinámicas — proyecciones locales de permisos
+        // (alimentadas por UserRolesChanged/RolePermissionsChanged de Auth) + el resolver
+        // que las usa para audiencias ByPermission.
+        services.AddScoped<IUserPermissionsProjectionRepository, UserPermissionsProjectionRepository>();
+        services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+        services.AddScoped<IRecipientResolver, RecipientResolver>();
+
+        // Fase 5 — el interruptor que consulta NotificationDispatcher antes de cada envío.
+        services.AddScoped<IUserNotificationPreferenceRepository, UserNotificationPreferenceRepository>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<ISmsSender, LoggingSmsSender>();
-        // Push FCM/APNs: LoggingPushSender es provisional, mismo criterio que
-        // LoggingSmsSender — reemplazar por Firebase Admin SDK / APNs HTTP2
-        // cuando exista un proveedor real, sin tocar NotificationDispatcher.
-        services.AddScoped<IPushSender, LoggingPushSender>();
+
+        // Fase 7 del plan de notificaciones dinámicas — Notification:UseFcmPush sigue el mismo
+        // idiom que Notification:UsePostmasterDispatch (flag explícito, default false hasta
+        // tener credenciales reales de Firebase configuradas) en vez del patrón "presence-gated"
+        // que usa CmsSignerOptions en Signature para su PFX: acá se prefiere el flag explícito
+        // porque el path del JSON de service account puede estar seteado en algunos ambientes
+        // (staging) sin querer activar FCM todavía. GetValue<bool> con la clave ausente resuelve
+        // a false — coincide con el default seguro (sin credenciales, no intentar inicializar
+        // Firebase y arrancar con LoggingPushSender, igual que antes de esta fase).
+        services.Configure<FcmOptions>(configuration.GetSection(FcmOptions.SectionName));
+        var useFcmPush = configuration.GetValue<bool>("Notification:UseFcmPush");
+        if (useFcmPush)
+        {
+            services.AddScoped<IPushSender, FcmPushSender>();
+        }
+        else
+        {
+            services.AddScoped<IPushSender, LoggingPushSender>();
+        }
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<NotificationDispatcher>();
 

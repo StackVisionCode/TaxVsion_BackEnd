@@ -51,18 +51,12 @@ public static class CreateReferralAttributionHandler
             fingerprint,
             async operationCt =>
             {
-                var program = await programs.GetForEvaluationAsync(
-                    command.ProgramId,
-                    operationCt
-                );
+                var program = await programs.GetForEvaluationAsync(command.ProgramId, operationCt);
                 if (program is null)
                     return NotFound();
 
                 if (
-                    (
-                        program.FlowType == ReferralFlowType.TenantToTenant
-                        && command.TenantId != command.RefereeId
-                    )
+                    (program.FlowType == ReferralFlowType.TenantToTenant && command.TenantId != command.RefereeId)
                     || (
                         program.FlowType == ReferralFlowType.TaxpayerToTaxpayer
                         && program.TenantScopeId != command.TenantId
@@ -72,18 +66,11 @@ public static class CreateReferralAttributionHandler
                     return NotFound();
                 }
 
-                var code = await codes.ResolveByHashAsync(
-                    program.Id,
-                    codeHash.Value,
-                    operationCt
-                );
+                var code = await codes.ResolveByHashAsync(program.Id, codeHash.Value, operationCt);
                 if (code is null)
                 {
                     return Result.Failure<CreateReferralAttributionResult>(
-                        new Error(
-                            "ReferralCode.Invalid",
-                            "The referral code is invalid or unavailable."
-                        )
+                        new Error("ReferralCode.Invalid", "The referral code is invalid or unavailable.")
                     );
                 }
 
@@ -107,11 +94,7 @@ public static class CreateReferralAttributionHandler
 
                 await attributions.AddAsync(created.Value, operationCt);
                 return Result.Success(
-                    new CreateReferralAttributionResult(
-                        created.Value.Id,
-                        created.Value.Status,
-                        WasReplay: false
-                    )
+                    new CreateReferralAttributionResult(created.Value.Id, created.Value.Status, WasReplay: false)
                 );
             },
             ct

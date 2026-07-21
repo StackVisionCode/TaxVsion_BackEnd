@@ -22,10 +22,7 @@ public static class BeginReferralRewardGrantHandler
         if (actor.IsFailure)
             return Result.Failure<ReferralRewardInstruction>(actor.Error);
 
-        var fingerprint = CanonicalPayloadFingerprint.Compute(
-            command.TenantId,
-            command.RewardCaseId
-        );
+        var fingerprint = CanonicalPayloadFingerprint.Compute(command.TenantId, command.RewardCaseId);
 
         return await idempotency.ExecuteAsync(
             Operation,
@@ -34,11 +31,7 @@ public static class BeginReferralRewardGrantHandler
             fingerprint,
             async operationCt =>
             {
-                var reward = await rewards.GetByIdAsync(
-                    command.RewardCaseId,
-                    command.TenantId,
-                    operationCt
-                );
+                var reward = await rewards.GetByIdAsync(command.RewardCaseId, command.TenantId, operationCt);
                 if (reward is null)
                     return NotFound();
 
@@ -65,10 +58,7 @@ public static class BeginReferralRewardGrantHandler
         );
     }
 
-    private static ReferralRewardInstruction ToInstruction(
-        ReferralRewardCase reward,
-        Guid attemptId
-    ) =>
+    private static ReferralRewardInstruction ToInstruction(ReferralRewardCase reward, Guid attemptId) =>
         new(
             reward.Id,
             attemptId,

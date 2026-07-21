@@ -10,6 +10,9 @@ export interface UserPermissionsProjectionSnapshot {
   readonly tenantId: string;
   readonly permissions: readonly string[];
   readonly permissionVersion: number;
+  // Fase 2 del plan de notificaciones dinamicas — RoleIds del usuario, para poder recomputar
+  // su union de permisos cuando cambia UN rol (ver RolePermissionsChangedConsumer).
+  readonly roleIds: readonly string[];
   readonly actorType: string;
   readonly isActive: boolean;
   readonly updatedAtUtc: Date;
@@ -28,6 +31,7 @@ export interface UserPermissionsProjectionRepository {
     tenantId: string;
     permissions: readonly string[];
     permissionVersion: number;
+    roleIds: readonly string[];
     actorType: string;
     isActive: boolean;
     updatedAtUtc: Date;
@@ -36,4 +40,11 @@ export interface UserPermissionsProjectionRepository {
   findByUserId(userId: string): Promise<UserPermissionsProjectionSnapshot | null>;
 
   markInactive(userId: string, now: Date): Promise<void>;
+
+  /** Fase 2 — usuarios activos de un tenant que tienen el RoleId dado entre sus RoleIds.
+   * Usado por RolePermissionsChangedConsumer para saber a quien recomputarle Permissions. */
+  findActiveByTenantAndRoleId(
+    tenantId: string,
+    roleId: string,
+  ): Promise<readonly UserPermissionsProjectionSnapshot[]>;
 }

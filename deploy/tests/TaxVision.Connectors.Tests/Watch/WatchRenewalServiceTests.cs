@@ -120,6 +120,7 @@ public class WatchRenewalServiceTests
         var expiredEvent = Assert.IsType<ConnectorsWatchExpiredIntegrationEvent>(published);
         Assert.Equal(fixture.Subscription.AccountId, expiredEvent.AccountId);
         Assert.Equal(3, expiredEvent.FailureCount);
+        Assert.Equal(fixture.Account.CreatedByUserId, expiredEvent.CreatedByUserId);
     }
 
     [Fact]

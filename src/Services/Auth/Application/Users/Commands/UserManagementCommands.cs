@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -99,6 +100,7 @@ public static class ReactivateUserHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -114,6 +116,17 @@ public static class ReactivateUserHandler
             return seatResult;
 
         target.Reactivate();
+
+        await bus.PublishAsync(
+            new UserReactivatedIntegrationEvent
+            {
+                TenantId = target.TenantId,
+                UserId = target.Id,
+                Email = target.Email,
+                ActorType = target.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -242,11 +255,14 @@ public static class AssignUserRolesHandler
         if (tenantRoles.Any(role => !role.IsActive))
             return Result.Failure(new Error("Role.Inactive", "One or more roles are inactive."));
 
+        // Catálogo cargado siempre: lo necesita el guard de CustomerPortal (si aplica)
+        // y, ahora, el cálculo de PermissionCodes del evento publicado más abajo.
+        var catalog = await roles.GetPermissionsCatalogAsync(ct);
+
         // Fase A1: un Tenant Customer nunca debe terminar con un permiso interno colado
         // por un rol mal asignado (ver CustomerPortalRoleGuard).
         if (target.ActorType == UserActorType.CustomerPortal)
         {
-            var catalog = await roles.GetPermissionsCatalogAsync(ct);
             var portalGuard = CustomerPortalRoleGuard.ValidateRolesForCustomerPortal(tenantRoles, catalog);
             if (portalGuard.IsFailure)
                 return portalGuard;
@@ -262,6 +278,8 @@ public static class AssignUserRolesHandler
                 UserId = target.Id,
                 PermissionsVersion = target.PermissionsVersion,
                 RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
+                RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
+                PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
                 CorrelationId = correlation.CorrelationId,
             }
         );
@@ -285,5 +303,27 @@ public static class AssignUserRolesHandler
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Códigos de permiso efectivos del set de roles NUEVO, calculados en memoria a partir
+    /// de <paramref name="tenantRoles"/> (ya resuelto por el handler) y el catálogo. No usa
+    /// <see cref="IRoleRepository.GetEffectivePermissionCodesAsync"/> porque esa consulta
+    /// golpea la base directamente y en este punto todavía no se llamó SaveChangesAsync —
+    /// devolvería los permisos VIEJOS, no los que se están por persistir.
+    /// </summary>
+    private static string[] ResolveEffectivePermissionCodes(
+        IReadOnlyList<Role> tenantRoles,
+        IReadOnlyList<Permission> catalog
+    )
+    {
+        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
+        return tenantRoles
+            .SelectMany(role => role.Permissions)
+            .Select(rolePermission => rolePermission.PermissionId)
+            .Distinct()
+            .Where(codeByPermissionId.ContainsKey)
+            .Select(permissionId => codeByPermissionId[permissionId])
+            .ToArray();
     }
 }

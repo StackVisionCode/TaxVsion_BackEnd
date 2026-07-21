@@ -56,11 +56,7 @@ public static class CompensateRedemptionHandler
             fingerprint,
             async operationCt =>
             {
-                var redemption = await redemptions.GetByIdAsync(
-                    command.TenantId,
-                    command.RedemptionId,
-                    operationCt
-                );
+                var redemption = await redemptions.GetByIdAsync(command.TenantId, command.RedemptionId, operationCt);
                 if (redemption is null)
                     return Failure("Codes.CompensateRedemption.NotFound", "Redemption was not found.");
 

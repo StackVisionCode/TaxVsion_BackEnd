@@ -470,6 +470,7 @@ public static class MoveFileToFolderHandler
                     FolderId = link.ResourceId,
                     FileId = file.Id,
                     AutoCovered = autoCovered,
+                    CreatedByUserId = file.CreatedBy,
                     CorrelationId = command.Audit.CorrelationId,
                 }
             );

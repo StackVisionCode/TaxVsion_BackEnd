@@ -215,7 +215,11 @@ public static class ProcessTenantWebhookHandler
         return Result.Success();
     }
 
-    private static Result ApplyPayload(TenantPayment payment, WebhookEventPayload payload, IPaymentClientMetrics metrics)
+    private static Result ApplyPayload(
+        TenantPayment payment,
+        WebhookEventPayload payload,
+        IPaymentClientMetrics metrics
+    )
     {
         var nowUtc = DateTime.UtcNow;
 
@@ -249,7 +253,10 @@ public static class ProcessTenantWebhookHandler
 
             default:
                 return Result.Failure(
-                    new Error("WebhookEvent.UnsupportedPaymentStatus", $"Payment status {payload.Status} is not actionable.")
+                    new Error(
+                        "WebhookEvent.UnsupportedPaymentStatus",
+                        $"Payment status {payload.Status} is not actionable."
+                    )
                 );
         }
     }

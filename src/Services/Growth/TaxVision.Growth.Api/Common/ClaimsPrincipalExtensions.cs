@@ -5,8 +5,7 @@ namespace TaxVision.Growth.Api.Common;
 
 public static class ClaimsPrincipalExtensions
 {
-    private const string MappedAudienceClaim =
-        "http://schemas.microsoft.com/ws/2008/06/identity/claims/audience";
+    private const string MappedAudienceClaim = "http://schemas.microsoft.com/ws/2008/06/identity/claims/audience";
 
     public static bool TryGetUserId(this ClaimsPrincipal principal, out Guid userId)
     {

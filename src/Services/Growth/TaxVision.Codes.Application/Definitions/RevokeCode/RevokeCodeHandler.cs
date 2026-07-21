@@ -44,10 +44,7 @@ public static class RevokeCodeHandler
                 if (definition is null || definition.TenantId != command.OwnerTenantId)
                     return Failure("Codes.RevokeCode.NotFound", "Owned code definition was not found.");
 
-                var revokeResult = definition.Revoke(
-                    command.ActorUserId,
-                    timeProvider.GetUtcNow().UtcDateTime
-                );
+                var revokeResult = definition.Revoke(command.ActorUserId, timeProvider.GetUtcNow().UtcDateTime);
                 return revokeResult.IsFailure
                     ? Result.Failure<CodeDefinitionStateResponse>(revokeResult.Error)
                     : Result.Success(CodeDefinitionStateResponse.From(definition));
@@ -62,9 +59,7 @@ public static class RevokeCodeHandler
             return Result.Failure(new Error("Codes.RevokeCode.InvalidOwner", "OwnerTenantId is required."));
 
         if (command.CodeDefinitionId == Guid.Empty)
-            return Result.Failure(
-                new Error("Codes.RevokeCode.InvalidDefinition", "CodeDefinitionId is required.")
-            );
+            return Result.Failure(new Error("Codes.RevokeCode.InvalidDefinition", "CodeDefinitionId is required."));
 
         if (command.ActorUserId == Guid.Empty)
             return Result.Failure(new Error("Codes.RevokeCode.InvalidActor", "ActorUserId is required."));

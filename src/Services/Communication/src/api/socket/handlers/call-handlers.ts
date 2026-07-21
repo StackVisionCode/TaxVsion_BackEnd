@@ -57,6 +57,38 @@ export function registerCallHandlers(io: CommunicationIoServer, container: AppCo
   });
 }
 
+/**
+ * Fase A3 — TTL de respaldo para el lease de "busy" de una call. En operacion
+ * normal siempre se limpia explicitamente (accept/reject/cancel/end/disconnect);
+ * este valor solo protege contra el caso en que ninguno de esos handlers
+ * llegue a correr (crash del proceso a mitad de un `markBusy`).
+ */
+const CALL_BUSY_LEASE_SECONDS = 6 * 60 * 60;
+
+/**
+ * Limpia la fuente de "busy" de esta call para caller y callee. Se llama en
+ * cualquier transicion terminal (Reject/Cancel/End) y en el fallback de
+ * disconnect. clearBusy es un no-op seguro para quien nunca estuvo marcado
+ * busy (ej. el callee en un Reject, que nunca llego a Accept) — countBusySources
+ * da 0 y solo re-publica el status actual, sin efecto visible.
+ */
+async function clearCallBusyForBothParties(
+  container: AppContainer,
+  tenantId: string,
+  callId: string,
+): Promise<void> {
+  const call = await container.calls.findById(tenantId, callId);
+  if (!call) return;
+  const snap = call.toSnapshot();
+  await Promise.all(
+    [snap.callerUserId, snap.calleeUserId].map((participantUserId) =>
+      container.presence
+        .clearBusy({ tenantId, userId: participantUserId, sourceId: callId })
+        .catch((err: unknown) => logger.warn({ err, callId }, 'presence clearBusy (call) failed')),
+    ),
+  );
+}
+
 function wireCallSocket(
   socket: CommunicationSocket,
   container: AppContainer,
@@ -117,6 +149,18 @@ function wireCallSocket(
       return;
     }
     await socket.join(`t:${tenantId}:call:${result.value.callId}`);
+    // Fase A3 — el caller ya cuenta como "busy" desde que empieza a sonar
+    // (dialing out): no puede razonablemente aceptar/iniciar otra llamada a
+    // la vez. El callee recien se marca busy si/cuando acepta (mas abajo).
+    await container.presence
+      .markBusy({
+        tenantId,
+        userId,
+        sourceId: result.value.callId,
+        kind: 'Call',
+        leaseSeconds: CALL_BUSY_LEASE_SECONDS,
+      })
+      .catch((err: unknown) => logger.warn({ err }, 'presence markBusy (call initiate) failed'));
     ack?.({ ok: true, value: result.value });
     const incoming: IncomingCallDto = {
       callId: result.value.callId,
@@ -166,6 +210,21 @@ function wireCallSocket(
     }
     if (action === 'accept') {
       await socket.join(`t:${tenantId}:call:${parsed.data.callId}`);
+      // Fase A3 — el callee recien se marca busy al aceptar (el caller ya lo
+      // esta desde Initiate).
+      await container.presence
+        .markBusy({
+          tenantId,
+          userId,
+          sourceId: parsed.data.callId,
+          kind: 'Call',
+          leaseSeconds: CALL_BUSY_LEASE_SECONDS,
+        })
+        .catch((err: unknown) => logger.warn({ err }, 'presence markBusy (call accept) failed'));
+    } else {
+      // reject/cancel: la call termina desde Ringing — limpia cualquier
+      // fuente busy que haya quedado (en la practica, solo el caller).
+      await clearCallBusyForBothParties(container, tenantId, parsed.data.callId);
     }
     ack?.({ ok: true, value: result.value });
     emitter.emitToCall({
@@ -212,6 +271,7 @@ function wireCallSocket(
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
+    await clearCallBusyForBothParties(container, tenantId, parsed.data.callId);
     ack?.({ ok: true, value: result.value });
     emitter.emitToCall({
       tenantId,
@@ -520,8 +580,9 @@ function wireCallSocket(
           actorUserId: userId,
         },
         container,
-      ).then((result) => {
+      ).then(async (result) => {
         if (!result.isSuccess) return;
+        await clearCallBusyForBothParties(container, tenantId, callId);
         emitter.emitToCall({
           tenantId,
           callId,

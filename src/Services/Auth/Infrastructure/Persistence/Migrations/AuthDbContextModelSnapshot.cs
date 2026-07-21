@@ -1312,6 +1312,17 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000141"),
+                            Code = "customers.preparer.manage",
+                            Description = "Asignar o reasignar el preparador responsable de un customer",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            MinPlanTier = 0,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000064"),
                             Code = "tenant.domains.manage",
                             Description = "Gestionar dominios propios del tenant (custom hostnames)",
@@ -2117,6 +2128,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("nvarchar(60)");
 
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2486,6 +2500,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTime?>("PermissionsBackfilledAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("PermissionsVersion")
                         .HasColumnType("int");

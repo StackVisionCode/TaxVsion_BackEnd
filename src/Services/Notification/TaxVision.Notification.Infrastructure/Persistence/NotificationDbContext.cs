@@ -9,6 +9,8 @@ using TaxVision.Notification.Domain.Emailing.Layouts;
 using TaxVision.Notification.Domain.Emailing.Sending;
 using TaxVision.Notification.Domain.Emailing.Templates;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Permissions;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Infrastructure.Persistence;
 
@@ -28,6 +30,9 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     public DbSet<EmailDeliveryLog> EmailDeliveryLogs => Set<EmailDeliveryLog>();
     public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
     public DbSet<EmailCampaignRecipient> EmailCampaignRecipients => Set<EmailCampaignRecipient>();
+    public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
+    public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<UserNotificationPreference> UserNotificationPreferences => Set<UserNotificationPreference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

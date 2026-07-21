@@ -23,20 +23,13 @@ public sealed class CodeRuleVersionConfiguration : IEntityTypeConfiguration<Code
                 benefit.Property(value => value.GrantKey).HasMaxLength(200);
                 benefit.OwnsOne(
                     value => value.Percentage,
-                    percentage =>
-                        percentage.Property(value => value.Value).HasColumnName("BenefitBasisPoints")
+                    percentage => percentage.Property(value => value.Value).HasColumnName("BenefitBasisPoints")
                 );
-                benefit.OwnsOne(
-                    value => value.FixedAmount,
-                    amount => amount.ConfigureMoney("BenefitFixed")
-                );
+                benefit.OwnsOne(value => value.FixedAmount, amount => amount.ConfigureMoney("BenefitFixed"));
             }
         );
         builder.Navigation(rule => rule.Benefit).IsRequired();
-        builder.OwnsOne(
-            rule => rule.MinimumPurchase,
-            minimum => minimum.ConfigureMoney("MinimumPurchase")
-        );
+        builder.OwnsOne(rule => rule.MinimumPurchase, minimum => minimum.ConfigureMoney("MinimumPurchase"));
 
         builder
             .HasIndex(rule => new { rule.CodeDefinitionId, rule.Version })

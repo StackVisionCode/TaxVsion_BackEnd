@@ -358,6 +358,7 @@ public static class ScanFileHandler
                                 FileId = file.Id,
                                 ObjectKey = file.ObjectKey,
                                 PolicyReason = reason,
+                                CreatedBy = file.CreatedBy,
                                 CorrelationId = command.CorrelationId,
                             }
                         );
@@ -428,6 +429,7 @@ public static class ScanFileHandler
                         ContentType = inspected.ContentType,
                         SizeBytes = file.SizeBytes,
                         ChecksumSha256 = inspected.Sha256,
+                        CreatedBy = file.CreatedBy,
                         CorrelationId = command.CorrelationId,
                     }
                 );
@@ -557,6 +559,7 @@ public static class DeleteFileHandler
             {
                 TenantId = command.TenantId,
                 FileId = file.Id,
+                CreatedBy = file.CreatedBy,
                 CorrelationId = command.Audit.CorrelationId,
             }
         );

@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -199,10 +200,11 @@ public static class MfaChallengeRequestedConsumer
                     evt.TenantId,
                     evt.Destination,
                     text,
+                    NotificationCategory.AccountSecurity,
                     "auth.otp_code",
                     evt.EventId,
                     correlation.CorrelationId,
-                    ct
+                    ct: ct
                 );
                 return;
             }
@@ -354,10 +356,12 @@ public static class SecurityAlertConsumer
                 evt.TenantId,
                 $"user:{evt.UserId:N}",
                 subject,
+                NotificationCategory.AccountSecurity,
                 "auth.security_alert",
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                recipientUserId: evt.UserId,
+                ct: ct
             );
         }
     }

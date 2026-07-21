@@ -3,10 +3,11 @@ import type { Redis } from 'ioredis';
 import { logger } from '../logger/logger.js';
 import type { RealtimeEmitter } from '../../application/ports/realtime-emitter.js';
 import { ChatSocketEvents, type PresenceChangedDto } from '../../contracts/socket/chat-socket-events.js';
+import { isBusyReason, isPresenceStatus } from '../../domain/presence/presence-status.js';
 
 /**
  * Suscribe (via PSUBSCRIBE) al canal Pub/Sub que publica `RedisPresenceService`
- * cuando un usuario transita entre online/offline. El canal es
+ * cuando un usuario transita de status (Online/Busy/Offline). El canal es
  * `comm:presence:changed:{tenantId}` — el `tenantId` se lee del propio nombre
  * del canal para no confiar en el payload.
  *
@@ -21,7 +22,8 @@ import { ChatSocketEvents, type PresenceChangedDto } from '../../contracts/socke
  */
 export interface PresenceChangedMessage {
   userId: string;
-  online: boolean;
+  status: 'Online' | 'Busy' | 'Offline';
+  busyReason: 'Call' | 'Meeting' | null;
   changedAtUtc: string;
 }
 
@@ -48,11 +50,12 @@ export function startPresenceChangedWatcher(
       logger.warn({ raw, channel }, 'presence changed: unparseable payload');
       return;
     }
-    if (!parsed.userId || typeof parsed.online !== 'boolean') return;
+    if (!parsed.userId || !isPresenceStatus(parsed.status)) return;
 
     const dto: PresenceChangedDto = {
       userId: parsed.userId,
-      online: parsed.online,
+      status: parsed.status,
+      busyReason: parsed.status === 'Busy' && isBusyReason(parsed.busyReason ?? '') ? parsed.busyReason : null,
       changedAtUtc: parsed.changedAtUtc ?? new Date().toISOString(),
     };
 

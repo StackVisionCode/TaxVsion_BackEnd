@@ -15,14 +15,9 @@ namespace TaxVision.Growth.Api.IntegrationEvents;
 /// </summary>
 public static class PaymentSucceededConsumer
 {
-    private static readonly Guid PaymentServiceActorId =
-        new("51000000-0000-0000-0000-000000000001");
+    private static readonly Guid PaymentServiceActorId = new("51000000-0000-0000-0000-000000000001");
 
-    public static async Task Handle(
-        PaymentSucceededIntegrationEvent message,
-        IMessageBus bus,
-        CancellationToken ct
-    )
+    public static async Task Handle(PaymentSucceededIntegrationEvent message, IMessageBus bus, CancellationToken ct)
     {
         var eventKey = $"event:{message.EventId:N}";
 
@@ -91,28 +86,15 @@ public static class PaymentSucceededConsumer
 
 public static class PaymentFailedConsumer
 {
-    public static Task Handle(
-        PaymentFailedIntegrationEvent message,
-        IMessageBus bus,
-        CancellationToken ct
-    ) =>
+    public static Task Handle(PaymentFailedIntegrationEvent message, IMessageBus bus, CancellationToken ct) =>
         message.IsTerminal
-            ? PaymentReservationCancellation.CancelAsync(
-                message,
-                message.FailureCode,
-                bus,
-                ct
-            )
+            ? PaymentReservationCancellation.CancelAsync(message, message.FailureCode, bus, ct)
             : Task.CompletedTask;
 }
 
 public static class PaymentCancelledConsumer
 {
-    public static Task Handle(
-        PaymentCancelledIntegrationEvent message,
-        IMessageBus bus,
-        CancellationToken ct
-    ) =>
+    public static Task Handle(PaymentCancelledIntegrationEvent message, IMessageBus bus, CancellationToken ct) =>
         PaymentReservationCancellation.CancelAsync(message, message.ReasonCode, bus, ct);
 }
 
@@ -128,11 +110,10 @@ internal static class PaymentReservationCancellation
         if (message.CodeReservationId is not { } reservationId)
             return;
 
-        var safeReason = string.IsNullOrWhiteSpace(reason)
-            ? "Payment did not complete."
-            : reason.Trim().Length <= 500
-                ? reason.Trim()
-                : reason.Trim()[..500];
+        var safeReason =
+            string.IsNullOrWhiteSpace(reason) ? "Payment did not complete."
+            : reason.Trim().Length <= 500 ? reason.Trim()
+            : reason.Trim()[..500];
         var result = await bus.InvokeAsync<Result<CancelReservationResponse>>(
             new CancelReservationCommand(
                 message.TenantId,
@@ -148,10 +129,7 @@ internal static class PaymentReservationCancellation
         // A terminal payment failure can arrive after a success/commit. That stale
         // event must not reverse a committed redemption. Other failures remain
         // retryable and eventually visible in the dead-letter queue.
-        if (
-            result.IsFailure
-            && result.Error.Code != "Codes.CodeReservation.InvalidTransition"
-        )
+        if (result.IsFailure && result.Error.Code != "Codes.CodeReservation.InvalidTransition")
             throw new GrowthFinancialEventException(result.Error.Code, result.Error.Message);
     }
 }

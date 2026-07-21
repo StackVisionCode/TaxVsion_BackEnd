@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
@@ -6,6 +7,7 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.Roles.Commands;
 
@@ -197,6 +199,7 @@ public static class SetRolePermissionsHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -221,6 +224,24 @@ public static class SetRolePermissionsHandler
         if (result.IsFailure)
             return result;
 
+        // Catálogo recargado acá (no reutiliza el de ValidatePermissionIdsAsync, que no lo
+        // devuelve) para resolver los códigos de permiso efectivos del rol post-cambio — Fase 2
+        // del plan de notificaciones dinámicas: sin este evento, un tenant con 50 empleados en
+        // este rol nunca se entera de que perdieron/ganaron un permiso hasta que alguien les
+        // toque el rol individualmente (que puede no pasar nunca).
+        var catalog = await roles.GetPermissionsCatalogAsync(ct);
+        await bus.PublishAsync(
+            new RolePermissionsChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                RoleId = role.Id,
+                RoleName = role.Name,
+                PermissionCodes = ResolvePermissionCodes(role, catalog),
+                PermissionsVersion = role.PermissionsVersion,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,
@@ -238,6 +259,16 @@ public static class SetRolePermissionsHandler
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
+    }
+
+    private static string[] ResolvePermissionCodes(Role role, IReadOnlyList<Permission> catalog)
+    {
+        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
+        return role
+            .Permissions.Select(link => link.PermissionId)
+            .Where(codeByPermissionId.ContainsKey)
+            .Select(id => codeByPermissionId[id])
+            .ToArray();
     }
 }
 

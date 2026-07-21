@@ -47,11 +47,7 @@ public static class CancelReservationHandler
             fingerprint,
             async operationCt =>
             {
-                var reservation = await reservations.GetByIdAsync(
-                    command.TenantId,
-                    command.ReservationId,
-                    operationCt
-                );
+                var reservation = await reservations.GetByIdAsync(command.TenantId, command.ReservationId, operationCt);
                 if (reservation is null)
                     return Failure("Codes.CancelReservation.NotFound", "Reservation was not found.");
 
@@ -88,12 +84,7 @@ public static class CancelReservationHandler
                         return Result.Failure<CancelReservationResponse>(counterSetResult.Error);
                 }
 
-                var cancelResult = reservation.Cancel(
-                    keyResult.Value,
-                    fingerprint,
-                    reason,
-                    nowUtc
-                );
+                var cancelResult = reservation.Cancel(keyResult.Value, fingerprint, reason, nowUtc);
                 if (cancelResult.IsFailure)
                     return Result.Failure<CancelReservationResponse>(cancelResult.Error);
 

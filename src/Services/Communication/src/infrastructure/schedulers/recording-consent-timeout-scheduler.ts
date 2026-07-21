@@ -118,6 +118,7 @@ async function runOnceForMeetings(
       meetingId: snap.scopeId,
       reason: 'ConsentTimeout',
       failedAtUtc,
+      hostUserId: meeting.hostUserId,
     };
     await deps.publisher.enqueue(failedEvent);
 
@@ -191,6 +192,8 @@ async function runOnceForCalls(
       callId: snap.scopeId,
       reason: 'ConsentTimeout',
       failedAtUtc,
+      callerUserId: call.callerUserId,
+      calleeUserId: call.calleeUserId,
     };
     await deps.publisher.enqueue(failedEvent);
 

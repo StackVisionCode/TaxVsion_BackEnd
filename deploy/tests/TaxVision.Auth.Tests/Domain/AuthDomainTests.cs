@@ -55,6 +55,38 @@ public sealed class AuthDomainTests
     }
 
     [Fact]
+    public void MarkPermissionsBackfilled_sets_the_timestamp()
+    {
+        var user = User.Register(
+            Guid.NewGuid(),
+            "Tax",
+            "Professional",
+            "backfill@example.com",
+            "password-hash",
+            UserActorType.TenantEmployee
+        ).Value;
+        Assert.Null(user.PermissionsBackfilledAt);
+
+        var now = DateTime.UtcNow;
+        user.MarkPermissionsBackfilled(now);
+
+        Assert.Equal(now, user.PermissionsBackfilledAt);
+    }
+
+    [Fact]
+    public void SetPermissions_bumps_the_role_permissions_version_each_call()
+    {
+        var role = Role.Create(Guid.NewGuid(), "Custom Role", "For Fase 2").Value;
+        Assert.Equal(0, role.PermissionsVersion);
+
+        role.SetPermissions([Guid.NewGuid()]);
+        Assert.Equal(1, role.PermissionsVersion);
+
+        role.SetPermissions([Guid.NewGuid(), Guid.NewGuid()]);
+        Assert.Equal(2, role.PermissionsVersion);
+    }
+
+    [Fact]
     public void Employee_defaults_include_scoped_cloudstorage_actions()
     {
         var defaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);

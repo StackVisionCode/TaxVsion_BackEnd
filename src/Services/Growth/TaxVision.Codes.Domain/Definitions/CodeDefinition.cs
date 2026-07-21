@@ -359,17 +359,18 @@ public sealed class CodeDefinition : AggregateRoot
 
     public Result ReserveUse(DateTime nowUtc)
     {
-        if (Status != CodeDefinitionStatus.Active || nowUtc < StartsAtUtc || ExpiresAtUtc is not null && nowUtc >= ExpiresAtUtc)
+        if (
+            Status != CodeDefinitionStatus.Active
+            || nowUtc < StartsAtUtc
+            || ExpiresAtUtc is not null && nowUtc >= ExpiresAtUtc
+        )
             return Result.Failure(
                 new Error("Codes.CodeDefinition.NotReservable", "Code is not active within its validity window.")
             );
 
         if (
             MaxRedemptions is { } maxRedemptions
-            && (
-                CommittedRedemptions >= maxRedemptions
-                || ActiveReservations >= maxRedemptions - CommittedRedemptions
-            )
+            && (CommittedRedemptions >= maxRedemptions || ActiveReservations >= maxRedemptions - CommittedRedemptions)
         )
             return Result.Failure(
                 new Error("Codes.CodeDefinition.NoAvailability", "The code has no remaining global availability.")
@@ -458,11 +459,7 @@ public sealed class CodeDefinition : AggregateRoot
         return Result.Success();
     }
 
-    private Result EnsureCanQuote(
-        Guid consumingTenantId,
-        IReadOnlyCollection<CodeScopeTarget> targets,
-        DateTime nowUtc
-    )
+    private Result EnsureCanQuote(Guid consumingTenantId, IReadOnlyCollection<CodeScopeTarget> targets, DateTime nowUtc)
     {
         if (consumingTenantId == Guid.Empty)
             return Result.Failure(new Error("Codes.CodeDefinition.InvalidTenant", "Consuming TenantId is required."));
@@ -524,10 +521,7 @@ public sealed class CodeDefinition : AggregateRoot
 
     private Result InvalidTransition(string operation) =>
         Result.Failure(
-            new Error(
-                "Codes.CodeDefinition.InvalidTransition",
-                $"Cannot {operation} a code from status {Status}."
-            )
+            new Error("Codes.CodeDefinition.InvalidTransition", $"Cannot {operation} a code from status {Status}.")
         );
 
     private static Result ValidateActor(Guid actorUserId) =>

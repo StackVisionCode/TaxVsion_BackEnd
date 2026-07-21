@@ -8,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record PreparerSignedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required Guid PreparerUserId { get; init; }
     public required string PtinOrEfin { get; init; }
     public required string PreparerDisplayName { get; init; }

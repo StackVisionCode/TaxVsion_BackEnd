@@ -13,4 +13,5 @@ public sealed record ConnectorsOAuthRefreshFailedIntegrationEvent : IntegrationE
     public required string Reason { get; init; }
     public required string ErrorCode { get; init; }
     public required DateTime FailedAtUtc { get; init; }
+    public required Guid CreatedByUserId { get; init; }
 }

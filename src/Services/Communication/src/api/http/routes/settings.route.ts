@@ -13,6 +13,7 @@ const PatchBody = z.object({
   screenshotsEnabled: z.boolean().optional(),
   internalGroupsEnabled: z.boolean().optional(),
   employeeToEmployeeChatEnabled: z.boolean().optional(),
+  restrictCustomerChatToAssignedPreparer: z.boolean().optional(),
   defaultCameraOff: z.boolean().optional(),
   defaultMicrophoneOff: z.boolean().optional(),
   persistChatOnEnd: z.boolean().optional(),

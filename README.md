@@ -70,6 +70,8 @@ OpenTelemetry.
 36. Scribe Service (templating centralizado de email)
 37. Connectors Service (integraciones Gmail/Graph/IMAP)
 38. Correspondence Service (inbox del cliente final + compose/send)
+39. Soporte de logo para Tenant
+40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
 
 ## 1. Introduccion y objetivo
 
@@ -1648,6 +1650,15 @@ Base path `/customers`. Autorizacion por rol claim del JWT firmado.
 | PUT `/customers/{id}/fiscal-profile` | TenantAdmin |
 | PUT `/customers/{id}/relations/{relationId}/fiscal-profile` | TenantAdmin |
 | GET `/customers/{id}/fiscal-profile/tax-identifier` | Permiso `customers.fiscalprofile.reveal` (TenantAdmin lo tiene siempre) |
+| PUT `/customers/{id}/preparer` | Permiso `customers.preparer.manage` (TenantAdmin lo tiene siempre) |
+| DELETE `/customers/{id}/preparer` | Permiso `customers.preparer.manage` (TenantAdmin lo tiene siempre) |
+
+`AssignedPreparerUserId` (nullable) se agrega a `Customer` y viaja en
+`CustomerResponse`. `PUT` valida `PreparerUserId` no vacio y publica
+`CustomerPreparerAssignedIntegrationEvent`; `DELETE` requiere que ya haya un
+preparador asignado y publica `CustomerPreparerUnassignedIntegrationEvent`.
+Consumido por Communication (Fase B — ver README §30.14) para habilitar el
+gate "el cliente solo chatea con su preparador asignado".
 
 `GET /customers/{id}` incluye `OccupationName` y `PrincipalBusinessActivityDescription`
 resueltos por JOIN via `ICustomerReadService` con `AsNoTracking` y proyeccion a DTO.
@@ -4276,7 +4287,10 @@ emite envelopes `{ eventId, correlationId, emittedAtUtc, payload }`.
 `chat.message.send/edit/delete/mark_read`, `chat.typing.start/stop`. Server ->
 `chat.message.new/edited/deleted/read`, `chat.typing.started/stopped`,
 `chat.conversation.created/participant_added/participant_removed`,
-`chat.presence.changed`, `chat.message.attachment_flagged` (status `Infected` |
+`chat.presence.changed` (payload `{userId, status: 'Online'|'Busy'|'Offline',
+busyReason: 'Call'|'Meeting'|null, changedAtUtc}` — breaking change de la
+Fase de rich presence, ver §30.14; ya no es `{online: boolean}`),
+`chat.message.attachment_flagged` (status `Infected` |
 `Deleted` | `BlockedByPolicy` — Fase 7). Grupos (`start_group`/`add_participant`/
 `remove_participant`) apagados por default via
 `TenantCommunicationSettings.internalGroupsEnabled`.
@@ -4326,7 +4340,9 @@ namespace propio). `meeting.snapshot`/ack de `meeting.join` incluyen
   `signer.verification.challenge_issued` (con `method='App'` -> push in-app **Urgent**).
   Cierra pendiente README §29.19 (canal App).
 - **Customer**: `customer.bulk_imported.v1` -> push al usuario que lanzo el import
-  (cierra TODO `Customer/DependencyInjection.cs:46`).
+  (cierra TODO `Customer/DependencyInjection.cs:46`). `customer.preparer_assigned.v1`/
+  `.preparer_unassigned.v1` -> proyeccion local `CustomerPreparerAssignment`
+  (Fase B, ver §30.14).
 - **Auth**: `user.registered/roles_changed/deactivated` -> alimentan la proyeccion
   local `UserPermissionsProjection` para autorizacion fuera de banda.
 - **Subscription**: `activated/plan_changed/seats_purchased/suspended` ->
@@ -4345,6 +4361,7 @@ Base propia `TaxVision_Communication` con Prisma. Tablas core:
 - `SupportTicket`
 - `TenantCommunicationSettings`, `TenantCommunicationLimits`
 - `UserPermissionsProjection`
+- `CustomerPreparerAssignment` (Fase B, proyeccion 1:1 por `CustomerId`)
 - `ProcessedEvent` (inbox), `OutboxMessage` (outbox transaccional), `IdempotencyRecord`
 - `CommunicationAnalyticsSnapshot` (event-sourced diario)
 
@@ -4586,6 +4603,91 @@ Verificacion: 202 tests en Communication (+7 nuevos de `attachTranscript` /
 +2 de `cloudstorage-consumers`), 179 en CloudStorage (+1 nuevo de
 `FolderType.Transcripts`), 30 en CommunicationTranscriptWorker — todos
 verdes, typecheck limpio en los 3 proyectos.
+
+## 30.14 Rich presence (Track A) + chat tipado cliente-preparador (Track B)
+
+Plan implementado fase por fase desde
+`CompletarCommunications/Plan_Presencia_Rica_y_Chat_Tipado_Cliente_Preparador.md`.
+Se autorizo explicitamente hacer **breaking changes** de contrato (no hay
+tenants/clientes reales todavia, cero datos criticos en produccion) — la
+prioridad fue el diseno mas limpio, no preservar compatibilidad hacia atras.
+
+**Track A — Presencia rica (Online/Busy/Offline):**
+
+- Nuevo `PresenceStatus` (`Online`|`Busy`|`Offline`) y `BusyReason`
+  (`Call`|`Meeting`|null) en `domain/presence/presence-status.ts`.
+  `PresenceService` (puerto) gana `markBusy`/`clearBusy` ademas del
+  `register`/`unregister` ya existente.
+- `RedisPresenceService` reusa el mismo patron lease-TTL que ya tenia para
+  sesiones online (`comm:presence:t:{tenantId}:u:{userId}:s:{sessionId}`) con
+  una segunda familia de keys para busy sources
+  (`comm:presence:busy:t:{tenantId}:u:{userId}:src:{sourceId}`, donde
+  `sourceId` es un `callId` o `meetingId`). El status final publicado se
+  deriva: `Busy` si hay >= 1 busy source activa, si no `Online` si hay >= 1
+  sesion, si no `Offline`.
+- **Breaking change**: `PresenceChangedDto` paso de `{userId, online: boolean,
+  changedAtUtc}` a `{userId, status: 'Online'|'Busy'|'Offline', busyReason:
+  'Call'|'Meeting'|null, changedAtUtc}` — ver §30.4.
+- Wiring: `call-handlers.ts` marca Busy al Initiate (caller)/Accept (callee) y
+  limpia en reject/cancel/End/disconnect. `meeting-handlers.ts` marca Busy al
+  Join (si no requiere admision)/Admit y limpia en Leave/Remove/disconnect.
+  **Caso borde manejado**: cuando el host de un meeting se va sin cohost
+  disponible, `Meeting.end()` marca a TODOS los participantes `Left` en una
+  sola llamada de dominio sin emitir un evento Leave individual por cada uno
+  — se agrego `clearMeetingBusyFor(...)` con la lista completa de
+  participantes en los 3 call sites afectados (handler de Leave, handler de
+  disconnect, y el endpoint HTTP `POST /communication/meetings/:id/end`) para
+  que nadie quede "atascado" en Busy.
+- `process-missed-calls.ts`/`missed-call-scheduler.ts` tambien limpian el
+  busy del caller cuando una llamada se marca `Missed` por el scheduler.
+
+**Track B — Chat tipado cliente↔preparador:**
+
+- **Customer** (nuevo): `Customer.AssignedPreparerUserId` (nullable) +
+  metodos `AssignPreparer`/`UnassignPreparer`, endpoints
+  `PUT`/`DELETE /customers/{id}/preparer` gateados por el permiso granular
+  nuevo `customers.preparer.manage` (ver README §25.6), eventos
+  `CustomerPreparerAssignedIntegrationEvent`/`...UnassignedIntegrationEvent`.
+- **Communication**: proyeccion `CustomerPreparerAssignment` (1:1 por
+  `CustomerId`) poblada por consumers de esos 2 eventos.
+- **`ActorType` tipado**: nuevo union `'TenantEmployee'|'CustomerPortal'|...`
+  (`domain/shared/actor-type.ts`) + `resolveActorType()` que lee
+  `UserDirectoryEntry.actorType` (ya poblado para todo actor con email desde
+  Fase F10 — ver §30.6/auth-consumers). Reemplaza 4 sitios que hardcodeaban
+  `actorType: 'TenantEmployee'` sin importar quien fuera realmente el otro
+  lado: `StartDirectConversation` (recipient), `StartGroupConversation`
+  (members), `AddGroupParticipant` (newMember), y `admitParticipant` en
+  `meeting-host-actions.ts` (target admitido a un meeting).
+- **`isPrimaryPreparer` conectado de verdad**: el campo ya existia en
+  `Conversation.startDirect` pero llegaba siempre `undefined` — nunca se
+  poblaba. Nuevo `resolveIsPrimaryPreparer()` en
+  `start-direct-conversation.ts`: si alguno de los 2 lados de la conversation
+  es `CustomerPortal`, resuelve su `CustomerPortalAccount` ->
+  `CustomerPreparerAssignment` -> compara contra el `userId` del otro lado.
+  Cubre ambas direcciones (cliente inicia al preparador, o preparador inicia
+  al cliente) con una sola comparacion porque el campo solo se setea del lado
+  `recipient`.
+- **Setting nuevo + gate**: `TenantCommunicationSettings.restrictCustomerChatToAssignedPreparer`
+  (default `false`, opt-in por tenant) expuesto en ambos flujos de settings —
+  el snapshot rapido cacheado en Redis (`TenantSettingsProvider`, usado en
+  `startDirectConversation` para el chequeo de negocio) y el aggregate
+  completo CRUD para tenant admins (`domain/settings/tenant-communication-settings.ts`,
+  `PATCH /communication/settings`). Si esta en `true`, un chat directo que
+  involucra a un `CustomerPortal` se rechaza (`Chat.NotAssignedPreparer`) a
+  menos que el otro lado sea exactamente su preparador asignado.
+
+**Verificacion**: `npx tsc --noEmit` limpio en Communication, 225/225 tests
+verdes (2 archivos de test fallan solo por falta de `.env` en el sandbox de
+desarrollo, no relacionado con estos cambios). `dotnet build` del monorepo
+completo (`TaxVision.slnx`) — 0 errores, 0 warnings. Tests de Customer (11) y
+Auth (170, incluye la migracion del nuevo permiso + backfill a roles Tenant
+Admin existentes) verdes.
+
+**Pendiente**: las 3 migraciones de Prisma nuevas de esta fase
+(`CustomerPreparerAssignment`, `RestrictCustomerChatToAssignedPreparer`) se
+generaron a mano (sin conexion a una DB real en el entorno de desarrollo
+usado) siguiendo el formato exacto de Prisma — falta correr
+`npx prisma migrate deploy` contra una base real para aplicarlas.
 
 ---
 
@@ -6341,3 +6443,147 @@ de 39.1). `dotnet test deploy/tests/TaxVision.Tenant.Tests/` — full monorepo (
   download-url es presignado a MinIO/S3, nunca servido desde un dominio de TaxVision, así
   que el riesgo de XSS persistente contra la propia app es bajo, pero si el frontend llega a
   renderizar el SVG inline (no solo como `<img src>`) debe sanitizarlo del lado cliente antes.
+
+# 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
+
+Plan completo en `Implementaciones/CompletarNotificaciones/Plan_Completar_Notificaciones.md`
+(9 fases: 0 reglas EDA, 1 fix mapeo Auth→Communication, 1B auditoría de 40+ eventos, 2
+`RolePermissionsChanged`, 3 backfill self-healing, 4 fan-out por permiso, 5 preferencias
+opt-in/opt-out, 6 canal Client, 7 push FCM, 8 este cierre). Antes de este trabajo, el único
+mecanismo de "avisar a alguien" era un destinatario ya embebido en el propio evento
+(`signerId`, `evt.Email`) — no existía forma de resolver "todos los admins del tenant X" ni
+un opt-out real.
+
+## 40.1 El mecanismo de fan-out (Fase 4)
+
+`NotificationAudience` (abstracción nueva en `TaxVision.Notification.Application.Abstractions`)
+tiene dos formas:
+
+```csharp
+sealed record ExplicitRecipient(string Email, Guid? UserId) : NotificationAudience; // ya existía, sin tocar
+sealed record ByPermission(Guid TenantId, string PermissionCode) : NotificationAudience; // nuevo
+```
+
+`IRecipientResolver.ResolveAsync(ByPermission, ct)` convierte `ByPermission` en una lista real
+de `UserId` consultando `UserPermissionsProjection`/`RolePermissionsProjection` — proyecciones
+locales de Notification alimentadas por eventos de Auth (`UserRolesChangedIntegrationEvent`,
+`RolePermissionsChangedIntegrationEvent`), nunca por HTTP síncrono. Solo 2 consumers migraron
+a este mecanismo (el resto ya tenía un destinatario explícito y no lo necesita):
+`FileInfectedDetectedConsumer` y `StorageLimitExceededConsumer`
+(`src/Services/Notification/TaxVision.Notification.Application/Consumers/CloudStorageEventConsumers.cs`)
+— antes usaban el placeholder de texto `"role:TenantAdmin"`, que no resolvía a nadie.
+
+## 40.2 Preferencias de notificación (Fase 5)
+
+`UserNotificationPreference` (`TenantId`, `UserId`, `Category`, `Channel`, `Enabled`) — el gate
+vive **dentro** de `NotificationDispatcher` (`IsAllowedAsync`, consultado antes de cada envío
+por email/SMS/push/in-app), no como un filtro aparte opcional — así ningún consumer nuevo puede
+"olvidarse" de respetarlo (causa de que la versión anterior de esta tabla se borrara sin uso).
+
+| Categoría (`NotificationCategory`) | Ejemplos | ¿Apagable? |
+|---|---|---|
+| `AccountSecurity` | reset de password, MFA, login sospechoso | No — `NotificationCategoryRules.IsLocked` |
+| `DocumentsAndSignatures` | invitación a firmar, firma completada | Sí |
+| `StorageAndQuota` | límite de storage, archivo infectado | Sí |
+| `Billing` | pago fallido, cambio de plan | Sí (salvo transaccional-crítico) |
+| `Collaboration` | chat, meetings, calls | Sí |
+
+Self-service: `GET/PUT /notifications/preferences` (`NotificationPreferencesController`, scoped
+al usuario del JWT).
+
+## 40.3 Canal de notificaciones para el frontend Client (Fase 6)
+
+Vive enteramente en **Communication (Node)**, no en el microservicio `.NET Notification` — el
+Client (portal de clientes) nunca habla con Notification. Piezas nuevas en
+`src/Services/Communication/`:
+
+- **`CustomerPortalAccount`** (Prisma) — resuelve `CustomerId → UserId` de portal activo,
+  alimentada por `auth.user.registered.v1`/`auth.user.deactivated.v1`. Un `Signer` con
+  `MappedCustomerId` **no** implica que el cliente tenga cuenta de portal — se resuelve por
+  query con guard, nunca se asume.
+- **`NotificationActionMapping`** (Prisma) — `(EventKey, AudienceRole) → (ActionType, UrlTemplate)`,
+  mismo patrón que `EventTemplateMapping` de Scribe. CRUD admin
+  (`GET/POST/PUT /communication/admin/notification-action-mappings`, gateado a `PlatformAdmin`),
+  seed idempotente en boot (`seed-notification-action-mappings.ts`).
+- **Dual-audience**: `signature.document.signed.v1` genera hasta dos notificaciones
+  independientes — Preparer (`CreatedByUserId`, siempre) y CustomerSigner (solo si hay cuenta
+  de portal activa) — cada una con su propia acción resuelta vía `NotificationActionMapping`.
+
+## 40.4 Push real — FCM (Fase 7)
+
+`FcmPushSender` (`TaxVision.Notification.Infrastructure/Push/`) reemplaza `LoggingPushSender`
+usando el Firebase Admin SDK (paquete `FirebaseAdmin`). Un solo pipeline cubre Android/iOS/Web:
+`PushPlatform.Apns` también trae un token FCM válido porque iOS se registra hoy vía el SDK de
+Firebase, no APNs directo (Web Push VAPID puro queda fuera de este cierre — el plan lo marcaba
+como fase 7b opcional).
+
+**Setup** (una sola vez, manual, en Firebase Console):
+
+1. Crear un proyecto en [Firebase Console](https://console.firebase.google.com) (un solo
+   proyecto sirve para todos los tenants — el multi-tenant se maneja a nivel de datos).
+2. Configuración del proyecto → Cuentas de servicio → **Generar nueva clave privada** → descarga
+   un JSON. Nunca se commitea.
+3. Local/dev: `dotnet user-secrets set "Notification:Push:Fcm:ServiceAccountJsonPath" "<ruta al json>"`
+   y `dotnet user-secrets set "Notification:UseFcmPush" "true"` en
+   `src/Services/Notification/TaxVision.Notification.Api/`.
+4. Producción: base64 del JSON en el secret `FIREBASE_SERVICE_ACCOUNT_JSON_B64`, decodificado
+   por el pipeline de deploy a `${TAXVISION_SECRETS_DIR}/firebase-service-account.json` (mismo
+   patrón que `jwt-public.pem`/`signature-sealing.pfx`) y `NOTIFICATION_USE_FCM_PUSH=true` en
+   el `.env` de despliegue.
+
+Con el flag en `false` (default), `LoggingPushSender` sigue activo — solo loguea, no requiere
+credenciales. Token muerto (`MessagingErrorCode.Unregistered`) se propaga como
+`PushErrorCodes.TokenInvalid` y el caller (`NotificationDispatcher`/
+`SignerVerificationChallengeIssuedConsumer`) revoca el `PushDeviceToken` automáticamente vía
+`IPushDeviceTokenRepository.RevokeAsync` — sin esto, un dispositivo desinstalado seguiría
+reintentando FCM indefinidamente.
+
+## 40.5 Piloto de punta a punta y cierre de la auditoría Fase 1B (Fase 8)
+
+`FileInfectedDetectedConsumer`/`StorageLimitExceededConsumer` (§40.1) son el caso elegido para
+demostrar Fases 4+5+7 juntas: además de la notificación in-app, ahora también despachan push
+(`NotificationDispatcher.SendPushAsync`) por cada admin resuelto — la preferencia de canal y la
+revocación de tokens muertos aplican igual que en cualquier otro punto del dispatcher.
+
+La Fase 1B auditó ~40 eventos de integración en Signature/CloudStorage/Connectors/Customer/
+Communication/Subscription buscando el mismo bug: un `CreatedByUserId`/actor disponible en el
+aggregate pero nunca copiado al evento. Estado final de cierre:
+
+- **Cerrado con campo + consumer**: los 2 🔴 críticos de Signature (`SignerRejected`,
+  `SignerVerificationFailed`), los 4 🔴 + 3 🟡 de CloudStorage, los 2 🔴 de Connectors, el gap
+  de import fallido de Customer, los 8 sitios de publish de Communication (recordings), y
+  — cerrados en esta fase — los 5 🟡 de Signature que solo tenían el campo sin consumer
+  (`SignatureRequestSealingFailed`, `SignatureRequestExpirationExtended`,
+  `SignatureRequestReadyForSending`, `SignerPinFailed`, `PreparerSigned`) más
+  `SignatureRequestExpired` (el README ya documentaba el push al preparador antes de que
+  existiera realmente — corregido).
+- **Cerrado solo el campo** (sin consumer, por diseño — el plan no lo pedía): `RequestedByUserId`
+  agregado a `SubscriptionPlanChangePaymentFailed/SucceededIntegrationEvent`
+  (`SaaSPaymentChargeOutcome.PublishPlanChangeResultAsync`, poblado desde `SaaSPayment.CreatedBy`)
+  — antes el actor de un upgrade de plan se perdía en la respuesta del cargo.
+- **Fuera de alcance, documentado, no tocado**: Correspondence (empleado-asignado-a-cliente no
+  existe como concepto de dominio; envío de `Draft` es síncrono sin eventos por diseño),
+  Connectors outbound send (no hay `UserId` en esa capa), `SubscriptionLimitApproaching`
+  (feature nueva, no un bug), `DmcaCounterNoticeSubmittedIntegrationEvent` (necesita fan-out
+  por rol para legal, no tiene destinatario individual).
+
+## 40.6 Configuración nueva (resumen)
+
+| Servicio | Config | Default | Notas |
+|---|---|---|---|
+| Notification | `Notification:UseFcmPush` | `false` | Bool explícito, mismo idiom que `UsePostmasterDispatch` |
+| Notification | `Notification:Push:Fcm:ServiceAccountJsonPath` | `""` | Solo se lee si el flag anterior es `true` |
+| docker-compose | `NOTIFICATION_USE_FCM_PUSH` | `false` | Env var del deploy |
+| docker-compose | `FIREBASE_SERVICE_ACCOUNT_JSON_B64` | — | Nuevo secret, decodificado a `firebase-service-account.json` |
+
+## 40.7 Pendientes documentados
+
+- **Web Push (VAPID puro)** — quedó fuera de este cierre por ser explícitamente opcional en el
+  plan ("fase 7b"). Si se necesita un canal Web sin el SDK de Firebase en el frontend, usar
+  `Lib.Net.Http.WebPush` y extender `PushPlatform` (hoy solo `Fcm`/`Apns`) con un valor `Web`.
+- **Registro público de dispositivo push para firmantes externos** — sigue sin existir
+  (`SignerVerificationChallengeIssuedConsumer.SendAppPushAsync` ya lo documentaba: firmantes sin
+  cuenta no pueden registrar un `PushDeviceToken`). No es un gap de esta fase, es una limitación
+  de diseño preexistente de Signature.
+- **Correspondence: empleado-asignado-a-cliente** — decisión de producto pendiente (§4B del
+  plan), requiere modelar una relación nueva en el dominio de Customer, no un fix de bug.

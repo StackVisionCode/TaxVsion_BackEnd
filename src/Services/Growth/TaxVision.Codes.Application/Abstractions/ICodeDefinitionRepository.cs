@@ -9,11 +9,7 @@ public interface ICodeDefinitionRepository
     /// Exact owner lookup. Implementations must not fall back to platform rows or use
     /// IgnoreQueryFilters; ownerTenantId must match CodeDefinition.TenantId.
     /// </summary>
-    Task<CodeDefinition?> GetOwnedByIdAsync(
-        Guid ownerTenantId,
-        Guid codeDefinitionId,
-        CancellationToken ct = default
-    );
+    Task<CodeDefinition?> GetOwnedByIdAsync(Guid ownerTenantId, Guid codeDefinitionId, CancellationToken ct = default);
 
     /// <summary>
     /// Resolves a tenant-owned or platform-owned definition that is applicable to the consuming tenant.

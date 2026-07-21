@@ -12,6 +12,12 @@ concurrency:
 jobs:
   deploy:
     runs-on: self-hosted
+    # Repo llego al tope duro de GitHub de 100 secrets a nivel repo (el workflow ya
+    # referencia 114 nombres distintos). Un Environment da OTRO cupo de 100 secrets
+    # propio; un job que apunta a un environment ve automaticamente los secrets de
+    # ESE environment + los del repo al mismo tiempo (no hay que tocar ningun
+    # "secrets.NOMBRE" del workflow, ni mover lo que ya existe a nivel repo).
+    environment: production
     timeout-minutes: 45
     env:
       COMPOSE_FILE: deploy/docker/docker-compose.yml
@@ -46,6 +52,7 @@ jobs:
           CORRESPONDENCE_DB_CONNECTION=${{ secrets.CORRESPONDENCE_DB_CONNECTION }}
           PAYMENTAPP_DB_CONNECTION=${{ secrets.PAYMENTAPP_DB_CONNECTION }}
           PAYMENTCLIENT_DB_CONNECTION=${{ secrets.PAYMENTCLIENT_DB_CONNECTION }}
+          GROWTH_DB_CONNECTION=${{ secrets.GROWTH_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
           # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
           # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
@@ -110,6 +117,17 @@ jobs:
           POSTMASTER_SERVICE_CLIENT_SECRET=${{ secrets.POSTMASTER_SERVICE_CLIENT_SECRET }}
           TENANT_SERVICE_CLIENT_ID=${{ secrets.TENANT_SERVICE_CLIENT_ID }}
           TENANT_SERVICE_CLIENT_SECRET=${{ secrets.TENANT_SERVICE_CLIENT_SECRET }}
+          # Growth: protocolo quote/reserve/commit/cancel (audience taxvision-growth,
+          # ver ServiceAuth__Clients__9/10/11 en docker-compose.yml). Faltaban del todo
+          # en este workflow -- Growth quedaba sin ningun secret en produccion.
+          GROWTH_CODE_TOKEN_PEPPER=${{ secrets.GROWTH_CODE_TOKEN_PEPPER }}
+          GROWTH_REFERRAL_CODE_TOKEN_PEPPER=${{ secrets.GROWTH_REFERRAL_CODE_TOKEN_PEPPER }}
+          PAYMENTAPP_GROWTH_CLIENT_ID=${{ secrets.PAYMENTAPP_GROWTH_CLIENT_ID }}
+          PAYMENTAPP_GROWTH_CLIENT_SECRET=${{ secrets.PAYMENTAPP_GROWTH_CLIENT_SECRET }}
+          PAYMENTCLIENT_GROWTH_CLIENT_ID=${{ secrets.PAYMENTCLIENT_GROWTH_CLIENT_ID }}
+          PAYMENTCLIENT_GROWTH_CLIENT_SECRET=${{ secrets.PAYMENTCLIENT_GROWTH_CLIENT_SECRET }}
+          SUBSCRIPTION_GROWTH_CLIENT_ID=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_ID }}
+          SUBSCRIPTION_GROWTH_CLIENT_SECRET=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}
@@ -172,6 +190,12 @@ jobs:
           SYSTEM_EMAIL_FROM_ADDRESS=${{ secrets.SYSTEM_EMAIL_FROM_ADDRESS }}
           SYSTEM_EMAIL_FROM_NAME=${{ secrets.SYSTEM_EMAIL_FROM_NAME }}
           SYSTEM_EMAIL_DISPLAY_NAME=${{ secrets.SYSTEM_EMAIL_DISPLAY_NAME }}
+          # El JSON de la cuenta de servicio de Firebase ya se decodifica a un archivo
+          # (ver step "Write JWT keys...", FIREBASE_SERVICE_ACCOUNT_JSON_B64), pero
+          # Notification__UseFcmPush tiene default false en docker-compose.yml -- sin
+          # este secret en "true" el push por FCM queda apagado en produccion aunque
+          # el archivo este montado.
+          NOTIFICATION_USE_FCM_PUSH=${{ secrets.NOTIFICATION_USE_FCM_PUSH }}
           TAXVISION_DOMAIN=${{ secrets.TAXVISION_DOMAIN }}
           # Fase X1 (completitud plan v2) — dominio raiz para el cert WILDCARD de Caddy
           # (*.TAXVISION_BASE_DOMAIN) + token DNS-01 de Cloudflare, ver README sec 20.
@@ -196,7 +220,13 @@ jobs:
           echo "${{ secrets.JWT_PRIVATE_KEY_PEM_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/jwt-private.pem"
           echo "${{ secrets.JWT_PUBLIC_KEY_PEM_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/jwt-public.pem"
           echo "${{ secrets.SIGNATURE_SEALING_PFX_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/signature-sealing.pfx"
-          chmod 600 "$TAXVISION_SECRETS_DIR"/jwt-private.pem "$TAXVISION_SECRETS_DIR"/jwt-public.pem "$TAXVISION_SECRETS_DIR"/signature-sealing.pfx
+          # Fase 7 notificaciones dinamicas — el mount de docker-compose.yml
+          # (Notification__Push__Fcm__ServiceAccountJsonPath) requiere que este archivo
+          # exista siempre, aunque Notification__UseFcmPush este en false (default). Si el
+          # secret todavia no esta cargado, "echo '' | base64 -d" produce un archivo vacio
+          # valido en vez de romper el mount.
+          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/firebase-service-account.json"
+          chmod 600 "$TAXVISION_SECRETS_DIR"/jwt-private.pem "$TAXVISION_SECRETS_DIR"/jwt-public.pem "$TAXVISION_SECRETS_DIR"/signature-sealing.pfx "$TAXVISION_SECRETS_DIR"/firebase-service-account.json
 
       # SIN --profile tools acá, "migrations" (profiles: [tools]) queda excluido de este
       # build por completo (Compose ignora servicios cuyo profile no está activo, en

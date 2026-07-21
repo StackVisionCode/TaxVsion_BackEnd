@@ -29,14 +29,10 @@ public sealed class GrowthMetrics : IDisposable
         _qualifications = _meter.CreateCounter<long>("growth.referrals.qualifications_total");
         _rewards = _meter.CreateCounter<long>("growth.referrals.rewards_total");
         _inboxDuplicates = _meter.CreateCounter<long>("growth.integration.inbox_duplicates_total");
-        _outboxLagSeconds = _meter.CreateHistogram<double>(
-            "growth.integration.outbox_lag_seconds",
-            unit: "s"
-        );
+        _outboxLagSeconds = _meter.CreateHistogram<double>("growth.integration.outbox_lag_seconds", unit: "s");
     }
 
-    public void RecordQuote(string outcome, string kind) =>
-        _quotes.Add(1, Tag("outcome", outcome), Tag("kind", kind));
+    public void RecordQuote(string outcome, string kind) => _quotes.Add(1, Tag("outcome", outcome), Tag("kind", kind));
 
     public void RecordReservation(string outcome, string source) =>
         _reservations.Add(1, Tag("outcome", outcome), Tag("source", source));
@@ -49,8 +45,7 @@ public sealed class GrowthMetrics : IDisposable
     public void RecordQualification(string programType, string outcome) =>
         _qualifications.Add(1, Tag("program_type", programType), Tag("outcome", outcome));
 
-    public void RecordReward(string type, string state) =>
-        _rewards.Add(1, Tag("type", type), Tag("state", state));
+    public void RecordReward(string type, string state) => _rewards.Add(1, Tag("type", type), Tag("state", state));
 
     public void RecordInboxDuplicate(string consumer) => _inboxDuplicates.Add(1, Tag("consumer", consumer));
 

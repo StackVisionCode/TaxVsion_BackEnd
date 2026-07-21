@@ -1,8 +1,10 @@
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
+using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Files.LegalHold;
 
@@ -26,6 +28,7 @@ public static class SetLegalHoldHandler
         IFileObjectRepository files,
         IStorageAuditRepository audit,
         ISystemClock clock,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -52,6 +55,17 @@ public static class SetLegalHoldHandler
                 clock.UtcNow
             )
         );
+        await bus.PublishAsync(
+            new LegalHoldPlacedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                FileId = file.Id,
+                CreatedBy = file.CreatedBy,
+                ActorId = command.ActorId,
+                Reason = command.Reason,
+                CorrelationId = command.Audit.CorrelationId,
+            }
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
@@ -72,6 +86,7 @@ public static class LiftLegalHoldHandler
         IFileObjectRepository files,
         IStorageAuditRepository audit,
         ISystemClock clock,
+        IMessageBus bus,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -97,6 +112,16 @@ public static class LiftLegalHoldHandler
                 command.Reason,
                 clock.UtcNow
             )
+        );
+        await bus.PublishAsync(
+            new LegalHoldLiftedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                FileId = file.Id,
+                CreatedBy = file.CreatedBy,
+                ActorId = command.ActorId,
+                CorrelationId = command.Audit.CorrelationId,
+            }
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

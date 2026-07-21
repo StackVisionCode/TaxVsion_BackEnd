@@ -9,6 +9,7 @@ import type {
 } from '../../../infrastructure/socket/build-io.js';
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import { resolveDisplayName } from './resolve-display-name.js';
+import { resolveActorType } from './resolve-actor-type.js';
 import { startDirectConversation } from '../../../application/use-cases/start-direct-conversation.js';
 import { startGroupConversation } from '../../../application/use-cases/start-group-conversation.js';
 import { addGroupParticipant } from '../../../application/use-cases/add-group-participant.js';
@@ -124,14 +125,17 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.start.' });
       return;
     }
-    const recipientDisplayName = await resolveDisplayName(container.userDirectory, parsed.data.recipientUserId);
+    const [recipientDisplayName, recipientActorType] = await Promise.all([
+      resolveDisplayName(container.userDirectory, parsed.data.recipientUserId),
+      resolveActorType(container.userDirectory, parsed.data.recipientUserId),
+    ]);
     const result = await startDirectConversation(
       {
         tenantId,
         correlationId: socket.id,
         clientKey: parsed.data.clientKey,
         initiator: { userId, displayName: selfDisplayName, actorType: principal.actorType },
-        recipient: { userId: parsed.data.recipientUserId, displayName: recipientDisplayName, actorType: 'TenantEmployee' },
+        recipient: { userId: parsed.data.recipientUserId, displayName: recipientDisplayName, actorType: recipientActorType },
       },
       container,
     );
@@ -159,7 +163,7 @@ async function wireSocket(
       parsed.data.memberUserIds.map(async (memberUserId) => ({
         userId: memberUserId,
         displayName: await resolveDisplayName(container.userDirectory, memberUserId),
-        actorType: 'TenantEmployee',
+        actorType: await resolveActorType(container.userDirectory, memberUserId),
       })),
     );
     const result = await startGroupConversation(
@@ -212,7 +216,10 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.group.manage_members.' });
       return;
     }
-    const newMemberDisplayName = await resolveDisplayName(container.userDirectory, parsed.data.newMemberUserId);
+    const [newMemberDisplayName, newMemberActorType] = await Promise.all([
+      resolveDisplayName(container.userDirectory, parsed.data.newMemberUserId),
+      resolveActorType(container.userDirectory, parsed.data.newMemberUserId),
+    ]);
     const result = await addGroupParticipant(
       {
         tenantId,
@@ -220,7 +227,7 @@ async function wireSocket(
         clientKey: parsed.data.clientKey,
         conversationId: parsed.data.conversationId,
         actorUserId: userId,
-        newMember: { userId: parsed.data.newMemberUserId, displayName: newMemberDisplayName, actorType: 'TenantEmployee' },
+        newMember: { userId: parsed.data.newMemberUserId, displayName: newMemberDisplayName, actorType: newMemberActorType },
       },
       container,
     );

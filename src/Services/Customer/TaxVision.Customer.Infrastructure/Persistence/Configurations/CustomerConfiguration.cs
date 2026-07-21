@@ -19,6 +19,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         b.Property(c => c.Language).HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Property(c => c.ProfilePictureFileId);
         b.Property(c => c.OccupationId);
+        b.Property(c => c.AssignedPreparerUserId);
         b.Property(c => c.CreatedAtUtc).IsRequired();
         b.Property(c => c.CreatedByUserId).IsRequired();
         b.Property(c => c.UpdatedAtUtc);
@@ -102,5 +103,6 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
             c.DisplayName,
         });
         b.HasIndex(c => new { c.TenantId, c.OccupationId });
+        b.HasIndex(c => new { c.TenantId, c.AssignedPreparerUserId });
     }
 }

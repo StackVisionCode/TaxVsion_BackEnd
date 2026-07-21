@@ -121,6 +121,8 @@ export async function attachCallRecording(
       recordingFileId: command.fileId,
       durationSeconds: snapshot.durationSeconds ?? 0,
       readyAtUtc: snapshot.updatedAtUtc.toISOString(),
+      callerUserId: snapshot.callerUserId,
+      calleeUserId: snapshot.calleeUserId,
     };
     await deps.publisher.enqueue(event);
 

@@ -13,10 +13,7 @@ public sealed class CodesReservationApplicationTests
     [Theory]
     [InlineData(CodeUsageDimension.Tenant, "Codes.CodeUsageCounter.TenantLimitReached")]
     [InlineData(CodeUsageDimension.Subject, "Codes.CodeUsageCounter.SubjectLimitReached")]
-    public async Task Reserve_honors_tenant_and_subject_counters(
-        CodeUsageDimension dimension,
-        string expectedError
-    )
+    public async Task Reserve_honors_tenant_and_subject_counters(CodeUsageDimension dimension, string expectedError)
     {
         var definition = GrowthTestData.CreateActivePercentageCode(
             maxRedemptions: 10,
@@ -155,7 +152,10 @@ public sealed class CodesReservationApplicationTests
             CancellationToken.None
         );
         var differentKeyReplay = await ExpireReservationHandler.Handle(
-            expireCommand with { IdempotencyKey = "expire-reservation-2" },
+            expireCommand with
+            {
+                IdempotencyKey = "expire-reservation-2",
+            },
             definitions,
             reservations,
             counters,

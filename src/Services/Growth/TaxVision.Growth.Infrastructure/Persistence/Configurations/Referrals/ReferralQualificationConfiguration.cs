@@ -13,11 +13,7 @@ public sealed class ReferralQualificationConfiguration : IEntityTypeConfiguratio
         builder.ToTable(
             "ReferralQualifications",
             GrowthSchemas.Referrals,
-            table =>
-                table.HasCheckConstraint(
-                    "CK_ReferralQualifications_PaymentAmount",
-                    "[PaymentAmountCents] > 0"
-                )
+            table => table.HasCheckConstraint("CK_ReferralQualifications_PaymentAmount", "[PaymentAmountCents] > 0")
         );
         builder.HasKey(qualification => qualification.Id);
 
@@ -35,11 +31,7 @@ public sealed class ReferralQualificationConfiguration : IEntityTypeConfiguratio
         builder.Property(qualification => qualification.PaymentAmountCents).IsRequired();
         builder.Property(qualification => qualification.PaymentCurrency).HasColumnType("char(3)").IsRequired();
         builder.Property(qualification => qualification.IsFirstSuccessfulPayment).IsRequired();
-        builder
-            .Property(qualification => qualification.Decision)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(qualification => qualification.Decision).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(qualification => qualification.RejectionReasonCode).HasMaxLength(100);
         builder
             .Property(qualification => qualification.PaymentSucceededAtUtc)

@@ -22,11 +22,7 @@ public interface IReferralCodeRepository
     /// un código T2T pertenece al tenant referrer y se canjea bajo el tenant referee.
     /// Nunca debe ofrecer búsqueda parcial, listado ni el token completo.
     /// </summary>
-    Task<ReferralCode?> ResolveByHashAsync(
-        Guid programId,
-        string codeHash,
-        CancellationToken ct = default
-    );
+    Task<ReferralCode?> ResolveByHashAsync(Guid programId, string codeHash, CancellationToken ct = default);
 
     Task AddAsync(ReferralCode referralCode, CancellationToken ct = default);
 }

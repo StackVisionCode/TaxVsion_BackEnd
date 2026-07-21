@@ -231,7 +231,10 @@ public static class ProcessStripeWebhookHandler
 
             default:
                 return Result.Failure(
-                    new Error("WebhookEvent.UnsupportedPaymentStatus", $"Payment status {payload.Status} is not actionable.")
+                    new Error(
+                        "WebhookEvent.UnsupportedPaymentStatus",
+                        $"Payment status {payload.Status} is not actionable."
+                    )
                 );
         }
     }
@@ -260,12 +263,7 @@ public static class ProcessStripeWebhookHandler
         if (deltaMoney.IsFailure)
             return Result.Failure(deltaMoney.Error);
 
-        var refundResult = payment.RefundPartial(
-            deltaMoney.Value,
-            "Refunded via Stripe webhook.",
-            Guid.Empty,
-            nowUtc
-        );
+        var refundResult = payment.RefundPartial(deltaMoney.Value, "Refunded via Stripe webhook.", Guid.Empty, nowUtc);
         if (refundResult.IsFailure)
             return refundResult;
 

@@ -31,11 +31,7 @@ public sealed class CodeDefinitionConfiguration : IEntityTypeConfiguration<CodeD
         builder.Ignore(definition => definition.DomainEvents);
 
         builder.Property(definition => definition.TenantId).IsRequired();
-        builder
-            .Property(definition => definition.OwnerScope)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(definition => definition.OwnerScope).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(definition => definition.Name).HasMaxLength(200).IsRequired();
         builder.Property(definition => definition.Kind).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder
@@ -44,21 +40,14 @@ public sealed class CodeDefinitionConfiguration : IEntityTypeConfiguration<CodeD
             .HasMaxLength(64)
             .IsFixedLength()
             .IsRequired();
-        builder
-            .Property(definition => definition.Status)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(definition => definition.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(definition => definition.StartsAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(definition => definition.ExpiresAtUtc).HasColumnType("datetime2(7)");
         builder.Property(definition => definition.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(definition => definition.UpdatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(definition => definition.RowVersion).IsRowVersion();
 
-        builder.OwnsOne(
-            definition => definition.Display,
-            display => display.ConfigureDisplay("Code")
-        );
+        builder.OwnsOne(definition => definition.Display, display => display.ConfigureDisplay("Code"));
         builder.Navigation(definition => definition.Display).IsRequired();
 
         builder

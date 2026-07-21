@@ -52,8 +52,6 @@ public sealed class ReferralsController(IMessageBus bus) : ControllerBase
             ct
         );
 
-        return result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

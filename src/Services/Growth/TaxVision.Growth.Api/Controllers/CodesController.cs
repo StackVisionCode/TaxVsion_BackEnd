@@ -148,10 +148,7 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
         return ToActionResult(result);
     }
 
-    private (Guid OwnerTenantId, Guid? TenantScopeId)? ResolveOwnership(
-        CreateCodeRequest request,
-        Guid callerTenantId
-    )
+    private (Guid OwnerTenantId, Guid? TenantScopeId)? ResolveOwnership(CreateCodeRequest request, Guid callerTenantId)
     {
         if (request.OwnerScope == CodeOwnerScope.Tenant)
         {
@@ -167,10 +164,7 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
         if (request.OwnerScope != CodeOwnerScope.Platform || callerTenantId != PlatformTenant.Id)
             return null;
 
-        if (
-            request.TenantScopeId is not null
-            && !User.HasPermission(GrowthPermissions.AdminCrossTenant)
-        )
+        if (request.TenantScopeId is not null && !User.HasPermission(GrowthPermissions.AdminCrossTenant))
             return null;
 
         return (PlatformTenant.Id, request.TenantScopeId);
@@ -183,7 +177,5 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
     }
 
     private IActionResult ToActionResult<T>(Result<T> result) =>
-        result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 }

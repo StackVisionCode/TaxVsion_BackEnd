@@ -9,6 +9,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignatureRequestSealingFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required string Reason { get; init; }
     public required string ErrorCode { get; init; }
     public required DateTime FailedAtUtc { get; init; }

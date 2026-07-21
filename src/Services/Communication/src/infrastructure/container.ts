@@ -9,8 +9,12 @@ import { PrismaMeetingRepository } from './persistence/prisma-meeting-repository
 import { PrismaNotificationRepository } from './persistence/prisma-notification-repository.js';
 import { PrismaProcessedEventStore } from './persistence/prisma-processed-event-store.js';
 import { PrismaUserPermissionsProjectionRepository } from './persistence/prisma-user-permissions-projection.js';
+import { PrismaRolePermissionsProjectionRepository } from './persistence/prisma-role-permissions-projection.js';
+import { PrismaCustomerPortalAccountRepository } from './persistence/prisma-customer-portal-account-repository.js';
+import { PrismaNotificationActionMappingRepository } from './persistence/prisma-notification-action-mapping-repository.js';
 import { PrismaUserDirectoryRepository } from './persistence/prisma-user-directory-repository.js';
 import { PrismaCustomerDirectoryRepository } from './persistence/prisma-customer-directory-repository.js';
+import { PrismaCustomerPreparerAssignmentRepository } from './persistence/prisma-customer-preparer-assignment-repository.js';
 import { PrismaAttachmentTrackingRepository } from './persistence/prisma-attachment-tracking-repository.js';
 import { PrismaSupportTicketRepository } from './persistence/prisma-support-ticket-repository.js';
 import { PrismaLimitsRepository, PrismaSettingsRepository } from './persistence/prisma-settings-repository.js';
@@ -43,8 +47,12 @@ import type { PasscodeHasher } from '../application/ports/passcode-hasher.js';
 import type { NotificationRepository } from '../application/ports/notification-repository.js';
 import type { ProcessedEventStore } from '../application/ports/processed-event-store.js';
 import type { UserPermissionsProjectionRepository } from '../application/ports/user-permissions-projection-repository.js';
+import type { RolePermissionsProjectionRepository } from '../application/ports/role-permissions-projection-repository.js';
+import type { CustomerPortalAccountRepository } from '../application/ports/customer-portal-account-repository.js';
+import type { NotificationActionMappingRepository } from '../application/ports/notification-action-mapping-repository.js';
 import type { UserDirectoryRepository } from '../application/ports/user-directory-repository.js';
 import type { CustomerDirectoryRepository } from '../application/ports/customer-directory-repository.js';
+import type { CustomerPreparerAssignmentRepository } from '../application/ports/customer-preparer-assignment-repository.js';
 import type { AttachmentTrackingRepository } from '../application/ports/attachment-tracking-repository.js';
 import type { SupportTicketRepository } from '../application/ports/support-ticket-repository.js';
 import type { PlatformTenantProvider } from '../application/ports/platform-tenant-provider.js';
@@ -80,8 +88,12 @@ export interface AppContainer {
   readonly notifications: NotificationRepository;
   readonly processedEvents: ProcessedEventStore;
   readonly userPermissions: UserPermissionsProjectionRepository;
+  readonly rolePermissions: RolePermissionsProjectionRepository;
+  readonly customerPortalAccounts: CustomerPortalAccountRepository;
+  readonly notificationActionMappings: NotificationActionMappingRepository;
   readonly userDirectory: UserDirectoryRepository;
   readonly customerDirectory: CustomerDirectoryRepository;
+  readonly customerPreparerAssignments: CustomerPreparerAssignmentRepository;
   readonly attachmentTracking: AttachmentTrackingRepository;
   readonly supportTickets: SupportTicketRepository;
   readonly platform: PlatformTenantProvider;
@@ -124,8 +136,12 @@ export function buildContainer(): AppContainer {
     notifications: new PrismaNotificationRepository(prisma),
     processedEvents: new PrismaProcessedEventStore(prisma),
     userPermissions: new PrismaUserPermissionsProjectionRepository(prisma),
+    rolePermissions: new PrismaRolePermissionsProjectionRepository(prisma),
+    customerPortalAccounts: new PrismaCustomerPortalAccountRepository(prisma),
+    notificationActionMappings: new PrismaNotificationActionMappingRepository(prisma),
     userDirectory: new PrismaUserDirectoryRepository(prisma),
     customerDirectory: new PrismaCustomerDirectoryRepository(prisma),
+    customerPreparerAssignments: new PrismaCustomerPreparerAssignmentRepository(prisma),
     attachmentTracking: new PrismaAttachmentTrackingRepository(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),

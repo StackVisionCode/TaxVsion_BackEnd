@@ -87,10 +87,7 @@ public sealed class SqlReferralRewardQuota(
             var existing = await dbContext
                 .ReferralRewardQuotaReservations.IgnoreQueryFilters()
                 .AsNoTracking()
-                .SingleOrDefaultAsync(
-                    reservation => reservation.QualificationId == qualificationId,
-                    ct
-                );
+                .SingleOrDefaultAsync(reservation => reservation.QualificationId == qualificationId, ct);
 
             return existing is not null
                 && existing.TenantId == ownerTenantId

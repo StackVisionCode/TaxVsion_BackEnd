@@ -125,10 +125,7 @@ internal static class GrowthTestData
         return program;
     }
 
-    internal static ReferralCode CreateReferralCode(
-        ReferralProgram program,
-        Guid? ownerTenantId = null
-    ) =>
+    internal static ReferralCode CreateReferralCode(ReferralProgram program, Guid? ownerTenantId = null) =>
         ReferralCode
             .Create(
                 program,

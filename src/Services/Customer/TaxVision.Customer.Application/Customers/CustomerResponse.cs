@@ -16,5 +16,6 @@ public sealed record CustomerResponse(
     string? OccupationName,
     Guid? PrincipalBusinessActivityId,
     string? PrincipalBusinessActivityName,
-    DateTime CreatedAtUtc
+    DateTime CreatedAtUtc,
+    Guid? AssignedPreparerUserId = null
 );

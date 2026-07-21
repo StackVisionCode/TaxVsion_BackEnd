@@ -19,4 +19,9 @@ public sealed record SubscriptionPlanChangeDueIntegrationEvent : IntegrationEven
     /// <summary>Precio completo del plan destino, en centavos — no una diferencia.</summary>
     public required long TargetPlanPrice { get; init; }
     public required string Currency { get; init; }
+
+    /// <summary>Fase 1B — quien pidió el upgrade (<c>PlanChangeRequest.RequestedByUserId</c>).
+    /// A diferencia de SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue (disparados por un
+    /// job de facturación, sin usuario), un upgrade siempre lo inicia un usuario interactivo.</summary>
+    public required Guid RequestedByUserId { get; init; }
 }

@@ -190,6 +190,7 @@ public static class UpdateCustomerHandler
             OccupationName: null,
             c.BusinessIdentity?.PrincipalBusinessActivityId,
             PrincipalBusinessActivityName: null,
-            c.CreatedAtUtc
+            c.CreatedAtUtc,
+            c.AssignedPreparerUserId
         );
 }

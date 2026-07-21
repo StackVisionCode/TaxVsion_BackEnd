@@ -15,4 +15,11 @@ public sealed record SubscriptionPlanChangePaymentFailedIntegrationEvent : Integ
     public required string IdempotencyKey { get; init; }
     public required string FailureCode { get; init; }
     public required string FailureReason { get; init; }
+
+    /// <summary>
+    /// El usuario que pidió el upgrade de plan (<c>SaaSPayment.CreatedBy</c>) — cierre de la
+    /// auditoría Fase 1B del plan de notificaciones dinámicas: sin este campo era imposible
+    /// avisarle al usuario que su propio cargo falló.
+    /// </summary>
+    public required Guid RequestedByUserId { get; init; }
 }

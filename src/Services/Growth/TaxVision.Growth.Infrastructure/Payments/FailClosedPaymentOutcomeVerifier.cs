@@ -10,9 +10,8 @@ namespace TaxVision.Growth.Infrastructure.Payments;
 /// verification contract. Configuration can describe the future endpoints but cannot turn
 /// this placeholder into an implicit approval.
 /// </summary>
-public sealed class FailClosedPaymentOutcomeVerifier(
-    IOptions<PaymentOutcomeVerifierOptions> options
-) : IPaymentOutcomeVerifier
+public sealed class FailClosedPaymentOutcomeVerifier(IOptions<PaymentOutcomeVerifierOptions> options)
+    : IPaymentOutcomeVerifier
 {
     public Task<Result> VerifySucceededAsync(
         Guid tenantId,

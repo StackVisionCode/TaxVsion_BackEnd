@@ -298,6 +298,7 @@ public static class SaaSPaymentChargeOutcome
                     IdempotencyKey = payment.IdempotencyKey.Value,
                     ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
                     PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
+                    RequestedByUserId = payment.CreatedBy,
                     CorrelationId = correlation.CorrelationId,
                 }
             )
@@ -310,6 +311,7 @@ public static class SaaSPaymentChargeOutcome
                     IdempotencyKey = payment.IdempotencyKey.Value,
                     FailureCode = payment.FailureCode ?? "Unknown",
                     FailureReason = payment.FailureReason ?? "The charge failed.",
+                    RequestedByUserId = payment.CreatedBy,
                     CorrelationId = correlation.CorrelationId,
                 }
             );

@@ -45,10 +45,14 @@ public sealed class ReferralFraudReview : TenantEntity
     )
     {
         if (programId == Guid.Empty)
-            return Result.Failure<ReferralFraudReview>(new Error("FraudReview.InvalidProgram", "ProgramId is required."));
+            return Result.Failure<ReferralFraudReview>(
+                new Error("FraudReview.InvalidProgram", "ProgramId is required.")
+            );
 
         if (ownerTenantId == Guid.Empty)
-            return Result.Failure<ReferralFraudReview>(new Error("FraudReview.InvalidOwnerTenant", "OwnerTenantId is required."));
+            return Result.Failure<ReferralFraudReview>(
+                new Error("FraudReview.InvalidOwnerTenant", "OwnerTenantId is required.")
+            );
 
         var actor = DomainGuards.EnsureActor(actorUserId);
         if (actor.IsFailure)
@@ -62,7 +66,9 @@ public sealed class ReferralFraudReview : TenantEntity
         }
 
         if (string.IsNullOrWhiteSpace(signalCode) || signalCode.Trim().Length > 100)
-            return Result.Failure<ReferralFraudReview>(new Error("FraudReview.InvalidSignal", "A valid signal code is required."));
+            return Result.Failure<ReferralFraudReview>(
+                new Error("FraudReview.InvalidSignal", "A valid signal code is required.")
+            );
 
         if (string.IsNullOrWhiteSpace(evidenceReference) || evidenceReference.Trim().Length > 500)
         {
@@ -72,7 +78,9 @@ public sealed class ReferralFraudReview : TenantEntity
         }
 
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Trim().Length > 200)
-            return Result.Failure<ReferralFraudReview>(new Error("FraudReview.InvalidIdempotencyKey", "A valid idempotency key is required."));
+            return Result.Failure<ReferralFraudReview>(
+                new Error("FraudReview.InvalidIdempotencyKey", "A valid idempotency key is required.")
+            );
 
         if (!DomainGuards.IsSha256Hex(payloadFingerprint))
         {
@@ -85,21 +93,21 @@ public sealed class ReferralFraudReview : TenantEntity
         }
 
         var review = new ReferralFraudReview
-            {
-                ProgramId = programId,
-                TenantScopeId = tenantScopeId,
-                AttributionId = attributionId,
-                RewardCaseId = rewardCaseId,
-                SignalCode = signalCode.Trim(),
-                EvidenceReference = evidenceReference.Trim(),
-                Status = FraudReviewStatus.Open,
-                IdempotencyKey = idempotencyKey.Trim(),
-                PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                CreatedBy = actorUserId,
-                UpdatedBy = actorUserId,
-            };
+        {
+            ProgramId = programId,
+            TenantScopeId = tenantScopeId,
+            AttributionId = attributionId,
+            RewardCaseId = rewardCaseId,
+            SignalCode = signalCode.Trim(),
+            EvidenceReference = evidenceReference.Trim(),
+            Status = FraudReviewStatus.Open,
+            IdempotencyKey = idempotencyKey.Trim(),
+            PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
         review.SetTenant(tenantScopeId ?? ownerTenantId);
         return Result.Success(review);
     }

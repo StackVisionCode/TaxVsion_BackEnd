@@ -15,4 +15,11 @@ public sealed record SubscriptionPlanChangePaymentSucceededIntegrationEvent : In
     public required string IdempotencyKey { get; init; }
     public required string ExternalPaymentReference { get; init; }
     public required DateTime PaidAtUtc { get; init; }
+
+    /// <summary>
+    /// El usuario que pidió el upgrade de plan (<c>SaaSPayment.CreatedBy</c>) — cierre de la
+    /// auditoría Fase 1B del plan de notificaciones dinámicas: sin este campo era imposible
+    /// avisarle al usuario que su propio cargo se confirmó.
+    /// </summary>
+    public required Guid RequestedByUserId { get; init; }
 }

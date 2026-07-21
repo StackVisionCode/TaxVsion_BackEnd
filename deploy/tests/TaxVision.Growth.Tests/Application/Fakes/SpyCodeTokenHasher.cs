@@ -16,9 +16,7 @@ internal sealed class SpyCodeTokenHasher : ICodeTokenHasher
     {
         _receivedTokens.Add(codeToken);
         if (string.IsNullOrWhiteSpace(codeToken))
-            return Result.Failure<CodeTokenHash>(
-                new Error("TestHasher.InvalidToken", "Code token is required.")
-            );
+            return Result.Failure<CodeTokenHash>(new Error("TestHasher.InvalidToken", "Code token is required."));
 
         var digest = SHA256.HashData(Encoding.UTF8.GetBytes(codeToken));
         return CodeTokenHash.Create(Convert.ToHexStringLower(digest));

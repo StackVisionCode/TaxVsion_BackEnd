@@ -80,6 +80,13 @@ export interface CallRecordingReadyEvent extends IntegrationEvent {
   readonly durationSeconds: number;
   readonly readyAtUtc: string;
   /**
+   * Fase 1B — antes ausentes; Notification usaba un recipient simbolico
+   * `call:{id}`. Ambas partes (no un solo "actor"), igual que CallMissedEvent —
+   * una Call no tiene un unico dueño.
+   */
+  readonly callerUserId: string;
+  readonly calleeUserId: string;
+  /**
    * Ver docblock de MeetingRecordingReadyEvent.consentSnapshot — mismo
    * criterio, opcional por compatibilidad retro con attach-call-recording.ts.
    */
@@ -202,4 +209,7 @@ export interface CallRecordingFailedEvent extends IntegrationEvent {
   readonly callId: string;
   readonly reason: string;
   readonly failedAtUtc: string;
+  /** Fase 1B — ver docblock de CallRecordingReadyEvent.callerUserId/calleeUserId. */
+  readonly callerUserId: string;
+  readonly calleeUserId: string;
 }

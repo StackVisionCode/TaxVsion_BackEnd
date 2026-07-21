@@ -20,11 +20,7 @@ public static class GetCodeDetailsHandler
         if (query.ActorUserId == Guid.Empty)
             return Failure("Codes.GetCodeDetails.InvalidActor", "ActorUserId is required.");
 
-        var definition = await definitions.GetOwnedByIdAsync(
-            query.OwnerTenantId,
-            query.CodeDefinitionId,
-            ct
-        );
+        var definition = await definitions.GetOwnedByIdAsync(query.OwnerTenantId, query.CodeDefinitionId, ct);
         if (definition is null || definition.TenantId != query.OwnerTenantId)
             return Failure("Codes.GetCodeDetails.NotFound", "Owned code definition was not found.");
 

@@ -7582,6 +7582,9 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ArchivedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("AssignedPreparerUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -7633,11 +7636,39 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "AssignedPreparerUserId");
+
                     b.HasIndex("TenantId", "OccupationId");
 
                     b.HasIndex("TenantId", "Status", "DisplayName");
 
                     b.ToTable("Customers", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Customer.Domain.Employees.TenantEmployeeDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.ToTable("TenantEmployeeDirectoryEntries", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Customer.Domain.FiscalProfiles.CustomerFiscalProfile", b =>

@@ -7,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignerRejectedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required Guid SignerId { get; init; }
     public required DateTime RejectedAtUtc { get; init; }
     public required int RevocationEpoch { get; init; }

@@ -114,29 +114,25 @@ public sealed class ReferralQualification : TenantEntity
         var qualified = rejection is null;
 
         var qualification = new ReferralQualification
-            {
-                ProgramId = program.Id,
-                AttributionId = attribution.Id,
-                TenantScopeId = program.TenantScopeId,
-                QualifyingEventId = qualifyingEventId,
-                PaymentId = paymentId,
-                PaymentSource = paymentSource,
-                PaymentAmountCents = paymentAmountCents,
-                PaymentCurrency = paymentCurrency.Trim().ToUpperInvariant(),
-                IsFirstSuccessfulPayment = isFirstSuccessfulPayment,
-                Decision = qualified
-                    ? ReferralQualificationDecision.Qualified
-                    : ReferralQualificationDecision.Rejected,
-                RejectionReasonCode = rejection,
-                PaymentSucceededAtUtc = paymentSucceededAtUtc,
-                RewardEligibleAtUtc = qualified
-                    ? paymentSucceededAtUtc.AddDays(program.Policy.WaitingPeriodDays)
-                    : null,
-                IdempotencyKey = idempotencyKey.Trim(),
-                PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
-                EvaluatedAtUtc = nowUtc,
-                EvaluatedBy = actorUserId,
-            };
+        {
+            ProgramId = program.Id,
+            AttributionId = attribution.Id,
+            TenantScopeId = program.TenantScopeId,
+            QualifyingEventId = qualifyingEventId,
+            PaymentId = paymentId,
+            PaymentSource = paymentSource,
+            PaymentAmountCents = paymentAmountCents,
+            PaymentCurrency = paymentCurrency.Trim().ToUpperInvariant(),
+            IsFirstSuccessfulPayment = isFirstSuccessfulPayment,
+            Decision = qualified ? ReferralQualificationDecision.Qualified : ReferralQualificationDecision.Rejected,
+            RejectionReasonCode = rejection,
+            PaymentSucceededAtUtc = paymentSucceededAtUtc,
+            RewardEligibleAtUtc = qualified ? paymentSucceededAtUtc.AddDays(program.Policy.WaitingPeriodDays) : null,
+            IdempotencyKey = idempotencyKey.Trim(),
+            PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
+            EvaluatedAtUtc = nowUtc,
+            EvaluatedBy = actorUserId,
+        };
         qualification.SetTenant(attribution.TenantId);
         return Result.Success(qualification);
     }
@@ -164,17 +160,12 @@ public sealed class ReferralQualification : TenantEntity
         if (paymentSource != program.Policy.PaymentSource)
             return "WrongPaymentSource";
 
-        if (
-            program.Policy.QualifyingEvent == QualifyingEventRule.FirstSuccessfulPayment
-            && !isFirstSuccessfulPayment
-        )
+        if (program.Policy.QualifyingEvent == QualifyingEventRule.FirstSuccessfulPayment && !isFirstSuccessfulPayment)
             return "NotFirstSuccessfulPayment";
 
         if (!annualRewardSlotAvailable)
             return "AnnualRewardLimitReached";
 
-        return program.Policy.MeetsMinimum(paymentAmountCents, paymentCurrency)
-            ? null
-            : "MinimumPaymentNotMet";
+        return program.Policy.MeetsMinimum(paymentAmountCents, paymentCurrency) ? null : "MinimumPaymentNotMet";
     }
 }

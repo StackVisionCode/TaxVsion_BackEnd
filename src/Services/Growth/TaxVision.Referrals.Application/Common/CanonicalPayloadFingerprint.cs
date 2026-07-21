@@ -22,8 +22,7 @@ public static class CanonicalPayloadFingerprint
             canonical.Append(';');
         }
 
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString())))
-            .ToLowerInvariant();
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()))).ToLowerInvariant();
     }
 
     private static string Format(object? value) =>

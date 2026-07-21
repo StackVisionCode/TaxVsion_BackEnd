@@ -8,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignatureRequestExpiredIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required DateTime ExpiredAtUtc { get; init; }
     public required int RevocationEpoch { get; init; }
     public required IReadOnlyList<Guid> PendingSignerIds { get; init; }

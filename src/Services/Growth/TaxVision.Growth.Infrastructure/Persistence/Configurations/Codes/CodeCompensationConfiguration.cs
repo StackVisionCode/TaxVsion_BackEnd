@@ -39,10 +39,7 @@ public sealed class CodeCompensationConfiguration : IEntityTypeConfiguration<Cod
             .IsRequired();
         builder.Property(compensation => compensation.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
 
-        builder.OwnsOne(
-            compensation => compensation.AdjustmentAmount,
-            amount => amount.ConfigureMoney("Adjustment")
-        );
+        builder.OwnsOne(compensation => compensation.AdjustmentAmount, amount => amount.ConfigureMoney("Adjustment"));
         builder.Navigation(compensation => compensation.AdjustmentAmount).IsRequired();
 
         builder

@@ -27,7 +27,9 @@ internal static class OperationFingerprint
             DateTime dateTime => dateTime.ToUniversalTime().ToString("O"),
             DateTimeOffset dateTimeOffset => dateTimeOffset.ToUniversalTime().ToString("O"),
             bool boolean => boolean ? "true" : "false",
-            Enum enumeration => Convert.ToInt64(enumeration).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Enum enumeration => Convert
+                .ToInt64(enumeration)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture),
             IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
             _ => value.ToString() ?? string.Empty,
         };

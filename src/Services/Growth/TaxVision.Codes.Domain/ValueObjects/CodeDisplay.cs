@@ -18,16 +18,10 @@ public sealed record CodeDisplay
         var normalized = codeToken?.Trim();
         if (string.IsNullOrWhiteSpace(normalized) || normalized.Length is < 8 or > 200)
             return Result.Failure<CodeDisplay>(
-                new Error(
-                    "Codes.CodeDisplay.InvalidToken",
-                    "Code token must contain between 8 and 200 characters."
-                )
+                new Error("Codes.CodeDisplay.InvalidToken", "Code token must contain between 8 and 200 characters.")
             );
 
-        return Create(
-            normalized[..4].ToUpperInvariant(),
-            normalized[^4..].ToUpperInvariant()
-        );
+        return Create(normalized[..4].ToUpperInvariant(), normalized[^4..].ToUpperInvariant());
     }
 
     public static Result<CodeDisplay> Create(string prefix, string lastFour)

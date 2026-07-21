@@ -81,9 +81,7 @@ public sealed class JwtTenantContextMiddlewareTests
         var message = new TenantlessIntegrationEvent();
         var tenantContext = new TenantContext();
 
-        Assert.Throws<InvalidOperationException>(
-            () => GrowthTenantMessageMiddleware.Before(message, tenantContext)
-        );
+        Assert.Throws<InvalidOperationException>(() => GrowthTenantMessageMiddleware.Before(message, tenantContext));
         Assert.False(tenantContext.HasTenant);
     }
 
@@ -159,8 +157,7 @@ public sealed class JwtTenantContextMiddlewareTests
 
         public IDestinationEndpoint EndpointFor(Uri uri) => throw new NotImplementedException();
 
-        public IReadOnlyList<Envelope> PreviewSubscriptions(object message) =>
-            throw new NotImplementedException();
+        public IReadOnlyList<Envelope> PreviewSubscriptions(object message) => throw new NotImplementedException();
 
         public IReadOnlyList<Envelope> PreviewSubscriptions(object message, DeliveryOptions options) =>
             throw new NotImplementedException();
@@ -171,10 +168,7 @@ public sealed class JwtTenantContextMiddlewareTests
         public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null) =>
             throw new NotImplementedException();
 
-        public ValueTask BroadcastToTopicAsync(
-            string topicName,
-            object message,
-            DeliveryOptions? options = null
-        ) => throw new NotImplementedException();
+        public ValueTask BroadcastToTopicAsync(string topicName, object message, DeliveryOptions? options = null) =>
+            throw new NotImplementedException();
     }
 }

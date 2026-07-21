@@ -55,9 +55,10 @@ public sealed class ReferralCode : TenantEntity
         if (actor.IsFailure)
             return Result.Failure<ReferralCode>(actor.Error);
 
-        var expectedParticipant = program.FlowType == ReferralFlowType.TenantToTenant
-            ? ReferralParticipantType.Tenant
-            : ReferralParticipantType.Taxpayer;
+        var expectedParticipant =
+            program.FlowType == ReferralFlowType.TenantToTenant
+                ? ReferralParticipantType.Tenant
+                : ReferralParticipantType.Taxpayer;
         if (ownerType != expectedParticipant)
         {
             return Result.Failure<ReferralCode>(
@@ -81,18 +82,19 @@ public sealed class ReferralCode : TenantEntity
         if (string.IsNullOrWhiteSpace(displayPrefix) || displayPrefix.Length > 12)
         {
             return Result.Failure<ReferralCode>(
-                new Error(
-                    "ReferralCode.InvalidPrefix",
-                    "DisplayPrefix is required and must be 12 characters or fewer."
-                )
+                new Error("ReferralCode.InvalidPrefix", "DisplayPrefix is required and must be 12 characters or fewer.")
             );
         }
 
         if (string.IsNullOrWhiteSpace(lastFour) || lastFour.Length != 4)
-            return Result.Failure<ReferralCode>(new Error("ReferralCode.InvalidLastFour", "LastFour must have 4 characters."));
+            return Result.Failure<ReferralCode>(
+                new Error("ReferralCode.InvalidLastFour", "LastFour must have 4 characters.")
+            );
 
         if (expiresAtUtc <= nowUtc)
-            return Result.Failure<ReferralCode>(new Error("ReferralCode.InvalidExpiry", "Expiry must be in the future."));
+            return Result.Failure<ReferralCode>(
+                new Error("ReferralCode.InvalidExpiry", "Expiry must be in the future.")
+            );
 
         if (program.EndsAtUtc is not null && expiresAtUtc > program.EndsAtUtc)
         {
@@ -106,26 +108,24 @@ public sealed class ReferralCode : TenantEntity
             return Result.Failure<ReferralCode>(idempotency.Error);
 
         var referralCode = new ReferralCode
-            {
-                ProgramId = program.Id,
-                TenantScopeId = program.TenantScopeId,
-                OwnerType = ownerType,
-                OwnerId = ownerId,
-                CodeHash = DomainGuards.NormalizeSha256Hex(codeHash),
-                DisplayPrefix = displayPrefix,
-                LastFour = lastFour,
-                Status = ReferralCodeStatus.Active,
-                ExpiresAtUtc = expiresAtUtc,
-                IdempotencyKey = idempotencyKey.Trim(),
-                PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                CreatedBy = actorUserId,
-                UpdatedBy = actorUserId,
-            };
-        referralCode.SetTenant(
-            program.FlowType == ReferralFlowType.TenantToTenant ? ownerId : program.TenantId
-        );
+        {
+            ProgramId = program.Id,
+            TenantScopeId = program.TenantScopeId,
+            OwnerType = ownerType,
+            OwnerId = ownerId,
+            CodeHash = DomainGuards.NormalizeSha256Hex(codeHash),
+            DisplayPrefix = displayPrefix,
+            LastFour = lastFour,
+            Status = ReferralCodeStatus.Active,
+            ExpiresAtUtc = expiresAtUtc,
+            IdempotencyKey = idempotencyKey.Trim(),
+            PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
+        referralCode.SetTenant(program.FlowType == ReferralFlowType.TenantToTenant ? ownerId : program.TenantId);
         return Result.Success(referralCode);
     }
 
@@ -185,7 +185,9 @@ public sealed class ReferralCode : TenantEntity
     private static Result ValidateIdempotency(string idempotencyKey, string fingerprint)
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Trim().Length > 200)
-            return Result.Failure(new Error("ReferralCode.InvalidIdempotencyKey", "A valid idempotency key is required."));
+            return Result.Failure(
+                new Error("ReferralCode.InvalidIdempotencyKey", "A valid idempotency key is required.")
+            );
 
         return !DomainGuards.IsSha256Hex(fingerprint)
             ? Result.Failure(

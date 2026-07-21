@@ -14,16 +14,12 @@ public sealed class HmacSha256ReferralCodeTokenHasher : IReferralCodeTokenHasher
 {
     private readonly byte[] _pepper;
 
-    public HmacSha256ReferralCodeTokenHasher(
-        IOptions<ReferralCodeTokenHashingOptions> options
-    )
+    public HmacSha256ReferralCodeTokenHasher(IOptions<ReferralCodeTokenHashingOptions> options)
     {
         _pepper = Encoding.UTF8.GetBytes(options.Value.Pepper);
         if (_pepper.Length < 32)
         {
-            throw new InvalidOperationException(
-                "The Growth code token hashing pepper must contain at least 32 bytes."
-            );
+            throw new InvalidOperationException("The Growth code token hashing pepper must contain at least 32 bytes.");
         }
     }
 
@@ -31,9 +27,7 @@ public sealed class HmacSha256ReferralCodeTokenHasher : IReferralCodeTokenHasher
     {
         if (string.IsNullOrWhiteSpace(referralCode))
         {
-            return Result.Failure<string>(
-                new Error("ReferralCode.Token.Required", "A referral code is required.")
-            );
+            return Result.Failure<string>(new Error("ReferralCode.Token.Required", "A referral code is required."));
         }
 
         var normalized = referralCode.Trim().ToUpperInvariant();

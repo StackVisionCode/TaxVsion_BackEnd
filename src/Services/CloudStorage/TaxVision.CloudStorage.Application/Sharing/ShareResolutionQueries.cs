@@ -134,7 +134,7 @@ public static class ResolvePublicShareHandler
         );
         link.RegisterAccess(now);
         AuditAccessed(link, file.Id, query.Ip, query.UserAgent, audit, clock);
-        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, "public", ct);
+        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, file.CreatedBy, "public", ct);
         await unitOfWork.SaveChangesAsync(ct);
         return ShareAccessResult.Redirect(url.ToString());
     }
@@ -315,7 +315,7 @@ public static class ResolvePrivateShareHandler
                 clock.UtcNow
             )
         );
-        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, "private", ct);
+        await ShareLinkResolutionSignals.PublishAccessedAsync(bus, link, file.Id, file.CreatedBy, "private", ct);
         await unitOfWork.SaveChangesAsync(ct);
         return ShareAccessResult.Redirect(url.ToString());
     }
@@ -414,6 +414,7 @@ internal static class ShareLinkResolutionSignals
         IMessageBus bus,
         ShareLink link,
         Guid fileId,
+        Guid fileCreatedBy,
         string channel,
         CancellationToken ct
     ) =>
@@ -424,6 +425,7 @@ internal static class ShareLinkResolutionSignals
                 ShareLinkId = link.Id,
                 FileId = fileId,
                 Channel = channel,
+                CreatedByUserId = fileCreatedBy,
                 CorrelationId = link.Id.ToString(),
             }
         );
@@ -460,6 +462,7 @@ internal static class ShareLinkResolutionSignals
                 ShareLinkId = link.Id,
                 ResourceId = link.ResourceId,
                 ExpiresAtUtc = link.ExpiresAtUtc,
+                CreatedByUserId = link.CreatedByUserId,
                 CorrelationId = link.Id.ToString(),
             }
         );
