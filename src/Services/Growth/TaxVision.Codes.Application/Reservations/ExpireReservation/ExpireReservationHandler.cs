@@ -36,19 +36,15 @@ public static class ExpireReservationHandler
             fingerprint,
             async operationCt =>
             {
-                var reservation = await reservations.GetByIdAsync(
-                    command.TenantId,
-                    command.ReservationId,
-                    operationCt
-                );
+                var reservation = await reservations.GetByIdAsync(command.TenantId, command.ReservationId, operationCt);
                 if (reservation is null)
                     return Failure("Codes.ExpireReservation.NotFound", "Reservation was not found.");
 
                 if (
                     reservation.Status
-                    is CodeReservationStatus.Committed
-                        or CodeReservationStatus.Cancelled
-                        or CodeReservationStatus.Compensated
+                        is CodeReservationStatus.Committed
+                            or CodeReservationStatus.Cancelled
+                            or CodeReservationStatus.Compensated
                     || reservation.IsAvailabilityReleased
                 )
                     return Result.Success(ExpireReservationResponse.From(reservation));

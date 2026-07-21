@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -28,10 +29,12 @@ public static class MeetingInvitationCreatedConsumer
                 evt.TenantId,
                 recipient,
                 $"Invitación a meeting ({evt.InviteeKind}) — expira {evt.ExpiresAtUtc:u}",
+                NotificationCategory.Collaboration,
                 "communication.meeting.invitation_created",
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                recipientUserId: evt.InviteeUserId,
+                ct: ct
             );
         }
     }

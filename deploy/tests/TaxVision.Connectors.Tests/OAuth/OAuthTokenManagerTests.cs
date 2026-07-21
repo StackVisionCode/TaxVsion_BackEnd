@@ -162,6 +162,7 @@ public class OAuthTokenManagerTests
         var failedEvent = Assert.IsType<ConnectorsOAuthRefreshFailedIntegrationEvent>(published);
         Assert.Equal(fixture.Account.Id, failedEvent.AccountId);
         Assert.Equal("invalid_grant", failedEvent.Reason);
+        Assert.Equal(fixture.Account.CreatedByUserId, failedEvent.CreatedByUserId);
     }
 
     [Fact]

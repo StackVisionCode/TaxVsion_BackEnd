@@ -32,6 +32,11 @@
 			"type": "string"
 		},
 		{
+			"key": "notificationActionMappingId",
+			"value": "",
+			"type": "string"
+		},
+		{
 			"key": "messageId",
 			"value": "",
 			"type": "string"
@@ -1057,6 +1062,86 @@
 							]
 						}
 					}
+				},
+				{
+					"name": "Admin · NotificationActionMapping (Fase 6/8 notificaciones dinámicas)",
+					"description": "PlatformAdmin only — config de plataforma, no de tenant. Resuelve (EventKey, AudienceRole) -> (ActionType, UrlTemplate) para las notificaciones dual-audience (ej. signature.document.signed.v1 x Preparer/CustomerSigner). Mismo espíritu que EventTemplateMapping de Scribe.",
+					"item": [
+						{
+							"name": "Listar mappings",
+							"request": {
+								"method": "GET",
+								"url": {
+									"raw": "{{UrlBase}}/communication/admin/notification-action-mappings",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"communication",
+										"admin",
+										"notification-action-mappings"
+									]
+								}
+							}
+						},
+						{
+							"name": "Crear mapping",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"eventKey\": \"signature.request.expired.v1\",\n  \"audienceRole\": \"Preparer\",\n  \"actionType\": \"DeepLink\",\n  \"urlTemplate\": \"/crm/firmas/{signatureRequestId}\"\n}"
+								},
+								"url": {
+									"raw": "{{UrlBase}}/communication/admin/notification-action-mappings",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"communication",
+										"admin",
+										"notification-action-mappings"
+									]
+								},
+								"description": "actionType: 'DeepLink' | 'None'. urlTemplate obligatorio si actionType='DeepLink' (400 si falta). 409 si ya existe un mapping para (eventKey, audienceRole)."
+							}
+						},
+						{
+							"name": "Actualizar mapping",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"actionType\": \"None\"\n}"
+								},
+								"url": {
+									"raw": "{{UrlBase}}/communication/admin/notification-action-mappings/{{notificationActionMappingId}}",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"communication",
+										"admin",
+										"notification-action-mappings",
+										"{{notificationActionMappingId}}"
+									]
+								},
+								"description": "404 si el id no existe."
+							}
+						}
+					]
 				}
 			]
 		},
@@ -1340,7 +1425,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"meetingsEnabled\": true,\n  \"messageRetentionDays\": 730,\n  \"recordingRetentionDays\": 365,\n  \"purgeEnabled\": false\n}"
+							"raw": "{\n  \"meetingsEnabled\": true,\n  \"messageRetentionDays\": 730,\n  \"recordingRetentionDays\": 365,\n  \"purgeEnabled\": false,\n  \"restrictCustomerChatToAssignedPreparer\": true\n}"
 						},
 						"url": {
 							"raw": "{{UrlBase}}/communication/settings",
@@ -1352,7 +1437,7 @@
 								"settings"
 							]
 						},
-						"description": "Requiere communication.settings.manage. Todos los campos del body son opcionales (patch parcial): chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, internalGroupsEnabled, employeeToEmployeeChatEnabled, defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled."
+						"description": "Requiere communication.settings.manage. Todos los campos del body son opcionales (patch parcial): chatEnabled, callsEnabled, videoCallsEnabled, meetingsEnabled, supportEnabled, screenshotsEnabled, internalGroupsEnabled, employeeToEmployeeChatEnabled, restrictCustomerChatToAssignedPreparer (Fase B — si true, un chat directo con un CustomerPortal solo se permite si el otro lado es su preparador asignado via Customer.AssignedPreparerUserId), defaultCameraOff, defaultMicrophoneOff, persistChatOnEnd, messageRetentionDays (1-3650), recordingRetentionDays (1-3650), purgeEnabled."
 					}
 				}
 			]

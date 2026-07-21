@@ -4,6 +4,7 @@ import type { NotificationRepository } from '../ports/notification-repository.js
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
+import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
 import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 
 /**
@@ -19,6 +20,7 @@ export function bindCustomerConsumers(
     notifications: NotificationRepository;
     emitter: RealtimeEmitter;
     customerDirectory: CustomerDirectoryRepository;
+    customerPreparerAssignments: CustomerPreparerAssignmentRepository;
   },
 ): void {
   register('customer.bulk_imported.v1', async (env) => {
@@ -42,6 +44,56 @@ export function bindCustomerConsumers(
         title: 'Importacion masiva completada',
         body: `${successCount}/${totalRows} clientes importados${failedCount > 0 ? `, ${failedCount} con errores` : ''}.`,
         metadata: { importJobId, totalRows, successCount, failedCount },
+        sourceEventId: env.eventId,
+        sourceEventType: env.eventType,
+        correlationId: env.correlationId ?? null,
+      },
+      deps,
+    );
+    if (result.isSuccess && result.value.created && result.value.notification) {
+      deps.emitter.emitToUser({
+        tenantId: env.tenantId,
+        userId: createdBy,
+        event: NotificationSocketEvents.Received,
+        envelope: {
+          eventId: randomUUID(),
+          correlationId: env.correlationId ?? '',
+          emittedAtUtc: new Date().toISOString(),
+          payload: result.value.notification,
+        },
+      });
+      deps.emitter.emitToUser({
+        tenantId: env.tenantId,
+        userId: createdBy,
+        event: NotificationSocketEvents.UnreadCountChanged,
+        envelope: {
+          eventId: randomUUID(),
+          correlationId: env.correlationId ?? '',
+          emittedAtUtc: new Date().toISOString(),
+          payload: { count: result.value.unreadCount },
+        },
+      });
+    }
+  });
+
+  // Fase 1B — evento hermano de customer.bulk_imported.v1: cubre el camino de
+  // Failed (archivo vacio, excede filas, virus, bloqueado por politica, crash
+  // del worker), que antes no publicaba nada — el empleado nunca se enteraba.
+  register('customer.bulk_import_failed.v1', async (env) => {
+    const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
+    const importJobId = getString(env.payload, 'importJobId') ?? getString(env.payload, 'ImportJobId') ?? '';
+    const reason = getString(env.payload, 'reason') ?? getString(env.payload, 'Reason') ?? '';
+    if (!createdBy) return;
+
+    const result = await pushNotification(
+      {
+        tenantId: env.tenantId,
+        userId: createdBy,
+        kind: 'customer.bulk_import_failed',
+        priority: 'High',
+        title: 'Importacion masiva fallida',
+        body: reason ? `La importacion no pudo completarse: ${reason}` : 'La importacion no pudo completarse.',
+        metadata: { importJobId, reason },
         sourceEventId: env.eventId,
         sourceEventType: env.eventType,
         correlationId: env.correlationId ?? null,
@@ -110,6 +162,23 @@ export function bindCustomerConsumers(
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     if (!customerId) return;
     await deps.customerDirectory.markInactive(customerId);
+  });
+
+  // Fase B2 (chat tipado) — mantiene al dia CustomerPreparerAssignment, la
+  // proyeccion que start-direct-conversation.ts usa para calcular
+  // isPrimaryPreparer sin round-trip HTTP a Customer, mismo criterio que
+  // CustomerDirectoryEntry arriba.
+  register('customer.preparer_assigned.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    const preparerUserId = getString(env.payload, 'preparerUserId') ?? getString(env.payload, 'PreparerUserId');
+    if (!customerId || !preparerUserId) return;
+    await deps.customerPreparerAssignments.assign({ customerId, tenantId: env.tenantId, preparerUserId });
+  });
+
+  register('customer.preparer_unassigned.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    if (!customerId) return;
+    await deps.customerPreparerAssignments.unassign(customerId);
   });
 }
 

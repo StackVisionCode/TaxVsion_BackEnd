@@ -8,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignatureRequestSentIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required DateTime SentAtUtc { get; init; }
     public required IReadOnlyList<Guid> SignerIds { get; init; }
 }

@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Audit;
 using TaxVision.CloudStorage.Domain.Files;
@@ -10,7 +11,12 @@ using Wolverine;
 
 namespace TaxVision.CloudStorage.Application.Folders;
 
-/// <summary>Fase C2 — crea una carpeta navegable (arbol logico, no toca MinIO).</summary>
+/// <summary>
+/// Fase C2 — crea una carpeta navegable (arbol logico, no toca MinIO). Category (2026-07-20,
+/// ver FolderCategory.cs) es opcional: cuando viene informado, esta misma llamada tiene
+/// semantica get-or-create — dos interfaces distintas pidiendo la carpeta ancla de un mismo
+/// dueno con la misma Category siempre convergen al mismo Folder, nunca duplican.
+/// </summary>
 public sealed record CreateFolderCommand(
     Guid TenantId,
     Guid ActorId,
@@ -18,7 +24,8 @@ public sealed record CreateFolderCommand(
     Guid? ParentFolderId,
     string? Name,
     OwnerType OwnerType,
-    Guid? OwnerId
+    Guid? OwnerId,
+    string? Category = null
 );
 
 public static class CreateFolderHandler
@@ -28,32 +35,53 @@ public static class CreateFolderHandler
         IFolderRepository folders,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
+        ILogger<Folder> logger,
         CancellationToken ct
     )
     {
         if (!command.Scope.CanCreate(command.OwnerType, command.OwnerId))
             return Result.Failure<FolderResponse>(FolderErrors.Forbidden);
 
+        var built = await ValidateAndBuildFolder(command, folders, clock, ct);
+        if (built.IsFailure)
+            return Result.Failure<FolderResponse>(built.Error);
+
+        return await PersistOrReturnExisting(command, built.Value, folders, unitOfWork, logger, ct);
+    }
+
+    private static async Task<Result<Folder>> ValidateAndBuildFolder(
+        CreateFolderCommand command,
+        IFolderRepository folders,
+        ISystemClock clock,
+        CancellationToken ct
+    )
+    {
         var nameResult = FolderName.Create(command.Name);
         if (nameResult.IsFailure)
-            return Result.Failure<FolderResponse>(nameResult.Error);
+            return Result.Failure<Folder>(nameResult.Error);
+
+        var categoryResult = ResolveCategory(command.Category);
+        if (categoryResult.IsFailure)
+            return Result.Failure<Folder>(categoryResult.Error);
 
         var parentPathResult = await ResolveParentPath(command, folders, ct);
         if (parentPathResult.IsFailure)
-            return Result.Failure<FolderResponse>(parentPathResult.Error);
+            return Result.Failure<Folder>(parentPathResult.Error);
 
         if (
             await folders.NameExistsUnderParentAsync(
                 command.TenantId,
                 command.ParentFolderId,
                 nameResult.Value.Value,
+                command.OwnerType,
+                command.OwnerId,
                 null,
                 ct
             )
         )
-            return Result.Failure<FolderResponse>(FolderErrors.NameAlreadyExists);
+            return Result.Failure<Folder>(FolderErrors.NameAlreadyExists);
 
-        var created = Folder.Create(
+        return Folder.Create(
             Guid.NewGuid(),
             command.TenantId,
             command.OwnerType,
@@ -62,14 +90,71 @@ public static class CreateFolderHandler
             nameResult.Value,
             parentPathResult.Value,
             command.ActorId,
-            clock.UtcNow
+            clock.UtcNow,
+            categoryResult.Value
         );
-        if (created.IsFailure)
-            return Result.Failure<FolderResponse>(created.Error);
+    }
 
-        folders.Add(created.Value);
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(FolderResponseMapper.Map(created.Value));
+    private static Result<FolderCategory?> ResolveCategory(string? category)
+    {
+        if (category is null)
+            return Result.Success<FolderCategory?>(null);
+
+        var result = FolderCategory.Create(category);
+        return result.IsFailure
+            ? Result.Failure<FolderCategory?>(result.Error)
+            : Result.Success<FolderCategory?>(result.Value);
+    }
+
+    /// <summary>
+    /// 2026-07-20 — cuando command.Category viene informado, el indice unico filtrado
+    /// IX_Folders_Owner_Category (FolderConfiguration) respalda una carrera real: si dos
+    /// requests concurrentes (dos interfaces distintas pidiendo la carpeta ancla del mismo
+    /// dueno) pasan el pre-check de arriba y ambas intentan insertar, la segunda choca con
+    /// ConflictException — en vez de propagar el error, buscamos la fila que gano la
+    /// carrera y la devolvemos como si la hubieramos creado nosotros. Mismo patron que
+    /// StartCustomerImportHandler (Customer.Application) para el race de IdempotencyKey.
+    /// Sin Category no hay indice unico que proteja el Name (solo el pre-check de arriba,
+    /// best-effort) — la excepcion, si ocurriera, se deja propagar sin capturar.
+    /// </summary>
+    private static async Task<Result<FolderResponse>> PersistOrReturnExisting(
+        CreateFolderCommand command,
+        Folder folder,
+        IFolderRepository folders,
+        IUnitOfWork unitOfWork,
+        ILogger<Folder> logger,
+        CancellationToken ct
+    )
+    {
+        folders.Add(folder);
+        try
+        {
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (ConflictException) when (command.Category is not null)
+        {
+            logger.LogInformation(
+                "CreateFolder hit unique violation for tenant {TenantId} owner {OwnerType}/{OwnerId} category {Category} "
+                    + "(concurrent create race) — returning the folder that won the race.",
+                command.TenantId,
+                command.OwnerType,
+                command.OwnerId,
+                command.Category
+            );
+            var existing = await folders.GetByOwnerAndCategoryAsync(
+                command.TenantId,
+                command.OwnerType,
+                command.OwnerId,
+                command.Category,
+                ct
+            );
+            if (existing is not null)
+                return Result.Success(FolderResponseMapper.Map(existing));
+
+            throw; // El indice rechazo la insercion: la fila ganadora tiene que existir. Si no aparece, algo mas grave paso.
+        }
+
+        return Result.Success(FolderResponseMapper.Map(folder));
     }
 
     private static async Task<Result<string?>> ResolveParentPath(
@@ -123,6 +208,8 @@ public static class RenameFolderHandler
                 command.TenantId,
                 folder.ParentFolderId,
                 nameResult.Value.Value,
+                folder.OwnerType,
+                folder.OwnerId,
                 folder.Id,
                 ct
             )
@@ -207,6 +294,8 @@ public static class MoveFolderHandler
                 command.TenantId,
                 command.NewParentFolderId,
                 folder.Name,
+                folder.OwnerType,
+                folder.OwnerId,
                 folder.Id,
                 ct
             )
@@ -381,6 +470,7 @@ public static class MoveFileToFolderHandler
                     FolderId = link.ResourceId,
                     FileId = file.Id,
                     AutoCovered = autoCovered,
+                    CreatedByUserId = file.CreatedBy,
                     CorrelationId = command.Audit.CorrelationId,
                 }
             );
@@ -403,5 +493,60 @@ public static class MoveFileToFolderHandler
             currentId = folder?.ParentFolderId;
         }
         return ids;
+    }
+}
+
+/// <summary>
+/// 2026-07-20 — borra una carpeta navegable. Decision explicita del usuario (no cascada,
+/// no mover a la raiz): rechaza con FolderErrors.NotEmpty si tiene subfolders o archivos
+/// directos — el llamador debe vaciarla primero. Mas simple y seguro que una cascada
+/// oculta de un solo click; los archivos ya tienen su propia papelera (Fase C1,
+/// DeleteFileHandler) para quien quiera vaciar la carpeta borrando de a uno.
+/// </summary>
+public sealed record DeleteFolderCommand(Guid TenantId, Guid ActorId, StorageActorScope Scope, Guid FolderId);
+
+public static class DeleteFolderHandler
+{
+    public static async Task<Result> Handle(
+        DeleteFolderCommand command,
+        IFolderRepository folders,
+        IFileObjectRepository files,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var loaded = await RenameFolderHandler.LoadOwnedFolder(
+            command.TenantId,
+            command.Scope,
+            command.FolderId,
+            folders,
+            ct
+        );
+        if (loaded.IsFailure)
+            return Result.Failure(loaded.Error);
+
+        var emptyCheck = await EnsureEmpty(command.TenantId, command.FolderId, folders, files, ct);
+        if (emptyCheck.IsFailure)
+            return emptyCheck;
+
+        folders.Remove(loaded.Value);
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    private static async Task<Result> EnsureEmpty(
+        Guid tenantId,
+        Guid folderId,
+        IFolderRepository folders,
+        IFileObjectRepository files,
+        CancellationToken ct
+    )
+    {
+        var subfolders = await folders.ListSubfoldersAsync(tenantId, folderId, null, null, null, ct);
+        if (subfolders.Count > 0)
+            return Result.Failure(FolderErrors.NotEmpty);
+
+        var filesInFolder = await files.ListInFolderAsync(tenantId, folderId, null, null, null, ct);
+        return filesInFolder.Count > 0 ? Result.Failure(FolderErrors.NotEmpty) : Result.Success();
     }
 }

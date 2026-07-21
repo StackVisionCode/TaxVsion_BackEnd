@@ -57,9 +57,7 @@ public static class DependencyInjection
             .AddOptions<CodeTokenHashingOptions>()
             .Bind(configuration.GetSection(CodeTokenHashingOptions.SectionName))
             .Validate(
-                value =>
-                    !string.IsNullOrWhiteSpace(value.Pepper)
-                    && Encoding.UTF8.GetByteCount(value.Pepper) >= 32,
+                value => !string.IsNullOrWhiteSpace(value.Pepper) && Encoding.UTF8.GetByteCount(value.Pepper) >= 32,
                 "Growth:Codes:TokenHashing:Pepper must contain at least 32 UTF-8 bytes."
             )
             .ValidateOnStart();
@@ -67,9 +65,7 @@ public static class DependencyInjection
             .AddOptions<ReferralCodeTokenHashingOptions>()
             .Bind(configuration.GetSection(ReferralCodeTokenHashingOptions.SectionName))
             .Validate(
-                value =>
-                    !string.IsNullOrWhiteSpace(value.Pepper)
-                    && Encoding.UTF8.GetByteCount(value.Pepper) >= 32,
+                value => !string.IsNullOrWhiteSpace(value.Pepper) && Encoding.UTF8.GetByteCount(value.Pepper) >= 32,
                 "Growth:Referrals:TokenHashing:Pepper must contain at least 32 UTF-8 bytes."
             )
             .ValidateOnStart();

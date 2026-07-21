@@ -88,6 +88,7 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
                     TenantId = request.TenantId,
                     CorrelationId = Guid.NewGuid().ToString("N"),
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     ExpiredAtUtc = now,
                     RevocationEpoch = request.RevocationEpoch,
                     PendingSignerIds = pending.Select(s => s.Id).ToList(),

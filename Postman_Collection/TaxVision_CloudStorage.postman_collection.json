@@ -566,7 +566,7 @@
 							}
 						],
 						"url": {
-							"raw": "{{UrlBase}}/storage/folders?parentFolderId={{folderId}}",
+							"raw": "{{UrlBase}}/storage/folders?parentFolderId={{folderId}}&ownerType=Customer&ownerId={{customerId}}",
 							"host": [
 								"{{UrlBase}}"
 							],
@@ -579,10 +579,20 @@
 									"key": "parentFolderId",
 									"value": "{{folderId}}",
 									"description": "Omitir (o dejar vacio) para listar la raiz"
+								},
+								{
+									"key": "ownerType",
+									"value": "Customer",
+									"description": "2026-07-20, opcional — solo staff interno. Filtra la respuesta a un solo dueno (ej. 'dame solo el arbol de este cliente') cuando la raiz de un tenant mezcla folders del propio tenant + de varios clientes. El portal de cliente (Scope.IsCustomerPortal) ignora este filtro, siempre ve solo lo suyo."
+								},
+								{
+									"key": "ownerId",
+									"value": "{{customerId}}",
+									"description": "2026-07-20, opcional — va junto con ownerType. Omitir ambos para ver todos los duenos mezclados (comportamiento previo)."
 								}
 							]
 						},
-						"description": "Fase C2 — arbol navegable: subcarpetas + archivos directos de parentFolderId (null = raiz). Requiere storage.file.view."
+						"description": "Fase C2 — arbol navegable de UN NIVEL: subcarpetas + archivos directos de parentFolderId (null = raiz). Para navegación por clicks (tipo Explorer). Requiere storage.file.view.\n\nPara el arbol COMPLETO de una sola vez (sidebar expandible) usar GetFolderTree en su lugar."
 					},
 					"response": [],
 					"event": [
@@ -593,6 +603,56 @@
 								"exec": [
 									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
 									"pm.test(\"incluye subfolders y files\", () => { const r = pm.response.json(); pm.expect(r).to.have.property(\"subfolders\"); pm.expect(r).to.have.property(\"files\"); });"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetFolderTree",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders/tree?ownerType=Customer&ownerId={{customerId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders",
+								"tree"
+							],
+							"query": [
+								{
+									"key": "ownerType",
+									"value": "Customer",
+									"description": "Opcional. Omitir ownerType+ownerId para ver el arbol completo del tenant mezclado (solo staff)."
+								},
+								{
+									"key": "ownerId",
+									"value": "{{customerId}}",
+									"description": "Opcional, va junto con ownerType."
+								}
+							]
+						},
+						"description": "2026-07-20 — arbol COMPLETO en una sola llamada (sidebar expandible), a diferencia de GetFolderContents que trae un nivel por vez para navegación por clicks. Respuesta: array de nodos `{ id, name, relativePath, category, children: [...] }` anidados recursivamente. Requiere storage.file.view."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"es un array\", () => pm.expect(pm.response.json()).to.be.an('array'));"
 								]
 							}
 						}
@@ -624,7 +684,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"parentFolderId\": null,\n  \"name\": \"Declaraciones 2025\",\n  \"ownerType\": \"Customer\",\n  \"ownerId\": \"{{customerId}}\"\n}",
+							"raw": "{\n  \"parentFolderId\": null,\n  \"name\": \"Declaraciones 2025\",\n  \"ownerType\": \"Customer\",\n  \"ownerId\": \"{{customerId}}\",\n  \"category\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -641,7 +701,7 @@
 								"folders"
 							]
 						},
-						"description": "Fase C2 — crea una carpeta navegable. ownerType: Tenant|Customer|User|Signature|Invoice|Communication. Requiere storage.folder.manage."
+						"description": "Fase C2 — crea una carpeta navegable.\n\n**Body:**\n- `parentFolderId` (guid|null): folder padre, null = raiz del owner.\n- `name` (string, requerido, max 255): nombre visible, no puede contener `/` ni `\\`.\n- `ownerType` (string, requerido): `Tenant`|`Customer`|`User`|`Signature`|`Invoice`|`Communication`.\n- `ownerId` (guid|null): requerido si ownerType != Tenant (ej. el customerId).\n- `category` (string|null, opcional, 2026-07-20): tag tecnico que tu modulo/interfaz define como constante propia (ej. `\"customer.documents\"`) para tener SIEMPRE la misma carpeta ancla de un dueno, sin duplicarla. Formato: minusculas ascii + digitos + `.`/`-`/`_`, max 100 chars. **Si dos interfaces distintas llaman CreateFolder con el mismo (ownerType, ownerId, category), la segunda llamada NO crea una carpeta nueva — devuelve la que ya existe** (get-or-create real respaldado por un indice unico en BD, no solo un chequeo previo). Dejar `null` para carpetas organizadas libremente por el usuario.\n\nRequiere storage.folder.manage."
 					},
 					"response": []
 				},
@@ -716,6 +776,43 @@
 						"description": "Mueve la carpeta a otro padre (null = raiz). Requiere storage.folder.manage."
 					},
 					"response": []
+				},
+				{
+					"name": "DeleteFolder",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/folders/{{folderId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"folders",
+								"{{folderId}}"
+							]
+						},
+						"description": "2026-07-20 — borra una carpeta VACÍA. Si todavía tiene subcarpetas o archivos directos adentro, devuelve **409 Conflict** (`Folder.NotEmpty`) — hay que vaciarla primero (mover o borrar el contenido, un archivo a la vez usa su propia papelera en `DELETE /storage/files/{fileId}`). No hay cascada automática: decisión explícita para que borrar una carpeta nunca se lleve por delante contenido de otra sin que el usuario lo vea venir. Requiere storage.folder.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204 o 409 si no esta vacia\", () => [204, 409].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
 				}
 			]
 		},

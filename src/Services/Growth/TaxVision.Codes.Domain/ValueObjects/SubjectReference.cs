@@ -22,10 +22,7 @@ public sealed record SubjectReference
 
         if (string.IsNullOrWhiteSpace(subjectId) || subjectId.Trim().Length > 200)
             return Result.Failure<SubjectReference>(
-                new Error(
-                    "Codes.SubjectReference.InvalidId",
-                    "SubjectId is required and cannot exceed 200 characters."
-                )
+                new Error("Codes.SubjectReference.InvalidId", "SubjectId is required and cannot exceed 200 characters.")
             );
 
         return Result.Success(new SubjectReference(type, subjectId.Trim()));

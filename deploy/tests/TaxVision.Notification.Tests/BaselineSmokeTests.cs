@@ -12,6 +12,7 @@ using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Application.Consumers.Communication;
 using TaxVision.Notification.Application.Consumers.Signature;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Tests;
 
@@ -138,6 +139,7 @@ public sealed class BaselineSmokeTests
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logRepo,
+            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
             uow,
             NullLogger<NotificationDispatcher>.Instance
         );
@@ -151,6 +153,7 @@ public sealed class BaselineSmokeTests
             DurationSeconds = 1800,
             ParticipantCount = 3,
             ReadyAtUtc = DateTime.UtcNow,
+            HostUserId = Guid.NewGuid(),
         };
 
         await MeetingRecordingReadyConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
@@ -160,9 +163,123 @@ public sealed class BaselineSmokeTests
         var log = logRepo.Logs[0];
         Assert.Equal(NotificationChannel.InApp, log.Channel);
         Assert.Equal(NotificationStatus.Sent, log.Status);
-        Assert.Equal($"meeting:{meetingId:N}", log.Recipient);
+        Assert.Equal($"user:{evt.HostUserId:N}", log.Recipient);
         Assert.Equal(evt.TenantId, log.TenantId);
         Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task MeetingRecordingFailed_Consumer_Records_InApp_NotificationLog_For_Host()
+    {
+        var emailSender = new RecordingEmailSender();
+        var logRepo = new RecordingNotificationLogRepository();
+        var uow = new NoOpUnitOfWork();
+        var correlation = new NoOpCorrelationContext();
+        var dispatcher = new NotificationDispatcher(
+            NoOpSmsSender.Instance,
+            NoOpPushSender.Instance,
+            EmptyPushDeviceTokenRepository.Instance,
+            logRepo,
+            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            uow,
+            NullLogger<NotificationDispatcher>.Instance
+        );
+
+        var evt = new MeetingRecordingFailedIntegrationEvent
+        {
+            TenantId = Guid.NewGuid(),
+            MeetingId = Guid.NewGuid(),
+            Reason = "ConsentTimeout",
+            FailedAtUtc = DateTime.UtcNow,
+            HostUserId = Guid.NewGuid(),
+        };
+
+        await MeetingRecordingFailedConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
+
+        Assert.Empty(emailSender.Sent);
+        Assert.Single(logRepo.Logs);
+        var log = logRepo.Logs[0];
+        Assert.Equal(NotificationChannel.InApp, log.Channel);
+        Assert.Equal($"user:{evt.HostUserId:N}", log.Recipient);
+        Assert.Equal(evt.TenantId, log.TenantId);
+        Assert.Equal(1, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task CallRecordingReady_Consumer_Records_InApp_NotificationLog_For_Both_Participants()
+    {
+        var emailSender = new RecordingEmailSender();
+        var logRepo = new RecordingNotificationLogRepository();
+        var uow = new NoOpUnitOfWork();
+        var correlation = new NoOpCorrelationContext();
+        var dispatcher = new NotificationDispatcher(
+            NoOpSmsSender.Instance,
+            NoOpPushSender.Instance,
+            EmptyPushDeviceTokenRepository.Instance,
+            logRepo,
+            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            uow,
+            NullLogger<NotificationDispatcher>.Instance
+        );
+
+        var evt = new CallRecordingReadyIntegrationEvent
+        {
+            TenantId = Guid.NewGuid(),
+            CallId = Guid.NewGuid(),
+            RecordingFileId = Guid.NewGuid(),
+            DurationSeconds = 120,
+            ReadyAtUtc = DateTime.UtcNow,
+            CallerUserId = Guid.NewGuid(),
+            CalleeUserId = Guid.NewGuid(),
+        };
+
+        await CallRecordingReadyConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
+
+        Assert.Empty(emailSender.Sent);
+        Assert.Equal(2, logRepo.Logs.Count);
+        Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CallerUserId:N}");
+        Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CalleeUserId:N}");
+        Assert.All(logRepo.Logs, l => Assert.Equal(NotificationChannel.InApp, l.Channel));
+        Assert.All(logRepo.Logs, l => Assert.Equal(evt.TenantId, l.TenantId));
+        Assert.Equal(2, uow.SaveCount);
+    }
+
+    [Fact]
+    public async Task CallRecordingFailed_Consumer_Records_InApp_NotificationLog_For_Both_Participants()
+    {
+        var emailSender = new RecordingEmailSender();
+        var logRepo = new RecordingNotificationLogRepository();
+        var uow = new NoOpUnitOfWork();
+        var correlation = new NoOpCorrelationContext();
+        var dispatcher = new NotificationDispatcher(
+            NoOpSmsSender.Instance,
+            NoOpPushSender.Instance,
+            EmptyPushDeviceTokenRepository.Instance,
+            logRepo,
+            AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+            uow,
+            NullLogger<NotificationDispatcher>.Instance
+        );
+
+        var evt = new CallRecordingFailedIntegrationEvent
+        {
+            TenantId = Guid.NewGuid(),
+            CallId = Guid.NewGuid(),
+            Reason = "ConsentTimeout",
+            FailedAtUtc = DateTime.UtcNow,
+            CallerUserId = Guid.NewGuid(),
+            CalleeUserId = Guid.NewGuid(),
+        };
+
+        await CallRecordingFailedConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
+
+        Assert.Empty(emailSender.Sent);
+        Assert.Equal(2, logRepo.Logs.Count);
+        Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CallerUserId:N}");
+        Assert.Contains(logRepo.Logs, l => l.Recipient == $"user:{evt.CalleeUserId:N}");
+        Assert.All(logRepo.Logs, l => Assert.Equal(NotificationChannel.InApp, l.Channel));
+        Assert.All(logRepo.Logs, l => Assert.Equal(evt.TenantId, l.TenantId));
+        Assert.Equal(2, uow.SaveCount);
     }
 
     // ------------------------------------------------------------------
@@ -267,5 +384,38 @@ public sealed class BaselineSmokeTests
             Guid userId,
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<PushDeviceToken>>(Array.Empty<PushDeviceToken>());
+
+        public Task RevokeAsync(Guid tenantId, Guid id, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    /// <summary>Fase 5: sin filas, todo queda en el default opt-out (Enabled=true) — no cambia el comportamiento de estos tests preexistentes.</summary>
+    private sealed class AlwaysEnabledUserNotificationPreferenceRepository : IUserNotificationPreferenceRepository
+    {
+        public static readonly AlwaysEnabledUserNotificationPreferenceRepository Instance = new();
+
+        public Task<bool> IsEnabledAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        ) => Task.FromResult(true);
+
+        public Task<UserNotificationPreference?> GetAsync(
+            Guid tenantId,
+            Guid userId,
+            NotificationCategory category,
+            NotificationChannel channel,
+            CancellationToken ct = default
+        ) => Task.FromResult<UserNotificationPreference?>(null);
+
+        public Task<IReadOnlyList<UserNotificationPreference>> ListForUserAsync(
+            Guid tenantId,
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<UserNotificationPreference>>(Array.Empty<UserNotificationPreference>());
+
+        public Task AddAsync(UserNotificationPreference preference, CancellationToken ct = default) =>
+            Task.CompletedTask;
     }
 }

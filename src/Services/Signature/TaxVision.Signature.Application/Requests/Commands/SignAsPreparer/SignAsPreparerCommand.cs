@@ -57,6 +57,7 @@ public static class SignAsPreparerHandler
                     TenantId = request.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     PreparerUserId = request.PreparerSignedByUserId!.Value,
                     PtinOrEfin = preparer.PtinOrEfin,
                     PreparerDisplayName = preparer.DisplayName,

@@ -66,12 +66,7 @@ public sealed class ReferralsDomainTests
         var code = GrowthTestData.CreateReferralCode(program);
         var attribution = GrowthTestData.CreateActiveAttribution(program, code);
         var qualification = GrowthTestData.CreateQualifiedReferral(program, attribution);
-        Assert.True(
-            attribution.MarkQualified(
-                GrowthTestData.ActorId,
-                GrowthTestData.NowUtc.AddDays(1)
-            ).IsSuccess
-        );
+        Assert.True(attribution.MarkQualified(GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(1)).IsSuccess);
         var reward = ReferralRewardCase
             .Request(
                 program,
@@ -183,33 +178,15 @@ public sealed class ReferralsDomainTests
 
         Assert.True(reward.BeginGrant(GrowthTestData.ActorId, eligibleAt).IsSuccess);
         Assert.True(
-            reward.ConfirmGranted(
-                "subscription-grant-123",
-                GrowthTestData.ActorId,
-                eligibleAt.AddMinutes(1)
-            ).IsSuccess
+            reward.ConfirmGranted("subscription-grant-123", GrowthTestData.ActorId, eligibleAt.AddMinutes(1)).IsSuccess
         );
         Assert.True(
-            reward.RequestClawback(
-                "payment chargeback lost",
-                GrowthTestData.ActorId,
-                eligibleAt.AddDays(1)
-            ).IsSuccess
+            reward.RequestClawback("payment chargeback lost", GrowthTestData.ActorId, eligibleAt.AddDays(1)).IsSuccess
         );
-        Assert.True(
-            reward.ConfirmReversed(
-                GrowthTestData.ActorId,
-                eligibleAt.AddDays(1).AddMinutes(1)
-            ).IsSuccess
-        );
+        Assert.True(reward.ConfirmReversed(GrowthTestData.ActorId, eligibleAt.AddDays(1).AddMinutes(1)).IsSuccess);
 
         Assert.Equal(ReferralRewardCaseStatus.Reversed, reward.Status);
-        Assert.True(
-            reward.ConfirmReversed(
-                GrowthTestData.ActorId,
-                eligibleAt.AddDays(2)
-            ).IsSuccess
-        );
+        Assert.True(reward.ConfirmReversed(GrowthTestData.ActorId, eligibleAt.AddDays(2)).IsSuccess);
     }
 
     [Theory]
@@ -300,12 +277,7 @@ public sealed class ReferralsDomainTests
         var code = GrowthTestData.CreateReferralCode(program);
         var attribution = GrowthTestData.CreateActiveAttribution(program, code);
         var qualification = GrowthTestData.CreateQualifiedReferral(program, attribution);
-        Assert.True(
-            attribution.MarkQualified(
-                GrowthTestData.ActorId,
-                GrowthTestData.NowUtc.AddDays(1)
-            ).IsSuccess
-        );
+        Assert.True(attribution.MarkQualified(GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(1)).IsSuccess);
         var reward = ReferralRewardCase
             .Request(
                 program,

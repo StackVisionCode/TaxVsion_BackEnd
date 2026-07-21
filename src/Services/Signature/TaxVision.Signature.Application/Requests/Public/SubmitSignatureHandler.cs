@@ -115,11 +115,13 @@ public static class SubmitSignatureHandler
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
                     SignerId = signer.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     SignedAtUtc = signedAtUtc,
                     TotalSignersCount = request.Signers.Count,
                     SignedSignersCount = SignedCount(request),
                     IsRequestCompleted = request.Status == SignatureRequestStatus.Completed,
                     ClientIp = clientIp,
+                    MappedCustomerId = signer.MappedCustomerId,
                 }
             )
             .AsTask();
@@ -135,13 +137,20 @@ public static class SubmitSignatureHandler
                     TenantId = request.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     CompletedAtUtc = request.CompletedAtUtc ?? DateTime.UtcNow,
                     OriginalFileId = request.OriginalFileId,
                     DocumentHashPre = request.DocumentHashPre!.Value,
                     SignerIds = request.Signers.Select(s => s.Id).ToList(),
                     GenerateCertificate = request.GenerateCertificate,
                     Signers = request
-                        .Signers.Select(s => new SignerContactSnapshot(s.Id, s.Email.Value, s.FullName.Value, "En"))
+                        .Signers.Select(s => new SignerContactSnapshot(
+                            s.Id,
+                            s.Email.Value,
+                            s.FullName.Value,
+                            "En",
+                            s.MappedCustomerId
+                        ))
                         .ToList(),
                 }
             )

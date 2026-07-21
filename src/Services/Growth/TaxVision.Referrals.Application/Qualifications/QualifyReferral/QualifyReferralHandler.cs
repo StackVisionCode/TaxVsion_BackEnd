@@ -48,18 +48,11 @@ public static class QualifyReferralHandler
             fingerprint,
             async operationCt =>
             {
-                var attribution = await attributions.GetByIdAsync(
-                    command.AttributionId,
-                    command.TenantId,
-                    operationCt
-                );
+                var attribution = await attributions.GetByIdAsync(command.AttributionId, command.TenantId, operationCt);
                 if (attribution is null)
                     return NotFound();
 
-                var program = await programs.GetForEvaluationAsync(
-                    attribution.ProgramId,
-                    operationCt
-                );
+                var program = await programs.GetForEvaluationAsync(attribution.ProgramId, operationCt);
                 if (program is null)
                     return NotFound();
 

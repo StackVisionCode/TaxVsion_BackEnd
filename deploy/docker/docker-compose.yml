@@ -559,6 +559,13 @@ services:
       # despliegue — el path in-process/SMTP-directo sigue vivo, sin eliminar (retiro real es
       # trabajo futuro fuera de este plan, condicionado a confianza operacional en producción).
       Notification__UsePostmasterDispatch: ${NOTIFICATION_USE_POSTMASTER_DISPATCH:-true}
+      # Fase 7 del plan de notificaciones dinámicas — default false hasta generar el proyecto en
+      # Firebase Console (Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave
+      # privada) y decodificar FIREBASE_SERVICE_ACCOUNT_JSON_B64 en TAXVISION_SECRETS_DIR (ver
+      # README §Push notifications). El path solo se lee si el flag está en true — FcmPushSender
+      # nunca se registra en false, así que un JSON ausente/vacío no rompe el arranque.
+      Notification__UseFcmPush: ${NOTIFICATION_USE_FCM_PUSH:-false}
+      Notification__Push__Fcm__ServiceAccountJsonPath: /run/secrets/firebase-service-account.json
       Smtp__Host: ${SMTP_HOST:-}
       Smtp__Port: ${SMTP_PORT:-587}
       Smtp__User: ${SMTP_USER:-}
@@ -582,6 +589,11 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+      # Igual que jwt-public.pem/signature-sealing.pfx: el archivo debe existir en
+      # TAXVISION_SECRETS_DIR (aunque sea un placeholder vacío) para que el mount no falle,
+      # incluso con Notification__UseFcmPush=false — el contenido solo se lee cuando el flag
+      # está en true.
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
     depends_on:
       sqlserver:
         condition: service_healthy

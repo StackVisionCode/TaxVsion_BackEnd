@@ -105,14 +105,11 @@ public sealed class TenantIsolationTests
     }
 
     private static DbContextOptions<GrowthDbContext> Options() =>
-        new DbContextOptionsBuilder<GrowthDbContext>()
-            .UseInMemoryDatabase($"growth-tests-{Guid.NewGuid():N}")
-            .Options;
+        new DbContextOptionsBuilder<GrowthDbContext>().UseInMemoryDatabase($"growth-tests-{Guid.NewGuid():N}").Options;
 
     private sealed class TestTenantContext(Guid? tenantId = null) : ITenantContext
     {
-        public Guid TenantId =>
-            tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+        public Guid TenantId => tenantId ?? throw new InvalidOperationException("TenantId is not set.");
 
         public bool HasTenant => tenantId.HasValue;
     }

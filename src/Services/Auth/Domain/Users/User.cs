@@ -37,6 +37,13 @@ public sealed class User : TenantEntity
     // Invalidación de permisos en JWT emitidos
     public int PermissionsVersion { get; private set; }
 
+    /// <summary>Fase 3 del plan de notificaciones dinámicas — se llena cuando el job de
+    /// auto-reparación (<c>PermissionsBackfillService</c>) re-publica <c>UserRolesChangedIntegrationEvent</c>
+    /// para este usuario. Null = todavía no se reparó (o nunca tuvo un cambio de rol,
+    /// ver <see cref="PermissionsVersion"/>). Mismo patrón que <c>TenantDomainBackfillService</c>: la
+    /// condición de "qué falta" se recalcula con esta columna, sin flag global separado.</summary>
+    public DateTime? PermissionsBackfilledAt { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? DeactivatedAtUtc { get; private set; }
 
@@ -192,6 +199,8 @@ public sealed class User : TenantEntity
     public void DisableMfa() => MfaEnabled = false;
 
     public void BumpPermissionsVersion() => PermissionsVersion++;
+
+    public void MarkPermissionsBackfilled(DateTime nowUtc) => PermissionsBackfilledAt = nowUtc;
 
     public void Deactivate(DateTime utcNow)
     {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Call } from '../../domain/calls/call.js';
 import type { CallRepository } from '../ports/call-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import type { PresenceService } from '../ports/presence-service.js';
 import { CallEventTypes, type CallMissedEvent } from '../../contracts/events/call-events.js';
 
 /**
@@ -23,7 +24,7 @@ export interface ProcessMissedCallsResult {
 
 export async function processMissedCalls(
   input: ProcessMissedCallsInput,
-  deps: { calls: CallRepository; publisher: IntegrationEventPublisher },
+  deps: { calls: CallRepository; publisher: IntegrationEventPublisher; presence: PresenceService },
 ): Promise<ProcessMissedCallsResult> {
   const now = input.now ?? new Date();
   const cutoff = new Date(now.getTime() - input.timeoutSeconds * 1000);
@@ -36,6 +37,11 @@ export async function processMissedCalls(
     if (!markResult.isSuccess) continue;
 
     await deps.calls.save(call);
+    // Fase A3 — el caller quedo marcado busy desde Initiate (dialing out);
+    // como nunca hubo Accept, el callee jamas se marco busy para esta call.
+    await deps.presence
+      .clearBusy({ tenantId: snapshot.tenantId, userId: snapshot.callerUserId, sourceId: snapshot.id })
+      .catch(() => undefined);
     const missedEvent: CallMissedEvent = {
       eventId: randomUUID(),
       eventType: CallEventTypes.Missed,

@@ -12,10 +12,7 @@ public sealed class ReferralCodeTokenGeneratorTests
     {
         var generator = new HmacSha256ReferralCodeTokenGenerator(
             Options.Create(
-                new ReferralCodeTokenHashingOptions
-                {
-                    Pepper = "unit-test-referral-root-secret-32-bytes-minimum",
-                }
+                new ReferralCodeTokenHashingOptions { Pepper = "unit-test-referral-root-secret-32-bytes-minimum" }
             )
         );
         var programId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
@@ -23,11 +20,7 @@ public sealed class ReferralCodeTokenGeneratorTests
 
         var first = generator.Generate(programId, ownerId, "issue-one");
         var replay = generator.Generate(programId, ownerId, " issue-one ");
-        var otherOwner = generator.Generate(
-            programId,
-            Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-            "issue-one"
-        );
+        var otherOwner = generator.Generate(programId, Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"), "issue-one");
         var otherKey = generator.Generate(programId, ownerId, "issue-two");
 
         Assert.True(first.IsSuccess);
@@ -37,11 +30,7 @@ public sealed class ReferralCodeTokenGeneratorTests
         Assert.StartsWith("TVR-", first.Value.Reveal(), StringComparison.Ordinal);
         Assert.Equal(36, first.Value.Reveal().Length);
         Assert.Equal("<redacted>", first.Value.ToString());
-        Assert.DoesNotContain(
-            first.Value.Reveal(),
-            JsonSerializer.Serialize(first.Value),
-            StringComparison.Ordinal
-        );
+        Assert.DoesNotContain(first.Value.Reveal(), JsonSerializer.Serialize(first.Value), StringComparison.Ordinal);
     }
 
     [Theory]
@@ -49,22 +38,15 @@ public sealed class ReferralCodeTokenGeneratorTests
     [InlineData("   ")]
     public void Generator_rejects_invalid_idempotency_keys(string key)
     {
-        IReferralCodeTokenGenerator generator =
-            new HmacSha256ReferralCodeTokenGenerator(
-                Options.Create(
-                    new ReferralCodeTokenHashingOptions
-                    {
-                        Pepper = "unit-test-referral-root-secret-32-bytes-minimum",
-                    }
-                )
-            );
+        IReferralCodeTokenGenerator generator = new HmacSha256ReferralCodeTokenGenerator(
+            Options.Create(
+                new ReferralCodeTokenHashingOptions { Pepper = "unit-test-referral-root-secret-32-bytes-minimum" }
+            )
+        );
 
         var result = generator.Generate(Guid.NewGuid(), Guid.NewGuid(), key);
 
         Assert.True(result.IsFailure);
-        Assert.Equal(
-            "ReferralCode.Token.InvalidIdempotencyKey",
-            result.Error.Code
-        );
+        Assert.Equal("ReferralCode.Token.InvalidIdempotencyKey", result.Error.Code);
     }
 }

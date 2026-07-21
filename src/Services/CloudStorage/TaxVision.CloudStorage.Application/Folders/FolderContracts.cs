@@ -11,6 +11,7 @@ public sealed record FolderResponse(
     Guid? ParentFolderId,
     string Name,
     string RelativePath,
+    string? Category,
     DateTime CreatedAtUtc
 );
 
@@ -29,6 +30,7 @@ internal static class FolderResponseMapper
             folder.ParentFolderId,
             folder.Name,
             folder.RelativePath,
+            folder.Category,
             folder.CreatedAtUtc
         );
 }

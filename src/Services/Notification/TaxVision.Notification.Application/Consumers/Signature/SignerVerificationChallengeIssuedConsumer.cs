@@ -289,9 +289,18 @@ public static class SignerVerificationChallengeIssuedConsumer
         {
             var result = await pushSender.SendAsync(new PushMessage(device.Token, device.Platform, title, body), ct);
             if (result.IsSuccess)
+            {
                 anySucceeded = true;
+            }
             else
+            {
                 lastError = result.Error;
+                // Fase 7 — mismo criterio que NotificationDispatcher.SendPushAsync: token muerto
+                // confirmado por el proveedor, se revoca para no reintentar contra un
+                // dispositivo fantasma en el próximo challenge.
+                if (result.Error.Code == PushErrorCodes.TokenInvalid)
+                    await pushDeviceTokens.RevokeAsync(evt.TenantId, device.Id, ct);
+            }
         }
         return anySucceeded ? Result.Success() : Result.Failure(lastError);
     }

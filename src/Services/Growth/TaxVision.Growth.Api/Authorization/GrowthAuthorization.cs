@@ -50,8 +50,7 @@ public sealed class GrowthAuthorizationPolicyProvider(IOptions<AuthorizationOpti
                 .RequireAuthenticatedUser()
                 .RequireClaim("actor_type", "Service")
                 .RequireAssertion(context =>
-                    context.User.HasAudience(GrowthAuthentication.Audience)
-                    && context.User.HasScope(scope)
+                    context.User.HasAudience(GrowthAuthentication.Audience) && context.User.HasScope(scope)
                 )
                 .Build();
         }

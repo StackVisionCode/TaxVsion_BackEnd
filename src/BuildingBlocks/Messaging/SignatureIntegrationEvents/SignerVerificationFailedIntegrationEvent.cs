@@ -7,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignerVerificationFailedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required Guid SignerId { get; init; }
     public required string Method { get; init; }
     public required DateTime AttemptedAtUtc { get; init; }

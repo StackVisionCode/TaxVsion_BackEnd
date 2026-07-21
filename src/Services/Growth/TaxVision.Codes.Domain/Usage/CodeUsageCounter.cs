@@ -74,10 +74,7 @@ public sealed class CodeUsageCounter : TenantEntity
 
     public Result Reserve(DateTime nowUtc)
     {
-        if (
-            CommittedRedemptions >= MaxRedemptions
-            || ActiveReservations >= MaxRedemptions - CommittedRedemptions
-        )
+        if (CommittedRedemptions >= MaxRedemptions || ActiveReservations >= MaxRedemptions - CommittedRedemptions)
             return Result.Failure(
                 new Error(
                     $"Codes.CodeUsageCounter.{Dimension}LimitReached",
@@ -169,7 +166,5 @@ public sealed class CodeUsageCounter : TenantEntity
     }
 
     private static Result CounterOverflow() =>
-        Result.Failure(
-            new Error("Codes.CodeUsageCounter.CounterOverflow", "The usage counter overflowed.")
-        );
+        Result.Failure(new Error("Codes.CodeUsageCounter.CounterOverflow", "The usage counter overflowed."));
 }

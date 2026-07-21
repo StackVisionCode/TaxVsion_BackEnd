@@ -25,23 +25,12 @@ public sealed class ReferralAttributionConfiguration : IEntityTypeConfiguration<
         builder.Property(attribution => attribution.ProgramId).IsRequired();
         builder.Property(attribution => attribution.ReferralCodeId).IsRequired();
         builder.Property(attribution => attribution.TenantScopeId);
-        builder
-            .Property(attribution => attribution.ReferrerType)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(attribution => attribution.ReferrerType).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attribution => attribution.ReferrerId).IsRequired();
-        builder
-            .Property(attribution => attribution.RefereeType)
-            .HasConversion<string>()
-            .HasMaxLength(20)
-            .IsRequired();
+        builder.Property(attribution => attribution.RefereeType).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attribution => attribution.RefereeId).IsRequired();
         builder.Property(attribution => attribution.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
-        builder
-            .Property(attribution => attribution.StatusBeforeReview)
-            .HasConversion<string>()
-            .HasMaxLength(20);
+        builder.Property(attribution => attribution.StatusBeforeReview).HasConversion<string>().HasMaxLength(20);
         builder.Property(attribution => attribution.AttributedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(attribution => attribution.ExpiresAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(attribution => attribution.QualifiedAtUtc).HasColumnType("datetime2(7)");

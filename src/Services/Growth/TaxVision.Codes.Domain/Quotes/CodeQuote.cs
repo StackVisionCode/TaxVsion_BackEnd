@@ -42,9 +42,7 @@ public sealed class CodeQuote : TenantEntity
     )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<CodeQuote>(
-                new Error("Codes.CodeQuote.InvalidTenant", "TenantId is required.")
-            );
+            return Result.Failure<CodeQuote>(new Error("Codes.CodeQuote.InvalidTenant", "TenantId is required."));
 
         if (codeDefinitionId == Guid.Empty || codeRuleVersionId == Guid.Empty || ruleVersion <= 0)
             return Result.Failure<CodeQuote>(

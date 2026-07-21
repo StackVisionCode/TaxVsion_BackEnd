@@ -5,30 +5,22 @@ using TaxVision.Referrals.Domain.Programs;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Referrals;
 
-public sealed class ReferralProgramRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : IReferralProgramRepository
+public sealed class ReferralProgramRepository(GrowthDbContext dbContext, ITenantContext tenantContext)
+    : IReferralProgramRepository
 {
     public Task<ReferralProgram?> GetOwnedByIdAsync(
         Guid ownerTenantId,
         Guid programId,
         CancellationToken ct = default
     ) =>
-        programId == Guid.Empty
-        || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
+        programId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
             ? Task.FromResult<ReferralProgram?>(null)
             : dbContext.ReferralPrograms.FirstOrDefaultAsync(
-                program =>
-                    program.Id == programId
-                    && program.TenantId == ownerTenantId,
+                program => program.Id == programId && program.TenantId == ownerTenantId,
                 ct
             );
 
-    public Task<ReferralProgram?> GetForEvaluationAsync(
-        Guid programId,
-        CancellationToken ct = default
-    )
+    public Task<ReferralProgram?> GetForEvaluationAsync(Guid programId, CancellationToken ct = default)
     {
         if (!tenantContext.HasTenant || tenantContext.TenantId == Guid.Empty || programId == Guid.Empty)
             return Task.FromResult<ReferralProgram?>(null);
@@ -58,10 +50,7 @@ public sealed class ReferralProgramRepository(
             );
     }
 
-    public async Task AddAsync(
-        ReferralProgram program,
-        CancellationToken ct = default
-    )
+    public async Task AddAsync(ReferralProgram program, CancellationToken ct = default)
     {
         TenantRepositoryGuard.EnsureMatches(tenantContext, program.TenantId);
         await dbContext.ReferralPrograms.AddAsync(program, ct);

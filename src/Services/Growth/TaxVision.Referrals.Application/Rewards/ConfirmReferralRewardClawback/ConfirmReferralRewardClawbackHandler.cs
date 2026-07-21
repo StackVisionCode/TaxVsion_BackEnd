@@ -33,23 +33,12 @@ public static class ConfirmReferralRewardClawbackHandler
             fingerprint,
             async operationCt =>
             {
-                var reward = await rewards.GetByGrantIdAsync(
-                    command.GrantId,
-                    command.TenantId,
-                    operationCt
-                );
-                var attempt = await attempts.GetByIdAsync(
-                    command.AttemptId,
-                    command.TenantId,
-                    operationCt
-                );
+                var reward = await rewards.GetByGrantIdAsync(command.GrantId, command.TenantId, operationCt);
+                var attempt = await attempts.GetByIdAsync(command.AttemptId, command.TenantId, operationCt);
                 if (reward is null || attempt is null || attempt.RewardCaseId != reward.Id)
                 {
                     return Result.Failure<ReferralOperationReceipt>(
-                        new Error(
-                            "ReferralReward.NotFound",
-                            "The referral reward does not exist."
-                        )
+                        new Error("ReferralReward.NotFound", "The referral reward does not exist.")
                     );
                 }
 
@@ -68,9 +57,7 @@ public static class ConfirmReferralRewardClawbackHandler
                 if (rewardResult.IsFailure)
                     return Result.Failure<ReferralOperationReceipt>(rewardResult.Error);
 
-                return Result.Success(
-                    new ReferralOperationReceipt(reward.Id, attempt.Id, reward.Status.ToString())
-                );
+                return Result.Success(new ReferralOperationReceipt(reward.Id, attempt.Id, reward.Status.ToString()));
             },
             ct
         );

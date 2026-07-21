@@ -2,6 +2,7 @@ import { logger } from '../logger/logger.js';
 import { processMissedCalls } from '../../application/use-cases/process-missed-calls.js';
 import type { CallRepository } from '../../application/ports/call-repository.js';
 import type { IntegrationEventPublisher } from '../../application/ports/integration-event-publisher.js';
+import type { PresenceService } from '../../application/ports/presence-service.js';
 import type { RedisDistributedLock } from '../redis/redis-distributed-lock.js';
 
 /**
@@ -22,7 +23,12 @@ export interface MissedCallSchedulerConfig {
 
 export function startMissedCallScheduler(
   config: MissedCallSchedulerConfig,
-  deps: { calls: CallRepository; publisher: IntegrationEventPublisher; lock: RedisDistributedLock },
+  deps: {
+    calls: CallRepository;
+    publisher: IntegrationEventPublisher;
+    presence: PresenceService;
+    lock: RedisDistributedLock;
+  },
 ): { stop(): void } {
   const handle = setInterval(async () => {
     try {

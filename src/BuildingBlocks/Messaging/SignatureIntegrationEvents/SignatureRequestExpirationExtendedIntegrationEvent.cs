@@ -7,6 +7,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignatureRequestExpirationExtendedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required Guid ExtendedByUserId { get; init; }
     public required int AdditionalHours { get; init; }
     public required DateTime NewExpiresAtUtc { get; init; }

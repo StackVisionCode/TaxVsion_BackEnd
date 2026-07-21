@@ -191,6 +191,22 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     // participantes) si el meeting tenia strategy 'Sfu' — no-op si nunca se
     // creo router (meetings Mesh, o Sfu que nadie llego a usar via socket).
     await container.sfu.closeMeeting(params.id);
+    // Fase A3 — este endpoint termina el meeting para TODOS sin pasar por el
+    // Leave individual de cada socket (mismo caso que el host se va sin
+    // cohost en meeting-handlers.ts) — hay que limpiar el "busy" de cada
+    // participante que quedo Left, o quedarian marcados Busy hasta el TTL
+    // de respaldo.
+    const endedMeeting = await container.meetings.findById(principal.tenantId, params.id);
+    if (endedMeeting) {
+      const participantUserIds = endedMeeting.toSnapshot().participants.map((p) => p.userId);
+      await Promise.all(
+        participantUserIds.map((participantUserId) =>
+          container.presence
+            .clearBusy({ tenantId: principal.tenantId, userId: participantUserId, sourceId: params.id })
+            .catch(() => undefined),
+        ),
+      );
+    }
     return reply.send(result.value);
   });
 }

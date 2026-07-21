@@ -31,6 +31,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
         ScreenshotsEnabled: s.screenshotsEnabled,
         InternalGroupsEnabled: s.internalGroupsEnabled,
         EmployeeToEmployeeChatEnabled: s.employeeToEmployeeChatEnabled,
+        RestrictCustomerChatToAssignedPreparer: s.restrictCustomerChatToAssignedPreparer,
         DefaultCameraOff: s.defaultCameraOff,
         DefaultMicrophoneOff: s.defaultMicrophoneOff,
         PersistChatOnEnd: s.persistChatOnEnd,
@@ -48,6 +49,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
         ScreenshotsEnabled: s.screenshotsEnabled,
         InternalGroupsEnabled: s.internalGroupsEnabled,
         EmployeeToEmployeeChatEnabled: s.employeeToEmployeeChatEnabled,
+        RestrictCustomerChatToAssignedPreparer: s.restrictCustomerChatToAssignedPreparer,
         DefaultCameraOff: s.defaultCameraOff,
         DefaultMicrophoneOff: s.defaultMicrophoneOff,
         PersistChatOnEnd: s.persistChatOnEnd,
@@ -77,6 +79,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
     ScreenshotsEnabled: boolean;
     InternalGroupsEnabled: boolean;
     EmployeeToEmployeeChatEnabled: boolean;
+    RestrictCustomerChatToAssignedPreparer: boolean;
     DefaultCameraOff: boolean;
     DefaultMicrophoneOff: boolean;
     PersistChatOnEnd: boolean;
@@ -97,6 +100,7 @@ export class PrismaSettingsRepository implements SettingsRepository {
       screenshotsEnabled: row.ScreenshotsEnabled,
       internalGroupsEnabled: row.InternalGroupsEnabled,
       employeeToEmployeeChatEnabled: row.EmployeeToEmployeeChatEnabled,
+      restrictCustomerChatToAssignedPreparer: row.RestrictCustomerChatToAssignedPreparer,
       defaultCameraOff: row.DefaultCameraOff,
       defaultMicrophoneOff: row.DefaultMicrophoneOff,
       persistChatOnEnd: row.PersistChatOnEnd,

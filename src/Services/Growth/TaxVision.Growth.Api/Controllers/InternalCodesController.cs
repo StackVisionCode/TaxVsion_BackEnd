@@ -47,12 +47,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
             + $"OfferId = {OfferId}, GrossAmountCents = {GrossAmountCents}, Currency = {Currency} }}";
     }
 
-    public sealed record ReserveCodeRequest(
-        Guid QuoteId,
-        string PaymentSource,
-        Guid PaymentId,
-        int TtlSeconds
-    );
+    public sealed record ReserveCodeRequest(Guid QuoteId, string PaymentSource, Guid PaymentId, int TtlSeconds);
 
     public sealed record CommitReservationRequest(
         string PaymentSource,
@@ -61,11 +56,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
         Guid SourceEventId
     );
 
-    public sealed record CancelReservationRequest(
-        string PaymentSource,
-        Guid PaymentId,
-        string Reason
-    );
+    public sealed record CancelReservationRequest(string PaymentSource, Guid PaymentId, string Reason);
 
     public sealed record CompensateRedemptionRequest(
         CodeCompensationType Type,
@@ -239,7 +230,5 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
     }
 
     private IActionResult ToActionResult<T>(Result<T> result) =>
-        result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 }

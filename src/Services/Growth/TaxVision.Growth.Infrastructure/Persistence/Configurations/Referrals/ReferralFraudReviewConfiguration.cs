@@ -34,11 +34,7 @@ public sealed class ReferralFraudReviewConfiguration : IEntityTypeConfiguration<
         builder.Property(review => review.ResolvedBy);
         builder.Property(review => review.ResolvedAtUtc).HasColumnType("datetime2(7)");
         builder.Property(review => review.IdempotencyKey).HasMaxLength(200).IsRequired();
-        builder
-            .Property(review => review.PayloadFingerprint)
-            .HasColumnType("char(64)")
-            .IsFixedLength()
-            .IsRequired();
+        builder.Property(review => review.PayloadFingerprint).HasColumnType("char(64)").IsFixedLength().IsRequired();
         builder.Property(review => review.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(review => review.UpdatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(review => review.CreatedBy).IsRequired();

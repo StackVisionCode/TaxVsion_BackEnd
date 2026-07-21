@@ -9,11 +9,7 @@ internal sealed class InMemoryCodeReservationRepository : ICodeReservationReposi
 
     internal IReadOnlyList<CodeReservation> Reservations => _reservations;
 
-    public Task<CodeReservation?> GetByIdAsync(
-        Guid tenantId,
-        Guid reservationId,
-        CancellationToken ct = default
-    ) =>
+    public Task<CodeReservation?> GetByIdAsync(Guid tenantId, Guid reservationId, CancellationToken ct = default) =>
         Task.FromResult(
             _reservations.SingleOrDefault(reservation =>
                 reservation.Id == reservationId && reservation.TenantId == tenantId

@@ -4,8 +4,7 @@ using TaxVision.Growth.Infrastructure.Persistence.Referrals;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Configurations.Referrals;
 
-public sealed class ReferralRewardQuotaCounterConfiguration
-    : IEntityTypeConfiguration<ReferralRewardQuotaCounter>
+public sealed class ReferralRewardQuotaCounterConfiguration : IEntityTypeConfiguration<ReferralRewardQuotaCounter>
 {
     public void Configure(EntityTypeBuilder<ReferralRewardQuotaCounter> builder)
     {
@@ -14,10 +13,7 @@ public sealed class ReferralRewardQuotaCounterConfiguration
             GrowthSchemas.Referrals,
             table =>
             {
-                table.HasCheckConstraint(
-                    "CK_ReferralRewardQuotaCounters_Year",
-                    "[CalendarYear] BETWEEN 2000 AND 9999"
-                );
+                table.HasCheckConstraint("CK_ReferralRewardQuotaCounters_Year", "[CalendarYear] BETWEEN 2000 AND 9999");
                 table.HasCheckConstraint(
                     "CK_ReferralRewardQuotaCounters_Count",
                     "[Maximum] > 0 AND [ReservedCount] >= 0 AND [ReservedCount] <= [Maximum]"

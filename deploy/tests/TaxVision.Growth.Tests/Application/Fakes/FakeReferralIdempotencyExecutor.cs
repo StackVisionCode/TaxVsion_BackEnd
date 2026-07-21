@@ -10,12 +10,10 @@ internal interface IFakeReferralTransactionalResource
     void RestoreState(object snapshot);
 }
 
-internal sealed class FakeReferralIdempotencyExecutor(
-    params IFakeReferralTransactionalResource[] resources
-) : IReferralIdempotencyExecutor
+internal sealed class FakeReferralIdempotencyExecutor(params IFakeReferralTransactionalResource[] resources)
+    : IReferralIdempotencyExecutor
 {
-    private readonly Dictionary<(string Operation, Guid ScopeId, string Key), StoredResponse> _responses =
-        [];
+    private readonly Dictionary<(string Operation, Guid ScopeId, string Key), StoredResponse> _responses = [];
 
     internal int ClaimedCount { get; private set; }
     internal int ExecutedBodyCount { get; private set; }
@@ -34,13 +32,7 @@ internal sealed class FakeReferralIdempotencyExecutor(
         var storageKey = (operation, scopeId, idempotencyKey);
         if (_responses.TryGetValue(storageKey, out var stored))
         {
-            if (
-                !string.Equals(
-                    stored.PayloadFingerprint,
-                    payloadFingerprint,
-                    StringComparison.Ordinal
-                )
-            )
+            if (!string.Equals(stored.PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal))
             {
                 return Result.Failure<TResponse>(
                     new Error(

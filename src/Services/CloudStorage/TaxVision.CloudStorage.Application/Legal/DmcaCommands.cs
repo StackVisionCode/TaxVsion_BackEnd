@@ -96,6 +96,7 @@ public static class RegisterDmcaTakedownHandler
                 TenantId = command.TenantId,
                 FileId = file.Id,
                 DmcaNoticeId = notice.Id,
+                CreatedBy = file.CreatedBy,
                 CorrelationId = command.Audit.CorrelationId,
             }
         );
@@ -123,6 +124,7 @@ public static class SubmitDmcaCounterNoticeHandler
         IStorageAuditRepository audit,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -152,6 +154,16 @@ public static class SubmitDmcaCounterNoticeHandler
                 $"noticeId={notice.Id}",
                 now
             )
+        );
+        await bus.PublishAsync(
+            new DmcaCounterNoticeSubmittedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                FileId = file.Id,
+                DmcaNoticeId = notice.Id,
+                CreatedBy = file.CreatedBy,
+                CorrelationId = command.Audit.CorrelationId,
+            }
         );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
@@ -220,6 +232,7 @@ public static class ReinstateDmcaFileHandler
                 TenantId = command.TenantId,
                 FileId = file.Id,
                 DmcaNoticeId = notice.Id,
+                CreatedBy = file.CreatedBy,
                 CorrelationId = command.Audit.CorrelationId,
             }
         );

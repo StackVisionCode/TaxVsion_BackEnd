@@ -76,7 +76,10 @@ public sealed class CodesQuoteApplicationTests
             CancellationToken.None
         );
         var conflict = await CreateQuoteHandler.Handle(
-            command with { GrossAmountCents = command.GrossAmountCents + 1 },
+            command with
+            {
+                GrossAmountCents = command.GrossAmountCents + 1,
+            },
             definitions,
             quotes,
             hasher,

@@ -8,6 +8,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 public sealed record SignatureRequestCompletedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required DateTime CompletedAtUtc { get; init; }
     public required Guid OriginalFileId { get; init; }
     public required string DocumentHashPre { get; init; }

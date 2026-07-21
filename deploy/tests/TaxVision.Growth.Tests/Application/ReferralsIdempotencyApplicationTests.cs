@@ -22,14 +22,8 @@ public sealed class ReferralsIdempotencyApplicationTests
         var qualifications = new InMemoryReferralQualificationRepository();
         var rewards = new InMemoryReferralRewardCaseRepository();
         var quota = new FakeReferralRewardQuota();
-        var idempotency = new FakeReferralIdempotencyExecutor(
-            qualifications,
-            rewards,
-            quota
-        );
-        var timeProvider = new FixedTimeProvider(
-            new DateTimeOffset(GrowthTestData.NowUtc.AddDays(1))
-        );
+        var idempotency = new FakeReferralIdempotencyExecutor(qualifications, rewards, quota);
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc.AddDays(1)));
         var command = new QualifyReferralCommand(
             GrowthTestData.RefereeTenantId,
             attribution.Id,
@@ -90,14 +84,8 @@ public sealed class ReferralsIdempotencyApplicationTests
         var qualifications = new InMemoryReferralQualificationRepository();
         var rewards = new InMemoryReferralRewardCaseRepository();
         var quota = new FakeReferralRewardQuota();
-        var idempotency = new FakeReferralIdempotencyExecutor(
-            qualifications,
-            rewards,
-            quota
-        );
-        var timeProvider = new FixedTimeProvider(
-            new DateTimeOffset(GrowthTestData.NowUtc.AddDays(1))
-        );
+        var idempotency = new FakeReferralIdempotencyExecutor(qualifications, rewards, quota);
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc.AddDays(1)));
         var eventId = Guid.NewGuid();
         var command = new QualifyReferralCommand(
             GrowthTestData.RefereeTenantId,
@@ -136,7 +124,11 @@ public sealed class ReferralsIdempotencyApplicationTests
             CancellationToken.None
         );
         var conflict = await QualifyReferralHandler.Handle(
-            command with { PaymentAmountCents = 2_501, IdempotencyKey = "producer-key-two" },
+            command with
+            {
+                PaymentAmountCents = 2_501,
+                IdempotencyKey = "producer-key-two",
+            },
             attributions,
             programs,
             qualifications,
@@ -174,10 +166,7 @@ public sealed class ReferralsIdempotencyApplicationTests
         var hasher = new FakeReferralCodeTokenHasher(plaintextCode, code.CodeHash);
         var idempotency = new FakeReferralIdempotencyExecutor(attributions)
         {
-            FailNextCommit = new Error(
-                "Tests.CommitFailed",
-                "The simulated transaction could not commit."
-            ),
+            FailNextCommit = new Error("Tests.CommitFailed", "The simulated transaction could not commit."),
         };
         var command = new CreateReferralAttributionCommand(
             GrowthTestData.RefereeTenantId,
@@ -188,9 +177,7 @@ public sealed class ReferralsIdempotencyApplicationTests
             "attribution-operation-one",
             GrowthTestData.ActorId
         );
-        var timeProvider = new FixedTimeProvider(
-            new DateTimeOffset(GrowthTestData.NowUtc.AddMinutes(1))
-        );
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc.AddMinutes(1)));
 
         var failed = await CreateReferralAttributionHandler.Handle(
             command,

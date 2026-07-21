@@ -5,29 +5,17 @@ using TaxVision.Codes.Domain.Redemptions;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 
-public sealed class CodeRedemptionRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : ICodeRedemptionRepository
+public sealed class CodeRedemptionRepository(GrowthDbContext dbContext, ITenantContext tenantContext)
+    : ICodeRedemptionRepository
 {
-    public Task<CodeRedemption?> GetByIdAsync(
-        Guid tenantId,
-        Guid redemptionId,
-        CancellationToken ct = default
-    ) =>
+    public Task<CodeRedemption?> GetByIdAsync(Guid tenantId, Guid redemptionId, CancellationToken ct = default) =>
         FindAsync(tenantId, redemption => redemption.Id == redemptionId, redemptionId, ct);
 
     public Task<CodeRedemption?> GetByReservationIdAsync(
         Guid tenantId,
         Guid reservationId,
         CancellationToken ct = default
-    ) =>
-        FindAsync(
-            tenantId,
-            redemption => redemption.ReservationId == reservationId,
-            reservationId,
-            ct
-        );
+    ) => FindAsync(tenantId, redemption => redemption.ReservationId == reservationId, reservationId, ct);
 
     public async Task AddAsync(CodeRedemption redemption, CancellationToken ct = default)
     {

@@ -50,6 +50,7 @@ public sealed class LegalHoldHandlerTests
             files,
             audit,
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             unitOfWork,
             CancellationToken.None
         );
@@ -68,6 +69,7 @@ public sealed class LegalHoldHandlerTests
             new FakeFileObjectRepository(),
             new FakeStorageAuditRepository(),
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -92,6 +94,7 @@ public sealed class LegalHoldHandlerTests
             files,
             audit,
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             unitOfWork,
             CancellationToken.None
         );
@@ -118,6 +121,7 @@ public sealed class LegalHoldHandlerTests
             files,
             audit,
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             unitOfWork,
             CancellationToken.None
         );
@@ -136,6 +140,7 @@ public sealed class LegalHoldHandlerTests
             new FakeFileObjectRepository(),
             new FakeStorageAuditRepository(),
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             new FakeUnitOfWork(),
             CancellationToken.None
         );
@@ -159,6 +164,7 @@ public sealed class LegalHoldHandlerTests
             files,
             audit,
             new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
             unitOfWork,
             CancellationToken.None
         );

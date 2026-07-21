@@ -8,11 +8,7 @@ namespace TaxVision.Referrals.Application.Abstractions;
 /// </summary>
 public interface IReferralCodeTokenGenerator
 {
-    Result<ReferralCodeToken> Generate(
-        Guid programId,
-        Guid ownerId,
-        string idempotencyKey
-    );
+    Result<ReferralCodeToken> Generate(Guid programId, Guid ownerId, string idempotencyKey);
 }
 
 /// <summary>
@@ -31,9 +27,7 @@ public sealed class ReferralCodeToken
         if (
             string.IsNullOrWhiteSpace(clearText)
             || clearText.Length is < 12 or > 100
-            || clearText.Any(character =>
-                !char.IsAsciiLetterOrDigit(character) && character != '-'
-            )
+            || clearText.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-')
         )
         {
             return Result.Failure<ReferralCodeToken>(

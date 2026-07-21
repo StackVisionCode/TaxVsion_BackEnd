@@ -191,6 +191,10 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -226,6 +230,11 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "RelativePath");
 
                     b.HasIndex("TenantId", "ParentFolderId", "Name");
+
+                    b.HasIndex("TenantId", "OwnerType", "OwnerId", "Category")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Folders_Owner_Category")
+                        .HasFilter("[Category] IS NOT NULL");
 
                     b.ToTable("Folders", (string)null);
                 });

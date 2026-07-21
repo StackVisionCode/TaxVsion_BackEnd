@@ -40,12 +40,20 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRolesChangedIntegrationEvent': 'auth.user.roles_changed.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent': 'auth.user.deactivated.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent': 'auth.user.profile_updated.v1',
+  // Fase 2 del plan de notificaciones dinamicas — cambio de permisos a nivel de ROL.
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.RolePermissionsChangedIntegrationEvent': 'auth.role.permissions_changed.v1',
   // Customer
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent': 'customer.bulk_imported.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerImportFailedIntegrationEvent': 'customer.bulk_import_failed.v1',
   // Fase Backend 10 — alimentan CustomerDirectoryEntry (ver customer-consumers.ts).
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerCreatedIntegrationEvent': 'customer.created.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerUpdatedIntegrationEvent': 'customer.updated.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerDeactivatedIntegrationEvent': 'customer.deactivated.v1',
+  // Fase B2 (chat tipado) — alimentan CustomerPreparerAssignment (ver customer-consumers.ts).
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerPreparerAssignedIntegrationEvent':
+    'customer.preparer_assigned.v1',
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerPreparerUnassignedIntegrationEvent':
+    'customer.preparer_unassigned.v1',
   // Signature
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerInvitedIntegrationEvent': 'signature.signer.invited.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.DocumentSignedIntegrationEvent': 'signature.document.signed.v1',
@@ -59,6 +67,27 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'signature.request.sealed.v1',
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationChallengeIssuedIntegrationEvent':
     'signature.signer.verification.challenge_issued.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerRejectedIntegrationEvent':
+    'signature.signer.rejected.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerVerificationFailedIntegrationEvent':
+    'signature.signer.verification.failed.v1',
+  // Fase 8 (piloto/cierre del plan de notificaciones) — cierra los 5 eventos que la auditoría
+  // de la Fase 1B marcó 🟡 con el campo CreatedByUserId ya agregado pero sin consumer wireado.
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestSealingFailedIntegrationEvent':
+    'signature.request.sealing_failed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestExpirationExtendedIntegrationEvent':
+    'signature.request.expiration_extended.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestReadyForSendingIntegrationEvent':
+    'signature.request.ready_for_sending.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignerPinFailedIntegrationEvent':
+    'signature.signer.pin_failed.v1',
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.PreparerSignedIntegrationEvent':
+    'signature.preparer.signed.v1',
+  // README §29 documentaba este mapping como si ya existiera ("Push notification al
+  // preparador") pero el consumer nunca se habia escrito — Notification (.NET) solo emailea
+  // a los firmantes pendientes, el preparador nunca se enteraba. Cierra ese gap real.
+  'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestExpiredIntegrationEvent':
+    'signature.request.expired.v1',
   // Subscription — evento unico de "algo cambio en la suscripcion" (reemplaza a los
   // antiguos activated/plan_changed/seats_purchased/suspended, retirados en la fase de
   // cleanup del rediseno de Subscription, 2026-07).
@@ -75,6 +104,32 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'cloudstorage.file.blocked_by_policy.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FilePendingReviewIntegrationEvent':
     'cloudstorage.file.pending_review.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileRestoredIntegrationEvent':
+    'cloudstorage.file.restored.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkFolderItemAddedIntegrationEvent':
+    'cloudstorage.sharelink.folder_item_added.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkAccessedIntegrationEvent':
+    'cloudstorage.sharelink.accessed.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkExpiredIntegrationEvent':
+    'cloudstorage.sharelink.expired.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileBlockedByDmcaTakedownIntegrationEvent':
+    'cloudstorage.file.blocked_by_dmca_takedown.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileReinstatedFromTakedownIntegrationEvent':
+    'cloudstorage.file.reinstated_from_takedown.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.LegalHoldPlacedIntegrationEvent':
+    'cloudstorage.file.legal_hold_placed.v1',
+  'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.LegalHoldLiftedIntegrationEvent':
+    'cloudstorage.file.legal_hold_lifted.v1',
+  // DmcaCounterNoticeSubmittedIntegrationEvent NO se mapea aca a proposito: no tiene un
+  // destinatario individual obvio (es "avisale al equipo legal", igual que
+  // FileInfectedDetectedIntegrationEvent) — requiere el mecanismo de fan-out por rol de la
+  // Fase 4 del plan de notificaciones, todavia no construido. Publicarlo sin consumirlo es
+  // intencional, no un olvido.
+  // Connectors
+  'BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsOAuthRefreshFailedIntegrationEvent':
+    'connectors.oauth.refresh_failed.v1',
+  'BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsWatchExpiredIntegrationEvent':
+    'connectors.watch.expired.v1',
 };
 
 export type { ConsumerHandler, IncomingEnvelope };

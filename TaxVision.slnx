@@ -89,6 +89,7 @@
   </Folder>
   <!-- ScribeService -->
   <Folder Name="/src/Services/Scribe/">
+    <Project Path="src/Services/Scribe/TaxVision.Scribe.Api/TaxVision.Scribe.Api.csproj" />
     <Project Path="src/Services/Scribe/TaxVision.Scribe.Application/TaxVision.Scribe.Application.csproj" />
     <Project Path="src/Services/Scribe/TaxVision.Scribe.Domain/TaxVision.Scribe.Domain.csproj" />
     <Project Path="src/Services/Scribe/TaxVision.Scribe.Infrastructure/TaxVision.Scribe.Infrastructure.csproj" />

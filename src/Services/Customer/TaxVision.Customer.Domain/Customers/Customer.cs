@@ -29,6 +29,7 @@ public sealed class Customer : TenantEntity
     public PhoneNumber? PrimaryPhone { get; private set; }
     public Guid? ProfilePictureFileId { get; private set; }
     public Guid? OccupationId { get; private set; }
+    public Guid? AssignedPreparerUserId { get; private set; }
     public CustomerFiscalProfile? FiscalProfile { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public Guid CreatedByUserId { get; private set; }
@@ -420,6 +421,30 @@ public sealed class Customer : TenantEntity
     {
         EnsureActive();
         OccupationId = occupationId;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    // ============== Preparer asignado ==============
+
+    public Result AssignPreparer(Guid preparerUserId, Guid byUserId)
+    {
+        EnsureActive();
+        if (preparerUserId == Guid.Empty)
+            return Result.Failure(new Error("Customer.InvalidPreparer", "PreparerUserId is required."));
+
+        AssignedPreparerUserId = preparerUserId;
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    public Result UnassignPreparer(Guid byUserId)
+    {
+        EnsureActive();
+        if (AssignedPreparerUserId is null)
+            return Result.Failure(new Error("Customer.NoPreparerAssigned", "Customer has no preparer assigned."));
+
+        AssignedPreparerUserId = null;
         Touch(byUserId);
         return Result.Success();
     }

@@ -13,9 +13,7 @@ public static class GrowthTenantMessageMiddleware
     public static void Before(IIntegrationEvent message, TenantContext tenantContext)
     {
         if (message.TenantId == Guid.Empty)
-            throw new InvalidOperationException(
-                $"Message {message.GetType().Name} does not contain a valid TenantId."
-            );
+            throw new InvalidOperationException($"Message {message.GetType().Name} does not contain a valid TenantId.");
 
         tenantContext.SetTenant(message.TenantId);
     }

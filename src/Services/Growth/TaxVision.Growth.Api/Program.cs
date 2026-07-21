@@ -110,9 +110,7 @@ builder.Host.UseWolverine(options =>
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Codes.Application"));
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Referrals.Application"));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
-    options
-        .Policies.ForMessagesOfType<IIntegrationEvent>()
-        .AddMiddleware(typeof(GrowthTenantMessageMiddleware));
+    options.Policies.ForMessagesOfType<IIntegrationEvent>().AddMiddleware(typeof(GrowthTenantMessageMiddleware));
     // Global (no message-type filter): restores tenant context for LOCAL commands invoked via
     // bus.InvokeAsync from API controllers. See GrowthLocalCommandTenantMiddleware for why this
     // is needed in addition to the IIntegrationEvent-scoped middleware above.
@@ -163,10 +161,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
-app.MapHealthChecks(
-        "/health/ready",
-        new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }
-    )
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") })
     .AllowAnonymous();
 app.MapControllers();
 

@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Customer.Application.Abstractions;
@@ -60,6 +61,7 @@ public static class ImportFileScanResultConsumer
         FileInfectedDetectedIntegrationEvent msg,
         ICustomerImportRepository repository,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ILogger<CustomerImportAttempt> logger,
         CancellationToken ct
     )
@@ -82,12 +84,24 @@ public static class ImportFileScanResultConsumer
         logger.LogWarning("Import {AttemptId} file failed the security scan; failing the attempt.", attempt.Id);
         attempt.Fail("Uploaded file failed the security scan.");
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new CustomerImportFailedIntegrationEvent
+            {
+                TenantId = attempt.TenantId,
+                CorrelationId = msg.CorrelationId,
+                ImportJobId = attempt.Id,
+                CreatedByUserId = attempt.CreatedByUserId,
+                Reason = attempt.FailureReason ?? "Uploaded file failed the security scan.",
+                FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
+            }
+        );
     }
 
     public static async Task Handle(
         FileBlockedByPolicyIntegrationEvent msg,
         ICustomerImportRepository repository,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         ILogger<CustomerImportAttempt> logger,
         CancellationToken ct
     )
@@ -110,5 +124,16 @@ public static class ImportFileScanResultConsumer
         logger.LogWarning("Import {AttemptId} file was blocked by content policy; failing the attempt.", attempt.Id);
         attempt.Fail("Uploaded file was blocked by content policy.");
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            new CustomerImportFailedIntegrationEvent
+            {
+                TenantId = attempt.TenantId,
+                CorrelationId = msg.CorrelationId,
+                ImportJobId = attempt.Id,
+                CreatedByUserId = attempt.CreatedByUserId,
+                Reason = attempt.FailureReason ?? "Uploaded file was blocked by content policy.",
+                FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
+            }
+        );
     }
 }

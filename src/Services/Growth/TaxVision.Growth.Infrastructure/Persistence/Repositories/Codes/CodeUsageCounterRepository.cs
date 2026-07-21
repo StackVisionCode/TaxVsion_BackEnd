@@ -6,10 +6,8 @@ using TaxVision.Codes.Domain.Usage;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 
-public sealed class CodeUsageCounterRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : ICodeUsageCounterRepository
+public sealed class CodeUsageCounterRepository(GrowthDbContext dbContext, ITenantContext tenantContext)
+    : ICodeUsageCounterRepository
 {
     public async Task<Result<CodeUsageCounter>> GetOrCreateForUpdateAsync(
         Guid tenantId,
@@ -31,24 +29,11 @@ public sealed class CodeUsageCounterRepository(
             );
         }
 
-        var existing = await FindAsync(
-            tenantId,
-            codeDefinitionId,
-            dimension,
-            scopeKey,
-            ct
-        );
+        var existing = await FindAsync(tenantId, codeDefinitionId, dimension, scopeKey, ct);
         if (existing is not null)
             return Result.Success(existing);
 
-        var created = CodeUsageCounter.Create(
-            tenantId,
-            codeDefinitionId,
-            dimension,
-            scopeKey,
-            maxRedemptions,
-            nowUtc
-        );
+        var created = CodeUsageCounter.Create(tenantId, codeDefinitionId, dimension, scopeKey, maxRedemptions, nowUtc);
         if (created.IsFailure)
             return created;
 
@@ -61,13 +46,7 @@ public sealed class CodeUsageCounterRepository(
         catch (ConflictException)
         {
             dbContext.Entry(created.Value).State = EntityState.Detached;
-            var winner = await FindAsync(
-                tenantId,
-                codeDefinitionId,
-                dimension,
-                scopeKey,
-                ct
-            );
+            var winner = await FindAsync(tenantId, codeDefinitionId, dimension, scopeKey, ct);
             return winner is not null
                 ? Result.Success(winner)
                 : Result.Failure<CodeUsageCounter>(

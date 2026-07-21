@@ -12,6 +12,7 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
     tenantId: string;
     permissions: readonly string[];
     permissionVersion: number;
+    roleIds: readonly string[];
     actorType: string;
     isActive: boolean;
     updatedAtUtc: Date;
@@ -23,6 +24,7 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
         TenantId: snapshot.tenantId,
         Permissions: JSON.stringify(snapshot.permissions),
         PermVersion: snapshot.permissionVersion,
+        RoleIds: JSON.stringify(snapshot.roleIds),
         ActorType: snapshot.actorType,
         IsActive: snapshot.isActive,
       },
@@ -30,6 +32,7 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
         TenantId: snapshot.tenantId,
         Permissions: JSON.stringify(snapshot.permissions),
         PermVersion: snapshot.permissionVersion,
+        RoleIds: JSON.stringify(snapshot.roleIds),
         ActorType: snapshot.actorType,
         IsActive: snapshot.isActive,
       },
@@ -39,16 +42,7 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
   async findByUserId(userId: string): Promise<UserPermissionsProjectionSnapshot | null> {
     const row = await this.prisma.userPermissionsProjection.findUnique({ where: { UserId: userId } });
     if (!row) return null;
-    const perms = safeParseStringArray(row.Permissions);
-    return {
-      userId: row.UserId,
-      tenantId: row.TenantId,
-      permissions: perms,
-      permissionVersion: row.PermVersion,
-      actorType: row.ActorType,
-      isActive: row.IsActive,
-      updatedAtUtc: row.UpdatedAtUtc,
-    };
+    return toSnapshot(row);
   }
 
   async markInactive(userId: string, _now: Date): Promise<void> {
@@ -56,6 +50,41 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
       .update({ where: { UserId: userId }, data: { IsActive: false } })
       .catch(() => undefined);
   }
+
+  async findActiveByTenantAndRoleId(
+    tenantId: string,
+    roleId: string,
+  ): Promise<readonly UserPermissionsProjectionSnapshot[]> {
+    // RoleIds se guarda como JSON string ("[\"<guid>\",...]") — `contains` sobre el string
+    // entrecomillado es seguro porque los GUID son de largo fijo, nunca matchea parcialmente
+    // a otro roleId.
+    const rows = await this.prisma.userPermissionsProjection.findMany({
+      where: { TenantId: tenantId, IsActive: true, RoleIds: { contains: `"${roleId}"` } },
+    });
+    return rows.map(toSnapshot);
+  }
+}
+
+function toSnapshot(row: {
+  UserId: string;
+  TenantId: string;
+  Permissions: string;
+  PermVersion: number;
+  RoleIds: string;
+  ActorType: string;
+  IsActive: boolean;
+  UpdatedAtUtc: Date;
+}): UserPermissionsProjectionSnapshot {
+  return {
+    userId: row.UserId,
+    tenantId: row.TenantId,
+    permissions: safeParseStringArray(row.Permissions),
+    permissionVersion: row.PermVersion,
+    roleIds: safeParseStringArray(row.RoleIds),
+    actorType: row.ActorType,
+    isActive: row.IsActive,
+    updatedAtUtc: row.UpdatedAtUtc,
+  };
 }
 
 function safeParseStringArray(raw: string): readonly string[] {

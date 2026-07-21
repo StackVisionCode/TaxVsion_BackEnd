@@ -14,10 +14,7 @@ public sealed record PercentageBasisPoints
     {
         if (value is < 1 or > Maximum)
             return Result.Failure<PercentageBasisPoints>(
-                new Error(
-                    "Codes.PercentageBasisPoints.OutOfRange",
-                    $"Basis points must be between 1 and {Maximum}."
-                )
+                new Error("Codes.PercentageBasisPoints.OutOfRange", $"Basis points must be between 1 and {Maximum}.")
             );
 
         return Result.Success(new PercentageBasisPoints(value));
@@ -28,11 +25,7 @@ public sealed record PercentageBasisPoints
         try
         {
             var amountCents = decimal.ToInt64(
-                decimal.Round(
-                    (decimal)grossAmount.AmountCents * Value / Maximum,
-                    0,
-                    MidpointRounding.AwayFromZero
-                )
+                decimal.Round((decimal)grossAmount.AmountCents * Value / Maximum, 0, MidpointRounding.AwayFromZero)
             );
 
             return Money.Create(amountCents, grossAmount.Currency);

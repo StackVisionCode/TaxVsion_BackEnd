@@ -35,9 +35,7 @@ public sealed class BoundedContextArchitectureTests
             "TaxVision.Referrals"
         );
         AssertForbiddenReferences(
-            typeof(
-                TaxVision.Referrals.Application.Qualifications.QualifyReferral.QualifyReferralCommand
-            ).Assembly,
+            typeof(TaxVision.Referrals.Application.Qualifications.QualifyReferral.QualifyReferralCommand).Assembly,
             "TaxVision.Codes"
         );
     }

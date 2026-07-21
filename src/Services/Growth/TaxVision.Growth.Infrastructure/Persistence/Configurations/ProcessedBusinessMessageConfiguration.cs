@@ -15,11 +15,7 @@ public sealed class ProcessedBusinessMessageConfiguration : IEntityTypeConfigura
         builder.Property(message => message.Operation).HasMaxLength(100).IsRequired();
         builder.Property(message => message.ScopeId).IsRequired();
         builder.Property(message => message.IdempotencyKey).HasMaxLength(200).IsRequired();
-        builder
-            .Property(message => message.RequestFingerprint)
-            .HasColumnType("char(64)")
-            .IsFixedLength()
-            .IsRequired();
+        builder.Property(message => message.RequestFingerprint).HasColumnType("char(64)").IsFixedLength().IsRequired();
         builder.Property(message => message.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(message => message.ResponseContentType).HasMaxLength(100);
         builder.Property(message => message.ResponseJson).HasColumnType("nvarchar(max)");

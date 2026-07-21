@@ -19,7 +19,10 @@ public sealed record OfferReference
     {
         if (string.IsNullOrWhiteSpace(owner) || owner.Trim().Length > 100)
             return Result.Failure<OfferReference>(
-                new Error("Codes.OfferReference.InvalidOwner", "Offer owner is required and cannot exceed 100 characters.")
+                new Error(
+                    "Codes.OfferReference.InvalidOwner",
+                    "Offer owner is required and cannot exceed 100 characters."
+                )
             );
 
         if (string.IsNullOrWhiteSpace(offerId) || offerId.Trim().Length > 200)

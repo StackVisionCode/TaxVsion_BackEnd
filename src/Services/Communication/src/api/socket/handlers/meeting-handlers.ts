@@ -94,6 +94,37 @@ export function registerMeetingHandlers(io: CommunicationIoServer, container: Ap
   });
 }
 
+/**
+ * Fase A3 — mismo criterio de respaldo que CALL_BUSY_LEASE_SECONDS: en
+ * operacion normal siempre se limpia explicitamente (leave/remove/disconnect),
+ * este TTL solo protege contra un crash a mitad de un `markBusy`.
+ */
+const MEETING_BUSY_LEASE_SECONDS = 6 * 60 * 60;
+
+/**
+ * Limpia la fuente de "busy" de este meeting para una lista de usuarios.
+ * Se usa tanto para un solo participante que se va (Leave/Remove/disconnect)
+ * como para TODOS los participantes cuando el meeting termina en cascada
+ * (el host se va sin cohost disponible -> Meeting.end() marca a todos Left
+ * en la misma llamada de dominio, sin que sus propios sockets disparen un
+ * Leave individual) — sin este segundo caso, esos participantes quedarian
+ * "Busy" indefinidamente hasta que el TTL de respaldo expire.
+ */
+async function clearMeetingBusyFor(
+  container: AppContainer,
+  tenantId: string,
+  meetingId: string,
+  userIds: readonly string[],
+): Promise<void> {
+  await Promise.all(
+    userIds.map((participantUserId) =>
+      container.presence
+        .clearBusy({ tenantId, userId: participantUserId, sourceId: meetingId })
+        .catch((err: unknown) => logger.warn({ err, meetingId }, 'presence clearBusy (meeting) failed')),
+    ),
+  );
+}
+
 function wireMeetingSocket(
   socket: CommunicationSocket,
   io: CommunicationIoServer,
@@ -180,6 +211,16 @@ function wireMeetingSocket(
     }
     ack?.({ ok: true, value: result.value });
     if (!result.value.requiresAdmission) {
+      // Entra directo (sin sala de espera) -> ya esta Joined de verdad.
+      await container.presence
+        .markBusy({
+          tenantId,
+          userId,
+          sourceId: parsed.data.meetingId,
+          kind: 'Meeting',
+          leaseSeconds: MEETING_BUSY_LEASE_SECONDS,
+        })
+        .catch((err: unknown) => logger.warn({ err }, 'presence markBusy (meeting join) failed'));
       const me = result.value.snapshot.participants.find((p) => p.userId === userId);
       if (me) {
         emitter.emitToMeeting({
@@ -211,6 +252,17 @@ function wireMeetingSocket(
       await container.sfu.closeMeeting(parsed.data.meetingId).catch((err: unknown) =>
         logger.warn({ err, meetingId: parsed.data.meetingId }, 'sfu closeMeeting failed'),
       );
+      // El meeting termino en cascada (host se fue sin cohost disponible) —
+      // TODOS los que estaban dentro quedan Left en la misma llamada de
+      // dominio, sin que sus propios sockets disparen un Leave individual.
+      await clearMeetingBusyFor(
+        container,
+        tenantId,
+        parsed.data.meetingId,
+        snap.participants.map((p) => p.userId),
+      );
+    } else {
+      await clearMeetingBusyFor(container, tenantId, parsed.data.meetingId, [userId]);
     }
     emitter.emitToMeeting({
       tenantId,
@@ -258,6 +310,17 @@ function wireMeetingSocket(
         `t:${tenantId}:c:${result.value.conversationId}`,
       );
     }
+    // El admitido recien pasa a Joined de verdad aca (antes estaba Waiting,
+    // no contaba como busy).
+    await container.presence
+      .markBusy({
+        tenantId,
+        userId: parsed.data.targetUserId,
+        sourceId: parsed.data.meetingId,
+        kind: 'Meeting',
+        leaseSeconds: MEETING_BUSY_LEASE_SECONDS,
+      })
+      .catch((err: unknown) => logger.warn({ err }, 'presence markBusy (meeting admit) failed'));
     emitter.emitToMeeting({
       tenantId,
       meetingId: parsed.data.meetingId,
@@ -299,6 +362,7 @@ function wireMeetingSocket(
         `t:${tenantId}:c:${result.value.conversationId}`,
       );
     }
+    await clearMeetingBusyFor(container, tenantId, parsed.data.meetingId, [parsed.data.targetUserId]);
     emitter.emitToUser({
       tenantId,
       userId: parsed.data.targetUserId,
@@ -1061,6 +1125,14 @@ function wireMeetingSocket(
             await container.sfu.closeMeeting(meetingId).catch((err: unknown) =>
               logger.warn({ err, meetingId }, 'sfu closeMeeting failed'),
             );
+            await clearMeetingBusyFor(
+              container,
+              tenantId,
+              meetingId,
+              snap.participants.map((p) => p.userId),
+            );
+          } else {
+            await clearMeetingBusyFor(container, tenantId, meetingId, [userId]);
           }
           emitter.emitToMeeting({
             tenantId,

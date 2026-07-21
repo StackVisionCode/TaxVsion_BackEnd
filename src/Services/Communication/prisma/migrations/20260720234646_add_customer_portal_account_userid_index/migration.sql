@@ -1,0 +1,19 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [CustomerPortalAccount_UserId_idx] ON [dbo].[CustomerPortalAccount]([UserId]);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

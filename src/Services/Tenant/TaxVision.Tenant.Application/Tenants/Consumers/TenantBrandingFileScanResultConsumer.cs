@@ -34,8 +34,18 @@ public static class TenantBrandingFileScanResultConsumer
         if (tenant is null || tenant.LogoFileId != msg.FileId)
             return;
 
+        // 2026-07-20 — width/height ya se midieron en UploadTenantLogoHandler (a partir de los
+        // bytes reales que el propio Tenant subio) y quedaron en tenant.LogoWidth/LogoHeight desde
+        // SetLogoPending. CloudStorage no transcodea nada (confirmado: cero librerias de imagenes
+        // en ese servicio), asi que el archivo que efectivamente quedo disponible es byte-a-byte el
+        // mismo que se midio — no hace falta (ni se puede, ya no tenemos los bytes aca)
+        // re-calcularlas. Se capturan ANTES de llamar ConfirmLogo porque ese metodo sobreescribe
+        // LogoWidth/LogoHeight con lo que se le pase.
+        var width = tenant.LogoWidth;
+        var height = tenant.LogoHeight;
+
         var updatedAtUtc = DateTime.UtcNow;
-        var setResult = tenant.ConfirmLogo(msg.FileId, msg.ContentType, msg.SizeBytes, null, null, updatedAtUtc);
+        var setResult = tenant.ConfirmLogo(msg.FileId, msg.ContentType, msg.SizeBytes, width, height, updatedAtUtc);
         if (setResult.IsFailure)
         {
             logger.LogWarning(
@@ -57,8 +67,8 @@ public static class TenantBrandingFileScanResultConsumer
                 CloudStorageFileId = msg.FileId,
                 ContentType = msg.ContentType,
                 SizeBytes = msg.SizeBytes,
-                Width = null,
-                Height = null,
+                Width = width,
+                Height = height,
                 UpdatedAtUtc = updatedAtUtc,
                 CorrelationId = correlation.CorrelationId,
             }

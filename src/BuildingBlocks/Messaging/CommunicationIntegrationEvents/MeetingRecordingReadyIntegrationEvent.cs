@@ -17,4 +17,7 @@ public sealed record MeetingRecordingReadyIntegrationEvent : IntegrationEvent
     public required double DurationSeconds { get; init; }
     public required int ParticipantCount { get; init; }
     public required DateTime ReadyAtUtc { get; init; }
+
+    /// <summary>Fase 1B — antes ausente; Notification usaba un recipient simbolico "meeting:{id}".</summary>
+    public required Guid HostUserId { get; init; }
 }

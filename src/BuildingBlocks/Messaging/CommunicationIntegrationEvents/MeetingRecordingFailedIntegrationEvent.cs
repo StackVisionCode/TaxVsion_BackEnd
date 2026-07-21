@@ -14,4 +14,7 @@ public sealed record MeetingRecordingFailedIntegrationEvent : IntegrationEvent
     public required Guid MeetingId { get; init; }
     public required string Reason { get; init; }
     public required DateTime FailedAtUtc { get; init; }
+
+    /// <summary>Fase 1B — antes ausente; Notification usaba un recipient simbolico "meeting:{id}".</summary>
+    public required Guid HostUserId { get; init; }
 }

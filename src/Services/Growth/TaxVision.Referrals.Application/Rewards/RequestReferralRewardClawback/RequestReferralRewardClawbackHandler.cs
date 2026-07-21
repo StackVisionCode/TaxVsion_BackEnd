@@ -36,26 +36,16 @@ public static class RequestReferralRewardClawbackHandler
             fingerprint,
             async operationCt =>
             {
-                var reward = await rewards.GetForCompensationAsync(
-                    command.RewardCaseId,
-                    operationCt
-                );
+                var reward = await rewards.GetForCompensationAsync(command.RewardCaseId, operationCt);
                 if (reward is null)
                 {
                     return Result.Failure<ReferralRewardInstruction>(
-                        new Error(
-                            "ReferralReward.NotFound",
-                            "The referral reward does not exist."
-                        )
+                        new Error("ReferralReward.NotFound", "The referral reward does not exist.")
                     );
                 }
 
                 var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-                var clawback = reward.RequestClawback(
-                    command.Reason,
-                    command.ActorUserId,
-                    nowUtc
-                );
+                var clawback = reward.RequestClawback(command.Reason, command.ActorUserId, nowUtc);
                 if (clawback.IsFailure)
                     return Result.Failure<ReferralRewardInstruction>(clawback.Error);
 
@@ -77,10 +67,7 @@ public static class RequestReferralRewardClawbackHandler
         );
     }
 
-    private static ReferralRewardInstruction ToInstruction(
-        ReferralRewardCase reward,
-        Guid attemptId
-    ) =>
+    private static ReferralRewardInstruction ToInstruction(ReferralRewardCase reward, Guid attemptId) =>
         new(
             reward.Id,
             attemptId,

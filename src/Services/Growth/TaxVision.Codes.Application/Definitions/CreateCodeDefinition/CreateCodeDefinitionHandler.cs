@@ -171,10 +171,7 @@ public static class CreateCodeDefinitionHandler
                     )
                 );
 
-            var moneyResult = Money.Create(
-                command.FixedAmountCents.Value,
-                command.FixedAmountCurrency ?? string.Empty
-            );
+            var moneyResult = Money.Create(command.FixedAmountCents.Value, command.FixedAmountCurrency ?? string.Empty);
             return moneyResult.IsFailure
                 ? Result.Failure<CodeBenefit>(moneyResult.Error)
                 : CodeBenefit.CreateFixedAmount(moneyResult.Value);
@@ -201,10 +198,7 @@ public static class CreateCodeDefinitionHandler
                 )
             );
 
-        var moneyResult = Money.Create(
-            command.MinimumPurchaseAmountCents.Value,
-            command.MinimumPurchaseCurrency
-        );
+        var moneyResult = Money.Create(command.MinimumPurchaseAmountCents.Value, command.MinimumPurchaseCurrency);
         return moneyResult.IsFailure
             ? Result.Failure<Money?>(moneyResult.Error)
             : Result.Success<Money?>(moneyResult.Value);

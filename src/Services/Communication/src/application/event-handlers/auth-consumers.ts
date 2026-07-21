@@ -1,23 +1,42 @@
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import type { UserDirectoryRepository } from '../ports/user-directory-repository.js';
+import type { RolePermissionsProjectionRepository } from '../ports/role-permissions-projection-repository.js';
+import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 
 /**
- * Auth consumers — mantienen al dia dos proyecciones locales:
+ * Auth consumers — mantienen al dia cuatro proyecciones locales:
  *   - `UserPermissionsProjection`: autorizacion fuera del request/socket.
  *   - `UserDirectoryEntry`: displayName real para payloads de chat/call/meeting
  *     (cierra el placeholder userId-como-nombre documentado en chat-handlers.ts).
+ *   - `RolePermissionsProjection` (Fase 2): cache de soporte para recomputar la union de
+ *     permisos de un usuario multi-rol cuando cambia UN rol — ver el handler de
+ *     `auth.role.permissions_changed.v1` mas abajo.
+ *   - `CustomerPortalAccount` (Fase 6, notificaciones dinamicas): (CustomerId -> UserId de
+ *     portal activo), para poder notificar a un cliente cuando firma un documento sin
+ *     llamar a Auth de forma sincrona.
  */
 export function bindAuthConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
-  deps: { userPermissions: UserPermissionsProjectionRepository; userDirectory: UserDirectoryRepository },
+  deps: {
+    userPermissions: UserPermissionsProjectionRepository;
+    userDirectory: UserDirectoryRepository;
+    rolePermissions: RolePermissionsProjectionRepository;
+    customerPortalAccounts: CustomerPortalAccountRepository;
+  },
 ): void {
   register('auth.user.roles_changed.v1', async (env) => {
     const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
     if (!userId) return;
-    const permissions = getStringArray(env.payload, 'permissions', 'Permissions');
-    const permVersion =
-      getNumber(env.payload, 'permissionVersion') ?? getNumber(env.payload, 'PermissionVersion') ?? 1;
+    // Nombres de campo EXACTOS de UserRolesChangedIntegrationEvent.cs — antes se leia
+    // 'permissions'/'Permissions' (campo que Auth nunca envio) y 'permissionVersion'
+    // (el real es 'PermissionsVersion', con "s") por lo que esta proyeccion quedaba
+    // siempre vacia en silencio. Fase 1 del plan de notificaciones dinamicas.
+    const permissions = getStringArray(env.payload, 'PermissionCodes');
+    const permVersion = getNumber(env.payload, 'PermissionsVersion') ?? 1;
+    // Fase 2 del plan de notificaciones dinamicas — RoleIds, para poder correlacionar
+    // "a este usuario le pega este cambio" cuando llegue RolePermissionsChangedIntegrationEvent.
+    const roleIds = getStringArray(env.payload, 'RoleIds');
     const actorType =
       getString(env.payload, 'actorType') ?? getString(env.payload, 'ActorType') ?? 'TenantEmployee';
     await deps.userPermissions.upsert({
@@ -25,6 +44,7 @@ export function bindAuthConsumers(
       tenantId: env.tenantId,
       permissions,
       permissionVersion: permVersion,
+      roleIds,
       actorType,
       isActive: true,
       updatedAtUtc: new Date(),
@@ -42,6 +62,7 @@ export function bindAuthConsumers(
       tenantId: env.tenantId,
       permissions,
       permissionVersion: 1,
+      roleIds: [], // un usuario recien registrado todavia no tiene roles asignados
       actorType,
       isActive: true,
       updatedAtUtc: new Date(),
@@ -65,6 +86,12 @@ export function bindAuthConsumers(
         isActive: true,
         actorType,
       });
+    }
+
+    // Fase 6: solo los usuarios de portal traen CustomerId — un TenantEmployee no tiene uno.
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    if (actorType === 'CustomerPortal' && customerId) {
+      await deps.customerPortalAccounts.upsert({ customerId, tenantId: env.tenantId, userId });
     }
   });
 
@@ -96,6 +123,56 @@ export function bindAuthConsumers(
     if (!userId) return;
     await deps.userPermissions.markInactive(userId, new Date());
     await deps.userDirectory.markInactive(userId);
+    await deps.customerPortalAccounts.markInactiveByUserId(userId);
+  });
+
+  // Fase 2 del plan de notificaciones dinamicas. Sin este consumer, editar los permisos de
+  // un rol con 50 empleados asignados nunca propaga a esta proyeccion — quedan con datos
+  // viejos hasta que a cada uno individualmente le vuelvan a tocar su rol (que puede no pasar
+  // nunca). PermissionCodes del evento es el set COMPLETO del rol post-cambio, no un diff.
+  register('auth.role.permissions_changed.v1', async (env) => {
+    const roleId = getString(env.payload, 'roleId') ?? getString(env.payload, 'RoleId');
+    const roleName = getString(env.payload, 'roleName') ?? getString(env.payload, 'RoleName');
+    if (!roleId || !roleName) return;
+    const permissionCodes = getStringArray(env.payload, 'PermissionCodes');
+    const permissionsVersion = getNumber(env.payload, 'PermissionsVersion') ?? 1;
+
+    await deps.rolePermissions.upsert({
+      roleId,
+      tenantId: env.tenantId,
+      roleName,
+      permissionCodes,
+      permissionsVersion,
+    });
+
+    const affectedUsers = await deps.userPermissions.findActiveByTenantAndRoleId(env.tenantId, roleId);
+    if (affectedUsers.length === 0) return;
+
+    // Union de permisos por-rol cacheados — un usuario con VARIOS roles no puede
+    // sobrescribirse solo con los codigos del rol que cambio, o perderia los permisos
+    // heredados de sus otros roles.
+    const allRoleIds = [...new Set(affectedUsers.flatMap((user) => user.roleIds))];
+    const rolesById = new Map(
+      (await deps.rolePermissions.findByRoleIds(allRoleIds)).map((role) => [role.roleId, role]),
+    );
+
+    for (const user of affectedUsers) {
+      const union = new Set<string>();
+      for (const userRoleId of user.roleIds) {
+        const role = rolesById.get(userRoleId);
+        if (role) role.permissionCodes.forEach((code) => union.add(code));
+      }
+      await deps.userPermissions.upsert({
+        userId: user.userId,
+        tenantId: user.tenantId,
+        permissions: [...union],
+        permissionVersion: user.permissionVersion,
+        roleIds: user.roleIds,
+        actorType: user.actorType,
+        isActive: user.isActive,
+        updatedAtUtc: new Date(),
+      });
+    }
   });
 }
 

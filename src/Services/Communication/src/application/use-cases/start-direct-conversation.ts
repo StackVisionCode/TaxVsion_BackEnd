@@ -6,6 +6,8 @@ import type { ConversationRepository } from '../ports/conversation-repository.js
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
+import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
+import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
 import { ChatEventTypes, type ConversationStartedEvent } from '../../contracts/events/chat-events.js';
 
 /**
@@ -19,6 +21,9 @@ import { ChatEventTypes, type ConversationStartedEvent } from '../../contracts/e
  *   3. La conversation es unique por (tenantId, direct:userA:userB ordenado).
  *   4. El display name del destinatario se resuelve por el caller (viene del
  *      read-model de usuarios); el use case NO consulta Auth.
+ *   5. Fase B5 — si el tenant tiene restrictCustomerChatToAssignedPreparer,
+ *      un chat que involucra a un customer solo se permite si el otro lado
+ *      es su preparador asignado (CustomerPreparerAssignment).
  */
 
 export interface StartDirectConversationCommand {
@@ -26,12 +31,7 @@ export interface StartDirectConversationCommand {
   readonly correlationId: string;
   readonly clientKey: string;
   readonly initiator: { userId: string; displayName: string; actorType: string };
-  readonly recipient: {
-    userId: string;
-    displayName: string;
-    actorType: string;
-    isPrimaryPreparer?: boolean;
-  };
+  readonly recipient: { userId: string; displayName: string; actorType: string };
 }
 
 export interface StartDirectConversationResult {
@@ -44,6 +44,40 @@ export interface StartDirectConversationDeps {
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly settings: TenantSettingsProvider;
+  readonly customerPortalAccounts: CustomerPortalAccountRepository;
+  readonly customerPreparerAssignments: CustomerPreparerAssignmentRepository;
+}
+
+/**
+ * Fase B4 (chat tipado) — el destinatario es "el preparador primario" del
+ * cliente si: (a) alguno de los dos lados de la conversation es un actor
+ * 'CustomerPortal', y (b) ese customer tiene un preparador asignado
+ * (CustomerPreparerAssignment) cuyo UserId es justo el del destinatario.
+ * Si ninguno de los dos es customer, o el customer no tiene preparador
+ * asignado, o el destinatario no es ese preparador -> false. Reemplaza el
+ * campo que antes solo se declaraba pero nunca se poblaba (isPrimaryPreparer
+ * llegaba siempre undefined desde chat-handlers.ts).
+ */
+async function resolveIsPrimaryPreparer(
+  command: StartDirectConversationCommand,
+  deps: Pick<StartDirectConversationDeps, 'customerPortalAccounts' | 'customerPreparerAssignments'>,
+): Promise<boolean> {
+  const customerSide =
+    command.initiator.actorType === 'CustomerPortal'
+      ? command.initiator
+      : command.recipient.actorType === 'CustomerPortal'
+        ? command.recipient
+        : null;
+  if (!customerSide) return false;
+
+  const portalAccount = await deps.customerPortalAccounts.findActiveByUserId(customerSide.userId);
+  if (!portalAccount) return false;
+
+  const assignment = await deps.customerPreparerAssignments.findByCustomerId(
+    command.tenantId,
+    portalAccount.customerId,
+  );
+  return assignment?.preparerUserId === command.recipient.userId;
 }
 
 export async function startDirectConversation(
@@ -63,6 +97,20 @@ export async function startDirectConversation(
         'Employee-to-employee chat is disabled for this tenant.',
       ),
     );
+  }
+
+  const isPrimaryPreparer = await resolveIsPrimaryPreparer(command, deps);
+  if (settings.restrictCustomerChatToAssignedPreparer) {
+    const involvesCustomer =
+      command.initiator.actorType === 'CustomerPortal' || command.recipient.actorType === 'CustomerPortal';
+    if (involvesCustomer && !isPrimaryPreparer) {
+      return Result.fail(
+        makeError(
+          'Chat.NotAssignedPreparer',
+          'This tenant only allows customers to chat with their assigned preparer.',
+        ),
+      );
+    }
   }
 
   const reservation = await deps.idempotency.tryReserve<StartDirectConversationResult>({
@@ -97,7 +145,7 @@ export async function startDirectConversation(
   const conversationResult = Conversation.startDirect({
     tenantId: command.tenantId,
     initiator: command.initiator,
-    recipient: command.recipient,
+    recipient: { ...command.recipient, isPrimaryPreparer },
   });
   if (!conversationResult.isSuccess) {
     await deps.idempotency.release({

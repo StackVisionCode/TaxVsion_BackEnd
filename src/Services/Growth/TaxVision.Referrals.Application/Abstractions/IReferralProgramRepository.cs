@@ -9,11 +9,7 @@ public interface IReferralProgramRepository
     /// the active tenant to equal <paramref name="ownerTenantId"/> and must not elevate
     /// across tenant filters.
     /// </summary>
-    Task<ReferralProgram?> GetOwnedByIdAsync(
-        Guid ownerTenantId,
-        Guid programId,
-        CancellationToken ct = default
-    );
+    Task<ReferralProgram?> GetOwnedByIdAsync(Guid ownerTenantId, Guid programId, CancellationToken ct = default);
 
     /// <summary>
     /// Resolución explícita de un catálogo platform-owned o tenant-owned. Para programas

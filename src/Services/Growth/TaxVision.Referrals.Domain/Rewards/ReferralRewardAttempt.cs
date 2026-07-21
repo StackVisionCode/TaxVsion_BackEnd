@@ -36,16 +36,14 @@ public sealed class ReferralRewardAttempt : TenantEntity
         if (!Enum.IsDefined(operation))
         {
             return Result.Failure<ReferralRewardAttempt>(
-                new Error(
-                    "ReferralRewardAttempt.InvalidOperation",
-                    "Reward operation is not supported."
-                )
+                new Error("ReferralRewardAttempt.InvalidOperation", "Reward operation is not supported.")
             );
         }
 
-        var expectedStatus = operation == ReferralRewardOperation.Grant
-            ? ReferralRewardCaseStatus.PendingGrant
-            : ReferralRewardCaseStatus.ClawbackPending;
+        var expectedStatus =
+            operation == ReferralRewardOperation.Grant
+                ? ReferralRewardCaseStatus.PendingGrant
+                : ReferralRewardCaseStatus.ClawbackPending;
         if (rewardCase.Status != expectedStatus)
         {
             return Result.Failure<ReferralRewardAttempt>(
@@ -61,7 +59,9 @@ public sealed class ReferralRewardAttempt : TenantEntity
             return Result.Failure<ReferralRewardAttempt>(actor.Error);
 
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Trim().Length > 200)
-            return Result.Failure<ReferralRewardAttempt>(new Error("ReferralRewardAttempt.InvalidIdempotencyKey", "A valid idempotency key is required."));
+            return Result.Failure<ReferralRewardAttempt>(
+                new Error("ReferralRewardAttempt.InvalidIdempotencyKey", "A valid idempotency key is required.")
+            );
 
         if (!DomainGuards.IsSha256Hex(payloadFingerprint))
         {
@@ -74,17 +74,17 @@ public sealed class ReferralRewardAttempt : TenantEntity
         }
 
         var attempt = new ReferralRewardAttempt
-            {
-                RewardCaseId = rewardCase.Id,
-                TenantScopeId = rewardCase.TenantScopeId,
-                Operation = operation,
-                Status = ReferralRewardAttemptStatus.Pending,
-                IdempotencyKey = idempotencyKey.Trim(),
-                PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
-                CreatedAtUtc = nowUtc,
-                CreatedBy = actorUserId,
-                UpdatedBy = actorUserId,
-            };
+        {
+            RewardCaseId = rewardCase.Id,
+            TenantScopeId = rewardCase.TenantScopeId,
+            Operation = operation,
+            Status = ReferralRewardAttemptStatus.Pending,
+            IdempotencyKey = idempotencyKey.Trim(),
+            PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
+            CreatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
         attempt.SetTenant(rewardCase.TenantId);
         return Result.Success(attempt);
     }
@@ -103,9 +103,10 @@ public sealed class ReferralRewardAttempt : TenantEntity
 
         if (Status == ReferralRewardAttemptStatus.Succeeded)
         {
-            return ExternalReference == externalReference
-                    && CompletionIdempotencyKey == completionIdempotencyKey.Trim()
-                    && CompletionPayloadFingerprint == completionPayloadFingerprint.ToLowerInvariant()
+            return
+                ExternalReference == externalReference
+                && CompletionIdempotencyKey == completionIdempotencyKey.Trim()
+                && CompletionPayloadFingerprint == completionPayloadFingerprint.ToLowerInvariant()
                 ? Result.Success()
                 : Result.Failure(
                     new Error(
@@ -116,15 +117,16 @@ public sealed class ReferralRewardAttempt : TenantEntity
         }
 
         if (Status != ReferralRewardAttemptStatus.Pending)
-            return Result.Failure(new Error("ReferralRewardAttempt.InvalidTransition", $"Cannot succeed from {Status}."));
+            return Result.Failure(
+                new Error("ReferralRewardAttempt.InvalidTransition", $"Cannot succeed from {Status}.")
+            );
 
         if (string.IsNullOrWhiteSpace(externalReference) || externalReference.Length > 200)
-            return Result.Failure(new Error("ReferralRewardAttempt.InvalidExternalReference", "A valid external reference is required."));
+            return Result.Failure(
+                new Error("ReferralRewardAttempt.InvalidExternalReference", "A valid external reference is required.")
+            );
 
-        var completion = ValidateCompletionIdempotency(
-            completionIdempotencyKey,
-            completionPayloadFingerprint
-        );
+        var completion = ValidateCompletionIdempotency(completionIdempotencyKey, completionPayloadFingerprint);
         if (completion.IsFailure)
             return completion;
 
@@ -152,9 +154,10 @@ public sealed class ReferralRewardAttempt : TenantEntity
 
         if (Status == ReferralRewardAttemptStatus.Failed)
         {
-            return FailureCode == failureCode
-                    && CompletionIdempotencyKey == completionIdempotencyKey.Trim()
-                    && CompletionPayloadFingerprint == completionPayloadFingerprint.ToLowerInvariant()
+            return
+                FailureCode == failureCode
+                && CompletionIdempotencyKey == completionIdempotencyKey.Trim()
+                && CompletionPayloadFingerprint == completionPayloadFingerprint.ToLowerInvariant()
                 ? Result.Success()
                 : Result.Failure(
                     new Error(
@@ -170,10 +173,7 @@ public sealed class ReferralRewardAttempt : TenantEntity
         if (string.IsNullOrWhiteSpace(failureCode))
             return Result.Failure(new Error("ReferralRewardAttempt.InvalidFailureCode", "FailureCode is required."));
 
-        var completion = ValidateCompletionIdempotency(
-            completionIdempotencyKey,
-            completionPayloadFingerprint
-        );
+        var completion = ValidateCompletionIdempotency(completionIdempotencyKey, completionPayloadFingerprint);
         if (completion.IsFailure)
             return completion;
 

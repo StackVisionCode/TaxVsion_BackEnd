@@ -143,6 +143,7 @@ public static class ChangePlanHandler
                     IdempotencyKey = awaitingPayment.PaymentIdempotencyKey,
                     TargetPlanPrice = awaitingPayment.ChargeAmountCents,
                     Currency = awaitingPayment.ChargeCurrency,
+                    RequestedByUserId = awaitingPayment.RequestedByUserId,
                 }
             );
 

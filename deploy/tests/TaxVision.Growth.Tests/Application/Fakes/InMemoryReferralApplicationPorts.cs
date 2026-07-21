@@ -9,10 +9,7 @@ using TaxVision.Referrals.Domain.Rewards;
 
 namespace TaxVision.Growth.Tests.Application.Fakes;
 
-internal sealed class FakeReferralCodeTokenHasher(
-    string expectedToken,
-    string expectedHash
-) : IReferralCodeTokenHasher
+internal sealed class FakeReferralCodeTokenHasher(string expectedToken, string expectedHash) : IReferralCodeTokenHasher
 {
     internal List<string> ReceivedTokens { get; } = [];
 
@@ -21,32 +18,24 @@ internal sealed class FakeReferralCodeTokenHasher(
         ReceivedTokens.Add(referralCode);
         return string.Equals(referralCode, expectedToken, StringComparison.Ordinal)
             ? Result.Success(expectedHash)
-            : Result.Failure<string>(
-                new Error("ReferralCode.Invalid", "The referral code is invalid.")
-            );
+            : Result.Failure<string>(new Error("ReferralCode.Invalid", "The referral code is invalid."));
     }
 }
 
-internal sealed class FakeReferralCodeTokenGenerator(string clearText)
-    : IReferralCodeTokenGenerator
+internal sealed class FakeReferralCodeTokenGenerator(string clearText) : IReferralCodeTokenGenerator
 {
-    internal List<(Guid ProgramId, Guid OwnerId, string IdempotencyKey)> ReceivedInputs { get; } =
-        [];
+    internal List<(Guid ProgramId, Guid OwnerId, string IdempotencyKey)> ReceivedInputs { get; } = [];
 
-    public Result<ReferralCodeToken> Generate(
-        Guid programId,
-        Guid ownerId,
-        string idempotencyKey
-    )
+    public Result<ReferralCodeToken> Generate(Guid programId, Guid ownerId, string idempotencyKey)
     {
         ReceivedInputs.Add((programId, ownerId, idempotencyKey));
         return ReferralCodeToken.Create(clearText);
     }
 }
 
-internal sealed class InMemoryReferralProgramRepository(
-    params ReferralProgram[] seed
-) : IReferralProgramRepository, IFakeReferralTransactionalResource
+internal sealed class InMemoryReferralProgramRepository(params ReferralProgram[] seed)
+    : IReferralProgramRepository,
+        IFakeReferralTransactionalResource
 {
     private readonly List<ReferralProgram> _items = [.. seed];
 
@@ -57,21 +46,12 @@ internal sealed class InMemoryReferralProgramRepository(
         Guid programId,
         CancellationToken ct = default
     ) =>
-        Task.FromResult(
-            _items.FirstOrDefault(program =>
-                program.Id == programId && program.TenantId == ownerTenantId
-            )
-        );
+        Task.FromResult(_items.FirstOrDefault(program => program.Id == programId && program.TenantId == ownerTenantId));
 
-    public Task<ReferralProgram?> GetForEvaluationAsync(
-        Guid programId,
-        CancellationToken ct = default
-    ) => Task.FromResult(_items.FirstOrDefault(program => program.Id == programId));
+    public Task<ReferralProgram?> GetForEvaluationAsync(Guid programId, CancellationToken ct = default) =>
+        Task.FromResult(_items.FirstOrDefault(program => program.Id == programId));
 
-    public Task AddAsync(
-        ReferralProgram program,
-        CancellationToken ct = default
-    )
+    public Task AddAsync(ReferralProgram program, CancellationToken ct = default)
     {
         _items.Add(program);
         return Task.CompletedTask;
@@ -86,9 +66,9 @@ internal sealed class InMemoryReferralProgramRepository(
     }
 }
 
-internal sealed class InMemoryReferralCodeRepository(
-    params ReferralCode[] seed
-) : IReferralCodeRepository, IFakeReferralTransactionalResource
+internal sealed class InMemoryReferralCodeRepository(params ReferralCode[] seed)
+    : IReferralCodeRepository,
+        IFakeReferralTransactionalResource
 {
     private readonly List<ReferralCode> _items = [.. seed];
 
@@ -111,22 +91,14 @@ internal sealed class InMemoryReferralCodeRepository(
             )
         );
 
-    public Task<ReferralCode?> ResolveByHashAsync(
-        Guid programId,
-        string codeHash,
-        CancellationToken ct = default
-    ) =>
+    public Task<ReferralCode?> ResolveByHashAsync(Guid programId, string codeHash, CancellationToken ct = default) =>
         Task.FromResult(
             _items.FirstOrDefault(code =>
-                code.ProgramId == programId
-                && string.Equals(code.CodeHash, codeHash, StringComparison.Ordinal)
+                code.ProgramId == programId && string.Equals(code.CodeHash, codeHash, StringComparison.Ordinal)
             )
         );
 
-    public Task AddAsync(
-        ReferralCode referralCode,
-        CancellationToken ct = default
-    )
+    public Task AddAsync(ReferralCode referralCode, CancellationToken ct = default)
     {
         _items.Add(referralCode);
         return Task.CompletedTask;
@@ -141,9 +113,9 @@ internal sealed class InMemoryReferralCodeRepository(
     }
 }
 
-internal sealed class InMemoryReferralAttributionRepository(
-    params ReferralAttribution[] seed
-) : IReferralAttributionRepository, IFakeReferralTransactionalResource
+internal sealed class InMemoryReferralAttributionRepository(params ReferralAttribution[] seed)
+    : IReferralAttributionRepository,
+        IFakeReferralTransactionalResource
 {
     private readonly List<ReferralAttribution> _items = [.. seed];
 
@@ -160,10 +132,7 @@ internal sealed class InMemoryReferralAttributionRepository(
             )
         );
 
-    public Task AddAsync(
-        ReferralAttribution attribution,
-        CancellationToken ct = default
-    )
+    public Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default)
     {
         _items.Add(attribution);
         return Task.CompletedTask;
@@ -186,10 +155,7 @@ internal sealed class InMemoryReferralQualificationRepository
 
     internal IReadOnlyCollection<ReferralQualification> Items => _items;
 
-    public Task AddAsync(
-        ReferralQualification qualification,
-        CancellationToken ct = default
-    )
+    public Task AddAsync(ReferralQualification qualification, CancellationToken ct = default)
     {
         _items.Add(qualification);
         return Task.CompletedTask;
@@ -204,9 +170,9 @@ internal sealed class InMemoryReferralQualificationRepository
     }
 }
 
-internal sealed class InMemoryReferralRewardCaseRepository(
-    params ReferralRewardCase[] seed
-) : IReferralRewardCaseRepository, IFakeReferralTransactionalResource
+internal sealed class InMemoryReferralRewardCaseRepository(params ReferralRewardCase[] seed)
+    : IReferralRewardCaseRepository,
+        IFakeReferralTransactionalResource
 {
     private readonly List<ReferralRewardCase> _items = [.. seed];
 
@@ -217,32 +183,19 @@ internal sealed class InMemoryReferralRewardCaseRepository(
         Guid ownerTenantId,
         CancellationToken ct = default
     ) =>
-        Task.FromResult(
-            _items.FirstOrDefault(reward =>
-                reward.Id == rewardCaseId && reward.TenantId == ownerTenantId
-            )
-        );
+        Task.FromResult(_items.FirstOrDefault(reward => reward.Id == rewardCaseId && reward.TenantId == ownerTenantId));
 
     public Task<ReferralRewardCase?> GetByGrantIdAsync(
         Guid grantId,
         Guid ownerTenantId,
         CancellationToken ct = default
     ) =>
-        Task.FromResult(
-            _items.FirstOrDefault(reward =>
-                reward.GrantId == grantId && reward.TenantId == ownerTenantId
-            )
-        );
+        Task.FromResult(_items.FirstOrDefault(reward => reward.GrantId == grantId && reward.TenantId == ownerTenantId));
 
-    public Task<ReferralRewardCase?> GetForCompensationAsync(
-        Guid rewardCaseId,
-        CancellationToken ct = default
-    ) => Task.FromResult(_items.FirstOrDefault(reward => reward.Id == rewardCaseId));
+    public Task<ReferralRewardCase?> GetForCompensationAsync(Guid rewardCaseId, CancellationToken ct = default) =>
+        Task.FromResult(_items.FirstOrDefault(reward => reward.Id == rewardCaseId));
 
-    public Task AddAsync(
-        ReferralRewardCase rewardCase,
-        CancellationToken ct = default
-    )
+    public Task AddAsync(ReferralRewardCase rewardCase, CancellationToken ct = default)
     {
         _items.Add(rewardCase);
         return Task.CompletedTask;
@@ -257,15 +210,12 @@ internal sealed class InMemoryReferralRewardCaseRepository(
     }
 }
 
-internal sealed class FakeReferralRewardQuota
-    : IReferralRewardQuota,
-        IFakeReferralTransactionalResource
+internal sealed class FakeReferralRewardQuota : IReferralRewardQuota, IFakeReferralTransactionalResource
 {
     private readonly List<Guid> _qualificationReservations = [];
 
     internal int InvocationCount { get; private set; }
-    internal IReadOnlyCollection<Guid> QualificationReservations =>
-        _qualificationReservations;
+    internal IReadOnlyCollection<Guid> QualificationReservations => _qualificationReservations;
     internal bool SlotAvailable { get; set; } = true;
 
     public Task<bool> TryReserveAnnualSlotAsync(
@@ -284,8 +234,7 @@ internal sealed class FakeReferralRewardQuota
         return Task.FromResult(SlotAvailable);
     }
 
-    public object CaptureState() =>
-        new Snapshot(InvocationCount, [.. _qualificationReservations]);
+    public object CaptureState() => new Snapshot(InvocationCount, [.. _qualificationReservations]);
 
     public void RestoreState(object snapshot)
     {
@@ -295,8 +244,5 @@ internal sealed class FakeReferralRewardQuota
         _qualificationReservations.AddRange(state.QualificationReservations);
     }
 
-    private sealed record Snapshot(
-        int InvocationCount,
-        IReadOnlyCollection<Guid> QualificationReservations
-    );
+    private sealed record Snapshot(int InvocationCount, IReadOnlyCollection<Guid> QualificationReservations);
 }

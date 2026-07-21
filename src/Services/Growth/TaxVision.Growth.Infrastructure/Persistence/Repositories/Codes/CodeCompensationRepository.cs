@@ -5,10 +5,8 @@ using TaxVision.Codes.Domain.Compensations;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 
-public sealed class CodeCompensationRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : ICodeCompensationRepository
+public sealed class CodeCompensationRepository(GrowthDbContext dbContext, ITenantContext tenantContext)
+    : ICodeCompensationRepository
 {
     public Task<CodeCompensation?> GetBySourceEventIdAsync(
         Guid tenantId,
@@ -34,21 +32,14 @@ public sealed class CodeCompensationRepository(
         CancellationToken ct = default
     )
     {
-        if (
-            !TenantRepositoryGuard.Matches(tenantContext, tenantId)
-            || redemptionId == Guid.Empty
-        )
+        if (!TenantRepositoryGuard.Matches(tenantContext, tenantId) || redemptionId == Guid.Empty)
             return 0;
 
         return await dbContext
                 .CodeCompensations.Where(compensation =>
-                    compensation.TenantId == tenantId
-                    && compensation.RedemptionId == redemptionId
+                    compensation.TenantId == tenantId && compensation.RedemptionId == redemptionId
                 )
-                .MaxAsync(
-                    compensation => (long?)compensation.CumulativeAdjustmentAmountCents,
-                    ct
-                )
+                .MaxAsync(compensation => (long?)compensation.CumulativeAdjustmentAmountCents, ct)
             ?? 0;
     }
 

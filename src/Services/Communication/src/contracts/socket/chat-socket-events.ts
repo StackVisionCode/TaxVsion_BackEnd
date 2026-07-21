@@ -161,9 +161,15 @@ export interface ReadReceiptDto {
   readAtUtc: string;
 }
 
+/**
+ * Fase A1/A2 — presencia enriquecida: `status` reemplaza al viejo `online:
+ * boolean` (Offline/Online/Busy). `busyReason` solo tiene valor cuando
+ * status es 'Busy' (deriva de una Call o un Meeting activos).
+ */
 export interface PresenceChangedDto {
   userId: string;
-  online: boolean;
+  status: 'Online' | 'Busy' | 'Offline';
+  busyReason: 'Call' | 'Meeting' | null;
   changedAtUtc: string;
 }
 

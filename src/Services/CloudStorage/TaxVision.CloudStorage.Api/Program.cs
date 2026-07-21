@@ -158,6 +158,13 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<ShareLinkAccessDeniedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkPermissionChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Auditoría 2026-07-21: estos 3 quedaron fuera de este whitelist explícito desde que se
+    // agregaron (Fase L1.2/L1.3 legal hold + DMCA) — bus.PublishAsync(...) los publica sin
+    // error (Wolverine no lanza si no hay ruta), pero nunca llegaban a taxvision-events, así
+    // que los consumers de Communication nunca los recibían pese a estar bien implementados.
+    options.PublishMessage<LegalHoldPlacedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<LegalHoldLiftedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<DmcaCounterNoticeSubmittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options
         .ListenToRabbitQueue(

@@ -134,6 +134,7 @@ public static class FileAvailableConsumer
                 TenantId = request.TenantId,
                 CorrelationId = correlationId,
                 SignatureRequestId = request.Id,
+                CreatedByUserId = request.CreatedByUserId,
                 OriginalFileId = request.OriginalFileId,
                 DocumentHashPre = request.DocumentHashPre!.Value,
             };

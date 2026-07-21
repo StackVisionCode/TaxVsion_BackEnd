@@ -9,15 +9,9 @@ internal sealed class InMemoryCodeRedemptionRepository : ICodeRedemptionReposito
 
     internal IReadOnlyList<CodeRedemption> Redemptions => _redemptions;
 
-    public Task<CodeRedemption?> GetByIdAsync(
-        Guid tenantId,
-        Guid redemptionId,
-        CancellationToken ct = default
-    ) =>
+    public Task<CodeRedemption?> GetByIdAsync(Guid tenantId, Guid redemptionId, CancellationToken ct = default) =>
         Task.FromResult(
-            _redemptions.SingleOrDefault(redemption =>
-                redemption.TenantId == tenantId && redemption.Id == redemptionId
-            )
+            _redemptions.SingleOrDefault(redemption => redemption.TenantId == tenantId && redemption.Id == redemptionId)
         );
 
     public Task<CodeRedemption?> GetByReservationIdAsync(
@@ -27,8 +21,7 @@ internal sealed class InMemoryCodeRedemptionRepository : ICodeRedemptionReposito
     ) =>
         Task.FromResult(
             _redemptions.SingleOrDefault(redemption =>
-                redemption.TenantId == tenantId
-                && redemption.ReservationId == reservationId
+                redemption.TenantId == tenantId && redemption.ReservationId == reservationId
             )
         );
 

@@ -25,10 +25,7 @@ public static class CreateTenantReferralProgramHandler
 
         if (!IsUtc(command.StartsAtUtc) || (command.EndsAtUtc is { } end && !IsUtc(end)))
         {
-            return Failure(
-                "ReferralProgram.InvalidUtcPeriod",
-                "StartsAtUtc and EndsAtUtc must use DateTimeKind.Utc."
-            );
+            return Failure("ReferralProgram.InvalidUtcPeriod", "StartsAtUtc and EndsAtUtc must use DateTimeKind.Utc.");
         }
 
         var policy = ResolvePolicy(command.Policy);
@@ -88,9 +85,7 @@ public static class CreateTenantReferralProgramHandler
         );
     }
 
-    private static Result<ReferralProgramPolicy> ResolvePolicy(
-        TenantReferralProgramPolicyInput? input
-    )
+    private static Result<ReferralProgramPolicy> ResolvePolicy(TenantReferralProgramPolicyInput? input)
     {
         var defaults = ReferralProgramPolicy.TenantToTenantDefaults();
         return ReferralProgramPolicy.CreateTenantToTenant(
@@ -98,8 +93,7 @@ public static class CreateTenantReferralProgramHandler
             input?.MinimumPaymentAmountCents ?? defaults.MinimumPaymentAmountCents,
             input?.MinimumPaymentCurrency ?? defaults.MinimumPaymentCurrency,
             input?.WaitingPeriodDays ?? defaults.WaitingPeriodDays,
-            input?.MaximumRewardsPerReferrerPerCalendarYear
-                ?? defaults.MaximumRewardsPerReferrerPerCalendarYear,
+            input?.MaximumRewardsPerReferrerPerCalendarYear ?? defaults.MaximumRewardsPerReferrerPerCalendarYear,
             input?.RewardType ?? defaults.RewardType,
             input?.RewardDefinitionKey ?? defaults.RewardDefinitionKey,
             input?.RefereeBenefitType ?? defaults.RefereeBenefitType,
@@ -112,8 +106,6 @@ public static class CreateTenantReferralProgramHandler
 
     private static bool IsUtc(DateTime value) => value.Kind == DateTimeKind.Utc;
 
-    private static Result<TenantReferralProgramResult> Failure(
-        string code,
-        string message
-    ) => Result.Failure<TenantReferralProgramResult>(new Error(code, message));
+    private static Result<TenantReferralProgramResult> Failure(string code, string message) =>
+        Result.Failure<TenantReferralProgramResult>(new Error(code, message));
 }

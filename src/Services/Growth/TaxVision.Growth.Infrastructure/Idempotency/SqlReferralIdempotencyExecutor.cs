@@ -9,9 +9,8 @@ namespace TaxVision.Growth.Infrastructure.Idempotency;
 /// This guarantees identical insert-first, rollback and exact-response replay semantics
 /// without introducing a dependency from Referrals.Application to Codes.Domain.
 /// </summary>
-public sealed class SqlReferralIdempotencyExecutor(
-    SqlBusinessIdempotencyExecutor executor
-) : IReferralIdempotencyExecutor
+public sealed class SqlReferralIdempotencyExecutor(SqlBusinessIdempotencyExecutor executor)
+    : IReferralIdempotencyExecutor
 {
     public Task<Result<TResponse>> ExecuteAsync<TResponse>(
         string operation,
@@ -48,13 +47,6 @@ public sealed class SqlReferralIdempotencyExecutor(
             );
         }
 
-        return executor.ExecuteAsync(
-            operation,
-            scopeId,
-            key.Value,
-            fingerprint.Value,
-            operationBody,
-            ct
-        );
+        return executor.ExecuteAsync(operation, scopeId, key.Value, fingerprint.Value, operationBody, ct);
     }
 }

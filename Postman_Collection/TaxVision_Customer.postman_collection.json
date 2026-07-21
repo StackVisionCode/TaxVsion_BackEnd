@@ -1494,6 +1494,86 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "Preparer Assignment",
+			"item": [
+				{
+					"name": "AssignPreparer",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"preparerUserId\": \"{{preparerUserId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/customers/{{customerId}}/preparer",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}",
+								"preparer"
+							]
+						},
+						"description": "Asigna un preparador (TenantEmployee) a un customer. Requiere permiso customers.preparer.manage (TenantAdmin lo tiene siempre). Publica CustomerPreparerAssignedIntegrationEvent, consumido por Communication para el chat tipado cliente-preparador."
+					},
+					"response": []
+				},
+				{
+					"name": "UnassignPreparer",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/customers/{{customerId}}/preparer",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}",
+								"preparer"
+							]
+						},
+						"description": "Quita el preparador asignado. Falla con Customer.NoPreparerAssigned si el customer no tenia ninguno. Publica CustomerPreparerUnassignedIntegrationEvent."
+					},
+					"response": []
+				}
+			]
 		}
 	]
 }

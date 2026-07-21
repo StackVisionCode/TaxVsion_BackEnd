@@ -7,45 +7,24 @@ using TaxVision.Referrals.Domain.Rewards;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Referrals;
 
-public sealed class ReferralRewardCaseRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : IReferralRewardCaseRepository
+public sealed class ReferralRewardCaseRepository(GrowthDbContext dbContext, ITenantContext tenantContext)
+    : IReferralRewardCaseRepository
 {
     public Task<ReferralRewardCase?> GetByIdAsync(
         Guid rewardCaseId,
         Guid ownerTenantId,
         CancellationToken ct = default
-    ) =>
-        FindOwnedAsync(
-            ownerTenantId,
-            rewardCase => rewardCase.Id == rewardCaseId,
-            rewardCaseId,
-            ct
-        );
+    ) => FindOwnedAsync(ownerTenantId, rewardCase => rewardCase.Id == rewardCaseId, rewardCaseId, ct);
 
     public Task<ReferralRewardCase?> GetByGrantIdAsync(
         Guid grantId,
         Guid ownerTenantId,
         CancellationToken ct = default
-    ) =>
-        FindOwnedAsync(
-            ownerTenantId,
-            rewardCase => rewardCase.GrantId == grantId,
-            grantId,
-            ct
-        );
+    ) => FindOwnedAsync(ownerTenantId, rewardCase => rewardCase.GrantId == grantId, grantId, ct);
 
-    public Task<ReferralRewardCase?> GetForCompensationAsync(
-        Guid rewardCaseId,
-        CancellationToken ct = default
-    )
+    public Task<ReferralRewardCase?> GetForCompensationAsync(Guid rewardCaseId, CancellationToken ct = default)
     {
-        if (
-            !tenantContext.HasTenant
-            || tenantContext.TenantId == Guid.Empty
-            || rewardCaseId == Guid.Empty
-        )
+        if (!tenantContext.HasTenant || tenantContext.TenantId == Guid.Empty || rewardCaseId == Guid.Empty)
             return Task.FromResult<ReferralRewardCase?>(null);
 
         // Payment-originated compensation is the only cross-tenant reward lookup.
@@ -56,14 +35,12 @@ public sealed class ReferralRewardCaseRepository(
             .SingleOrDefaultAsync(rewardCase => rewardCase.Id == rewardCaseId, ct);
     }
 
-    public async Task AddAsync(
-        ReferralRewardCase rewardCase,
-        CancellationToken ct = default
-    )
+    public async Task AddAsync(ReferralRewardCase rewardCase, CancellationToken ct = default)
     {
         if (!TenantRepositoryGuard.Matches(tenantContext, rewardCase.TenantId))
         {
-            var sourceAttributionIsTrackedForActiveTenant = tenantContext.HasTenant
+            var sourceAttributionIsTrackedForActiveTenant =
+                tenantContext.HasTenant
                 && rewardCase.BeneficiaryType == ReferralParticipantType.Tenant
                 && rewardCase.BeneficiaryId == rewardCase.TenantId
                 && dbContext
@@ -87,8 +64,7 @@ public sealed class ReferralRewardCaseRepository(
         Guid requiredId,
         CancellationToken ct
     ) =>
-        requiredId == Guid.Empty
-        || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
+        requiredId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
             ? Task.FromResult<ReferralRewardCase?>(null)
             : dbContext
                 .ReferralRewardCases.Where(rewardCase => rewardCase.TenantId == ownerTenantId)

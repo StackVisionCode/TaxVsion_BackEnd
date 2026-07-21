@@ -10,9 +10,13 @@ public sealed record DocumentSignedIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }
     public required Guid SignerId { get; init; }
+    public required Guid CreatedByUserId { get; init; }
     public required DateTime SignedAtUtc { get; init; }
     public required int TotalSignersCount { get; init; }
     public required int SignedSignersCount { get; init; }
     public required bool IsRequestCompleted { get; init; }
     public string? ClientIp { get; init; }
+
+    /// <summary>Fase 6 del plan de notificaciones dinámicas — ver <see cref="SignerContactSnapshot.MappedCustomerId"/>.</summary>
+    public Guid? MappedCustomerId { get; init; }
 }

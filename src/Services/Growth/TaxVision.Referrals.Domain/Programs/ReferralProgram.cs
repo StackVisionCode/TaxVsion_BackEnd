@@ -62,24 +62,24 @@ public sealed class ReferralProgram : TenantEntity
             return Result.Failure<ReferralProgram>(actor.Error);
 
         var program = new ReferralProgram
-            {
-                ProgramCode = programCode.Trim().ToUpperInvariant(),
-                Name = name.Trim(),
-                ScopeType = scopeType,
-                TenantScopeId = tenantScopeId,
-                FlowType = flowType,
-                Status = ReferralProgramStatus.Draft,
-                Policy = policy,
-                PolicyVersion = 1,
-                StartsAtUtc = startsAtUtc,
-                EndsAtUtc = endsAtUtc,
-                IdempotencyKey = idempotencyKey.Trim(),
-                PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                CreatedBy = actorUserId,
-                UpdatedBy = actorUserId,
-            };
+        {
+            ProgramCode = programCode.Trim().ToUpperInvariant(),
+            Name = name.Trim(),
+            ScopeType = scopeType,
+            TenantScopeId = tenantScopeId,
+            FlowType = flowType,
+            Status = ReferralProgramStatus.Draft,
+            Policy = policy,
+            PolicyVersion = 1,
+            StartsAtUtc = startsAtUtc,
+            EndsAtUtc = endsAtUtc,
+            IdempotencyKey = idempotencyKey.Trim(),
+            PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
         program.SetTenant(tenantScopeId ?? PlatformTenant.Id);
         return Result.Success(program);
     }
@@ -212,31 +212,18 @@ public sealed class ReferralProgram : TenantEntity
         if (!Enum.IsDefined(scopeType))
         {
             return Result.Failure(
-                new Error(
-                    "ReferralProgram.InvalidScope",
-                    "Referral program scope is not supported."
-                )
+                new Error("ReferralProgram.InvalidScope", "Referral program scope is not supported.")
             );
         }
 
         if (!Enum.IsDefined(flowType))
         {
-            return Result.Failure(
-                new Error(
-                    "ReferralProgram.InvalidFlow",
-                    "Referral program flow is not supported."
-                )
-            );
+            return Result.Failure(new Error("ReferralProgram.InvalidFlow", "Referral program flow is not supported."));
         }
 
         if (policy is null)
         {
-            return Result.Failure(
-                new Error(
-                    "ReferralProgram.InvalidPolicy",
-                    "Referral program policy is required."
-                )
-            );
+            return Result.Failure(new Error("ReferralProgram.InvalidPolicy", "Referral program policy is required."));
         }
 
         if (
@@ -262,10 +249,7 @@ public sealed class ReferralProgram : TenantEntity
 
         if (
             (scopeType == ReferralProgramScope.Platform && tenantScopeId is not null)
-            || (
-                scopeType == ReferralProgramScope.Tenant
-                && (tenantScopeId is null || tenantScopeId == Guid.Empty)
-            )
+            || (scopeType == ReferralProgramScope.Tenant && (tenantScopeId is null || tenantScopeId == Guid.Empty))
         )
         {
             return Result.Failure(
@@ -295,9 +279,7 @@ public sealed class ReferralProgram : TenantEntity
 
         if (endsAtUtc is not null && endsAtUtc <= startsAtUtc)
         {
-            return Result.Failure(
-                new Error("ReferralProgram.InvalidPeriod", "EndsAtUtc must be after StartsAtUtc.")
-            );
+            return Result.Failure(new Error("ReferralProgram.InvalidPeriod", "EndsAtUtc must be after StartsAtUtc."));
         }
 
         return ValidateIdempotency(idempotencyKey, payloadFingerprint);

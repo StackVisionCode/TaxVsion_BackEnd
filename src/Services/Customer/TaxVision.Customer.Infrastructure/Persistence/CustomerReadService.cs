@@ -95,6 +95,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 NaicsId = c.BusinessIdentity != null ? c.BusinessIdentity.PrincipalBusinessActivityId : null,
                 NaicsDescription = naics != null ? naics.Description : null,
                 c.CreatedAtUtc,
+                c.AssignedPreparerUserId,
             }
         ).FirstOrDefaultAsync(ct);
 
@@ -115,7 +116,8 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             data.OccupationName,
             data.NaicsId,
             data.NaicsDescription,
-            data.CreatedAtUtc
+            data.CreatedAtUtc,
+            data.AssignedPreparerUserId
         );
     }
 

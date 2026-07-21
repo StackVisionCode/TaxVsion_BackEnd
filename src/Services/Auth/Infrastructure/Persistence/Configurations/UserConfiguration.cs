@@ -27,6 +27,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.MfaEnabled).IsRequired();
         builder.Property(user => user.FailedLoginCount).IsRequired();
         builder.Property(user => user.PermissionsVersion).IsRequired();
+        builder.Property(user => user.PermissionsBackfilledAt);
         builder.Property(user => user.CreatedAtUtc).IsRequired();
         builder.HasIndex(user => new { user.TenantId, user.Email }).IsUnique();
         builder.HasIndex(user => new { user.TenantId, user.ActorType });

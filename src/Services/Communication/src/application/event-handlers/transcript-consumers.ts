@@ -238,7 +238,7 @@ export function bindTranscriptConsumers(
       return;
     }
     await deps.recordingSessions.save(failResult.value);
-    await deps.publisher.enqueue(buildMeetingRecordingFailedEvent(env, meetingId, reason));
+    await deps.publisher.enqueue(buildMeetingRecordingFailedEvent(env, meetingId, reason, meeting.hostUserId));
 
     const stateDto: MeetingRecordingStateChangedDto = { meetingId, state: 'Failed', updatedAtUtc: new Date().toISOString() };
     deps.emitter.emitToMeeting({
@@ -275,7 +275,9 @@ export function bindTranscriptConsumers(
       return;
     }
     await deps.recordingSessions.save(failResult.value);
-    await deps.publisher.enqueue(buildCallRecordingFailedEvent(env, callId, reason));
+    await deps.publisher.enqueue(
+      buildCallRecordingFailedEvent(env, callId, reason, call.callerUserId, call.calleeUserId),
+    );
 
     const stateDto: CallRecordingStateChangedDto = { callId, state: 'Failed', updatedAtUtc: new Date().toISOString() };
     deps.emitter.emitToCall({
@@ -320,7 +322,7 @@ export function bindTranscriptConsumers(
       return;
     }
     await deps.recordingSessions.save(failResult.value);
-    await deps.publisher.enqueue(buildMeetingRecordingFailedEvent(env, meetingId, reason));
+    await deps.publisher.enqueue(buildMeetingRecordingFailedEvent(env, meetingId, reason, meeting.hostUserId));
 
     const stateDto: MeetingRecordingStateChangedDto = { meetingId, state: 'Failed', updatedAtUtc: new Date().toISOString() };
     deps.emitter.emitToMeeting({
@@ -353,7 +355,9 @@ export function bindTranscriptConsumers(
       return;
     }
     await deps.recordingSessions.save(failResult.value);
-    await deps.publisher.enqueue(buildCallRecordingFailedEvent(env, callId, reason));
+    await deps.publisher.enqueue(
+      buildCallRecordingFailedEvent(env, callId, reason, call.callerUserId, call.calleeUserId),
+    );
 
     const stateDto: CallRecordingStateChangedDto = { callId, state: 'Failed', updatedAtUtc: new Date().toISOString() };
     deps.emitter.emitToCall({
@@ -394,6 +398,7 @@ function buildMeetingRecordingFailedEvent(
   env: IncomingEnvelope,
   meetingId: string,
   reason: string,
+  hostUserId: string,
 ): MeetingRecordingFailedEvent {
   const failedAtUtc = new Date().toISOString();
   return {
@@ -405,6 +410,7 @@ function buildMeetingRecordingFailedEvent(
     meetingId,
     reason,
     failedAtUtc,
+    hostUserId,
   };
 }
 
@@ -412,6 +418,8 @@ function buildCallRecordingFailedEvent(
   env: IncomingEnvelope,
   callId: string,
   reason: string,
+  callerUserId: string,
+  calleeUserId: string,
 ): CallRecordingFailedEvent {
   const failedAtUtc = new Date().toISOString();
   return {
@@ -423,5 +431,7 @@ function buildCallRecordingFailedEvent(
     callId,
     reason,
     failedAtUtc,
+    callerUserId,
+    calleeUserId,
   };
 }

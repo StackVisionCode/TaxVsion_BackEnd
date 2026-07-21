@@ -13,4 +13,5 @@ public sealed record ConnectorsWatchExpiredIntegrationEvent : IntegrationEvent
     public required string ProviderCode { get; init; }
     public required int FailureCount { get; init; }
     public required DateTime ExpiredAtUtc { get; init; }
+    public required Guid CreatedByUserId { get; init; }
 }

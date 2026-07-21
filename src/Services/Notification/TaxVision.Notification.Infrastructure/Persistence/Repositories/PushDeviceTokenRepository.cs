@@ -24,4 +24,13 @@ public sealed class PushDeviceTokenRepository(NotificationDbContext db) : IPushD
             .PushDeviceTokens.AsNoTracking()
             .Where(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive)
             .ToListAsync(ct);
+
+    public async Task RevokeAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        // Fetch tracked a propósito (sin AsNoTracking, a diferencia de ListActiveForUserAsync) —
+        // Revoke() necesita que EF detecte el cambio para que el SaveChangesAsync del caller lo
+        // persista.
+        var token = await db.PushDeviceTokens.FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == id, ct);
+        token?.Revoke();
+    }
 }

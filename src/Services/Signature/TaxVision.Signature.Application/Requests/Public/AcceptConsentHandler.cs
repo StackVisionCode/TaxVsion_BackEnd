@@ -81,6 +81,7 @@ public static class AcceptConsentHandler
                     TenantId = request.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     SignerId = signer.Id,
                     AcceptedAtUtc = acceptedAtUtc,
                     ClientIp = clientIp,

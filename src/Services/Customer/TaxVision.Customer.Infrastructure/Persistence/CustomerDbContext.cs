@@ -7,6 +7,7 @@ using TaxVision.Customer.Domain.Addresses;
 using TaxVision.Customer.Domain.Audit;
 using TaxVision.Customer.Domain.Catalogs;
 using TaxVision.Customer.Domain.ContactPoints;
+using TaxVision.Customer.Domain.Employees;
 using TaxVision.Customer.Domain.FiscalProfiles;
 using TaxVision.Customer.Domain.Imports;
 using TaxVision.Customer.Domain.Relations;
@@ -57,6 +58,9 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
 
     /// <summary>Rastro de auditoría de acciones sensibles sobre clientes (ej. revelar el tax identifier).</summary>
     public DbSet<CustomerAuditLog> CustomerAuditLogs => Set<CustomerAuditLog>();
+
+    /// <summary>Proyección local de usuarios del staff del tenant, alimentada por eventos de Auth.</summary>
+    public DbSet<TenantEmployeeDirectoryEntry> TenantEmployeeDirectoryEntries => Set<TenantEmployeeDirectoryEntry>();
 
     /// <summary>
     /// Construye el modelo de EF Core aplicando las configuraciones de entidades declaradas

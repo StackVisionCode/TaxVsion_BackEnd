@@ -21,9 +21,7 @@ public sealed class HmacSha256CodeTokenHasher : ICodeTokenHasher
     public Result<CodeTokenHash> Hash(string codeToken)
     {
         if (string.IsNullOrWhiteSpace(codeToken))
-            return Result.Failure<CodeTokenHash>(
-                new Error("Codes.Token.Required", "A code token is required.")
-            );
+            return Result.Failure<CodeTokenHash>(new Error("Codes.Token.Required", "A code token is required."));
 
         var normalized = codeToken.Trim().ToUpperInvariant();
         var digest = HMACSHA256.HashData(_pepper, Encoding.UTF8.GetBytes(normalized));

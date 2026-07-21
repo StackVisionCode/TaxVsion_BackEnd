@@ -17,19 +17,12 @@ public sealed class ReferralRewardAttemptConfiguration : IEntityTypeConfiguratio
         builder.Property(attempt => attempt.Operation).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attempt => attempt.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attempt => attempt.IdempotencyKey).HasMaxLength(200).IsRequired();
-        builder
-            .Property(attempt => attempt.PayloadFingerprint)
-            .HasColumnType("char(64)")
-            .IsFixedLength()
-            .IsRequired();
+        builder.Property(attempt => attempt.PayloadFingerprint).HasColumnType("char(64)").IsFixedLength().IsRequired();
         builder.Property(attempt => attempt.ExternalReference).HasMaxLength(200);
         builder.Property(attempt => attempt.FailureCode).HasMaxLength(100);
         builder.Property(attempt => attempt.FailureReason).HasMaxLength(500);
         builder.Property(attempt => attempt.CompletionIdempotencyKey).HasMaxLength(200);
-        builder
-            .Property(attempt => attempt.CompletionPayloadFingerprint)
-            .HasColumnType("char(64)")
-            .IsFixedLength();
+        builder.Property(attempt => attempt.CompletionPayloadFingerprint).HasColumnType("char(64)").IsFixedLength();
         builder.Property(attempt => attempt.CreatedAtUtc).HasColumnType("datetime2(7)").IsRequired();
         builder.Property(attempt => attempt.CompletedAtUtc).HasColumnType("datetime2(7)");
         builder.Property(attempt => attempt.CreatedBy).IsRequired();
@@ -47,11 +40,7 @@ public sealed class ReferralRewardAttemptConfiguration : IEntityTypeConfiguratio
             .IsUnique()
             .HasDatabaseName("UX_ReferralRewardAttempts_RewardCase_IdempotencyKey");
         builder
-            .HasIndex(attempt => new
-            {
-                attempt.RewardCaseId,
-                attempt.CompletionIdempotencyKey,
-            })
+            .HasIndex(attempt => new { attempt.RewardCaseId, attempt.CompletionIdempotencyKey })
             .HasFilter("[CompletionIdempotencyKey] IS NOT NULL")
             .IsUnique()
             .HasDatabaseName("UX_ReferralRewardAttempts_RewardCase_CompletionKey");

@@ -138,6 +138,7 @@ public sealed class ScribeRenderFailureTests
         {
             TenantId = Guid.NewGuid(),
             SignatureRequestId = Guid.NewGuid(),
+            CreatedByUserId = Guid.NewGuid(),
             SignerId = Guid.NewGuid(),
             RejectedAtUtc = DateTime.UtcNow,
             RevocationEpoch = 1,

@@ -126,9 +126,12 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CustomerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerPortalInvitationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomersBulkImportedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerImportFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerActivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CustomerDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerPreparerAssignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CustomerPreparerUnassignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Fase D — reemplaza la tabla CustomerImportFiles: el import sube directo a MinIO y
     // publica esto para que CloudStorage lo registre/escanee de forma asincrona.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

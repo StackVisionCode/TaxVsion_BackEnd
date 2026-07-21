@@ -1,12 +1,13 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
 /// <summary>
 /// Stub log-only — ver docblock de <see cref="MeetingRecordingReadyConsumer"/> sobre el
-/// recipient simbólico <c>meeting:{MeetingId}</c>.
+/// recipient real, aquí <c>user:{HostUserId}</c> (Fase 1B).
 /// </summary>
 public static class MeetingRecordingFailedConsumer
 {
@@ -21,12 +22,14 @@ public static class MeetingRecordingFailedConsumer
         {
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,
-                $"meeting:{evt.MeetingId:N}",
+                $"user:{evt.HostUserId:N}",
                 $"Grabación de meeting falló: {evt.Reason}",
+                NotificationCategory.Collaboration,
                 "communication.meeting.recording_failed",
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                recipientUserId: evt.HostUserId,
+                ct: ct
             );
         }
     }

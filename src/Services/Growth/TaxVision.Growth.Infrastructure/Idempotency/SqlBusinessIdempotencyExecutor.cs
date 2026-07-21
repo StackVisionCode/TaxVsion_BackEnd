@@ -216,6 +216,5 @@ public sealed class SqlBusinessIdempotencyExecutor(
             await transaction.RollbackToSavepointAsync(savepoint, ct);
     }
 
-    private static Result<T> Failure<T>(string code, string message) =>
-        Result.Failure<T>(new Error(code, message));
+    private static Result<T> Failure<T>(string code, string message) => Result.Failure<T>(new Error(code, message));
 }

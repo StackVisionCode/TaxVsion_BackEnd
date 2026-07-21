@@ -20,9 +20,7 @@ public sealed class ReferralProvisioningApplicationTests
     {
         var programs = new InMemoryReferralProgramRepository();
         var idempotency = new FakeReferralIdempotencyExecutor(programs);
-        var timeProvider = new FixedTimeProvider(
-            new DateTimeOffset(GrowthTestData.NowUtc)
-        );
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc));
         var command = new CreateTenantReferralProgramCommand(
             "partner-2026",
             "Partner referrals",
@@ -54,18 +52,9 @@ public sealed class ReferralProvisioningApplicationTests
         Assert.Equal(ReferralProgramScope.Platform, first.Value.Scope);
         Assert.Equal(ReferralFlowType.TenantToTenant, first.Value.Flow);
         Assert.Equal(ReferralProgramStatus.Draft, first.Value.Status);
-        Assert.Equal(
-            ReferralProgramPolicy.DefaultAttributionWindowDays,
-            first.Value.Policy.AttributionWindowDays
-        );
-        Assert.Equal(
-            ReferralProgramPolicy.DefaultWaitingPeriodDays,
-            first.Value.Policy.WaitingPeriodDays
-        );
-        Assert.Equal(
-            ReferralRewardType.SubscriptionFeatureGrant,
-            first.Value.Policy.RewardType
-        );
+        Assert.Equal(ReferralProgramPolicy.DefaultAttributionWindowDays, first.Value.Policy.AttributionWindowDays);
+        Assert.Equal(ReferralProgramPolicy.DefaultWaitingPeriodDays, first.Value.Policy.WaitingPeriodDays);
+        Assert.Equal(ReferralRewardType.SubscriptionFeatureGrant, first.Value.Policy.RewardType);
         Assert.Single(programs.Items);
         Assert.Equal(PlatformTenant.Id, programs.Items.Single().TenantId);
         Assert.Equal(1, idempotency.ExecutedBodyCount);
@@ -76,9 +65,7 @@ public sealed class ReferralProvisioningApplicationTests
     {
         var programs = new InMemoryReferralProgramRepository();
         var idempotency = new FakeReferralIdempotencyExecutor(programs);
-        var timeProvider = new FixedTimeProvider(
-            new DateTimeOffset(GrowthTestData.NowUtc)
-        );
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc));
         var command = new CreateTenantReferralProgramCommand(
             "PARTNER-EXPLICIT",
             "Explicit partner referrals",
@@ -144,14 +131,8 @@ public sealed class ReferralProvisioningApplicationTests
             .Value;
         var programs = new InMemoryReferralProgramRepository(program);
         var idempotency = new FakeReferralIdempotencyExecutor();
-        var command = new ActivateTenantReferralProgramCommand(
-            program.Id,
-            GrowthTestData.ActorId,
-            "activate-program"
-        );
-        var timeProvider = new FixedTimeProvider(
-            new DateTimeOffset(GrowthTestData.NowUtc)
-        );
+        var command = new ActivateTenantReferralProgramCommand(program.Id, GrowthTestData.ActorId, "activate-program");
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc));
 
         var first = await ActivateTenantReferralProgramHandler.Handle(
             command,
@@ -181,14 +162,9 @@ public sealed class ReferralProvisioningApplicationTests
         var programs = new InMemoryReferralProgramRepository(program);
         var codes = new InMemoryReferralCodeRepository();
         var generator = new FakeReferralCodeTokenGenerator(GeneratedToken);
-        var hasher = new FakeReferralCodeTokenHasher(
-            GeneratedToken,
-            GrowthTestData.Sha('9')
-        );
+        var hasher = new FakeReferralCodeTokenHasher(GeneratedToken, GrowthTestData.Sha('9'));
         var idempotency = new FakeReferralIdempotencyExecutor(codes);
-        var timeProvider = new FixedTimeProvider(
-            new DateTimeOffset(GrowthTestData.NowUtc)
-        );
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc));
         var command = new IssueTenantReferralCodeCommand(
             GrowthTestData.ReferrerTenantId,
             program.Id,
@@ -218,7 +194,10 @@ public sealed class ReferralProvisioningApplicationTests
             CancellationToken.None
         );
         var conflict = await IssueTenantReferralCodeHandler.Handle(
-            command with { ExpiresAtUtc = command.ExpiresAtUtc.AddDays(1) },
+            command with
+            {
+                ExpiresAtUtc = command.ExpiresAtUtc.AddDays(1),
+            },
             programs,
             codes,
             generator,
@@ -240,15 +219,7 @@ public sealed class ReferralProvisioningApplicationTests
         Assert.Equal("Referrals.IdempotencyConflict", conflict.Error.Code);
 
         var storedShape = JsonSerializer.Serialize(first.Value);
-        Assert.DoesNotContain(
-            GeneratedToken,
-            storedShape,
-            StringComparison.Ordinal
-        );
-        Assert.DoesNotContain(
-            GeneratedToken,
-            first.Value.ToString(),
-            StringComparison.Ordinal
-        );
+        Assert.DoesNotContain(GeneratedToken, storedShape, StringComparison.Ordinal);
+        Assert.DoesNotContain(GeneratedToken, first.Value.ToString(), StringComparison.Ordinal);
     }
 }

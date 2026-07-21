@@ -49,6 +49,7 @@ public static class ExtendExpirationHandler
                     TenantId = request.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     ExtendedByUserId = cmd.ExtendedByUserId,
                     AdditionalHours = cmd.AdditionalHours,
                     NewExpiresAtUtc = request.ExpiresAtUtc,

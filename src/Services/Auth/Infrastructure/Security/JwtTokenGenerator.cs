@@ -74,15 +74,7 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         string clientId,
         IReadOnlyCollection<string> permissions,
         int lifetimeMinutes
-    ) =>
-        GenerateScopedServiceToken(
-            tenantId,
-            clientId,
-            permissions,
-            [],
-            _options.Audience,
-            lifetimeMinutes
-        );
+    ) => GenerateScopedServiceToken(tenantId, clientId, permissions, [], _options.Audience, lifetimeMinutes);
 
     public AccessToken GenerateScopedServiceToken(
         Guid tenantId,

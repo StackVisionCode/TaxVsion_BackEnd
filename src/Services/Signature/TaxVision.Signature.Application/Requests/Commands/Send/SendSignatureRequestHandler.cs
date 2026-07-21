@@ -83,6 +83,7 @@ public static class SendSignatureRequestHandler
                     TenantId = request.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     SentAtUtc = sentAtUtc,
                     SignerIds = request.Signers.Select(s => s.Id).ToList(),
                 }

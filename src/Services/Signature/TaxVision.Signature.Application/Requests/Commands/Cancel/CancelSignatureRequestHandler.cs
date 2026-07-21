@@ -56,6 +56,7 @@ public static class CancelSignatureRequestHandler
                     TenantId = request.TenantId,
                     CorrelationId = correlation.CorrelationId,
                     SignatureRequestId = request.Id,
+                    CreatedByUserId = request.CreatedByUserId,
                     CanceledByUserId = cmd.CanceledByUserId,
                     CanceledAtUtc = canceledAtUtc,
                     Reason = cmd.Reason,

@@ -33,10 +33,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         DateTime PaymentSucceededAtUtc
     );
 
-    public sealed record ConfirmGrantRequest(
-        Guid AttemptId,
-        string MaterializedBenefitReference
-    );
+    public sealed record ConfirmGrantRequest(Guid AttemptId, string MaterializedBenefitReference);
 
     public sealed record ConfirmClawbackRequest(Guid AttemptId, string ReversalReference);
 
@@ -97,9 +94,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
             ct
         );
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost("grants/{grantId:guid}/clawbacks/confirm")]
@@ -127,9 +122,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
             ct
         );
 
-        return result.IsSuccess
-            ? NoContent()
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     private bool TryGetServiceActor(out Guid tenantId, out Guid actorId)
@@ -139,7 +132,5 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
     }
 
     private IActionResult ToActionResult<T>(Result<T> result) =>
-        result.IsSuccess
-            ? Ok(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 }

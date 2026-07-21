@@ -63,9 +63,10 @@ public sealed class ReferralAttribution : TenantEntity
             );
         }
 
-        var expectedParticipant = program.FlowType == ReferralFlowType.TenantToTenant
-            ? ReferralParticipantType.Tenant
-            : ReferralParticipantType.Taxpayer;
+        var expectedParticipant =
+            program.FlowType == ReferralFlowType.TenantToTenant
+                ? ReferralParticipantType.Tenant
+                : ReferralParticipantType.Taxpayer;
         if (refereeType != expectedParticipant)
         {
             return Result.Failure<ReferralAttribution>(
@@ -74,7 +75,9 @@ public sealed class ReferralAttribution : TenantEntity
         }
 
         if (refereeId == Guid.Empty)
-            return Result.Failure<ReferralAttribution>(new Error("ReferralAttribution.InvalidReferee", "RefereeId is required."));
+            return Result.Failure<ReferralAttribution>(
+                new Error("ReferralAttribution.InvalidReferee", "RefereeId is required.")
+            );
 
         if (code.OwnerType == refereeType && code.OwnerId == refereeId)
         {
@@ -88,27 +91,25 @@ public sealed class ReferralAttribution : TenantEntity
             return Result.Failure<ReferralAttribution>(idempotency.Error);
 
         var attribution = new ReferralAttribution
-            {
-                ProgramId = program.Id,
-                ReferralCodeId = code.Id,
-                TenantScopeId = program.TenantScopeId,
-                ReferrerType = code.OwnerType,
-                ReferrerId = code.OwnerId,
-                RefereeType = refereeType,
-                RefereeId = refereeId,
-                Status = ReferralAttributionStatus.Pending,
-                AttributedAtUtc = nowUtc,
-                ExpiresAtUtc = program.CalculateAttributionExpiry(nowUtc),
-                IdempotencyKey = idempotencyKey.Trim(),
-                PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                CreatedBy = actorUserId,
-                UpdatedBy = actorUserId,
-            };
-        attribution.SetTenant(
-            program.FlowType == ReferralFlowType.TenantToTenant ? refereeId : program.TenantId
-        );
+        {
+            ProgramId = program.Id,
+            ReferralCodeId = code.Id,
+            TenantScopeId = program.TenantScopeId,
+            ReferrerType = code.OwnerType,
+            ReferrerId = code.OwnerId,
+            RefereeType = refereeType,
+            RefereeId = refereeId,
+            Status = ReferralAttributionStatus.Pending,
+            AttributedAtUtc = nowUtc,
+            ExpiresAtUtc = program.CalculateAttributionExpiry(nowUtc),
+            IdempotencyKey = idempotencyKey.Trim(),
+            PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
+        attribution.SetTenant(program.FlowType == ReferralFlowType.TenantToTenant ? refereeId : program.TenantId);
         return Result.Success(attribution);
     }
 
@@ -209,7 +210,9 @@ public sealed class ReferralAttribution : TenantEntity
             return Result.Success();
 
         if (Status == ReferralAttributionStatus.Expired)
-            return Result.Failure(new Error("ReferralAttribution.InvalidTransition", "An expired attribution cannot be rejected."));
+            return Result.Failure(
+                new Error("ReferralAttribution.InvalidTransition", "An expired attribution cannot be rejected.")
+            );
 
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("ReferralAttribution.InvalidReason", "A rejection reason is required."));
@@ -249,7 +252,9 @@ public sealed class ReferralAttribution : TenantEntity
     private static Result ValidateIdempotency(string key, string fingerprint)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Trim().Length > 200)
-            return Result.Failure(new Error("ReferralAttribution.InvalidIdempotencyKey", "A valid idempotency key is required."));
+            return Result.Failure(
+                new Error("ReferralAttribution.InvalidIdempotencyKey", "A valid idempotency key is required.")
+            );
 
         return !DomainGuards.IsSha256Hex(fingerprint)
             ? Result.Failure(

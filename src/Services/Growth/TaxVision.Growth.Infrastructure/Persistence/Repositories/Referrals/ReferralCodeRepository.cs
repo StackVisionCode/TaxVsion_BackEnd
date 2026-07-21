@@ -7,10 +7,8 @@ using TaxVision.Referrals.Domain.Programs;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Referrals;
 
-public sealed class ReferralCodeRepository(
-    GrowthDbContext dbContext,
-    ITenantContext tenantContext
-) : IReferralCodeRepository
+public sealed class ReferralCodeRepository(GrowthDbContext dbContext, ITenantContext tenantContext)
+    : IReferralCodeRepository
 {
     public Task<ReferralCode?> GetActiveOwnedAsync(
         Guid ownerTenantId,
@@ -19,9 +17,7 @@ public sealed class ReferralCodeRepository(
         Guid ownerId,
         CancellationToken ct = default
     ) =>
-        programId == Guid.Empty
-        || ownerId == Guid.Empty
-        || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
+        programId == Guid.Empty || ownerId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
             ? Task.FromResult<ReferralCode?>(null)
             : dbContext.ReferralCodes.FirstOrDefaultAsync(
                 code =>
@@ -33,11 +29,7 @@ public sealed class ReferralCodeRepository(
                 ct
             );
 
-    public Task<ReferralCode?> ResolveByHashAsync(
-        Guid programId,
-        string codeHash,
-        CancellationToken ct = default
-    )
+    public Task<ReferralCode?> ResolveByHashAsync(Guid programId, string codeHash, CancellationToken ct = default)
     {
         if (
             !tenantContext.HasTenant
@@ -82,17 +74,12 @@ public sealed class ReferralCodeRepository(
             .SingleOrDefaultAsync(ct);
     }
 
-    public async Task AddAsync(
-        ReferralCode referralCode,
-        CancellationToken ct = default
-    )
+    public async Task AddAsync(ReferralCode referralCode, CancellationToken ct = default)
     {
         TenantRepositoryGuard.EnsureMatches(tenantContext, referralCode.TenantId);
         await dbContext.ReferralCodes.AddAsync(referralCode, ct);
     }
 
     private static bool IsSha256Hex(string value) =>
-        !string.IsNullOrWhiteSpace(value)
-        && value.Trim().Length == 64
-        && value.Trim().All(Uri.IsHexDigit);
+        !string.IsNullOrWhiteSpace(value) && value.Trim().Length == 64 && value.Trim().All(Uri.IsHexDigit);
 }

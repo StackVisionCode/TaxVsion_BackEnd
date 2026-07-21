@@ -14,13 +14,7 @@ public sealed class CodeBenefit
     private CodeBenefit() { }
 
     public static Result<CodeBenefit> CreatePercentage(PercentageBasisPoints percentage) =>
-        Result.Success(
-            new CodeBenefit
-            {
-                Type = CodeBenefitType.Percentage,
-                Percentage = percentage,
-            }
-        );
+        Result.Success(new CodeBenefit { Type = CodeBenefitType.Percentage, Percentage = percentage });
 
     public static Result<CodeBenefit> CreateFixedAmount(Money fixedAmount)
     {
@@ -29,20 +23,10 @@ public sealed class CodeBenefit
                 new Error("Codes.CodeBenefit.InvalidFixedAmount", "Fixed discount must be greater than zero.")
             );
 
-        return Result.Success(
-            new CodeBenefit
-            {
-                Type = CodeBenefitType.FixedAmount,
-                FixedAmount = fixedAmount,
-            }
-        );
+        return Result.Success(new CodeBenefit { Type = CodeBenefitType.FixedAmount, FixedAmount = fixedAmount });
     }
 
-    public static Result<CodeBenefit> CreateGrant(
-        CodeBenefitType type,
-        string grantKey,
-        int? durationDays = null
-    )
+    public static Result<CodeBenefit> CreateGrant(CodeBenefitType type, string grantKey, int? durationDays = null)
     {
         if (
             type

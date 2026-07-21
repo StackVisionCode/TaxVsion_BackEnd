@@ -15,6 +15,7 @@ using TaxVision.Customer.Application.Customers.Commands.AddAddress;
 using TaxVision.Customer.Application.Customers.Commands.AddContactPoint;
 using TaxVision.Customer.Application.Customers.Commands.AddRelation;
 using TaxVision.Customer.Application.Customers.Commands.Archive;
+using TaxVision.Customer.Application.Customers.Commands.AssignPreparer;
 using TaxVision.Customer.Application.Customers.Commands.BulkChangeStatus;
 using TaxVision.Customer.Application.Customers.Commands.Create;
 using TaxVision.Customer.Application.Customers.Commands.Deactivate;
@@ -26,6 +27,7 @@ using TaxVision.Customer.Application.Customers.Commands.RequestPortalInvitation;
 using TaxVision.Customer.Application.Customers.Commands.RevealTaxIdentifier;
 using TaxVision.Customer.Application.Customers.Commands.SetCustomerFiscalProfile;
 using TaxVision.Customer.Application.Customers.Commands.SetRelationFiscalProfile;
+using TaxVision.Customer.Application.Customers.Commands.UnassignPreparer;
 using TaxVision.Customer.Application.Customers.Commands.Update;
 using TaxVision.Customer.Application.Customers.Commands.UpdateAddress;
 using TaxVision.Customer.Application.Customers.Commands.UpdateContactPoint;
@@ -525,6 +527,53 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         if (result.IsSuccess)
             return NoContent();
         if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ============== Preparer asignado ==============
+
+    [HttpPut("{id:guid}/preparer")]
+    [HasPermission(CustomersPermissions.PreparerManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AssignPreparer(
+        Guid id,
+        [FromBody] AssignPreparerRequest body,
+        CancellationToken ct
+    )
+    {
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new AssignPreparerCommand(tenantId, id, body.PreparerUserId, userId),
+            ct
+        );
+
+        if (result.IsSuccess)
+            return NoContent();
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpDelete("{id:guid}/preparer")]
+    [HasPermission(CustomersPermissions.PreparerManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UnassignPreparer(Guid id, CancellationToken ct)
+    {
+        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new UnassignPreparerCommand(tenantId, id, userId), ct);
+
+        if (result.IsSuccess)
+            return NoContent();
+        if (result.Error.Code is "Customer.NotFound" or "Customer.NoPreparerAssigned")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

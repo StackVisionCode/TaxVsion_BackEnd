@@ -71,7 +71,9 @@ public sealed class ReferralRewardCase : TenantEntity
         }
 
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Trim().Length > 200)
-            return Result.Failure<ReferralRewardCase>(new Error("ReferralReward.InvalidIdempotencyKey", "A valid idempotency key is required."));
+            return Result.Failure<ReferralRewardCase>(
+                new Error("ReferralReward.InvalidIdempotencyKey", "A valid idempotency key is required.")
+            );
 
         if (!DomainGuards.IsSha256Hex(payloadFingerprint))
         {
@@ -84,29 +86,27 @@ public sealed class ReferralRewardCase : TenantEntity
         }
 
         var rewardCase = new ReferralRewardCase
-            {
-                ProgramId = program.Id,
-                AttributionId = attribution.Id,
-                QualificationId = qualification.Id,
-                TenantScopeId = program.TenantScopeId,
-                BeneficiaryType = attribution.ReferrerType,
-                BeneficiaryId = attribution.ReferrerId,
-                RewardType = program.Policy.RewardType,
-                RewardDefinitionKey = program.Policy.RewardDefinitionKey,
-                GrantId = Guid.NewGuid(),
-                Status = ReferralRewardCaseStatus.Requested,
-                EligibleAtUtc = qualification.RewardEligibleAtUtc.Value,
-                IdempotencyKey = idempotencyKey.Trim(),
-                PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                CreatedBy = actorUserId,
-                UpdatedBy = actorUserId,
-            };
+        {
+            ProgramId = program.Id,
+            AttributionId = attribution.Id,
+            QualificationId = qualification.Id,
+            TenantScopeId = program.TenantScopeId,
+            BeneficiaryType = attribution.ReferrerType,
+            BeneficiaryId = attribution.ReferrerId,
+            RewardType = program.Policy.RewardType,
+            RewardDefinitionKey = program.Policy.RewardDefinitionKey,
+            GrantId = Guid.NewGuid(),
+            Status = ReferralRewardCaseStatus.Requested,
+            EligibleAtUtc = qualification.RewardEligibleAtUtc.Value,
+            IdempotencyKey = idempotencyKey.Trim(),
+            PayloadFingerprint = DomainGuards.NormalizeSha256Hex(payloadFingerprint),
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
         rewardCase.SetTenant(
-            attribution.ReferrerType == ReferralParticipantType.Tenant
-                ? attribution.ReferrerId
-                : program.TenantId
+            attribution.ReferrerType == ReferralParticipantType.Tenant ? attribution.ReferrerId : program.TenantId
         );
         return Result.Success(rewardCase);
     }
@@ -121,7 +121,9 @@ public sealed class ReferralRewardCase : TenantEntity
             return Result.Failure(new Error("ReferralReward.InvalidTransition", $"Cannot begin grant from {Status}."));
 
         if (nowUtc < EligibleAtUtc)
-            return Result.Failure(new Error("ReferralReward.WaitingPeriod", "The reward waiting period has not elapsed."));
+            return Result.Failure(
+                new Error("ReferralReward.WaitingPeriod", "The reward waiting period has not elapsed.")
+            );
 
         Status = ReferralRewardCaseStatus.PendingGrant;
         Touch(actorUserId, nowUtc);
@@ -138,7 +140,9 @@ public sealed class ReferralRewardCase : TenantEntity
             return Result.Success();
 
         if (Status != ReferralRewardCaseStatus.PendingGrant)
-            return Result.Failure(new Error("ReferralReward.InvalidTransition", $"Cannot confirm grant from {Status}."));
+            return Result.Failure(
+                new Error("ReferralReward.InvalidTransition", $"Cannot confirm grant from {Status}.")
+            );
 
         if (string.IsNullOrWhiteSpace(materializedBenefitReference) || materializedBenefitReference.Length > 200)
         {
@@ -195,7 +199,9 @@ public sealed class ReferralRewardCase : TenantEntity
             )
         )
         {
-            return Result.Failure(new Error("ReferralReward.InvalidTransition", $"Cannot request clawback from {Status}."));
+            return Result.Failure(
+                new Error("ReferralReward.InvalidTransition", $"Cannot request clawback from {Status}.")
+            );
         }
 
         if (string.IsNullOrWhiteSpace(reason))
@@ -250,7 +256,9 @@ public sealed class ReferralRewardCase : TenantEntity
             return actor;
 
         if (Status != ReferralRewardCaseStatus.ClawbackPending)
-            return Result.Failure(new Error("ReferralReward.InvalidTransition", $"Cannot move to manual review from {Status}."));
+            return Result.Failure(
+                new Error("ReferralReward.InvalidTransition", $"Cannot move to manual review from {Status}.")
+            );
 
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("ReferralReward.InvalidReason", "A manual-review reason is required."));

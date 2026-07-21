@@ -41,6 +41,70 @@
 			"response": []
 		},
 		{
+			"name": "Preferences",
+			"item": [
+				{
+					"name": "GetPreferences",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notifications/preferences",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"preferences"
+							]
+						},
+						"description": "Fase 5 del plan de notificaciones dinámicas. Autoservicio: el UserId sale del JWT. Devuelve una fila por (Category, Channel) conocido, con Enabled (default true si no hay override) y Locked (true para AccountSecurity — el interruptor se muestra deshabilitado en el frontend, no se puede apagar)."
+					},
+					"response": []
+				},
+				{
+					"name": "SetPreference",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notifications/preferences",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"notifications",
+								"preferences"
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"category\": \"StorageAndQuota\",\n  \"channel\": \"Push\",\n  \"enabled\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"description": "category: AccountSecurity | DocumentsAndSignatures | StorageAndQuota | Billing | Collaboration (AccountSecurity siempre queda Enabled=true, no editable). channel: Email | Sms | Push | InApp. Responde 204 sin body."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Push Devices",
 			"item": [
 				{

@@ -37,11 +37,7 @@ public sealed class CodesDomainTests
     public void Percentage_quote_freezes_rule_offer_and_amount_snapshot()
     {
         var definition = GrowthTestData.CreateActivePercentageCode();
-        var quote = GrowthTestData.CreateQuote(
-            definition,
-            GrowthTestData.RefereeTenantId,
-            grossAmountCents: 10_005
-        );
+        var quote = GrowthTestData.CreateQuote(definition, GrowthTestData.RefereeTenantId, grossAmountCents: 10_005);
 
         Assert.Equal(10_005, quote.GrossAmount.AmountCents);
         Assert.Equal(1_001, quote.DiscountAmount.AmountCents);
@@ -115,11 +111,7 @@ public sealed class CodesDomainTests
     public void Multiple_partial_compensations_are_monotonic_and_cannot_exceed_discount()
     {
         var definition = GrowthTestData.CreateActivePercentageCode();
-        var quote = GrowthTestData.CreateQuote(
-            definition,
-            GrowthTestData.RefereeTenantId,
-            grossAmountCents: 10_000
-        );
+        var quote = GrowthTestData.CreateQuote(definition, GrowthTestData.RefereeTenantId, grossAmountCents: 10_000);
         var reservation = GrowthTestData.CreateReservation(definition, quote);
         var redemption = reservation
             .Commit(
@@ -147,11 +139,7 @@ public sealed class CodesDomainTests
             .Value;
         Assert.False(first.IsFinal);
         Assert.True(
-            reservation.RecordCompensation(
-                first.Id,
-                first.IsFinal,
-                GrowthTestData.NowUtc.AddDays(1)
-            ).IsSuccess
+            reservation.RecordCompensation(first.Id, first.IsFinal, GrowthTestData.NowUtc.AddDays(1)).IsSuccess
         );
         Assert.Equal(CodeReservationStatus.Committed, reservation.Status);
 
@@ -170,11 +158,7 @@ public sealed class CodesDomainTests
             .Value;
         Assert.True(final.IsFinal);
         Assert.True(
-            reservation.RecordCompensation(
-                final.Id,
-                final.IsFinal,
-                GrowthTestData.NowUtc.AddDays(2)
-            ).IsSuccess
+            reservation.RecordCompensation(final.Id, final.IsFinal, GrowthTestData.NowUtc.AddDays(2)).IsSuccess
         );
         Assert.Equal(CodeReservationStatus.Compensated, reservation.Status);
 
@@ -207,13 +191,12 @@ public sealed class CodesDomainTests
     [Theory]
     [InlineData(CodeUsageDimension.Tenant)]
     [InlineData(CodeUsageDimension.Subject)]
-    public void Scoped_usage_counter_prevents_oversubscription_and_restores_capacity(
-        CodeUsageDimension dimension
-    )
+    public void Scoped_usage_counter_prevents_oversubscription_and_restores_capacity(CodeUsageDimension dimension)
     {
-        var scope = dimension == CodeUsageDimension.Tenant
-            ? CodeUsageScopeKey.ForTenant(GrowthTestData.RefereeTenantId).Value
-            : CodeUsageScopeKey.Create("1:tenant-subject").Value;
+        var scope =
+            dimension == CodeUsageDimension.Tenant
+                ? CodeUsageScopeKey.ForTenant(GrowthTestData.RefereeTenantId).Value
+                : CodeUsageScopeKey.Create("1:tenant-subject").Value;
         var counter = CodeUsageCounter
             .Create(
                 GrowthTestData.RefereeTenantId,

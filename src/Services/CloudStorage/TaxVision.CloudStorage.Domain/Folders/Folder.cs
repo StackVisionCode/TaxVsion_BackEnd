@@ -25,6 +25,13 @@ public sealed class Folder : TenantEntity
     public Guid CreatedBy { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
+    /// <summary>
+    /// Ver <see cref="FolderCategory"/> — inmutable desde la creacion a proposito: identifica
+    /// PARA QUE modulo esta carpeta es la ancla de un dueno, y reclasificarla despues rompería
+    /// esa garantia de get-or-create. Si un modulo necesita otra categoria, crea otra carpeta.
+    /// </summary>
+    public string? Category { get; private set; }
+
     public static Result<Folder> Create(
         Guid id,
         Guid tenantId,
@@ -34,7 +41,8 @@ public sealed class Folder : TenantEntity
         FolderName name,
         string? parentRelativePath,
         Guid createdBy,
-        DateTime nowUtc
+        DateTime nowUtc,
+        FolderCategory? category = null
     )
     {
         if (ownerType != OwnerType.Tenant && ownerId is null)
@@ -50,6 +58,7 @@ public sealed class Folder : TenantEntity
             RelativePath = ComposePath(parentRelativePath, name.Value),
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
+            Category = category?.Value,
         };
         folder.SetTenant(tenantId);
         return Result.Success(folder);
