@@ -15,6 +15,20 @@ public sealed class ServiceTokenAcquirer(
 {
     private static readonly ConcurrentDictionary<Guid, CachedToken> Cache = new();
 
+    // Defensa en profundidad ante una carrera de arranque de contenedores (auth-api todavía
+    // aceptando conexiones cuando Scribe ya intenta pedir el token) — el ordering correcto lo
+    // da docker-compose (depends_on auth-api: condition: service_healthy) más el gate de
+    // ApplicationStarted en los callers (TemplateWarmupService/seeders), pero ninguno de los dos
+    // cubre una reconexión/restart de auth-api DESPUÉS de que Scribe ya arrancó. Solo reintenta
+    // fallos de conectividad (HttpRequestException) — un 401/invalid_client es un fallo
+    // permanente de credenciales, no algo que un retry vaya a arreglar.
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromMilliseconds(500),
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(2),
+    ];
+
     public async Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default)
     {
         if (Cache.TryGetValue(tenantId, out var cached) && cached.ExpiresAtUtc > DateTime.UtcNow.AddSeconds(30))
@@ -27,22 +41,36 @@ public sealed class ServiceTokenAcquirer(
             return null;
         }
 
-        try
+        for (var attempt = 0; ; attempt++)
         {
-            var payload = await RequestTokenAsync(opt, tenantId, ct);
-            if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
-                return null;
+            try
+            {
+                var payload = await RequestTokenAsync(opt, tenantId, ct);
+                if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
+                    return null;
 
-            Cache[tenantId] = new CachedToken(
-                payload.AccessToken,
-                DateTime.UtcNow.AddSeconds(payload.ExpiresInSeconds)
-            );
-            return payload.AccessToken;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not acquire a service token for tenant {TenantId}.", tenantId);
-            return null;
+                Cache[tenantId] = new CachedToken(
+                    payload.AccessToken,
+                    DateTime.UtcNow.AddSeconds(payload.ExpiresInSeconds)
+                );
+                return payload.AccessToken;
+            }
+            catch (HttpRequestException ex) when (attempt < RetryDelays.Length)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Service token request attempt {Attempt} failed for tenant {TenantId}; retrying in {Delay}.",
+                    attempt + 1,
+                    tenantId,
+                    RetryDelays[attempt]
+                );
+                await Task.Delay(RetryDelays[attempt], ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not acquire a service token for tenant {TenantId}.", tenantId);
+                return null;
+            }
         }
     }
 

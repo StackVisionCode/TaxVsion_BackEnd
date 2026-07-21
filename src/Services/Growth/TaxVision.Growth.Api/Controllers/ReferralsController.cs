@@ -167,11 +167,7 @@ public sealed class ReferralsController(
     )
     {
         var benefitIdempotencyKey = $"referral-benefit:{idempotencyKey}";
-        var generatedToken = tokenGenerator.Generate(
-            programId,
-            refereeTenantId,
-            $"referee-benefit:{idempotencyKey}"
-        );
+        var generatedToken = tokenGenerator.Generate(programId, refereeTenantId, $"referee-benefit:{idempotencyKey}");
         if (generatedToken.IsFailure)
         {
             logger.LogWarning(
@@ -266,7 +262,13 @@ public sealed class ReferralsController(
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<IssueTenantReferralCodeResult>>(
-            new IssueTenantReferralCodeCommand(tenantId, request.ProgramId, request.ExpiresAtUtc, actorId, idempotencyKey),
+            new IssueTenantReferralCodeCommand(
+                tenantId,
+                request.ProgramId,
+                request.ExpiresAtUtc,
+                actorId,
+                idempotencyKey
+            ),
             ct
         );
 

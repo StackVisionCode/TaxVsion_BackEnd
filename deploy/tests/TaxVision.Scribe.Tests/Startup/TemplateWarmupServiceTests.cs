@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.EventMappings;
 using TaxVision.Scribe.Application.Layouts;
@@ -98,12 +99,19 @@ public sealed class TemplateWarmupServiceTests
         services.AddSingleton<IEmailRenderer, FluidTemplateRenderer>();
 
         await using var provider = services.BuildServiceProvider();
+        // TemplateWarmupService extiende DeferredStartupHostedService: StartAsync solo registra
+        // el callback en ApplicationStarted y vuelve al toque (fire-and-forget) — con este fake
+        // lifetime el token ya viene cancelado (equivalente a "el host ya arrancó"), así que el
+        // callback corre de inmediato. StopAsync espera esa tarea, dándole al test un punto
+        // determinístico para awaitear antes de las asserts.
         var warmup = new TemplateWarmupService(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            new ImmediatelyStartedLifetime(),
             NullLogger<TemplateWarmupService>.Instance
         );
 
         await warmup.StartAsync(CancellationToken.None);
+        await warmup.StopAsync(CancellationToken.None);
 
         Assert.Equal(2, cloudStorage.DownloadCount);
 
@@ -115,6 +123,15 @@ public sealed class TemplateWarmupServiceTests
 
         Assert.True(previewResult.IsSuccess);
         Assert.Equal(2, cloudStorage.DownloadCount);
+    }
+
+    private sealed class ImmediatelyStartedLifetime : IHostApplicationLifetime
+    {
+        public CancellationToken ApplicationStarted { get; } = new(canceled: true);
+        public CancellationToken ApplicationStopping { get; } = CancellationToken.None;
+        public CancellationToken ApplicationStopped { get; } = CancellationToken.None;
+
+        public void StopApplication() { }
     }
 
     private sealed class NoOpEventTemplateMappingRepository : IEventTemplateMappingRepository

@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -13,11 +14,25 @@ namespace TaxVision.Scribe.Infrastructure.Startup;
 /// ítem 1). Vive en Infrastructure (no en Api/Startup como sugería literalmente el plan): toca
 /// IEmailTemplateRepository/IEmailLayoutRepository/IEmailRenderer, que son abstracciones de
 /// Application implementadas acá — mismo criterio que <see cref="Seed.ScribeBaseLayoutSeeder"/>.
+/// <para>
+/// A diferencia de los 3 seeders de este mismo ensamblado, este NO extendía
+/// <see cref="DeferredStartupHostedService"/> — corría en <c>IHostedService.StartAsync</c> sin
+/// esperar a <c>ApplicationStarted</c>. Pedía un token M2M a auth-api (vía
+/// <see cref="Storage.ServiceTokenAcquirer"/>) y templates a cloudstorage-api en ese punto exacto
+/// del arranque del host, antes incluso de que Wolverine terminara de inicializar — si además
+/// auth-api todavía no estaba escuchando en su puerto (carrera de arranque de contenedores en
+/// producción, confirmada en logs reales: "Connection refused (auth-api:8080)" repetido 13 veces),
+/// el warm-up completo fallaba en silencio (0/13 templates cacheados) sin tumbar el host. Migrado a
+/// la misma base que los seeders para eliminar la carrera de raíz.
+/// </para>
 /// </summary>
-public sealed class TemplateWarmupService(IServiceScopeFactory scopeFactory, ILogger<TemplateWarmupService> logger)
-    : IHostedService
+public sealed class TemplateWarmupService(
+    IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
+    ILogger<TemplateWarmupService> logger
+) : DeferredStartupHostedService(lifetime, logger)
 {
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var templateRepository = scope.ServiceProvider.GetRequiredService<IEmailTemplateRepository>();
@@ -83,6 +98,4 @@ public sealed class TemplateWarmupService(IServiceScopeFactory scopeFactory, ILo
             published.Count
         );
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

@@ -435,6 +435,18 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-private.pem:/run/secrets/jwt-private.pem:ro
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    # /health/ready ya existe (Program.cs: sql-server + redis + rabbitmq, tag "ready") — solo
+    # faltaba exponerlo como HEALTHCHECK de Docker para que otros servicios puedan hacer
+    # depends_on: condition: service_healthy sobre auth-api (antes ningún servicio .NET tenía
+    # HEALTHCHECK, así que ese condition nunca era una opción real). start_period generoso
+    # porque auth-api corre varios hosted services de bootstrap (PlatformAdmin/backfills) antes
+    # de aceptar trafico.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -490,6 +502,11 @@ services:
       rabbitmq:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      # CustomerImportCleanupHostedService llama a cloudstorage-api (borrado del archivo de
+      # import) en su primera iteración diaria — mismo tipo de dependencia de arranque que
+      # scribe-api, aunque con menor probabilidad de disparar (job diario, no cada boot).
+      cloudstorage-api:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -702,6 +719,18 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      # Bug real de producción (2026-07-21): ScribeBaseLayoutSeeder/ScribeNotificationTemplateSeeder/
+      # ScribeSystemAssetSeeder/TemplateWarmupService piden un token M2M a auth-api y templates a
+      # cloudstorage-api al arrancar. Sin este depends_on, scribe-api podía ganarle la carrera a
+      # auth-api (contenedor arriba pero su ASP.NET Core todavía no escuchando en :8080) — logs
+      # reales mostraron 13/13 "Connection refused (auth-api:8080)" y "Scribe cache warm-up:
+      # 0/13 published template versions loaded". El código ya se arregló (TemplateWarmupService
+      # ahora difiere a ApplicationStarted + ServiceTokenAcquirer reintenta), esto cierra la causa
+      # raíz de infraestructura para que ninguna de las dos capas tenga que cubrir a la otra sola.
+      auth-api:
+        condition: service_healthy
+      cloudstorage-api:
+        condition: service_healthy
       otel-collector:
         condition: service_started
     networks:
@@ -859,6 +888,23 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    # /health/ready incluye un chequeo TCP a Minio__Endpoint (sql-server + rabbitmq + minio +
+    # clamav, tag "ready") — en producción ese endpoint es el dominio PUBLICO (api.taxprocore.com,
+    # ver Minio__Endpoint arriba), no minio:9000 directo, porque el mismo IMinioClient que usa
+    # este servicio para sus operaciones reales (no solo para presigned URLs) ya está configurado
+    # así desde la Fase 5 de MinIO-endpoint-público. Eso significa que la salud de este contenedor
+    # depende de que Caddy ya esté arriba y con certificado válido — real, no un falso negativo:
+    # si Caddy/DNS no responden, las subidas/bajadas reales de CloudStorage tampoco funcionarían.
+    # start_period + retries dan ~160s de margen total para que Caddy termine de arrancar antes de
+    # marcar esto "unhealthy". Si en algún deploy real esto resulta muy ajustado, la solución
+    # correcta es separar el IMinioClient interno (admin) del endpoint público (solo presigned
+    # URLs) — no ampliar más estos tiempos a ciegas.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -1172,8 +1218,12 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      # Era "service_started" (solo "el contenedor arrancó", no "auth-api ya acepta requests") —
+      # downloadFile pide un token M2M a auth-api en cuanto procesa el primer mensaje de la cola,
+      # que puede llegar segundos después del boot. Con el healthcheck ahora real en auth-api,
+      # esto sí espera a que auth-api esté efectivamente listo.
       auth-api:
-        condition: service_started
+        condition: service_healthy
     networks:
       - taxvision-network
 

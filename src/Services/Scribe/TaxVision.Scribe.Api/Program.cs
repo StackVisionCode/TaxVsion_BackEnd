@@ -57,7 +57,10 @@ builder.Services.AddHostedService<ScribeNotificationTemplateSeeder>();
 // SystemAssetRef — reemplaza la config estática Scribe:SystemAssets.
 builder.Services.AddHostedService<ScribeSystemAssetSeeder>();
 
-// Precarga en cache (L1+L2) todo template Published (Fase 6) — corre después del seeder.
+// Precarga en cache (L1+L2) todo template Published (Fase 6) — igual que los 3 seeders de
+// arriba, difiere su ejecución a ApplicationStarted (ver DeferredStartupHostedService) porque pide
+// un token M2M a auth-api y templates a cloudstorage-api; corriendo antes se puede perder la
+// carrera de arranque de contenedores contra esos dos servicios.
 builder.Services.AddHostedService<TemplateWarmupService>();
 
 // Fase 10: retention job — purga versiones Archived viejas. Deshabilitado por default

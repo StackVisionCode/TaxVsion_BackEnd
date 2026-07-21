@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ namespace TaxVision.Customer.Infrastructure.Imports;
 internal sealed class CustomerImportCleanupHostedService(
     IServiceScopeFactory scopeFactory,
     IConfiguration config,
+    IHostApplicationLifetime lifetime,
     ILogger<CustomerImportCleanupHostedService> logger
 ) : BackgroundService
 {
@@ -25,15 +27,12 @@ internal sealed class CustomerImportCleanupHostedService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Espera inicial corta para no competir con startup
-        try
-        {
-            await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
+        // Reemplaza el delay fijo de 2 minutos anterior (asumía que era tiempo suficiente para
+        // que cloudstorage-api ya estuviera arriba, sin garantía real): espera a que el host
+        // completo termine de arrancar antes de la primera purga, que llama a
+        // ICustomerImportCloudStorageClient.DeleteAsync (mismo tipo de carrera de arranque de
+        // contenedores que TemplateWarmupService en Scribe).
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {

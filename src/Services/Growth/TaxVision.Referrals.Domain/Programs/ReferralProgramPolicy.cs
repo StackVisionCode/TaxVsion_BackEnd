@@ -257,7 +257,10 @@ public sealed class ReferralProgramPolicy
 
         if (refereeBenefitType is not null)
         {
-            if (refereeBenefitType is not (ReferralRefereeBenefitType.Percentage or ReferralRefereeBenefitType.FixedAmount))
+            if (
+                refereeBenefitType
+                is not (ReferralRefereeBenefitType.Percentage or ReferralRefereeBenefitType.FixedAmount)
+            )
             {
                 return Result.Failure(
                     new Error(
@@ -291,10 +294,7 @@ public sealed class ReferralProgramPolicy
                     );
                 }
 
-                if (
-                    string.IsNullOrWhiteSpace(refereeBenefitCurrency)
-                    || refereeBenefitCurrency.Trim().Length != 3
-                )
+                if (string.IsNullOrWhiteSpace(refereeBenefitCurrency) || refereeBenefitCurrency.Trim().Length != 3)
                 {
                     return Result.Failure(
                         new Error(
