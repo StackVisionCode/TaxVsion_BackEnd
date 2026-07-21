@@ -110,7 +110,12 @@ public static class CreateReferralAttributionHandler
                     new CreateReferralAttributionResult(
                         created.Value.Id,
                         created.Value.Status,
-                        WasReplay: false
+                        WasReplay: false,
+                        program.Policy.RefereeBenefitType,
+                        program.Policy.RefereeBenefitPercentageBasisPoints,
+                        program.Policy.RefereeBenefitFixedAmountCents,
+                        program.Policy.RefereeBenefitCurrency,
+                        program.Policy.RefereeBenefitExpirationDays
                     )
                 );
             },

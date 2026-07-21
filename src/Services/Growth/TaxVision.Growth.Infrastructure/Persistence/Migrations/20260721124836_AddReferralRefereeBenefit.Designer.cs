@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Growth.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Growth.Infrastructure.Persistence;
 namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GrowthDbContext))]
-    partial class GrowthDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260721124836_AddReferralRefereeBenefit")]
+    partial class AddReferralRefereeBenefit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

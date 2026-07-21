@@ -49,6 +49,11 @@ public static class CreateTenantReferralProgramHandler
             policy.Value.MaximumRewardsPerReferrerPerCalendarYear,
             policy.Value.RewardType,
             policy.Value.RewardDefinitionKey,
+            policy.Value.RefereeBenefitType,
+            policy.Value.RefereeBenefitPercentageBasisPoints,
+            policy.Value.RefereeBenefitFixedAmountCents,
+            policy.Value.RefereeBenefitCurrency,
+            policy.Value.RefereeBenefitExpirationDays,
             command.ActorUserId
         );
 
@@ -96,7 +101,12 @@ public static class CreateTenantReferralProgramHandler
             input?.MaximumRewardsPerReferrerPerCalendarYear
                 ?? defaults.MaximumRewardsPerReferrerPerCalendarYear,
             input?.RewardType ?? defaults.RewardType,
-            input?.RewardDefinitionKey ?? defaults.RewardDefinitionKey
+            input?.RewardDefinitionKey ?? defaults.RewardDefinitionKey,
+            input?.RefereeBenefitType ?? defaults.RefereeBenefitType,
+            input?.RefereeBenefitPercentageBasisPoints ?? defaults.RefereeBenefitPercentageBasisPoints,
+            input?.RefereeBenefitFixedAmountCents ?? defaults.RefereeBenefitFixedAmountCents,
+            input?.RefereeBenefitCurrency ?? defaults.RefereeBenefitCurrency,
+            input?.RefereeBenefitExpirationDays ?? defaults.RefereeBenefitExpirationDays
         );
     }
 

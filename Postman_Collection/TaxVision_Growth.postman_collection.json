@@ -316,6 +316,56 @@
       "name": "Referrals",
       "item": [
         {
+          "name": "IssueCode",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Idempotency-Key fija (no {{$guid}}): reusarla es lo que permite pedir\r",
+                  "// el mismo codigo de vuelta sin chocar con ReferralCode.ActiveOwnerExists.\r",
+                  "if (!pm.environment.get('growthIssueCodeIdempotencyKey')) {\r",
+                  "    pm.environment.set('growthIssueCodeIdempotencyKey', 'postman-issue-' + Date.now());\r",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+                  "const body = pm.response.json();\r",
+                  "if (body && body.referralCode) {\r",
+                  "    console.log('Tu codigo de referido:', body.referralCode, '- link: https://app.taxvision.com/signup?ref=' + body.referralCode);\r",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+              { "key": "Idempotency-Key", "value": "{{growthIssueCodeIdempotencyKey}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"programId\": \"{{growthReferralProgramId}}\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/growth/referrals/codes",
+              "host": ["{{UrlBase}}"],
+              "path": ["growth", "referrals", "codes"]
+            },
+            "description": "Fase 1 del diseno de Referrals: el tenant pide su propio codigo (get-or-create idempotente). Requiere referrals.own.read (se reusa el permiso existente -- agregar uno nuevo tipo referrals.code.issue hubiera requerido tocar el catalogo de permisos de Auth, fuera de alcance sin pedir permiso). El texto plano del codigo se recalcula en el controller (determinista sobre ProgramId+TenantId+IdempotencyKey) y nunca queda persistido en la respuesta idempotente guardada -- por eso es seguro devolverlo de nuevo si el tenant repite la misma Idempotency-Key. Requiere que exista un ReferralProgram con ScopeType=Platform y FlowType=TenantToTenant (growthReferralProgramId ya apunta al sembrado en SQL de esta coleccion)."
+          },
+          "response": []
+        },
+        {
           "name": "CreateAttribution",
           "event": [
             {
@@ -333,6 +383,19 @@
                   "    if (body && body.attributionId) {\r",
                   "        pm.environment.set('growthAttributionId', body.attributionId);\r",
                   "        console.log('growthAttributionId:', body.attributionId);\r",
+                  "    }\r",
+                  "    // Fase 3 (opcion B, 2026-07-20): refereeBenefit viene poblado si el programa\r",
+                  "    // tiene referee-benefit configurado -- un CodeDefinition BenefitGift ya activo\r",
+                  "    // para el referido. Null si el programa no lo configura (opcion A, backward\r",
+                  "    // compatible) o si la emision/activacion en Codes fallo (best-effort, no\r",
+                  "    // bloquea la atribucion ya confirmada).\r",
+                  "    if (body && body.refereeBenefit) {\r",
+                  "        pm.environment.set('growthRefereeBenefitCodeDefinitionId', body.refereeBenefit.codeDefinitionId);\r",
+                  "        console.log('refereeBenefit.codeDefinitionId:', body.refereeBenefit.codeDefinitionId);\r",
+                  "        console.log('refereeBenefit.code (plaintext):', body.refereeBenefit.code);\r",
+                  "        console.log('refereeBenefit.expiresAtUtc:', body.refereeBenefit.expiresAtUtc);\r",
+                  "    } else {\r",
+                  "        console.log('refereeBenefit: null (sin beneficio configurado, o emision fallida best-effort).');\r",
                   "    }\r",
                   "} else {\r",
                   "    console.log('409 esperado: ya existia una atribucion activa para este tenant+programa; growthAttributionId conserva el valor de la corrida anterior.');\r",
@@ -357,7 +420,7 @@
               "host": ["{{UrlBase}}"],
               "path": ["growth", "referrals", "attributions"]
             },
-            "description": "Ingreso self-service: el referee sale del JWT (tenantId del caller), nunca del body. Sin permiso explicito requerido (solo [Authorize] de clase — ver B-07 del audit). Rate limited: politica growth-referral-attribution, 30 req/min particionado por tenant+IP (B-02, verificado en vivo) -- correr esta request 31+ veces seguidas en la misma ventana de 1 min debe dar 429.\n\nNo existe NINGUN endpoint HTTP para crear un ReferralProgram ni para emitir un ReferralCode -- growthReferralProgramId apunta a un programa sembrado directo en SQL (ver seed en la descripcion del top de la coleccion). referralCode=REF-POSTMAN hashea (HMAC-SHA256 con GROWTH_REFERRAL_CODE_TOKEN_PEPPER) a 8deaa554c5f77a5ea679f877d7c99f36f204a04d43f0a89f1cfb24edf66eb2be, que es el CodeHash sembrado. El {{accessToken}} usado debe ser de un tenant DISTINTO al dueno del codigo (b2b2b2b2-0000-0000-0000-000000000001 en el seed) o falla con ReferralAttribution.SelfReferral. Verificado en vivo: 200, status Active."
+            "description": "Ingreso self-service: el referee sale del JWT (tenantId del caller), nunca del body. Sin permiso explicito requerido (solo [Authorize] de clase — ver B-07 del audit). Rate limited: politica growth-referral-attribution, 30 req/min particionado por tenant+IP (B-02, verificado en vivo) -- correr esta request 31+ veces seguidas en la misma ventana de 1 min debe dar 429.\n\nNo existe NINGUN endpoint HTTP para crear un ReferralProgram ni para emitir un ReferralCode -- growthReferralProgramId apunta a un programa sembrado directo en SQL (ver seed en la descripcion del top de la coleccion). referralCode=REF-POSTMAN hashea (HMAC-SHA256 con GROWTH_REFERRAL_CODE_TOKEN_PEPPER) a 8deaa554c5f77a5ea679f877d7c99f36f204a04d43f0a89f1cfb24edf66eb2be, que es el CodeHash sembrado. El {{accessToken}} usado debe ser de un tenant DISTINTO al dueno del codigo (b2b2b2b2-0000-0000-0000-000000000001 en el seed) o falla con ReferralAttribution.SelfReferral. Verificado en vivo: 200, status Active.\n\nFASE 3 (opcion B, 2026-07-20 -- referido tambien recibe descuento): la respuesta 200 ahora incluye un campo opcional `refereeBenefit`. Si el ReferralProgram tiene terminos de referee-benefit configurados en su Policy (RefereeBenefitType/Percentage|FixedAmount + expiracion), el controller (unico lugar que conoce Referrals Y Codes) orquesta CreateCodeDefinitionCommand + ActivateCodeCommand para emitir y activar automaticamente un CodeDefinition Kind=BenefitGift, MaxRedemptions=1, ya activo, a nombre del tenant referido, y devuelve su codigo en texto plano una sola vez (refereeBenefit.code) junto con codeDefinitionId, displayPrefix/lastFour y expiresAtUtc. Es best-effort y no bloqueante: si la emision o activacion en Codes falla, refereeBenefit viene null pero la atribucion igual se confirma con 200 (nunca se revierte por un fallo secundario). Tambien viene null si el programa NO tiene referee-benefit configurado (opcion A, comportamiento anterior, 100% backward compatible). Reintentable: reenviar la misma Idempotency-Key reintenta solo la parte de emision del beneficio si fallo antes (usa sufijos `:create`/`:activate` propios, la atribucion en si ya es idempotente y no se duplica). Verificado en vivo end-to-end el 2026-07-21: 200 con refereeBenefit poblado (CodeDefinition real en codes.CodeDefinitions, Kind=BenefitGift, Status=Active, Benefit_Type=Percentage, BenefitBasisPoints=1500 coincidiendo con el 15% configurado en el programa de prueba) y, por separado, 200 con refereeBenefit=null al probar contra un programa sin el beneficio configurado."
           },
           "response": []
         }

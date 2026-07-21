@@ -1,3 +1,4 @@
+using TaxVision.Referrals.Domain.Programs;
 using TaxVision.Referrals.Domain.Rewards;
 
 namespace TaxVision.Referrals.Application.Programs.CreateTenantReferralProgram;
@@ -9,7 +10,12 @@ public sealed record TenantReferralProgramPolicyInput(
     int? WaitingPeriodDays = null,
     int? MaximumRewardsPerReferrerPerCalendarYear = null,
     ReferralRewardType? RewardType = null,
-    string? RewardDefinitionKey = null
+    string? RewardDefinitionKey = null,
+    ReferralRefereeBenefitType? RefereeBenefitType = null,
+    int? RefereeBenefitPercentageBasisPoints = null,
+    long? RefereeBenefitFixedAmountCents = null,
+    string? RefereeBenefitCurrency = null,
+    int? RefereeBenefitExpirationDays = null
 );
 
 public sealed record CreateTenantReferralProgramCommand(
