@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -16,12 +17,13 @@ public sealed class WatchRenewalJob(IServiceProvider serviceProvider, ILogger<Wa
     : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ExpiringWithin = TimeSpan.FromHours(24);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(StartupDelay, stoppingToken);
+        var lifetime = serviceProvider.GetRequiredService<IHostApplicationLifetime>();
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunOnceSafeAsync(stoppingToken);

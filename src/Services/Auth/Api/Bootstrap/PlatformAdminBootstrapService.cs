@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -23,12 +24,13 @@ public sealed class PlatformBootstrapOptions
 public sealed class PlatformAdminBootstrapService(
     IServiceScopeFactory scopeFactory,
     IOptions<PlatformBootstrapOptions> options,
+    IHostApplicationLifetime lifetime,
     ILogger<PlatformAdminBootstrapService> logger
-) : IHostedService
+) : DeferredStartupHostedService(lifetime, logger)
 {
     private readonly PlatformBootstrapOptions _options = options.Value;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         if (!_options.Enabled)
             return;
@@ -119,6 +121,4 @@ public sealed class PlatformAdminBootstrapService(
             email
         );
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

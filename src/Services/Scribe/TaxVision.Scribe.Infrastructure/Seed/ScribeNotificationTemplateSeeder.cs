@@ -136,6 +136,22 @@ public sealed class ScribeNotificationTemplateSeeder(
             .FirstOrDefaultAsync(t => t.Scope == TemplateScope.System && t.TemplateKey == templateKey, ct);
         if (existingTemplate is not null)
         {
+            // Bug real: si el EmailTemplate ya existe pero el EventTemplateMapping nunca se
+            // creó (p.ej. porque CreateNew falló en un arranque previo mientras el
+            // AddAsync del template ya había quedado en el change tracker y se guardó igual
+            // en el SaveChanges de la siguiente iteración del loop), este seeder nunca lo
+            // detectaba: la rama "ya existe" solo reparaba el archivo, nunca el mapping. El
+            // render por eventKey quedaba en 404 para siempre, sin importar cuántos reinicios.
+            var mappingRepaired = await EnsureMappingAsync(
+                dbContext,
+                unitOfWork,
+                eventKey,
+                templateKey,
+                definition,
+                logger,
+                ct
+            );
+
             var publishedVersion = existingTemplate
                 .Versions.Where(v => v.Status == EmailVersionStatus.Published)
                 .OrderByDescending(v => v.VersionNumber)
@@ -144,7 +160,7 @@ public sealed class ScribeNotificationTemplateSeeder(
             {
                 var download = await storageService.DownloadTextAsync(htmlFileId, tenantId: null, ct);
                 if (download.IsSuccess)
-                    return false;
+                    return mappingRepaired;
 
                 logger.LogWarning(
                     "Published template '{TemplateKey}' references missing CloudStorage file {FileId}; repairing it.",
@@ -311,6 +327,57 @@ public sealed class ScribeNotificationTemplateSeeder(
             "Seeded and published template '{TemplateKey}' mapped from event '{EventKey}'.",
             definition.TemplateKey,
             definition.EventKey
+        );
+        return true;
+    }
+
+    /// <summary>
+    /// Crea el EventTemplateMapping System-scope si falta, para un template que ya existe.
+    /// Ver comentario en el llamador: sin esto, un template huérfano de su mapping (por una
+    /// falla parcial de un seed anterior) nunca se repara, sin importar cuántos reinicios.
+    /// </summary>
+    private static async Task<bool> EnsureMappingAsync(
+        ScribeDbContext dbContext,
+        IUnitOfWork unitOfWork,
+        EventKey eventKey,
+        TemplateKey templateKey,
+        NotificationTemplateSeed definition,
+        ILogger<ScribeNotificationTemplateSeeder> logger,
+        CancellationToken ct
+    )
+    {
+        var existingMapping = await dbContext.EventTemplateMappings.FirstOrDefaultAsync(
+            m => m.Scope == TemplateScope.System && m.TenantId == null && m.EventKey == eventKey,
+            ct
+        );
+        if (existingMapping is not null)
+            return false;
+
+        var mappingResult = EventTemplateMapping.CreateNew(
+            TemplateScope.System,
+            null,
+            eventKey,
+            templateKey,
+            null,
+            0,
+            DateTime.UtcNow
+        );
+        if (mappingResult.IsFailure)
+        {
+            logger.LogError(
+                "Failed to repair missing event mapping for '{EventKey}': {Error}",
+                definition.EventKey,
+                mappingResult.Error.Message
+            );
+            return false;
+        }
+
+        await dbContext.EventTemplateMappings.AddAsync(mappingResult.Value, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Repaired missing event mapping for '{EventKey}' -> '{TemplateKey}'.",
+            definition.EventKey,
+            definition.TemplateKey
         );
         return true;
     }

@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -29,11 +30,14 @@ public sealed class ReconciliationJob(
     ILogger<ReconciliationJob> logger
 ) : BackgroundService
 {
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(3);
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(StartupDelay, stoppingToken);
+        // Reemplaza el delay fijo anterior: RunOnceAsync invoca por bus (bus.InvokeAsync), y
+        // correr antes de que Wolverine termine de arrancar revienta con
+        // WolverineHasNotStartedException.
+        var lifetime = serviceProvider.GetRequiredService<IHostApplicationLifetime>();
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunOnceSafeAsync(stoppingToken);

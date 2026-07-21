@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -10,14 +11,22 @@ namespace TaxVision.Auth.Api.Jobs;
 /// múltiples réplicas (las operaciones son tolerantes a carreras).
 /// Migrable a Quartz cuando se estandarice el scheduling en la plataforma.
 /// </summary>
-public sealed class AuthMaintenanceService(IServiceScopeFactory scopeFactory, ILogger<AuthMaintenanceService> logger)
-    : BackgroundService
+public sealed class AuthMaintenanceService(
+    IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
+    ILogger<AuthMaintenanceService> logger
+) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
     private static readonly TimeSpan PurgeAge = TimeSpan.FromDays(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // El primer tick corre de inmediato (sin esperar el intervalo) — sin esto, un reinicio
+        // con RabbitMQ/Wolverine lento podría ganarle la carrera y SaveChangesAsync (que
+        // auto-publica domain events por Wolverine) revienta con WolverineHasNotStartedException.
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+
         using var timer = new PeriodicTimer(Interval);
         do
         {

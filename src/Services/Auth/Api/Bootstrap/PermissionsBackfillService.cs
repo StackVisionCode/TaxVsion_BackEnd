@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
@@ -28,13 +29,14 @@ namespace TaxVision.Auth.Api.Bootstrap;
 /// </summary>
 public sealed class PermissionsBackfillService(
     IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
     ILogger<PermissionsBackfillService> logger
-) : IHostedService
+) : DeferredStartupHostedService(lifetime, logger)
 {
     private const int BatchSize = 50;
     private static readonly TimeSpan DelayBetweenBatches = TimeSpan.FromSeconds(2);
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         var totalRepublished = 0;
 
@@ -94,6 +96,4 @@ public sealed class PermissionsBackfillService(
             logger.LogInformation("PermissionsBackfill: completed, {Total} user(s) re-published.", totalRepublished);
         }
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

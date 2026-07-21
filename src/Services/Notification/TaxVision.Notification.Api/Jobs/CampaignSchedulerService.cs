@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Notification.Application.Abstractions;
@@ -19,6 +20,12 @@ public sealed class CampaignSchedulerService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        using (var scope = scopeFactory.CreateScope())
+        {
+            var lifetime = scope.ServiceProvider.GetRequiredService<IHostApplicationLifetime>();
+            await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+        }
+
         using var timer = new PeriodicTimer(Interval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {

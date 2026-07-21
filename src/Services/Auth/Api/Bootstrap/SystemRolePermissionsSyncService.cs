@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -25,10 +26,11 @@ namespace TaxVision.Auth.Api.Bootstrap;
 /// </summary>
 public sealed class SystemRolePermissionsSyncService(
     IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
     ILogger<SystemRolePermissionsSyncService> logger
-) : IHostedService
+) : DeferredStartupHostedService(lifetime, logger)
 {
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
@@ -64,6 +66,4 @@ public sealed class SystemRolePermissionsSyncService(
             );
         }
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

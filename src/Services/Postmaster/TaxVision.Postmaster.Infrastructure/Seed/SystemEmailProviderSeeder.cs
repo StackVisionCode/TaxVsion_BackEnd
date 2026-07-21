@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using Microsoft.EntityFrameworkCore;
@@ -37,14 +38,15 @@ public sealed class SystemEmailProviderOptions
 public sealed class SystemEmailProviderSeeder(
     IServiceScopeFactory scopeFactory,
     IOptions<SystemEmailProviderOptions> options,
+    IHostApplicationLifetime lifetime,
     ILogger<SystemEmailProviderSeeder> logger
-) : IHostedService
+) : DeferredStartupHostedService(lifetime, logger)
 {
     private const string DefaultProviderCode = "smtp-default";
 
     private readonly SystemEmailProviderOptions _options = options.Value;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<PostmasterDbContext>();
@@ -157,6 +159,4 @@ public sealed class SystemEmailProviderSeeder(
             rateLimitPerMinute: 60,
             createdAtUtc: DateTime.UtcNow
         );
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

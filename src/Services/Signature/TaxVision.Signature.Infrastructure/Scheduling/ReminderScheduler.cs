@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,14 +21,18 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
     : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ExpiryWindow = TimeSpan.FromHours(24);
     private static readonly TimeSpan Cooldown = TimeSpan.FromHours(12);
     private const int MaxRemindersPerRequest = 3;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(StartupDelay, stoppingToken);
+        // Reemplaza el delay fijo anterior: espera a que el host completo (Wolverine incluido)
+        // termine de arrancar — RunOnceAsync publica por bus, y correr antes revienta con
+        // WolverineHasNotStartedException.
+        var lifetime = serviceProvider.GetRequiredService<IHostApplicationLifetime>();
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunOnceSafeAsync(stoppingToken);

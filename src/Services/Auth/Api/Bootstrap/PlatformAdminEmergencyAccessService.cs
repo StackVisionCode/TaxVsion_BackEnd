@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -28,12 +29,13 @@ public sealed class PlatformEmergencyAccessOptions
 public sealed class PlatformAdminEmergencyAccessService(
     IServiceScopeFactory scopeFactory,
     IOptions<PlatformEmergencyAccessOptions> options,
+    IHostApplicationLifetime lifetime,
     ILogger<PlatformAdminEmergencyAccessService> logger
-) : IHostedService
+) : DeferredStartupHostedService(lifetime, logger)
 {
     private readonly PlatformEmergencyAccessOptions _options = options.Value;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         if (!_options.Enabled)
             return;
@@ -111,8 +113,6 @@ public sealed class PlatformAdminEmergencyAccessService(
             email
         );
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     private static bool IsWellFormedPbkdf2Hash(string? hash)
     {

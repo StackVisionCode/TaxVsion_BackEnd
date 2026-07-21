@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -19,12 +20,13 @@ namespace TaxVision.Auth.Api.Bootstrap;
 public sealed class TenantDomainBackfillService(
     IServiceScopeFactory scopeFactory,
     IOptions<TenantDomainOptions> options,
+    IHostApplicationLifetime lifetime,
     ILogger<TenantDomainBackfillService> logger
-) : IHostedService
+) : DeferredStartupHostedService(lifetime, logger)
 {
     private readonly TenantDomainOptions _options = options.Value;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
@@ -98,6 +100,4 @@ public sealed class TenantDomainBackfillService(
             );
         }
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

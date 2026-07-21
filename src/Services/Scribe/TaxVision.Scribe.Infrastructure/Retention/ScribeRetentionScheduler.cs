@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -23,11 +24,15 @@ public sealed class ScribeRetentionScheduler(
 ) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(StartupDelay, stoppingToken);
+        using (var scope = scopeFactory.CreateScope())
+        {
+            var lifetime = scope.ServiceProvider.GetRequiredService<IHostApplicationLifetime>();
+            await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunOnceSafeAsync(stoppingToken);

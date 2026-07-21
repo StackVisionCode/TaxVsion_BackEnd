@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -25,6 +26,17 @@ public abstract class PeriodicSubscriptionJob(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Primer tick inmediato — sin esto, un job que resuelve IMessageBus dentro de
+        // RunOnceAsync puede ganarle la carrera al arranque de Wolverine y reventar con
+        // WolverineHasNotStartedException. IHostApplicationLifetime es singleton: resolverlo
+        // desde un scope hijo (en vez de inyectarlo en cada uno de los ~9 jobs concretos) es
+        // equivalente y no obliga a tocar sus constructores.
+        using (var scope = scopeFactory.CreateScope())
+        {
+            var lifetime = scope.ServiceProvider.GetRequiredService<IHostApplicationLifetime>();
+            await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+        }
+
         using var timer = new PeriodicTimer(interval);
         do
         {

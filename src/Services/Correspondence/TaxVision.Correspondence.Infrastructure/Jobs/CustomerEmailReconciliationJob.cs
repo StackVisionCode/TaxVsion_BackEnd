@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -28,11 +29,12 @@ public sealed class CustomerEmailReconciliationJob(
 ) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(20);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(StartupDelay, stoppingToken);
+        var lifetime = serviceProvider.GetRequiredService<IHostApplicationLifetime>();
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunOnceSafeAsync(stoppingToken);

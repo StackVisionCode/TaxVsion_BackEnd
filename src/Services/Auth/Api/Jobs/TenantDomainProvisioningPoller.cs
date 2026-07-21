@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -15,6 +16,7 @@ namespace TaxVision.Auth.Api.Jobs;
 /// </summary>
 public sealed class TenantDomainProvisioningPoller(
     IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime lifetime,
     ILogger<TenantDomainProvisioningPoller> logger
 ) : BackgroundService
 {
@@ -22,6 +24,11 @@ public sealed class TenantDomainProvisioningPoller(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Primer poll inmediato — sin esperar acá, domain.MarkActive/MarkFailed encola domain
+        // events que AuthDbContext.SaveChangesAsync publica por Wolverine; si el poll corre antes
+        // de que Wolverine termine de arrancar, revienta con WolverineHasNotStartedException.
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+
         using var timer = new PeriodicTimer(Interval);
         do
         {

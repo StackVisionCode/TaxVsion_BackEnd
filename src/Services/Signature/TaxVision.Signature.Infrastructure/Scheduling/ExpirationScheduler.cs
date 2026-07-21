@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,11 +24,16 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
     : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(StartupDelay, stoppingToken);
+        // Reemplaza el delay fijo anterior: espera a que el host completo (Wolverine incluido)
+        // termine de arrancar, en vez de asumir un minuto siempre alcanza — RunOnceAsync
+        // publica por bus, y correr antes de que Wolverine inicie revienta con
+        // WolverineHasNotStartedException.
+        var lifetime = serviceProvider.GetRequiredService<IHostApplicationLifetime>();
+        await lifetime.WaitForApplicationStartedAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunOnceSafeAsync(stoppingToken);

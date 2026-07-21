@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -103,7 +104,7 @@ public sealed partial class FluidTemplateRenderer(
             templateResult.Value.TenantId,
             request.Locale?.Value,
             request.LogoScope,
-            request.Variables,
+            NormalizeVariables(request.Variables),
             ct
         );
     }
@@ -145,7 +146,7 @@ public sealed partial class FluidTemplateRenderer(
             template.TenantId,
             locale: null,
             logoScope,
-            sampleVariables,
+            NormalizeVariables(sampleVariables),
             ct
         );
     }
@@ -521,6 +522,39 @@ public sealed partial class FluidTemplateRenderer(
             return Result.Failure<string>(new Error("EmailRenderer.Render", ex.Message));
         }
     }
+
+    /// <summary>
+    /// El body de /scribe/render deserializa "variables" (IReadOnlyDictionary&lt;string, object?&gt;)
+    /// con System.Text.Json — cualquier array u objeto anidado (ej. "offices": [...]) llega como
+    /// JsonElement, no como List/Dictionary nativos. Fluid no sabe iterar un JsonElement en un
+    /// {% for %}, así que sin esto cualquier variable de tipo lista se renderiza silenciosamente
+    /// vacía (los escalares "funcionan" de casualidad porque JsonElement.ToString() ya devuelve el
+    /// valor crudo). Se normaliza recursivamente a Dictionary/List/tipos primitivos antes de
+    /// pasarlos al TemplateContext.
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> NormalizeVariables(
+        IReadOnlyDictionary<string, object?> variables
+    )
+    {
+        var normalized = new Dictionary<string, object?>(variables.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in variables)
+            normalized[key] = value is JsonElement element ? NormalizeJsonElement(element) : value;
+        return normalized;
+    }
+
+    private static object? NormalizeJsonElement(JsonElement element) =>
+        element.ValueKind switch
+        {
+            JsonValueKind.Object => element
+                .EnumerateObject()
+                .ToDictionary(p => p.Name, p => NormalizeJsonElement(p.Value), StringComparer.OrdinalIgnoreCase),
+            JsonValueKind.Array => element.EnumerateArray().Select(NormalizeJsonElement).ToList(),
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null,
+        };
 
     private static string HtmlToText(string html) =>
         WebUtility.HtmlDecode(WhitespaceRegex().Replace(TagRegex().Replace(html, " "), " ")).Trim();
