@@ -36,6 +36,17 @@ public sealed class SaaSPayment : TenantEntity
     public DateTime? PaidAtUtc { get; private set; }
     public DateTime? ChargedBackAtUtc { get; private set; }
     public bool IsLegalHeld { get; private set; }
+
+    /// <summary>Set only when this charge carries a Growth/Codes discount reservation (e.g. a
+    /// referral welcome benefit) that must be committed or cancelled once the charge reaches a
+    /// terminal state. <see cref="CodeReservationPaymentId"/> is the opaque PaymentId the
+    /// reservation was bound to at Codes.CreateSystemQuote/ReserveCode time — it does not have
+    /// to equal <see cref="BaseEntity.Id"/>, it only has to match exactly when committing.
+    /// <see cref="Amount"/> is already the net (discounted) amount charged to the provider.</summary>
+    public Guid? CodeReservationId { get; private set; }
+    public Guid? CodeReservationPaymentId { get; private set; }
+    public long? DiscountAmountCents { get; private set; }
+    public string? PromotionSnapshotHash { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public Guid CreatedBy { get; private set; }
@@ -56,7 +67,11 @@ public sealed class SaaSPayment : TenantEntity
         PaymentProviderCode provider,
         StatementDescriptor descriptor,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        Guid? codeReservationId = null,
+        Guid? codeReservationPaymentId = null,
+        long? discountAmountCents = null,
+        string? promotionSnapshotHash = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -81,6 +96,10 @@ public sealed class SaaSPayment : TenantEntity
             ProviderCode = provider,
             Status = PaymentStatus.Pending,
             StatementDescriptor = descriptor,
+            CodeReservationId = codeReservationId,
+            CodeReservationPaymentId = codeReservationPaymentId,
+            DiscountAmountCents = discountAmountCents,
+            PromotionSnapshotHash = promotionSnapshotHash,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,

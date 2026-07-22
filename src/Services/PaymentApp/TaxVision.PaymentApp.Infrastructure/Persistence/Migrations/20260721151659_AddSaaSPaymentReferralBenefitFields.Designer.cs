@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.PaymentApp.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.PaymentApp.Infrastructure.Persistence;
 namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(PaymentAppDbContext))]
-    partial class PaymentAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260721151659_AddSaaSPaymentReferralBenefitFields")]
+    partial class AddSaaSPaymentReferralBenefitFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

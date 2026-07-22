@@ -43,7 +43,11 @@ public static class SubscriptionRenewalDueConsumer
                 Provider: PaymentProviderCode.Stripe,
                 PayerEmail: SyntheticPayer.EmailFor(evt.TenantId),
                 PayerName: null,
-                RequestedByUserId: Guid.Empty
+                RequestedByUserId: Guid.Empty,
+                CodeReservationId: evt.CodeReservationId,
+                CodeReservationPaymentId: evt.CodeReservationPaymentId,
+                DiscountAmountCents: evt.DiscountAmountCents,
+                PromotionSnapshotHash: evt.PromotionSnapshotHash
             );
 
             var result = await bus.InvokeAsync<Result<Guid>>(command, ct);

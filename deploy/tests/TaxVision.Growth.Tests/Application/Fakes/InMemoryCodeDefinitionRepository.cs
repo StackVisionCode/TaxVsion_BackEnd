@@ -52,6 +52,21 @@ internal sealed class InMemoryCodeDefinitionRepository : ICodeDefinitionReposito
             )
         );
 
+    public Task<CodeDefinition?> GetActiveBenefitGiftByTenantScopeAsync(
+        Guid tenantScopeId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _definitions
+                .Where(definition =>
+                    definition.TenantScopeId == tenantScopeId
+                    && definition.Kind == CodeKind.BenefitGift
+                    && definition.Status == CodeDefinitionStatus.Active
+                )
+                .OrderByDescending(definition => definition.CreatedAtUtc)
+                .FirstOrDefault()
+        );
+
     public Task AddAsync(CodeDefinition definition, CancellationToken ct = default)
     {
         _definitions.Add(definition);

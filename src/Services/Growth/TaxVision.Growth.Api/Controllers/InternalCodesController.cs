@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Codes.Application.Compensations.CompensateRedemption;
 using TaxVision.Codes.Application.Quotes.CreateQuote;
+using TaxVision.Codes.Application.Quotes.CreateSystemQuote;
 using TaxVision.Codes.Application.Reservations.CancelReservation;
 using TaxVision.Codes.Application.Reservations.CommitReservation;
 using TaxVision.Codes.Application.Reservations.ExpireReservation;
@@ -48,6 +49,38 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
     }
 
     public sealed record ReserveCodeRequest(Guid QuoteId, string PaymentSource, Guid PaymentId, int TtlSeconds);
+
+    /// <summary>No plaintext code involved — the caller proves nothing beyond "I am an
+    /// authorized service acting for this tenant" (the M2M JWT's tenant claim). Only ever
+    /// resolves a Kind=BenefitGift code, never a regular user-redeemed promo/discount code.</summary>
+    public sealed record ReserveBenefitGiftRequest(
+        string OfferOwner,
+        string OfferId,
+        string OfferVersion,
+        long GrossAmountCents,
+        string Currency,
+        string SnapshotHash,
+        int QuoteTtlSeconds,
+        string PaymentSource,
+        Guid PaymentId,
+        int ReservationTtlSeconds
+    );
+
+    /// <summary>Found=false is the common, non-error case: the tenant simply has no active
+    /// benefit-gift code (never referred, or already spent it) — nothing to reserve.</summary>
+    public sealed record ReserveBenefitGiftResponse(
+        bool Found,
+        Guid? CodeReservationId,
+        Guid? CodeDefinitionId,
+        long? GrossAmountCents,
+        long? DiscountAmountCents,
+        long? NetAmountCents,
+        string? Currency,
+        DateTime? ExpiresAtUtc
+    )
+    {
+        public static readonly ReserveBenefitGiftResponse NotFound = new(false, null, null, null, null, null, null, null);
+    }
 
     public sealed record CommitReservationRequest(
         string PaymentSource,
@@ -98,6 +131,74 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
             ct
         );
         return ToActionResult(result);
+    }
+
+    /// <summary>Composes <see cref="CreateSystemQuoteCommand"/> + the existing
+    /// <see cref="ReserveCodeCommand"/> into one atomic-from-the-caller's-view call — Subscription
+    /// (or any future caller) doesn't need to know quotes and reservations are two steps.
+    /// Each sub-command gets its own idempotency key, suffixed off the request's, so a retry of
+    /// the whole call safely re-plays both steps without double-reserving.</summary>
+    [HttpPost("benefit-gifts/reserve")]
+    [HasServiceScope(GrowthServiceScopes.CodesReserveBenefitGift)]
+    [EnableRateLimiting(GrowthRateLimitPolicies.CodeQuote)]
+    [ProducesResponseType<ReserveBenefitGiftResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ReserveBenefitGift(
+        ReserveBenefitGiftRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var quote = await bus.InvokeAsync<Result<CreateQuoteResponse>>(
+            new CreateSystemQuoteCommand(
+                tenantId,
+                request.OfferOwner,
+                request.OfferId,
+                request.OfferVersion,
+                request.GrossAmountCents,
+                request.Currency,
+                request.SnapshotHash,
+                $"{idempotencyKey}:quote",
+                request.QuoteTtlSeconds
+            ),
+            ct
+        );
+
+        if (quote.IsFailure)
+        {
+            return quote.Error.Code == "Codes.CreateSystemQuote.NoActiveBenefit"
+                ? Ok(ReserveBenefitGiftResponse.NotFound)
+                : StatusCode(quote.Error.ToHttpStatusCode(), quote.Error);
+        }
+
+        var reservation = await bus.InvokeAsync<Result<ReserveCodeResponse>>(
+            new ReserveCodeCommand(
+                tenantId,
+                quote.Value.QuoteId,
+                request.PaymentSource,
+                request.PaymentId,
+                $"{idempotencyKey}:reserve",
+                request.ReservationTtlSeconds
+            ),
+            ct
+        );
+        if (reservation.IsFailure)
+            return StatusCode(reservation.Error.ToHttpStatusCode(), reservation.Error);
+
+        return Ok(
+            new ReserveBenefitGiftResponse(
+                Found: true,
+                reservation.Value.ReservationId,
+                reservation.Value.CodeDefinitionId,
+                reservation.Value.GrossAmountCents,
+                reservation.Value.DiscountAmountCents,
+                reservation.Value.NetAmountCents,
+                reservation.Value.Currency,
+                reservation.Value.ExpiresAtUtc
+            )
+        );
     }
 
     [HttpPost("reservations")]
