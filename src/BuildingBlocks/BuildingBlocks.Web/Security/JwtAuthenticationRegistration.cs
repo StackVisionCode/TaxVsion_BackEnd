@@ -90,7 +90,13 @@ public static class JwtAuthenticationRegistration
         {
             var rsa = RSA.Create();
             rsa.ImportFromPem(publicKeyPem);
-            return new RsaSecurityKey(rsa);
+            // Debe coincidir con SigningKeyProvider.ComputeKeyId (Auth) -- Auth firma con un
+            // "kid" derivado del hash de la clave pública, y la validación por defecto de
+            // JwtBearer busca la IssuerSigningKey por ese kid. Sin este KeyId, cualquier token
+            // real emitido por Auth falla con "signature key was not found" aunque la clave
+            // pública sea la correcta (solo pasaban los tests con JWTs hand-crafted HS256, que
+            // no llevan kid).
+            return new RsaSecurityKey(rsa) { KeyId = ComputeKeyId(rsa) };
         }
 
         var secret =
@@ -103,5 +109,13 @@ public static class JwtAuthenticationRegistration
             throw new InvalidOperationException("Jwt:Secret must contain at least 32 bytes.");
 
         return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+    }
+
+    /// <summary>Same computation as Auth's SigningKeyProvider.ComputeKeyId — must stay in sync.</summary>
+    private static string ComputeKeyId(RSA rsa)
+    {
+        var publicKeyInfo = rsa.ExportSubjectPublicKeyInfo();
+        var hash = SHA256.HashData(publicKeyInfo);
+        return Base64UrlEncoder.Encode(hash[..16]);
     }
 }
