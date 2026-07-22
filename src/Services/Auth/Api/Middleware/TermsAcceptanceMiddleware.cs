@@ -1,5 +1,5 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.Extensions.Options;
-using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Terms;
 

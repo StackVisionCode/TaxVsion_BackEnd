@@ -16,8 +16,12 @@
 						"header": [],
 						"url": {
 							"raw": "{{UrlBase}}/plans",
-							"host": ["{{UrlBase}}"],
-							"path": ["plans"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"plans"
+							]
 						},
 						"description": "Catalogo publico de planes para la landing. Anonimo. Cada plan incluye supportedBillingCycles y pricesUsdByCycle (ej. {\"Monthly\": 49, \"Yearly\": 490}) para que la landing muestre precio mensual y anual sin calcularlo del lado del cliente."
 					},
@@ -51,12 +55,21 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/me",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "me"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"me"
+							]
 						},
 						"description": "Suscripcion del tenant: plan, limites, renovacion, estado."
 					},
@@ -99,17 +112,30 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/activate",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "activate"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"activate"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"billingCycle\": \"Monthly\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Self-service (TenantAdmin): paga YA en vez de esperar a que termine el trial. Solo funciona si la suscripcion esta en Trialing — convierte a Active y dispara un cobro real via PaymentApp (mismo evento SubscriptionRenewalDueIntegrationEvent que usa el job de renovacion periodica). Requiere que el tenant ya tenga un metodo de pago adjunto en PaymentApp (ver coleccion PaymentApp > ProviderCustomers > AttachPaymentMethod) — si no, el cobro falla y la suscripcion queda PastDue con reintentos via DunningJob, igual que cualquier renovacion fallida. 204 en exito; correr GetMySubscription despues para confirmar status=Active. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con la activacion; si se omite o es null, mantiene el ciclo que ya tenia el trial. Sin prorrateo: el cobro se hace al precio completo del ciclo elegido."
 					},
@@ -120,17 +146,30 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/change-plan",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "change-plan"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"change-plan"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"planCode\": \"pro\",\n  \"billingCycle\": \"Yearly\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Upgrade/downgrade de plan (TenantAdmin). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con el plan en el mismo request para elegir/cambiar el ciclo de facturacion a la vez que el plan. Si se omite o es null, mantiene el ciclo actual. Sin prorrateo: el periodo en curso sigue como esta (ya cobrado con el ciclo/precio anteriores); el ciclo nuevo se cobra recien en la proxima renovacion, al precio de ESE ciclo."
 					},
@@ -141,12 +180,21 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/plan-change",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "plan-change"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"plan-change"
+							]
 						},
 						"description": "Cambio de plan pendiente (diferido a fin de periodo), si existe alguno. 200 con body null si no hay ninguno pendiente."
 					},
@@ -157,12 +205,22 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/plan-change/cancel",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "plan-change", "cancel"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"plan-change",
+								"cancel"
+							]
 						},
 						"description": "Cancela el cambio de plan diferido pendiente (TenantAdmin)."
 					},
@@ -173,17 +231,30 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/cancel",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "cancel"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"cancel"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"reason\": \"tenant requested\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Cancelacion inmediata (TenantAdmin)."
 					},
@@ -194,17 +265,31 @@
 					"request": {
 						"method": "PATCH",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/suspend",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "{{tenantId}}", "suspend"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"{{tenantId}}",
+								"suspend"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"reason\": \"payment_failed\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Solo PlatformAdmin."
 					},
@@ -215,12 +300,22 @@
 					"request": {
 						"method": "PATCH",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/reactivate",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "{{tenantId}}", "reactivate"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"{{tenantId}}",
+								"reactivate"
+							]
 						},
 						"description": "Solo PlatformAdmin."
 					},
@@ -231,12 +326,22 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/subscriptions/{{tenantId}}/renew",
-							"host": ["{{UrlBase}}"],
-							"path": ["subscriptions", "{{tenantId}}", "renew"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"{{tenantId}}",
+								"renew"
+							]
 						},
 						"description": "Renovacion manual mientras no exista Billing. Solo PlatformAdmin."
 					},
@@ -252,18 +357,44 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/seats?page=1&pageSize=20",
-							"host": ["{{UrlBase}}"],
-							"path": ["seats"],
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"seats"
+							],
 							"query": [
-								{ "key": "status", "value": "", "disabled": true },
-								{ "key": "type", "value": "", "disabled": true },
-								{ "key": "userId", "value": "", "disabled": true },
-								{ "key": "page", "value": "1" },
-								{ "key": "pageSize", "value": "20" }
+								{
+									"key": "status",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "type",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "userId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "20"
+								}
 							]
 						},
 						"description": "Lista paginada de seats del tenant autenticado. Filtros opcionales: status, type, userId."
@@ -275,12 +406,21 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/seats/{{seatId}}",
-							"host": ["{{UrlBase}}"],
-							"path": ["seats", "{{seatId}}"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"seats",
+								"{{seatId}}"
+							]
 						}
 					},
 					"response": []
@@ -290,17 +430,30 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/seats/purchase",
-							"host": ["{{UrlBase}}"],
-							"path": ["seats", "purchase"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"seats",
+								"purchase"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"seatType\": \"Standard\",\n  \"quantity\": 5,\n  \"autoRenew\": true\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Compra seats adicionales (TenantAdmin). Devuelve los ids creados."
 					},
@@ -330,17 +483,31 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/seats/{{seatId}}/assign",
-							"host": ["{{UrlBase}}"],
-							"path": ["seats", "{{seatId}}", "assign"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"seats",
+								"{{seatId}}",
+								"assign"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"userId\": \"{{targetUserId}}\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Asigna un seat comprado a un usuario del tenant (TenantAdmin)."
 					},
@@ -351,17 +518,31 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/seats/{{seatId}}/release",
-							"host": ["{{UrlBase}}"],
-							"path": ["seats", "{{seatId}}", "release"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"seats",
+								"{{seatId}}",
+								"release"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"reason\": \"employee offboarded\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Libera un seat de su usuario actual (TenantAdmin)."
 					},
@@ -372,17 +553,31 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/seats/{{seatId}}/reassign",
-							"host": ["{{UrlBase}}"],
-							"path": ["seats", "{{seatId}}", "reassign"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"seats",
+								"{{seatId}}",
+								"reassign"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"toUserId\": \"{{targetUserId}}\",\n  \"reason\": \"team change\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Reasigna un seat directamente de un usuario a otro (TenantAdmin), sujeto a AllowSeatReassignment/cooldown."
 					},
@@ -393,12 +588,22 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/seats/{{seatId}}/renew",
-							"host": ["{{UrlBase}}"],
-							"path": ["seats", "{{seatId}}", "renew"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"seats",
+								"{{seatId}}",
+								"renew"
+							]
 						},
 						"description": "Renovacion manual de un seat mientras no exista Billing (TenantAdmin)."
 					},
@@ -416,8 +621,12 @@
 						"header": [],
 						"url": {
 							"raw": "{{UrlBase}}/addons",
-							"host": ["{{UrlBase}}"],
-							"path": ["addons"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"addons"
+							]
 						},
 						"description": "Catalogo publico de add-ons. Anonimo."
 					},
@@ -445,12 +654,21 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/addons/tenant",
-							"host": ["{{UrlBase}}"],
-							"path": ["addons", "tenant"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"addons",
+								"tenant"
+							]
 						},
 						"description": "Add-ons vigentes del tenant autenticado."
 					},
@@ -461,17 +679,29 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/addons",
-							"host": ["{{UrlBase}}"],
-							"path": ["addons"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"addons"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"addOnCode\": \"{{firstAddOnCode}}\",\n  \"quantity\": 1,\n  \"autoRenew\": true\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Compra un add-on para el tenant (TenantAdmin)."
 					},
@@ -499,17 +729,31 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/addons/{{addOnId}}/cancel",
-							"host": ["{{UrlBase}}"],
-							"path": ["addons", "{{addOnId}}", "cancel"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"addons",
+								"{{addOnId}}",
+								"cancel"
+							]
 						},
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"reason\": \"tenant requested\"\n}",
-							"options": { "raw": { "language": "json" } }
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
 						},
 						"description": "Cancela un add-on del tenant (TenantAdmin)."
 					},
@@ -520,12 +764,22 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/addons/{{addOnId}}/renew",
-							"host": ["{{UrlBase}}"],
-							"path": ["addons", "{{addOnId}}", "renew"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"addons",
+								"{{addOnId}}",
+								"renew"
+							]
 						},
 						"description": "Renovacion manual de un add-on mientras no exista Billing (TenantAdmin)."
 					},
@@ -541,12 +795,21 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/entitlements/summary",
-							"host": ["{{UrlBase}}"],
-							"path": ["entitlements", "summary"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"entitlements",
+								"summary"
+							]
 						},
 						"description": "Snapshot completo de entitlements del tenant (plan + seats + add-ons combinados)."
 					},
@@ -557,12 +820,21 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/entitlements/seats.max",
-							"host": ["{{UrlBase}}"],
-							"path": ["entitlements", "seats.max"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"entitlements",
+								"seats.max"
+							]
 						},
 						"description": "Valor de un entitlement puntual por su key (ej. seats.max, storage.max_bytes)."
 					},
@@ -578,19 +850,49 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/audit?page=1&pageSize=20",
-							"host": ["{{UrlBase}}"],
-							"path": ["audit"],
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"audit"
+							],
 							"query": [
-								{ "key": "aggregateType", "value": "TenantSubscription", "disabled": true },
-								{ "key": "aggregateId", "value": "", "disabled": true },
-								{ "key": "from", "value": "", "disabled": true },
-								{ "key": "to", "value": "", "disabled": true },
-								{ "key": "page", "value": "1" },
-								{ "key": "pageSize", "value": "20" }
+								{
+									"key": "aggregateType",
+									"value": "TenantSubscription",
+									"disabled": true
+								},
+								{
+									"key": "aggregateId",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "from",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "to",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "20"
+								}
 							]
 						},
 						"description": "Historial de auditoria del tenant (TenantAdmin o PlatformAdmin). Filtros opcionales por tipo/id de agregado y rango de fechas."
@@ -607,13 +909,28 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/admin/subscription/upcoming-renewals?daysAhead=7",
-							"host": ["{{UrlBase}}"],
-							"path": ["admin", "subscription", "upcoming-renewals"],
-							"query": [{ "key": "daysAhead", "value": "7" }]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"admin",
+								"subscription",
+								"upcoming-renewals"
+							],
+							"query": [
+								{
+									"key": "daysAhead",
+									"value": "7"
+								}
+							]
 						},
 						"description": "Suscripciones que renuevan en los proximos N dias, cross-tenant. Solo PlatformAdmin."
 					},
@@ -624,15 +941,31 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/admin/subscription/expired-seats?page=1&pageSize=20",
-							"host": ["{{UrlBase}}"],
-							"path": ["admin", "subscription", "expired-seats"],
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"admin",
+								"subscription",
+								"expired-seats"
+							],
 							"query": [
-								{ "key": "page", "value": "1" },
-								{ "key": "pageSize", "value": "20" }
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "20"
+								}
 							]
 						},
 						"description": "Seats expirados, cross-tenant. Solo PlatformAdmin."
@@ -644,15 +977,31 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/admin/subscription/past-due-subscriptions?page=1&pageSize=20",
-							"host": ["{{UrlBase}}"],
-							"path": ["admin", "subscription", "past-due-subscriptions"],
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"admin",
+								"subscription",
+								"past-due-subscriptions"
+							],
 							"query": [
-								{ "key": "page", "value": "1" },
-								{ "key": "pageSize", "value": "20" }
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "pageSize",
+									"value": "20"
+								}
 							]
 						},
 						"description": "Suscripciones en PastDue, cross-tenant. Solo PlatformAdmin."
@@ -664,18 +1013,74 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
 						],
 						"url": {
 							"raw": "{{UrlBase}}/admin/subscription/tenants/{{tenantId}}/recalculate-entitlements",
-							"host": ["{{UrlBase}}"],
-							"path": ["admin", "subscription", "tenants", "{{tenantId}}", "recalculate-entitlements"]
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"admin",
+								"subscription",
+								"tenants",
+								"{{tenantId}}",
+								"recalculate-entitlements"
+							]
 						},
 						"description": "Fuerza el recalculo del TenantEntitlementSnapshot del tenant y republica TenantEntitlementsChangedIntegrationEvent. Solo PlatformAdmin. Via de escape para reconciliar un tenant que quedo con TenantSubscription valida pero sin snapshot (p.ej. tras una falla transitoria en un intento anterior de RecalculateEntitlementsCommand) — ver README §32.6. Devuelve 204 en exito."
 					},
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "Negative Cases — Actor Type",
+			"item": [
+				{
+					"name": "CustomerPortal token rejected — GetMySubscription",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{customerPortalAccessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/me",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"me"
+							]
+						},
+						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"GetMySubscription\" (requiere (rol TenantAdmin/TenantEmployee, sin permission system propio), actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP.\n\n---\nDescripción original: Suscripcion del tenant: plan, limites, renovacion, estado."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			],
+			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
 		}
 	]
 }

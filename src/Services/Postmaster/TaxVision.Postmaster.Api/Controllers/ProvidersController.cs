@@ -1,9 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Postmaster.Api.Authorization;
-using TaxVision.Postmaster.Api.Common;
 using TaxVision.Postmaster.Api.Requests;
 using TaxVision.Postmaster.Application.Providers.Commands.DisableTenantEmailProvider;
 using TaxVision.Postmaster.Application.Providers.Commands.UpsertSystemEmailProvider;
@@ -16,6 +15,7 @@ namespace TaxVision.Postmaster.Api.Controllers;
 
 [ApiController]
 [Route("postmaster")]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class ProvidersController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("providers/status")]
@@ -80,6 +80,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
     /// <summary>Configura el proveedor "default" de plataforma. Solo PlatformAdmin — nunca un tenant admin.</summary>
     [HttpPut("system/provider/{providerCode}")]
     [HasPermission(PostmasterPermissions.ProvidersWrite)]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
     public async Task<IActionResult> UpsertSystemProvider(
         string providerCode,
         [FromBody] UpsertSystemEmailProviderRequest body,

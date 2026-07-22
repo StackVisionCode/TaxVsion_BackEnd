@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.PaymentClient.Api.Authorization;
 using TaxVision.PaymentClient.Api.Common;
 using TaxVision.PaymentClient.Application.Recurring.Commands.CancelTenantRecurringPayment;
 using TaxVision.PaymentClient.Application.Recurring.Commands.CreateTenantRecurringPayment;
@@ -19,6 +19,7 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 [ApiController]
 [Route("payments-client/recurring")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class TenantRecurringPaymentsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateRecurringPaymentRequest(

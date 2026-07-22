@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -14,7 +15,6 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
-using TaxVision.Signature.Api.Authorization;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Infrastructure;
 using TaxVision.Signature.Infrastructure.Persistence;
@@ -31,7 +31,8 @@ builder.Host.UseTaxVisionSerilog("signature-service");
 
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -42,6 +43,8 @@ builder.Services.AddSignatureInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
 // Autorización por permiso ([HasPermission("signature.*")]); los admins pasan siempre.
+// BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
+// reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // Rate limiter para endpoints públicos: 15 req/min por IP+ruta para desanimar

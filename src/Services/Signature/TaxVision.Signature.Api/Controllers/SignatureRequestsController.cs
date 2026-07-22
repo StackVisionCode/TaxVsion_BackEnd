@@ -1,10 +1,10 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Authorization;
 using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Requests;
@@ -38,6 +38,7 @@ namespace TaxVision.Signature.Api.Controllers;
 [ApiController]
 [Route("signature/requests")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBase
 {
     // ---------- POST /signature/requests ----------

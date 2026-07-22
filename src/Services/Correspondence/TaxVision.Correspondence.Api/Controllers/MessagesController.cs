@@ -1,9 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Correspondence.Api.Authorization;
-using TaxVision.Correspondence.Api.Common;
 using TaxVision.Correspondence.Api.Requests;
 using TaxVision.Correspondence.Application.Compose;
 using TaxVision.Correspondence.Application.Messages;
@@ -17,6 +16,7 @@ namespace TaxVision.Correspondence.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("correspondence/messages")]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class MessagesController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Fase 9 — metadata de UN mensaje, mismo DTO que el listado paginado del hilo. Nunca llama a Connectors (a diferencia de <see cref="GetBody"/>).</summary>

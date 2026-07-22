@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Middleware;
@@ -9,7 +10,6 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
-using TaxVision.Correspondence.Api.Authorization;
 using TaxVision.Correspondence.Application;
 using TaxVision.Correspondence.Infrastructure;
 using TaxVision.Correspondence.Infrastructure.Persistence;
@@ -27,7 +27,8 @@ builder.Host.UseTaxVisionSerilog("correspondence-service");
 // ---------- MVC + JSON ----------
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -39,6 +40,8 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "correspondence-service");
 
 // Autorización por permiso ([HasPermission("correspondence.read")], Fase 5); los admins pasan siempre.
+// BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
+// reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // ---------- Health checks ----------

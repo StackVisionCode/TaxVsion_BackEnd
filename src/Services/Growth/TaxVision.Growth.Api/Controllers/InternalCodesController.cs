@@ -16,6 +16,8 @@ using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
 using TaxVision.Growth.Api.RateLimiting;
 using Wolverine;
+using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
+using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 
@@ -26,6 +28,7 @@ namespace TaxVision.Growth.Api.Controllers;
 [ApiController]
 [Route("internal/codes")]
 [Authorize]
+[AllowActorTypes(ActorType.Service)]
 public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateQuoteRequest(

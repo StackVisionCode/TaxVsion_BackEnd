@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Authorization;
 using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Abstractions;
@@ -16,6 +16,7 @@ namespace TaxVision.Signature.Api.Controllers;
 
 [ApiController]
 [Route("signature/settings")]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SettingsController(ITenantSignatureSettingsRepository repository, IMessageBus bus) : ControllerBase
 {
     [HttpGet]

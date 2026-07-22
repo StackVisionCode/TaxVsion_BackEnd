@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Tenancy;
 
 namespace TaxVision.PaymentApp.Api.Common;

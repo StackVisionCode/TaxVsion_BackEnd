@@ -255,18 +255,16 @@ public static class AssignUserRolesHandler
         if (tenantRoles.Any(role => !role.IsActive))
             return Result.Failure(new Error("Role.Inactive", "One or more roles are inactive."));
 
-        // Catálogo cargado siempre: lo necesita el guard de CustomerPortal (si aplica)
+        // Catálogo cargado siempre: lo necesita el guard de actor type
         // y, ahora, el cálculo de PermissionCodes del evento publicado más abajo.
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
 
-        // Fase A1: un Tenant Customer nunca debe terminar con un permiso interno colado
-        // por un rol mal asignado (ver CustomerPortalRoleGuard).
-        if (target.ActorType == UserActorType.CustomerPortal)
-        {
-            var portalGuard = CustomerPortalRoleGuard.ValidateRolesForCustomerPortal(tenantRoles, catalog);
-            if (portalGuard.IsFailure)
-                return portalGuard;
-        }
+        // Fase A1 + Fase 2 (Actor_Type_Authorization_Layers_Plan.md): ningún usuario debe terminar
+        // con un permiso fuera de su actor type colado por un rol mal asignado, en cualquier
+        // sentido (ver ActorTypeRoleGuard).
+        var actorTypeGuard = ActorTypeRoleGuard.ValidateRolesForActorType(target.ActorType, tenantRoles, catalog);
+        if (actorTypeGuard.IsFailure)
+            return actorTypeGuard;
 
         await roles.ReplaceUserRolesAsync(target.Id, requestedIds, command.AssignedByUserId, ct);
         target.BumpPermissionsVersion();

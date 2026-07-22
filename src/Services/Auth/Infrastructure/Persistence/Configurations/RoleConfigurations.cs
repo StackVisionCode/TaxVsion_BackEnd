@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 
@@ -20,7 +22,29 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
         builder.Property(permission => permission.PlatformOnly).IsRequired();
         builder.HasIndex(permission => permission.Code).IsUnique();
 
-        // Sembrado del catálogo global (GUID fijos definidos en PermissionCatalog).
+        // Mismo patrón que AddOnDefinitionConfiguration (Subscription) para List<BillingCycle>:
+        // CSV en una sola columna + ValueComparer explícito para que EF detecte cambios por valor,
+        // no por referencia (el array es reasignado completo, nunca mutado in-place).
+        var allowedActorTypesConverter = new ValueConverter<IReadOnlyList<UserActorType>, string>(
+            actorTypes => string.Join(',', actorTypes),
+            csv => ParseAllowedActorTypes(csv)
+        );
+        var allowedActorTypesComparer = new ValueComparer<IReadOnlyList<UserActorType>>(
+            (a, b) => (a ?? Array.Empty<UserActorType>()).SequenceEqual(b ?? Array.Empty<UserActorType>()),
+            actorTypes => actorTypes.Aggregate(0, (hash, actorType) => HashCode.Combine(hash, actorType)),
+            actorTypes => actorTypes.ToArray()
+        );
+        builder
+            .Property(permission => permission.AllowedActorTypes)
+            .HasConversion(allowedActorTypesConverter)
+            .HasMaxLength(100)
+            .IsRequired()
+            .Metadata.SetValueComparer(allowedActorTypesComparer);
+
+        // Sembrado del catálogo global (GUID fijos definidos en PermissionCatalog). AllowedActorTypes
+        // siempre se resuelve a un valor concreto acá (nunca null en la fila) — ver
+        // Permission.InferAllowedActorTypes para el criterio de default cuando el catálogo no lo
+        // declara explícito.
         builder.HasData(
             PermissionCatalog.All.Select(definition => new
             {
@@ -32,9 +56,16 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
                 definition.MinPlanTier,
                 definition.IsAssignableByTenant,
                 definition.PlatformOnly,
+                AllowedActorTypes = definition.AllowedActorTypes
+                    ?? Permission.InferAllowedActorTypes(definition.IsCustomerPortal, definition.PlatformOnly),
             })
         );
     }
+
+    private static UserActorType[] ParseAllowedActorTypes(string csv) =>
+        string.IsNullOrEmpty(csv)
+            ? []
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Enum.Parse<UserActorType>).ToArray();
 }
 
 /// <summary>Mapeo EF Core de Role: tabla, índice único por tenant/nombre y relación con sus permisos (acceso por campo).</summary>

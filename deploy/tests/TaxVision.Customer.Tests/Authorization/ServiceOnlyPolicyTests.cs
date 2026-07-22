@@ -1,7 +1,7 @@
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
-using TaxVision.Customer.Api.Common;
 
 namespace TaxVision.Customer.Tests.Authorization;
 

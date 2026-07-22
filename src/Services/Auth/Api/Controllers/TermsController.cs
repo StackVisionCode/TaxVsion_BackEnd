@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
@@ -11,6 +12,7 @@ namespace TaxVision.Auth.Api.Controllers;
 [ApiController]
 [Route("auth/tenant/terms")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.CustomerPortal, ActorType.PlatformAdmin)]
 public sealed class TermsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("status")]

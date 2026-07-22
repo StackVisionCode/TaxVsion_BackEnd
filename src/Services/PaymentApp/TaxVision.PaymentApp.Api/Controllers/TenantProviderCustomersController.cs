@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.PaymentApp.Api.Authorization;
 using TaxVision.PaymentApp.Api.Common;
 using TaxVision.PaymentApp.Application.ProviderCustomers.Commands.AttachPaymentMethod;
 using TaxVision.PaymentApp.Application.ProviderCustomers.Commands.DetachPaymentMethod;
@@ -17,6 +17,7 @@ namespace TaxVision.PaymentApp.Api.Controllers;
 [ApiController]
 [Route("payments-app/provider-customers")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class TenantProviderCustomersController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("{provider}")]

@@ -1,8 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Postmaster.Api.Common;
 using TaxVision.Postmaster.Api.Requests;
 using TaxVision.Postmaster.Application.Sending.Commands.SendCorrespondenceMessage;
 using TaxVision.Postmaster.Domain.Sending;
@@ -16,6 +16,7 @@ namespace TaxVision.Postmaster.Api.Controllers;
 /// </summary>
 [ApiController]
 [Authorize(Policy = "ServiceOnly")]
+[AllowActorTypes(ActorType.Service)]
 [Route("postmaster/correspondence-messages")]
 public sealed class CorrespondenceMessagesController(IMessageBus bus) : ControllerBase
 {

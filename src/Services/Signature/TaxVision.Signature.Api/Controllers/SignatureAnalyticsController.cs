@@ -1,8 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Authorization;
 using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Application.Analytics;
 using Wolverine;
@@ -23,6 +23,7 @@ namespace TaxVision.Signature.Api.Controllers;
 [ApiController]
 [Route("signature/analytics")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBase
 {
     // ---------- GET /signature/analytics/summary ----------

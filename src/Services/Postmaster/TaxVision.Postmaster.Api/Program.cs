@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
@@ -10,7 +11,6 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
-using TaxVision.Postmaster.Api.Authorization;
 using TaxVision.Postmaster.Api.Jobs;
 using TaxVision.Postmaster.Application;
 using TaxVision.Postmaster.Infrastructure;
@@ -29,7 +29,8 @@ builder.Host.UseTaxVisionSerilog("postmaster-service");
 // ---------- MVC + JSON ----------
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -41,6 +42,8 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "postmaster-service");
 
 // Autorización por permiso ([HasPermission("postmaster.*")]); los admins pasan siempre.
+// BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
+// reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // M2M interno (D3 Compose Fase 5) — solo Correspondence (u otro microservicio backend), nunca un

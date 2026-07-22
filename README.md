@@ -70,7 +70,7 @@ OpenTelemetry.
 36. Scribe Service (templating centralizado de email)
 37. Connectors Service (integraciones Gmail/Graph/IMAP)
 38. Correspondence Service (inbox del cliente final + compose/send)
-39. Soporte de logo para Tenant
+39. Soporte de logo y colores de marca para Tenant
 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
 
 ## 1. Introduccion y objetivo
@@ -6323,7 +6323,7 @@ la única ubicación consistente con las fronteras de 38.6.
   `IDraftRepository.ListAbandonedAsync`/`ICustomerEmailReconciliationService`, que sí
   están testeados.
 
-# 39. Soporte de logo por tenant (Tenant, CloudStorage, Auth)
+# 39. Soporte de logo y colores de marca por tenant (Tenant, CloudStorage, Auth)
 
 Implementa `Tenant_Service_LogoSupport_Plan.md`: cada tenant puede subir un logo propio,
 embebido por Postmaster como inline attachment CID en cada correo saliente (Scribe
@@ -6443,6 +6443,90 @@ de 39.1). `dotnet test deploy/tests/TaxVision.Tenant.Tests/` — full monorepo (
   download-url es presignado a MinIO/S3, nunca servido desde un dominio de TaxVision, así
   que el riesgo de XSS persistente contra la propia app es bajo, pero si el frontend llega a
   renderizar el SVG inline (no solo como `<img src>`) debe sanitizarlo del lado cliente antes.
+
+## 39.8 Colores de marca por tenant (`Tenant_Branding_Colors_Plan.md`)
+
+4 campos fijos, no un editor de CSS libre (ver el plan, §3.2, sobre por qué): `primaryColor`,
+`accentColor`, `backgroundColor`, `textColor`. A diferencia del logo, es sincrónico — no hay
+escaneo antivirus de por medio, así que no necesita el patrón `SetXPending`/`ConfirmX` de
+39.1, un único `SetBrandingColors` alcanza.
+
+**Value Object `HexColor`** (`Domain/ValueObjects/HexColor.cs`) — a diferencia del logo (campos
+escalares planos, sin VO, ver 39.1), acá sí se introdujo un VO: los 4 campos comparten
+exactamente la misma regla de formato (`^#[0-9A-Fa-f]{6}$`), y repetir esa validación 4 veces
+como `string?` sueltos es el olor de código que motivó la guía de VOs del proyecto (primitivo +
+validación repetida = candidato a VO). Mapeado a `nvarchar(7)` vía `.HasConversion(...)`, mismo
+patrón que `StatementDescriptor`/`EncryptedSecret` en PaymentClient/Postmaster — no un owned
+type de EF.
+
+`TenantBranding.cs` (partial de `Tenant`, mismo archivo-por-concern que `TenantLogo.cs`):
+
+- `SetBrandingColors(primaryHex, accentHex, backgroundHex, textHex)` — atómico: valida los 4
+  campos no-nulos antes de aplicar ninguno (si uno solo es inválido, no se pisa nada de la
+  paleta anterior). Un campo en `null` = "volver al default de la empresa para ese campo",
+  no "error".
+- `ResetBrandingColors()` — idempotente, mismo criterio que `RemoveLogo`.
+- `ResolveBrandingPalette()` — única forma soportada de leer los 4 colores: siempre devuelve
+  un `BrandingPalette` con los 4 campos completos (`PrimaryColor ?? SystemBrandingDefaults.PrimaryColor`,
+  etc.) más `IsCustomized`. La resolución vive en el dominio (no en el query handler) para que
+  la regla "nunca hay campo vacío" tenga una sola implementación.
+
+`SystemBrandingDefaults` — clase estática con los 4 valores de fallback de la empresa (Bold
+Blue `#1E466B`, Light Blue `#67BAF4`, Soft White `#FAFAFA`, Jet Black `#0D0D0D`), único lugar
+del backend donde viven — el frontend debe declarar los mismos 4 hex como fallback estático en
+`styles.scss` (ver el plan, §6.1) para evitar el flash de color equivocado antes de que
+responda la API.
+
+## 39.9 Endpoints HTTP + caché (`TenantBrandingController`, mismo controller que el logo)
+
+| Método | Ruta | Permiso | Notas |
+| --- | --- | --- | --- |
+| `GET` | `/tenants/{tenantId}/branding/colors` | solo autenticación | Mismo `AllowActorTypes` que `GetTenantLogo` (incluye `CustomerPortal`) — el portal del cliente necesita los colores para pintar su pantalla. Cacheado 5 min en Redis (`ICacheService`, key `tenant:branding:colors:{tenantId}`) |
+| `PUT` | `/tenants/{tenantId}/branding/colors` | `branding.manage` | Body JSON `{primaryColor, accentColor, backgroundColor, textColor}`, cualquier campo en `null` vuelve al default. Invalida la caché tras `SaveChanges` |
+| `DELETE` | `/tenants/{tenantId}/branding/colors` | `branding.manage` | Reset total (atajo de PUT con los 4 en `null`), idempotente. Invalida la caché |
+
+Reutiliza el mismo `TryResolveTenantId` privado del controller (39.3) — ningún mecanismo nuevo
+de aislamiento tenant-ruta-vs-JWT. Cada acción declara su propio `[AllowActorTypes(...)]`
+explícito (la clase no tiene uno a nivel de clase), verificado automáticamente por
+`TenantActorTypeArchitectureTests.Controller_actions_should_declare_AllowActorTypes`
+(Capa 4 del mecanismo, ver 41.1) — si faltara, el build de tests falla.
+
+Caché: mismo patrón que `EntitlementCacheKeys`/`GetTenantEntitlementSummaryHandler` en
+Subscription — `ICacheService.GetOrCreateAsync` con TTL de 5 minutos en el query handler,
+`RemoveAsync` explícito en los dos comandos de escritura tras `SaveChangesAsync`. `AddRedisCache`
+ya estaba registrado en `Tenant.Api/Program.cs` (lo usa `GetTenants`/`CreateTenant` para la
+lista paginada) — no hizo falta wiring nuevo.
+
+## 39.10 Configuración nueva
+
+- Columnas `PrimaryColorHex`/`AccentColorHex`/`BackgroundColorHex`/`TextColorHex`
+  (`nvarchar(7)`, todas nullable) en `Tenants` — migración `AddTenantBrandingColors`, con el
+  mismo `UpdateData` sobre la fila sembrada de `PlatformTenant.Id` que `AddTenantLogoFields`
+  necesitó (EF exige explicitar las columnas nuevas en filas ya sembradas por `HasData`).
+- Ningún permiso nuevo — reutiliza `branding.manage` (ya sembrado desde 39.5, su
+  `AllowedActorTypes` inferido ya resuelve a `[TenantEmployee, TenantAdmin, PlatformAdmin]`,
+  exactamente lo que el `PUT`/`DELETE` de colores necesita).
+
+## 39.11 Pruebas y pendientes documentados
+
+`deploy/tests/TaxVision.Tenant.Tests/Domain/{HexColorTests,TenantBrandingTests}.cs` — 29 tests
+de dominio (formato válido/inválido, normalización a mayúsculas, atomicidad del patch,
+resolución mixta custom+default, idempotencia del reset). Verificado en verde junto con el
+resto de `TaxVision.Tenant.Tests` (incluida la fitness function de 39.9) y el monorepo completo
+(1781 tests .NET, 0 fallos).
+
+**Sin tests de aislamiento cross-tenant a nivel HTTP para este endpoint** — a diferencia de
+Auth/Communication, `TaxVision.Tenant.Tests` no tiene infraestructura de integración
+(`WebApplicationFactory`) para ningún endpoint del servicio, ni siquiera para el logo (39.6 solo
+cubre dominio). El aislamiento real lo garantiza `TryResolveTenantId`, ya cubierto por el mismo
+código que usa el logo desde que se implementó — no se inventó infraestructura de test nueva
+para no romper la consistencia con el resto del servicio; si se agrega en el futuro, debería
+cubrir logo y colores a la vez, no solo uno.
+
+**Frontend (Fases 5-6 del plan) fuera de este alcance** — este README documenta el backend
+(Fases 0-4 y 7). El plan también describe `BrandingService`/`tailwind.config.js`/panel admin en
+Angular para dos frontends (staff + portal cliente) que viven en repos separados fuera de este
+monorepo — no tocados en esta iteración.
 
 # 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
 
@@ -6587,3 +6671,129 @@ aggregate pero nunca copiado al evento. Estado final de cierre:
   de diseño preexistente de Signature.
 - **Correspondence: empleado-asignado-a-cliente** — decisión de producto pendiente (§4B del
   plan), requiere modelar una relación nueva en el dominio de Customer, no un fix de bug.
+
+# 41. Autorización por Actor Type (los 14 microservicios .NET + Communication/Node)
+
+Plan completo en `BrandCoolors/Actor_Type_Authorization_Layers_Plan.md` (0 diseño, 1
+`BuildingBlocks` compartido, 2 catálogo+guard simétrico en Auth, 3 migración de los 11 servicios
+"estándar", 4 los 3 casos especiales, 5 Communication fail-closed, 6 fitness functions
+NetArchTest, 7 este cierre). El sistema de permisos existente (`[HasPermission]`) ya bloqueaba un
+sentido — un `CustomerPortal` nunca podía terminar con un permiso interno — pero no el otro: nada
+impedía que un `TenantAdmin` le colara, por error de configuración, un permiso pensado solo para
+clientes a un rol de empleado. Este trabajo cierra ese hueco de raíz, con un mecanismo de 4 capas
+que se aplica solo — sin que cada desarrollador tenga que acordarse de escribir un chequeo a mano
+en cada endpoint nuevo. Categoría OWASP API Security Top 10 #5 — Broken Function Level
+Authorization.
+
+## 41.1 Las 4 capas
+
+| Capa | Qué hace | Dónde vive | Cuándo corre |
+|---|---|---|---|
+| **1 — `[HasPermission]`** | Exige un permiso concreto del catálogo (`users.view`, `cloudstorage.file.upload`, ...) | `PermissionPolicyProvider` (`BuildingBlocks.Web`), copiada a los 11 servicios "Variante A"; forks propios en Growth/CloudStorage/Subscription | `AddAuthorization()` — política ASP.NET Core estándar |
+| **2 — `[AllowActorTypes(...)]`** | Exige que el claim `actor_type` del JWT esté en el set declarado por la acción (o el controller, como fallback) | `ActorTypeAuthorizationFilter` (`BuildingBlocks.Web.Security`), registrado como filtro global MVC en los 14 servicios .NET | Etapa de autorización del pipeline MVC, en cada request |
+| **3 — `ActorTypeRoleGuard`** | Al asignar roles a un usuario (`AssignUserRolesHandler`/`CreateInvitation`), rechaza si alguno de los permisos que esos roles otorgan queda fuera de `Permission.AllowedActorTypes` para el actor type del usuario | Solo Auth (`TaxVision.Auth.Application.Common`) | Al invitar/reasignar roles — tiempo de escritura, no de request |
+| **4 — Fitness function NetArchTest** | Falla el build si un controller/acción nueva queda sin `[AllowActorTypes]` | `{Servicio}ActorTypeArchitectureTests.cs`/`{Servicio}ArchitectureTests.cs` en los 14 `*.Tests`, corren en CI (`deploy.yml`, gate antes de build+deploy) | `dotnet test`, en cada push a `main` |
+
+Decisión de arquitectura deliberada: la Capa 2 **no** le pregunta a Auth por HTTP en cada
+request — el claim `actor_type` ya viene en el JWT, y cada endpoint declara su propio set de
+forma estática (compilada). Evita acoplamiento síncrono entre los 14 servicios y un nuevo punto
+único de fallo.
+
+`ActorType` (`TenantEmployee`, `TenantAdmin`, `CustomerPortal`, `PlatformAdmin`, `Service`) vive
+en `BuildingBlocks.ActorTypeAuthorization` — no en el bounded context de Auth, porque los otros
+13 servicios no deben referenciarlo. `PlatformAdmin` siempre pasa la Capa 2 aunque no esté en el
+set declarado (mismo bypass documentado que ya existía en `[HasPermission]`); `Service` (M2M,
+`client_credentials`) **no** tiene bypass — un endpoint M2M tiene que declarar
+`[AllowActorTypes(ActorType.Service)]` explícito, igual que cualquier otro actor type.
+`[AllowAnonymous]` y `[AuthorizedByCapabilityToken]` (ticket firmado, ej. registro de tenant)
+eximen a una acción de la Capa 2 completa — no relajan la Capa 3, que corre aparte.
+
+## 41.2 Catálogo — `Permission.AllowedActorTypes` (Fase 7.1)
+
+Cada permiso sembrado declara, en `Permission.AllowedActorTypes`, qué actor types pueden llegar a
+tenerlo vía un rol. Por defecto se infiere de dos flags ya existentes
+(`Permission.InferAllowedActorTypes`):
+
+```csharp
+platformOnly ? [PlatformAdmin]
+: isCustomerPortal ? [CustomerPortal]
+: [TenantEmployee, TenantAdmin, PlatformAdmin]   // staff, sin distinción
+```
+
+Esta inferencia de 3 salidas no puede expresar "compartido entre staff y cliente" — y **eso
+causó dos bugs reales**, encontrados auditando el catálogo contra `PermissionCatalog.
+SystemRoleDefaults` (qué recibe cada rol de sistema por defecto), no adivinando:
+
+- **`cloudstorage.file.{view,upload,download}`** (Fase 4): inferidos staff-only porque
+  `IsCustomerPortal=false`, pero `SystemRoleDefaults(SystemCustomerPortal)` ya se los otorgaba a
+  todo cliente real — un customer genuino sube/ve/descarga sus propios archivos hoy. Sin el fix,
+  la intención del catálogo contradecía el uso real (aunque el bug no llegó a bloquear nada en
+  producción porque el guard de la Capa 3 nunca se ejerció sobre ese caso).
+- **6 permisos de Communication** (Fase 7.1 — `communication.chat.start/reply`,
+  `support.open`, `meeting.join`, `screenshot.create`, `notification.read`): `SystemEmployee`
+  **y** `SystemCustomerPortal` otorgan estos permisos por defecto (confirmado en
+  `PermissionCatalog.SystemRoleDefaults`), pero 5 tenían `IsCustomerPortal=true` (inferían
+  `CustomerPortal`-only) y uno (`support.open`) tenía `IsCustomerPortal=false` (infería
+  staff-only). Este sí era un bug activo: `ActorTypeRoleGuard.ValidateRolesForActorType`
+  corre en **cada** `AssignUserRolesHandler`/`CreateInvitation`, así que asignar el propio rol de
+  sistema "Employee" a un `TenantEmployee` real habría sido rechazado por el guard — encontrado
+  y corregido antes de que llegara a producción, con un test de regresión que instancia el
+  catálogo real (`ActorTypeRoleGuardTests.Real_system_role_defaults_are_assignable_to_their_own_actor_type`)
+  para que no vuelva a pasar desapercibido.
+
+Fix en ambos casos: `AllowedActorTypes` explícito (`[TenantEmployee, TenantAdmin, PlatformAdmin,
+CustomerPortal]`, refleja el uso real dual) + migración EF de datos
+(`FixCloudStorageFilePermissionsAllowCustomerPortal`,
+`FixCommunicationPermissionsAllowedActorTypes`). El resto de los ~140 permisos del catálogo se
+deja en inferencia — no hace falta anotar cada uno explícito, solo los que la auditoría contra
+`SystemRoleDefaults` demuestra que la inferencia contradice.
+
+## 41.3 Tests de aislamiento cross-actor (Fase 7.2)
+
+- **`ActorTypeAuthorizationFilterTests.cs`** (`TaxVision.BuildingBlocks.Tests`) — cubre la Capa 2
+  de forma exhaustiva y simétrica: cada actor type bloqueado tanto en un controller `StaffOnly`
+  como en uno `CustomerOnly`, más el caso `Service` (sin bypass, a diferencia de `PlatformAdmin`)
+  bloqueado de un endpoint que no lo declara y aceptado en uno que sí.
+- **`ActorTypeRoleGuardTests.cs`** (`TaxVision.Auth.Tests`) — cubre la Capa 3 con el catálogo real
+  (no permisos sintéticos): los 3 roles de sistema (`Tenant Admin`/`Employee`/`Customer Portal`)
+  deben poder asignarse a su propio actor type sin que el guard los rechace — el test que habría
+  atrapado el bug de §41.2 antes de que se escribiera el fix.
+- **Communication (Node)**: `hasPermission()` (`domain/shared/permissions.ts`) nunca había tenido
+  test propio pese a ser el único punto de enforcement de actor-type ahí — no hay un
+  `[AllowActorTypes]` declarativo en Node, cada handler llama `hasPermission(caller.actorType,
+  caller.permissions, required)` a mano. `tests/unit/actor-type-isolation.test.ts` prueba las 12
+  permisos staff-only (`ChatModerate`, `SettingsManage`, ...) rechazadas para `CustomerPortal` y
+  aceptadas para `TenantEmployee`, los 6 permisos compartidos (post-fix §41.2) aceptados para
+  ambos, y el bypass de `PlatformAdmin` documentado (no una regresión fail-open). Helper hermano
+  de `expectRejectedCrossTenant`: `tests/helpers/actor-type-isolation.ts`.
+
+## 41.4 Postman — casos negativos (Fase 7.3)
+
+Cada una de las 15 colecciones (`Postman_Collection/TaxVision_*.postman_collection.json`) tiene
+un folder nuevo **"Negative Cases — Actor Type"** con un request real: el mismo endpoint
+staff-only que ya documentaba el flujo correcto, llamado con `{{customerPortalAccessToken}}`
+(variable de environment ya existente, poblada por `Customer > Portal Access >
+LoginCustomerPortal`) y un test script que confirma `403`. No es exhaustivo endpoint por
+endpoint — eso ya lo cubre la fitness function de la Capa 4 a nivel de todo el catálogo de
+acciones — este caso documenta y ejercita el mecanismo real sobre HTTP, un ejemplo runnable por
+servicio.
+
+## 41.5 CI
+
+`deploy.yml` corre `dotnet test TaxVision.slnx` (con `actions/setup-dotnet@v4` leyendo la versión
+de `global.json`) como los primeros dos steps del job, antes de escribir `.env`/tocar
+Docker/producción — si algo rompe la fitness function de la Capa 4 (o cualquier otro test), el
+deploy se corta ahí. Decisión tomada con aprobación explícita del usuario en la Fase 6 del plan
+(antes de esto, `dotnet test` no corría en ningún paso de CI).
+
+## 41.6 Pendientes documentados
+
+- **Communication — camino de invitados** (`join-ticket.ts`, tokens cortos para gente sin cuenta
+  que entra a un meeting) no pasa por `verifyAccessToken` — queda auditado y documentado como gap
+  separado desde la Fase 5, no arreglado sin analizarlo primero.
+- **`StorageIdentity.cs`** (CloudStorage) y cualquier otro chequeo de autorización a nivel de
+  objeto/fila (qué archivo/registro puntual ve un actor) es un problema distinto — este mecanismo
+  resuelve "quién puede llamar a esta acción", no "qué fila puede ver dentro de esa acción".
+- **`Subscription`** nunca se migró a `[HasPermission]` (sigue 100% `[Authorize(Roles=...)]`) —
+  la Capa 2 se agregó igual, conviviendo con los roles existentes, por decisión explícita del plan
+  (Fase 4).

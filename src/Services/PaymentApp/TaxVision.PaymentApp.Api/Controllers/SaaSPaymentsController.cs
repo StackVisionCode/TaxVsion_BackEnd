@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.PaymentApp.Api.Authorization;
 using TaxVision.PaymentApp.Api.Common;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.RefundSaaSPayment;
 using TaxVision.PaymentApp.Application.SaaSPayments.Queries;
@@ -14,6 +14,7 @@ namespace TaxVision.PaymentApp.Api.Controllers;
 [ApiController]
 [Route("payments-app/saas-payments")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SaaSPaymentsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("{id:guid}")]

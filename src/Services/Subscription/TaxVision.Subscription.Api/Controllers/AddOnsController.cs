@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -12,9 +13,11 @@ using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
 
+/// <summary>GetCatalog es público ([AllowAnonymous], el filtro de actor type lo saltea); el resto es staff-only del tenant.</summary>
 [ApiController]
 [Route("addons")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class AddOnsController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Catálogo público de add-ons.</summary>

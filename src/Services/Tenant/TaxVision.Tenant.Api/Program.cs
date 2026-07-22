@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
@@ -16,7 +17,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
-using TaxVision.Tenant.Api.Authorization;
 using TaxVision.Tenant.Api.Common;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Infrastructure;
@@ -43,7 +43,8 @@ builder.Host.UseTaxVisionSerilog("tenant-service");
 builder.Services.AddSwaggerGen();
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 builder.Services.AddOpenApi();
 
 // 2) Services Shared plus Services's Infrastructure
@@ -58,6 +59,14 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-servic
 // Autorización por permiso ([HasPermission(...)], ver TenantBrandingController) — mismo mecanismo
 // que Postmaster/Signature/Notification/Customer. Coexiste con las policies nombradas de abajo:
 // PermissionPolicyProvider solo intercepta el prefijo "perm:", el resto cae al provider default.
+// BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
+// reemplaza a la copia local que tenía este servicio. TenantController.Create es un gap conocido
+// y deliberadamente diferido: el ticket de registro firmado (ver EffectiveTenantRegistrationResolver)
+// no lleva claim actor_type por diseño (es un "capability token" de un solo uso, no una identidad
+// persistente — mismo patrón que Auth0 Tickets API / OAuth authorization code), así que hoy solo
+// PlatformAdmin pasa el nuevo filtro; el flujo de self-registration vía ticket queda bloqueado hasta
+// que se agregue un mecanismo de opt-out explícito para este tipo de token (decisión pendiente,
+// post Fase 3).
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // Acepta el ticket firmado por Auth (ReserveSubdomainHandler, claim reg_slug) o un

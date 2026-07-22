@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
@@ -11,7 +12,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Serilog;
-using TaxVision.Notification.Api.Authorization;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Api.Jobs;
 using TaxVision.Notification.Application.Abstractions;
@@ -33,7 +33,8 @@ builder.Host.UseTaxVisionSerilog("notification-service");
 
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -44,6 +45,8 @@ builder.Services.AddNotificationInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
 // Autorización por permiso ([HasPermission("notification.*")]); los admins pasan siempre.
+// BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
+// reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // Cliente HTTP a CloudStorage (plantillas/layouts). El token del usuario se reenvía en contexto request;

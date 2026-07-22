@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +22,7 @@ namespace TaxVision.Customer.Api.Controllers;
 [ApiController]
 [Route("customers/imports")]
 [Authorize(Roles = "TenantAdmin")]
+[AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 {
     // ---------- POST /customers/imports ----------

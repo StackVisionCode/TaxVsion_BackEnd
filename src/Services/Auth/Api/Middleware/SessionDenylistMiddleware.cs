@@ -1,4 +1,4 @@
-using TaxVision.Auth.Api.Common;
+using BuildingBlocks.ActorTypeAuthorization;
 using TaxVision.Auth.Application.Abstractions;
 
 namespace TaxVision.Auth.Api.Middleware;

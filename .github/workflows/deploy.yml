@@ -30,6 +30,21 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------------------
+      # Gate de tests — corre ANTES de tocar secrets/docker/produccion. Si algo
+      # rompe (incluida la fitness function AllowActorTypes de ActorType Fase 6,
+      # que falla si un controller/accion nueva queda sin anotar) el deploy se
+      # corta aca, no se descubre despues en produccion. Usa el SDK fijado en
+      # global.json (setup-dotnet lo lee solo con global-json-file).
+      # ---------------------------------------------------------------------
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Run full test suite (TaxVision.slnx)
+        run: dotnet test TaxVision.slnx --nologo
+
+      # ---------------------------------------------------------------------
       # .env de produccion — se escribe en cada run a partir de los Secrets del
       # repo, nunca se versiona. Los nombres de variable son EXACTAMENTE los
       # que docker-compose.yml consume via ${VAR}.

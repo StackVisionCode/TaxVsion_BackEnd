@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Users;
@@ -44,17 +45,17 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
             new(JwtRegisteredClaimNames.Email, user.Email),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
             new("sid", sessionId.ToString()),
-            new("tenant_id", user.TenantId.ToString()),
-            new("actor_type", user.ActorType.ToString()),
+            new(ClaimNames.TenantId, user.TenantId.ToString()),
+            new(ClaimNames.ActorType, user.ActorType.ToString()),
             new("zoneinfo", effectiveTimeZoneId),
             new("perm_v", user.PermissionsVersion.ToString()),
         };
 
         if (user.CustomerId is Guid customerId)
-            claims.Add(new Claim("customer_id", customerId.ToString()));
+            claims.Add(new Claim(ClaimNames.CustomerId, customerId.ToString()));
 
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
-        claims.AddRange(permissions.Select(permission => new Claim("perm", permission)));
+        claims.AddRange(permissions.Select(permission => new Claim(ClaimNames.Permission, permission)));
         claims.AddRange(authMethods.Select(method => new Claim(JwtRegisteredClaimNames.Amr, method)));
 
         var token = new JwtSecurityToken(
@@ -92,11 +93,11 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         {
             new(JwtRegisteredClaimNames.Sub, subject.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
-            new("tenant_id", tenantId.ToString()),
-            new("actor_type", "Service"),
+            new(ClaimNames.TenantId, tenantId.ToString()),
+            new(ClaimNames.ActorType, "Service"),
             new("client_id", clientId),
         };
-        claims.AddRange(permissions.Select(permission => new Claim("perm", permission)));
+        claims.AddRange(permissions.Select(permission => new Claim(ClaimNames.Permission, permission)));
         claims.AddRange(scopes.Select(scope => new Claim("scope", scope)));
 
         var token = new JwtSecurityToken(

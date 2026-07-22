@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
@@ -27,7 +28,13 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     /// sigue acotado por su propio scope, sin importar lo que se mande aca.
     /// </summary>
     [HttpGet]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<FolderContentsResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Contents(
         [FromQuery] Guid? parentFolderId,
@@ -52,7 +59,13 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     /// que Contents; sin ninguno de los dos, staff ve el arbol completo del tenant.
     /// </summary>
     [HttpGet("tree")]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<IReadOnlyList<FolderTreeNode>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Tree(
         [FromQuery] OwnerType? ownerType,
@@ -79,7 +92,8 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     );
 
     [HttpPost]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateFolderRequest request, CancellationToken ct)
     {
@@ -107,7 +121,8 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     public sealed record RenameFolderRequest(string? NewName);
 
     [HttpPut("{folderId:guid}/rename")]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Rename(Guid folderId, RenameFolderRequest request, CancellationToken ct)
     {
@@ -124,7 +139,8 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     public sealed record MoveFolderRequest(Guid? NewParentFolderId);
 
     [HttpPut("{folderId:guid}/move")]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Move(Guid folderId, MoveFolderRequest request, CancellationToken ct)
     {
@@ -140,7 +156,8 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
 
     /// <summary>2026-07-20 — rechaza con 409 (Folder.NotEmpty) si tiene subfolders o archivos directos. Ver DeleteFolderHandler.</summary>
     [HttpDelete("{folderId:guid}")]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid folderId, CancellationToken ct)
     {

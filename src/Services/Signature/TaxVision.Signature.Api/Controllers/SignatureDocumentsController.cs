@@ -1,10 +1,10 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Authorization;
 using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Application.Documents.Commands.Validate;
 using Wolverine;
@@ -20,6 +20,7 @@ namespace TaxVision.Signature.Api.Controllers;
 [ApiController]
 [Route("signature/documents")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SignatureDocumentsController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Tamaño máximo aceptado en el body (25 MB — igual que el validator).</summary>

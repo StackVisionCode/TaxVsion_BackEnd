@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
@@ -7,7 +8,6 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using TaxVision.Customer.Api.Authorization;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Customers.Commands.Activate;
@@ -48,6 +48,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ---------- POST /customers ----------
     [HttpPost]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateCustomerRequest body, CancellationToken ct)
@@ -87,6 +88,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ---------- GET /customers ----------
     [HttpGet]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<PagedResult<CustomerSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<CustomerSummaryResponse>>> Search(
         [FromQuery] string? term = null,
@@ -109,6 +111,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ---------- GET /customers/check-exists ----------
     [HttpGet("check-exists")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerExistsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CheckExists(
@@ -133,6 +136,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ---------- GET /customers/{id} ----------
     [HttpGet("{id:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -152,6 +156,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ---------- PATCH /customers/{id} ----------
     [HttpPatch("{id:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCustomerRequest body, CancellationToken ct)
     {
@@ -194,6 +199,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/addresses")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<AddressResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddAddress(Guid id, [FromBody] AddAddressRequest body, CancellationToken ct)
     {
@@ -223,6 +229,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPatch("{id:guid}/addresses/{addressId:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateAddress(
@@ -260,6 +267,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpDelete("{id:guid}/addresses/{addressId:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveAddress(Guid id, Guid addressId, CancellationToken ct)
@@ -280,6 +288,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/contact-points")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<ContactPointResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddContactPoint(
         Guid id,
@@ -301,6 +310,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPatch("{id:guid}/contact-points/{contactPointId:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateContactPoint(
@@ -334,6 +344,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpDelete("{id:guid}/contact-points/{contactPointId:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveContactPoint(Guid id, Guid contactPointId, CancellationToken ct)
@@ -357,6 +368,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/relations")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<RelationResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddRelation(Guid id, [FromBody] AddRelationRequest body, CancellationToken ct)
     {
@@ -394,6 +406,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPatch("{id:guid}/relations/{relationId:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateRelation(
@@ -439,6 +452,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpDelete("{id:guid}/relations/{relationId:guid}")]
     [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveRelation(Guid id, Guid relationId, CancellationToken ct)
@@ -459,6 +473,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/archive")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
@@ -476,6 +491,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/reactivate")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -495,6 +511,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/deactivate")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -514,6 +531,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/activate")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -535,6 +553,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPut("{id:guid}/preparer")]
     [HasPermission(CustomersPermissions.PreparerManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -561,6 +580,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpDelete("{id:guid}/preparer")]
     [HasPermission(CustomersPermissions.PreparerManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -582,6 +602,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("bulk/{action}")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<BulkStatusActionResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> BulkStatusChange(
@@ -615,6 +636,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/portal-invitations")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<RequestPortalInvitationResponse>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -637,6 +659,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPut("{id:guid}/fiscal-profile")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerFiscalProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -676,6 +699,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // scraping aunque el actor tenga el permiso.
     [HttpGet("{id:guid}/fiscal-profile/tax-identifier")]
     [HasPermission(CustomersPermissions.FiscalProfileReveal)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [EnableRateLimiting("fiscal-reveal")]
     [ProducesResponseType<RevealedTaxIdentifierResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -703,6 +727,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     [HttpPut("{id:guid}/relations/{relationId:guid}/fiscal-profile")]
     [Authorize(Roles = "TenantAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<RelationFiscalProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]

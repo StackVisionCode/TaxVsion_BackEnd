@@ -8,7 +8,9 @@ import type { UserDirectoryEntrySnapshot, UserDirectoryRepository } from '../../
  * portal y guest. `resolveActorType` en si mismo solo consulta
  * UserDirectoryRepository (fuente unica poblada para TODO actor con email,
  * incluidos CustomerPortal — ver docblock del archivo), asi que estos tests
- * cubren esa unica fuente en sus 4 variantes + el fallback documentado.
+ * cubren esa unica fuente en sus 4 variantes + el caso fail-closed (ActorType
+ * Fase 5 del plan de autorizacion: ausencia de entrada = `null`, no un
+ * fallback adivinado).
  */
 function entry(overrides: Partial<UserDirectoryEntrySnapshot>): UserDirectoryEntrySnapshot {
   return {
@@ -53,8 +55,8 @@ describe('resolveActorType', () => {
     await expect(resolveActorType(directory, 'guest-1')).resolves.toBe('Guest');
   });
 
-  it('falls back to TenantEmployee when the user has no directory entry yet (race with auth-consumers hydration)', async () => {
+  it('resolves to null (fail-closed) when the user has no directory entry yet (race with auth-consumers hydration)', async () => {
     const directory = fakeDirectory(null);
-    await expect(resolveActorType(directory, 'unknown-user')).resolves.toBe('TenantEmployee');
+    await expect(resolveActorType(directory, 'unknown-user')).resolves.toBeNull();
   });
 });

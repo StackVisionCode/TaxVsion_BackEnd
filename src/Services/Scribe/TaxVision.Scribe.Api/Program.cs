@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -11,7 +12,6 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
-using TaxVision.Scribe.Api.Authorization;
 using TaxVision.Scribe.Application;
 using TaxVision.Scribe.Infrastructure;
 using TaxVision.Scribe.Infrastructure.Persistence;
@@ -32,7 +32,8 @@ builder.Host.UseTaxVisionSerilog("scribe-service");
 // ---------- MVC + JSON ----------
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -44,6 +45,8 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "scribe-service");
 
 // Autorización por permiso ([HasPermission("scribe.*")]); los admins pasan siempre.
+// BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
+// reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // Sube y publica los layouts base system-base/tenant-base (Fase 4.6) si todavía no existen.

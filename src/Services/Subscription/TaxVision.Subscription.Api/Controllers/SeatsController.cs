@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
@@ -15,9 +16,11 @@ using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
 
+/// <summary>Seats del tenant (staff propio de la firma) — nunca un cliente final.</summary>
 [ApiController]
 [Route("seats")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SeatsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]

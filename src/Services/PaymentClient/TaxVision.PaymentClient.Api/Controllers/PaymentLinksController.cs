@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.PaymentClient.Api.Authorization;
 using TaxVision.PaymentClient.Api.Common;
 using TaxVision.PaymentClient.Application.PaymentLinks.Commands.CreatePaymentLink;
 using TaxVision.PaymentClient.Application.PaymentLinks.Commands.RevokePaymentLink;
@@ -17,6 +17,7 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 [ApiController]
 [Route("payments-client/payment-links")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreatePaymentLinkRequest(

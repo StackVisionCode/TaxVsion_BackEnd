@@ -1,10 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Scribe.Api.Authorization;
-using TaxVision.Scribe.Api.Common;
 using TaxVision.Scribe.Application.Templates;
 using TaxVision.Scribe.Application.Templates.Commands;
 using TaxVision.Scribe.Application.Templates.Validation;
@@ -17,6 +16,7 @@ namespace TaxVision.Scribe.Api.Controllers;
 [ApiController]
 [Route("scribe/templates")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEmailTemplateRequest(

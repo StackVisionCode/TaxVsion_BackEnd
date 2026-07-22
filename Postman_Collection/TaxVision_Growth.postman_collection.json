@@ -1,551 +1,860 @@
 {
-  "info": {
-    "_postman_id": "7c1d4e2a-9f3b-4a6c-8e21-5b0a7d3c6f4e",
-    "name": "TaxVision - Growth",
-    "description": "Colección de pruebas del microservicio Growth (bounded contexts Codes + Referrals). Usa el environment TaxVisionBackEnd. Los endpoints bajo /growth/* (Codes, Referrals) están pensados para ir vía Gateway (variable UrlBase, p.ej. http://localhost:5047). Los endpoints bajo /internal/* (InternalCodes, InternalReferrals) son M2M y por diseño NO están expuestos por el Gateway (el controller lo dice explícitamente) — se llaman directo contra el contenedor growth-api usando la variable GrowthDirectBase (p.ej. http://localhost:5410 en dev local) con un JWT de servicio (actor_type=Service, aud=taxvision-growth, claim scope con el growth.*.* correspondiente). Los endpoints humanos (Codes, Referrals) requieren un JWT con los claims perm correspondientes en accessToken.\n\nESTADO VERIFICADO EN VIVO (2026-07-20, contenedor real SQL Server + RabbitMQ):\n- Codes: CreateCode -> GetCode -> ActivateCode encadenan real (codeToken dinamico via prerequest script). RevokeCode se movio a una carpeta separada al FINAL de la coleccion para no revocar el codigo antes de que Internal Codes lo use (ver nota de esa carpeta).\n- Internal Codes (M2M): CreateQuote -> ReserveCode -> CommitReservation -> CompensateRedemption encadenan real contra un codigo Active (descuento calculado correctamente: 5000 gross, 10% -> 4500 net). redemptionId se captura del response de CommitReservation.\n- Referrals: CreateAttribution funciona con un ReferralProgram + ReferralCode reales -- PERO no existe NINGUN endpoint HTTP para crear/activar un ReferralProgram ni para emitir un ReferralCode (CreateTenantReferralProgramCommand/ActivateTenantReferralProgramCommand/IssueTenantReferralCodeCommand existen en Application pero ningun controller los expone). Se sembraron directo en SQL (programId=a1a2a3a4-0000-0000-0000-000000000001, ScopeType=Platform, referralCode=REF-POSTMAN con su hash HMAC-SHA256 real usando el pepper GROWTH_REFERRAL_CODE_TOKEN_PEPPER) -- ver script comentado en la request CreateAttribution. QualifyReferral tambien funciona real (decision Qualified + rewardCaseId real) contra la atribucion creada.\n- ConfirmGrant/ConfirmClawback: RESUELTO (investigado 2026-07-20 con Extended Events de SQL Server capturando los parametros reales de cada query). El 404 ReferralReward.NotFound INICIAL era un error de seeding propio, no un bug de Growth: el ReferralRewardAttempt sembrado a mano quedo con TenantId del tenant REFEREE (91f000d4...) por copiar mal la variable, cuando el ReferralRewardCase (y el Grant en si) pertenece al tenant REFERRER (b2b2b2b2...) -- la query de ReferralRewardCaseRepository.GetByGrantIdAsync SI encontraba el RewardCase (row_count=1, confirmado por XE), pero la de ReferralRewardAttemptRepository fallaba (row_count=0) por ese tenant mal puesto. Corregido el seed -> ConfirmGrant da 204, RewardCase queda en Status=Granted. B-16 sigue arreglado, no hubo relacion.\n\nB-16 (tenant-context perdido en comandos locales de Wolverine) esta arreglado -- ver documents/architecture/growth/audit/Growth_Code_Bug_Audit.md seccion B-16 (GrowthLocalCommandTenantMiddleware + Envelope.TenantId).",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "item": [
-    {
-      "name": "Codes",
-      "item": [
-        {
-          "name": "CreateCode",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Token dinamico (8-200 chars) para que CreateCode se pueda correr repetidas\r",
-                  "// veces sin chocar contra el indice unico de codeToken hasheado.\r",
-                  "pm.environment.set('growthCodeToken', 'PM' + Date.now());"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-                  "\r",
-                  "const body = pm.response.json();\r",
-                  "if (body && body.codeDefinitionId) {\r",
-                  "    pm.environment.set('growthCodeDefinitionId', body.codeDefinitionId);\r",
-                  "    console.log('growthCodeDefinitionId:', body.codeDefinitionId);\r",
-                  "}\r",
-                  "pm.test('Created in Draft status', () => pm.expect(body.status).to.eql('Draft'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ownerScope\": \"Tenant\",\n  \"tenantScopeId\": \"{{tenantId}}\",\n  \"name\": \"Postman 20 percent off\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2000,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1000,\n  \"maxRedemptionsPerTenant\": 1,\n  \"maxRedemptionsPerSubject\": 1,\n  \"scopes\": null\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/growth/codes",
-              "host": ["{{UrlBase}}"],
-              "path": ["growth", "codes"]
-            },
-            "description": "Crea una CodeDefinition en estado Draft (percentageBasisPoints en basis points, 10000=100%). ownerScope=Tenant requiere tenantScopeId == tenantId del caller (no puede ser el Platform tenant). Requiere codes.code.manage. codeToken generado dinamicamente (prerequest script) para poder correr esta request repetidas veces sin chocar contra el indice unico."
-          },
-          "response": []
-        },
-        {
-          "name": "GetCode",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}",
-              "host": ["{{UrlBase}}"],
-              "path": ["growth", "codes", "{{growthCodeDefinitionId}}"]
-            },
-            "description": "Detalle de una CodeDefinition (reglas, scopes, estado). Requiere codes.code.read. Único endpoint de LECTURA público de Growth."
-          },
-          "response": []
-        },
-        {
-          "name": "ActivateCode",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-                  "pm.test('Status is Active', () => pm.expect(pm.response.json().status).to.eql('Active'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/activate",
-              "host": ["{{UrlBase}}"],
-              "path": ["growth", "codes", "{{growthCodeDefinitionId}}", "activate"]
-            },
-            "description": "Draft -> Active. Requiere codes.code.activate. Deja el codigo Active -- la carpeta 'Internal Codes' lo usa a continuacion via {{growthCodeToken}}."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Internal Codes (M2M, sin Gateway)",
-      "item": [
-        {
-          "name": "CreateQuote",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const body = pm.response.json();\r",
-                  "if (body && body.quoteId) {\r",
-                  "    pm.environment.set('growthQuoteId', body.quoteId);\r",
-                  "    console.log('growthQuoteId:', body.quoteId);\r",
-                  "}\r"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"subjectType\": \"Tenant\",\n  \"subjectId\": \"{{tenantId}}\",\n  \"offerOwner\": \"Subscription\",\n  \"offerId\": \"plan-pro-monthly\",\n  \"offerVersion\": \"1\",\n  \"grossAmountCents\": 5000,\n  \"currency\": \"USD\",\n  \"snapshotHash\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"ttlSeconds\": 900,\n  \"scopeTargets\": null\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/codes/quotes",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "codes", "quotes"]
-            },
-            "description": "M2M, NO pasa por Gateway (llamar directo al contenedor via GrowthDirectBase). Requiere JWT de servicio con actor_type=Service, aud=taxvision-growth, scope growth.codes.quote. Rate limited (politica growth-code-quote, 1000/min/IP). Usa {{growthCodeToken}} (seteado por el prerequest script de Codes/CreateCode) -- correr la carpeta Codes completa (Create+Get+Activate) antes para que el codigo exista y este Active. Verificado en vivo: 200 con el descuento calculado correctamente (5000 gross, 10% -> 500 discount, 4500 net)."
-          },
-          "response": []
-        },
-        {
-          "name": "ReserveCode",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// paymentId compartido entre Reserve/Commit/Cancel -- deben coincidir, no puede\r",
-                  "// ser un {{$guid}} independiente en cada request (rompia la validacion de pago).\r",
-                  "pm.environment.set('growthPaymentId', pm.variables.replaceIn('{{$guid}}'));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-                  "const body = pm.response.json();\r",
-                  "if (body && body.reservationId) {\r",
-                  "    pm.environment.set('growthReservationId', body.reservationId);\r",
-                  "    console.log('growthReservationId:', body.reservationId);\r",
-                  "}\r"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"quoteId\": \"{{growthQuoteId}}\",\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentId\": \"{{growthPaymentId}}\",\n  \"ttlSeconds\": 900\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/codes/reservations",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "codes", "reservations"]
-            },
-            "description": "M2M, NO pasa por Gateway. Requiere scope growth.codes.reserve. Verificado en vivo: 200. paymentId generado en prerequest script ({{growthPaymentId}}) y reusado por Commit/Cancel para que coincida con esta misma reserva."
-          },
-          "response": []
-        },
-        {
-          "name": "CommitReservation",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-                  "const body = pm.response.json();\r",
-                  "if (body && body.redemptionId) {\r",
-                  "    pm.environment.set('growthRedemptionId', body.redemptionId);\r",
-                  "    // discountAmountCents es dinamico (depende de percentageBasisPoints de\r",
-                  "    // Codes/CreateCode) -- capturado aca para que CompensateRedemption pueda\r",
-                  "    // mandar la reversion COMPLETA exacta que RestoreAvailability exige.\r",
-                  "    pm.environment.set('growthRedemptionDiscountCents', body.discountAmountCents);\r",
-                  "    console.log('growthRedemptionId:', body.redemptionId, '- discount:', body.discountAmountCents);\r",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentId\": \"{{growthPaymentId}}\",\n  \"snapshotHash\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"sourceEventId\": \"{{$guid}}\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/codes/reservations/{{growthReservationId}}/commit",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "codes", "reservations", "{{growthReservationId}}", "commit"]
-            },
-            "description": "Reserved -> Committed (produce el CodeRedemption). Requiere scope growth.codes.commit. Verificado en vivo: 200, redemptionId capturado en {{growthRedemptionId}} para CompensateRedemption. NOTA: es una transicion TERMINAL de la reserva -- CancelReservation/ExpireReservation ya no aplicaran sobre esta misma {{growthReservationId}} despues de correr esto (son ramas alternativas a Commit, no un paso siguiente; para probarlas hay que generar una reserva nueva con ReserveCode y NO correr Commit sobre esa)."
-          },
-          "response": []
-        },
-        {
-          "name": "CancelReservation (rama alternativa a Commit)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentId\": \"{{growthPaymentId}}\",\n  \"reason\": \"tarjeta declinada\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/codes/reservations/{{growthReservationId}}/cancel",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "codes", "reservations", "{{growthReservationId}}", "cancel"]
-            },
-            "description": "Reserved -> Cancelled (libera disponibilidad). Requiere scope growth.codes.cancel. RAMA ALTERNATIVA a CommitReservation, no un paso posterior: una reserva solo puede terminar en Committed, Cancelled o Expired, nunca mas de uno. Si CommitReservation ya corrio sobre {{growthReservationId}} en esta misma corrida, esta request va a fallar (la reserva ya no esta en Reserved) -- eso es esperado, no un bug. Para probarla de verdad, correr ReserveCode de nuevo (nueva reserva) y llamar esta request en vez de CommitReservation."
-          },
-          "response": []
-        },
-        {
-          "name": "ExpireReservation (rama alternativa a Commit)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/codes/reservations/{{growthReservationId}}/expire",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "codes", "reservations", "{{growthReservationId}}", "expire"]
-            },
-            "description": "Reserved -> Expired (job de expiracion, TTL vencido). Requiere scope growth.codes.cancel (mismo scope que Cancel). RAMA ALTERNATIVA a CommitReservation/CancelReservation, mismo motivo que esa -- ver su descripcion."
-          },
-          "response": []
-        },
-        {
-          "name": "CompensateRedemption",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"type\": \"RestoreAvailability\",\n  \"adjustmentAmountCents\": {{growthRedemptionDiscountCents}},\n  \"currency\": \"USD\",\n  \"reason\": \"refund parcial\",\n  \"sourceEventId\": \"{{$guid}}\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/codes/redemptions/{{growthRedemptionId}}/compensate",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "codes", "redemptions", "{{growthRedemptionId}}", "compensate"]
-            },
-            "description": "Registra un ajuste (refund/chargeback) sobre un CodeRedemption ya comprometido. type=RestoreAvailability|RevokeBenefit (ver B-03 del audit: RevokeBenefit no exige reversion completa del descuento, hueco pendiente -- RestoreAvailability SI la exige). Requiere scope growth.codes.compensate. adjustmentAmountCents se captura dinamicamente ({{growthRedemptionDiscountCents}}, seteado por el test-script de CommitReservation) porque RestoreAvailability exige la reversion EXACTA del discountAmountCents original -- un valor fijo se habia roto antes al cambiar percentageBasisPoints en Codes/CreateCode (20% de 5000 = 1000, no 500). growthRedemptionId tambien se captura automaticamente del response de CommitReservation."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Referrals",
-      "item": [
-        {
-          "name": "IssueCode",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Idempotency-Key fija (no {{$guid}}): reusarla es lo que permite pedir\r",
-                  "// el mismo codigo de vuelta sin chocar con ReferralCode.ActiveOwnerExists.\r",
-                  "if (!pm.environment.get('growthIssueCodeIdempotencyKey')) {\r",
-                  "    pm.environment.set('growthIssueCodeIdempotencyKey', 'postman-issue-' + Date.now());\r",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-                  "const body = pm.response.json();\r",
-                  "if (body && body.referralCode) {\r",
-                  "    console.log('Tu codigo de referido:', body.referralCode, '- link: https://app.taxvision.com/signup?ref=' + body.referralCode);\r",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "{{growthIssueCodeIdempotencyKey}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"programId\": \"{{growthReferralProgramId}}\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/growth/referrals/codes",
-              "host": ["{{UrlBase}}"],
-              "path": ["growth", "referrals", "codes"]
-            },
-            "description": "Fase 1 del diseno de Referrals: el tenant pide su propio codigo (get-or-create idempotente). Requiere referrals.own.read (se reusa el permiso existente -- agregar uno nuevo tipo referrals.code.issue hubiera requerido tocar el catalogo de permisos de Auth, fuera de alcance sin pedir permiso). El texto plano del codigo se recalcula en el controller (determinista sobre ProgramId+TenantId+IdempotencyKey) y nunca queda persistido en la respuesta idempotente guardada -- por eso es seguro devolverlo de nuevo si el tenant repite la misma Idempotency-Key. Requiere que exista un ReferralProgram con ScopeType=Platform y FlowType=TenantToTenant (growthReferralProgramId ya apunta al sembrado en SQL de esta coleccion)."
-          },
-          "response": []
-        },
-        {
-          "name": "CreateAttribution",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Solo un tenant puede tener UNA atribucion activa por programa/referido: correr\r",
-                  "// esta request mas de una vez con el mismo {{accessToken}} da 409 a proposito\r",
-                  "// (Persistence.UniqueConstraint) -- es el comportamiento correcto, no un fallo.\r",
-                  "pm.test('Status code is 200 or 409 (ya atribuido)', () => pm.expect([200, 409]).to.include(pm.response.code));\r",
-                  "\r",
-                  "if (pm.response.code === 200) {\r",
-                  "    const body = pm.response.json();\r",
-                  "    if (body && body.attributionId) {\r",
-                  "        pm.environment.set('growthAttributionId', body.attributionId);\r",
-                  "        console.log('growthAttributionId:', body.attributionId);\r",
-                  "    }\r",
-                  "    // Fase 3 (opcion B, 2026-07-20): refereeBenefit viene poblado si el programa\r",
-                  "    // tiene referee-benefit configurado -- un CodeDefinition BenefitGift ya activo\r",
-                  "    // para el referido. Null si el programa no lo configura (opcion A, backward\r",
-                  "    // compatible) o si la emision/activacion en Codes fallo (best-effort, no\r",
-                  "    // bloquea la atribucion ya confirmada).\r",
-                  "    if (body && body.refereeBenefit) {\r",
-                  "        pm.environment.set('growthRefereeBenefitCodeDefinitionId', body.refereeBenefit.codeDefinitionId);\r",
-                  "        console.log('refereeBenefit.codeDefinitionId:', body.refereeBenefit.codeDefinitionId);\r",
-                  "        console.log('refereeBenefit.code (plaintext):', body.refereeBenefit.code);\r",
-                  "        console.log('refereeBenefit.expiresAtUtc:', body.refereeBenefit.expiresAtUtc);\r",
-                  "    } else {\r",
-                  "        console.log('refereeBenefit: null (sin beneficio configurado, o emision fallida best-effort).');\r",
-                  "    }\r",
-                  "} else {\r",
-                  "    console.log('409 esperado: ya existia una atribucion activa para este tenant+programa; growthAttributionId conserva el valor de la corrida anterior.');\r",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"programId\": \"{{growthReferralProgramId}}\",\n  \"referralCode\": \"REF-POSTMAN\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/growth/referrals/attributions",
-              "host": ["{{UrlBase}}"],
-              "path": ["growth", "referrals", "attributions"]
-            },
-            "description": "Ingreso self-service: el referee sale del JWT (tenantId del caller), nunca del body. Sin permiso explicito requerido (solo [Authorize] de clase — ver B-07 del audit). Rate limited: politica growth-referral-attribution, 30 req/min particionado por tenant+IP (B-02, verificado en vivo) -- correr esta request 31+ veces seguidas en la misma ventana de 1 min debe dar 429.\n\nNo existe NINGUN endpoint HTTP para crear un ReferralProgram ni para emitir un ReferralCode -- growthReferralProgramId apunta a un programa sembrado directo en SQL (ver seed en la descripcion del top de la coleccion). referralCode=REF-POSTMAN hashea (HMAC-SHA256 con GROWTH_REFERRAL_CODE_TOKEN_PEPPER) a 8deaa554c5f77a5ea679f877d7c99f36f204a04d43f0a89f1cfb24edf66eb2be, que es el CodeHash sembrado. El {{accessToken}} usado debe ser de un tenant DISTINTO al dueno del codigo (b2b2b2b2-0000-0000-0000-000000000001 en el seed) o falla con ReferralAttribution.SelfReferral. Verificado en vivo: 200, status Active.\n\nFASE 3 (opcion B, 2026-07-20 -- referido tambien recibe descuento): la respuesta 200 ahora incluye un campo opcional `refereeBenefit`. Si el ReferralProgram tiene terminos de referee-benefit configurados en su Policy (RefereeBenefitType/Percentage|FixedAmount + expiracion), el controller (unico lugar que conoce Referrals Y Codes) orquesta CreateCodeDefinitionCommand + ActivateCodeCommand para emitir y activar automaticamente un CodeDefinition Kind=BenefitGift, MaxRedemptions=1, ya activo, a nombre del tenant referido, y devuelve su codigo en texto plano una sola vez (refereeBenefit.code) junto con codeDefinitionId, displayPrefix/lastFour y expiresAtUtc. Es best-effort y no bloqueante: si la emision o activacion en Codes falla, refereeBenefit viene null pero la atribucion igual se confirma con 200 (nunca se revierte por un fallo secundario). Tambien viene null si el programa NO tiene referee-benefit configurado (opcion A, comportamiento anterior, 100% backward compatible). Reintentable: reenviar la misma Idempotency-Key reintenta solo la parte de emision del beneficio si fallo antes (usa sufijos `:create`/`:activate` propios, la atribucion en si ya es idempotente y no se duplica). Verificado en vivo end-to-end el 2026-07-21: 200 con refereeBenefit poblado (CodeDefinition real en codes.CodeDefinitions, Kind=BenefitGift, Status=Active, Benefit_Type=Percentage, BenefitBasisPoints=1500 coincidiendo con el 15% configurado en el programa de prueba) y, por separado, 200 con refereeBenefit=null al probar contra un programa sin el beneficio configurado."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Internal Referrals (M2M, sin Gateway)",
-      "item": [
-        {
-          "name": "QualifyReferral",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-                  "const body = pm.response.json();\r",
-                  "if (body && body.rewardCaseId) {\r",
-                  "    pm.environment.set('growthRewardCaseId', body.rewardCaseId);\r",
-                  "    console.log('rewardCaseId:', body.rewardCaseId, '- decision:', body.decision);\r",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"attributionId\": \"{{growthAttributionId}}\",\n  \"qualifyingEventId\": \"{{$guid}}\",\n  \"paymentId\": \"{{$guid}}\",\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentAmountCents\": 5000,\n  \"paymentCurrency\": \"USD\",\n  \"isFirstSuccessfulPayment\": true,\n  \"paymentSucceededAtUtc\": \"2027-01-01T00:00:00Z\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/referrals/qualifications",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "referrals", "qualifications"]
-            },
-            "description": "Decision idempotente de calificacion sobre un evento financiero (paymentId). Requiere scope growth.referrals.qualify. M2M, NO pasa por Gateway. paymentSucceededAtUtc debe ser POSTERIOR al momento en que se creo la atribucion (CreateAttribution) o falla con PaymentPredatesAttribution -- 2027-01-01 es un valor fijo comodo mientras el reloj del sistema siga en 2026. Verificado en vivo: 200, decision=Qualified, rewardCaseId real devuelto y capturado en {{growthRewardCaseId}}."
-          },
-          "response": []
-        },
-        {
-          "name": "ConfirmGrant",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"attemptId\": \"{{growthRewardAttemptId}}\",\n  \"materializedBenefitReference\": \"sub-credit-postman-001\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/referrals/grants/{{growthGrantId}}/confirm",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "referrals", "grants", "{{growthGrantId}}", "confirm"]
-            },
-            "description": "Confirma que el beneficio del reward ya se materializo del lado del sistema consumidor (p.ej. credito aplicado en Subscription). Requiere scope growth.referrals.reward.confirm.\n\nNo existe ningun endpoint HTTP para BeginReferralRewardGrant (crea el ReferralRewardAttempt que este endpoint necesita) -- hay que sembrar manualmente un ReferralRewardCase en PendingGrant + un ReferralRewardAttempt en SQL (mismo RewardCaseId que devuelve QualifyReferral). OJO: el ReferralRewardAttempt debe llevar el TenantId del tenant REFERRER (dueno del ReferralCode, NO el referee que crea la atribucion) -- confundir estos dos tenants produce 404 ReferralReward.NotFound (investigado con Extended Events de SQL Server: la query de ReferralRewardCaseRepository SI encontraba la fila, la de ReferralRewardAttemptRepository no, por tenant equivocado en el seed). Con el tenant correcto: verificado en vivo, 204, el RewardCase queda en Status=Granted. growthGrantId/growthRewardAttemptId no se auto-completan -- setealos a mano con los valores del seed."
-          },
-          "response": []
-        },
-        {
-          "name": "ConfirmClawback",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{serviceAccessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"attemptId\": \"{{growthRewardAttemptId}}\",\n  \"reversalReference\": \"sub-credit-reversal-postman-001\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{GrowthDirectBase}}/internal/referrals/grants/{{growthGrantId}}/clawbacks/confirm",
-              "host": ["{{GrowthDirectBase}}"],
-              "path": ["internal", "referrals", "grants", "{{growthGrantId}}", "clawbacks", "confirm"]
-            },
-            "description": "Confirma que la reversion del beneficio ya se aplico del lado del sistema consumidor. Requiere scope growth.referrals.reward.confirm. Mismo prerequisito de seeding que ConfirmGrant (ver esa descripcion): el RewardCase debe estar en ClawbackPending y el Attempt (Operation=Clawback) debe tener el TenantId del REFERRER. Verificado en vivo: 204, el RewardCase queda en Status=Reversed."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Cleanup (opcional, corre al final)",
-      "item": [
-        {
-          "name": "RevokeCode",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-                  "pm.test('Status is Revoked', () => pm.expect(pm.response.json().status).to.eql('Revoked'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
-              { "key": "Idempotency-Key", "value": "postman-{{$guid}}", "type": "text" }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/revoke",
-              "host": ["{{UrlBase}}"],
-              "path": ["growth", "codes", "{{growthCodeDefinitionId}}", "revoke"]
-            },
-            "description": "Active/Suspended -> Revoked (transicion terminal). Requiere codes.code.revoke. Movida al FINAL de la coleccion a propósito: si corriera antes que 'Internal Codes', revocaría el mismo código que esa carpeta usa via {{growthCodeToken}}, y CreateQuote fallaría con 422 (código no Active). Verificado en vivo: 200, status Revoked."
-          },
-          "response": []
-        }
-      ]
-    }
-  ]
+	"info": {
+		"_postman_id": "7c1d4e2a-9f3b-4a6c-8e21-5b0a7d3c6f4e",
+		"name": "TaxVision - Growth",
+		"description": "Colección de pruebas del microservicio Growth (bounded contexts Codes + Referrals). Usa el environment TaxVisionBackEnd. Los endpoints bajo /growth/* (Codes, Referrals) están pensados para ir vía Gateway (variable UrlBase, p.ej. http://localhost:5047). Los endpoints bajo /internal/* (InternalCodes, InternalReferrals) son M2M y por diseño NO están expuestos por el Gateway (el controller lo dice explícitamente) — se llaman directo contra el contenedor growth-api usando la variable GrowthDirectBase (p.ej. http://localhost:5410 en dev local) con un JWT de servicio (actor_type=Service, aud=taxvision-growth, claim scope con el growth.*.* correspondiente). Los endpoints humanos (Codes, Referrals) requieren un JWT con los claims perm correspondientes en accessToken.\n\nESTADO VERIFICADO EN VIVO (2026-07-20, contenedor real SQL Server + RabbitMQ):\n- Codes: CreateCode -> GetCode -> ActivateCode encadenan real (codeToken dinamico via prerequest script). RevokeCode se movio a una carpeta separada al FINAL de la coleccion para no revocar el codigo antes de que Internal Codes lo use (ver nota de esa carpeta).\n- Internal Codes (M2M): CreateQuote -> ReserveCode -> CommitReservation -> CompensateRedemption encadenan real contra un codigo Active (descuento calculado correctamente: 5000 gross, 10% -> 4500 net). redemptionId se captura del response de CommitReservation.\n- Referrals: CreateAttribution funciona con un ReferralProgram + ReferralCode reales -- PERO no existe NINGUN endpoint HTTP para crear/activar un ReferralProgram ni para emitir un ReferralCode (CreateTenantReferralProgramCommand/ActivateTenantReferralProgramCommand/IssueTenantReferralCodeCommand existen en Application pero ningun controller los expone). Se sembraron directo en SQL (programId=a1a2a3a4-0000-0000-0000-000000000001, ScopeType=Platform, referralCode=REF-POSTMAN con su hash HMAC-SHA256 real usando el pepper GROWTH_REFERRAL_CODE_TOKEN_PEPPER) -- ver script comentado en la request CreateAttribution. QualifyReferral tambien funciona real (decision Qualified + rewardCaseId real) contra la atribucion creada.\n- ConfirmGrant/ConfirmClawback: RESUELTO (investigado 2026-07-20 con Extended Events de SQL Server capturando los parametros reales de cada query). El 404 ReferralReward.NotFound INICIAL era un error de seeding propio, no un bug de Growth: el ReferralRewardAttempt sembrado a mano quedo con TenantId del tenant REFEREE (91f000d4...) por copiar mal la variable, cuando el ReferralRewardCase (y el Grant en si) pertenece al tenant REFERRER (b2b2b2b2...) -- la query de ReferralRewardCaseRepository.GetByGrantIdAsync SI encontraba el RewardCase (row_count=1, confirmado por XE), pero la de ReferralRewardAttemptRepository fallaba (row_count=0) por ese tenant mal puesto. Corregido el seed -> ConfirmGrant da 204, RewardCase queda en Status=Granted. B-16 sigue arreglado, no hubo relacion.\n\nB-16 (tenant-context perdido en comandos locales de Wolverine) esta arreglado -- ver documents/architecture/growth/audit/Growth_Code_Bug_Audit.md seccion B-16 (GrowthLocalCommandTenantMiddleware + Envelope.TenantId).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Codes",
+			"item": [
+				{
+					"name": "CreateCode",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Token dinamico (8-200 chars) para que CreateCode se pueda correr repetidas\r",
+									"// veces sin chocar contra el indice unico de codeToken hasheado.\r",
+									"pm.environment.set('growthCodeToken', 'PM' + Date.now());"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"\r",
+									"const body = pm.response.json();\r",
+									"if (body && body.codeDefinitionId) {\r",
+									"    pm.environment.set('growthCodeDefinitionId', body.codeDefinitionId);\r",
+									"    console.log('growthCodeDefinitionId:', body.codeDefinitionId);\r",
+									"}\r",
+									"pm.test('Created in Draft status', () => pm.expect(body.status).to.eql('Draft'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ownerScope\": \"Tenant\",\n  \"tenantScopeId\": \"{{tenantId}}\",\n  \"name\": \"Postman 20 percent off\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2000,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1000,\n  \"maxRedemptionsPerTenant\": 1,\n  \"maxRedemptionsPerSubject\": 1,\n  \"scopes\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes"
+							]
+						},
+						"description": "Crea una CodeDefinition en estado Draft (percentageBasisPoints en basis points, 10000=100%). ownerScope=Tenant requiere tenantScopeId == tenantId del caller (no puede ser el Platform tenant). Requiere codes.code.manage. codeToken generado dinamicamente (prerequest script) para poder correr esta request repetidas veces sin chocar contra el indice unico."
+					},
+					"response": []
+				},
+				{
+					"name": "GetCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}"
+							]
+						},
+						"description": "Detalle de una CodeDefinition (reglas, scopes, estado). Requiere codes.code.read. Único endpoint de LECTURA público de Growth."
+					},
+					"response": []
+				},
+				{
+					"name": "ActivateCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"pm.test('Status is Active', () => pm.expect(pm.response.json().status).to.eql('Active'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/activate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"activate"
+							]
+						},
+						"description": "Draft -> Active. Requiere codes.code.activate. Deja el codigo Active -- la carpeta 'Internal Codes' lo usa a continuacion via {{growthCodeToken}}."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Internal Codes (M2M, sin Gateway)",
+			"item": [
+				{
+					"name": "CreateQuote",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const body = pm.response.json();\r",
+									"if (body && body.quoteId) {\r",
+									"    pm.environment.set('growthQuoteId', body.quoteId);\r",
+									"    console.log('growthQuoteId:', body.quoteId);\r",
+									"}\r"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"subjectType\": \"Tenant\",\n  \"subjectId\": \"{{tenantId}}\",\n  \"offerOwner\": \"Subscription\",\n  \"offerId\": \"plan-pro-monthly\",\n  \"offerVersion\": \"1\",\n  \"grossAmountCents\": 5000,\n  \"currency\": \"USD\",\n  \"snapshotHash\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"ttlSeconds\": 900,\n  \"scopeTargets\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/codes/quotes",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"codes",
+								"quotes"
+							]
+						},
+						"description": "M2M, NO pasa por Gateway (llamar directo al contenedor via GrowthDirectBase). Requiere JWT de servicio con actor_type=Service, aud=taxvision-growth, scope growth.codes.quote. Rate limited (politica growth-code-quote, 1000/min/IP). Usa {{growthCodeToken}} (seteado por el prerequest script de Codes/CreateCode) -- correr la carpeta Codes completa (Create+Get+Activate) antes para que el codigo exista y este Active. Verificado en vivo: 200 con el descuento calculado correctamente (5000 gross, 10% -> 500 discount, 4500 net)."
+					},
+					"response": []
+				},
+				{
+					"name": "ReserveCode",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// paymentId compartido entre Reserve/Commit/Cancel -- deben coincidir, no puede\r",
+									"// ser un {{$guid}} independiente en cada request (rompia la validacion de pago).\r",
+									"pm.environment.set('growthPaymentId', pm.variables.replaceIn('{{$guid}}'));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"const body = pm.response.json();\r",
+									"if (body && body.reservationId) {\r",
+									"    pm.environment.set('growthReservationId', body.reservationId);\r",
+									"    console.log('growthReservationId:', body.reservationId);\r",
+									"}\r"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"quoteId\": \"{{growthQuoteId}}\",\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentId\": \"{{growthPaymentId}}\",\n  \"ttlSeconds\": 900\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/codes/reservations",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"codes",
+								"reservations"
+							]
+						},
+						"description": "M2M, NO pasa por Gateway. Requiere scope growth.codes.reserve. Verificado en vivo: 200. paymentId generado en prerequest script ({{growthPaymentId}}) y reusado por Commit/Cancel para que coincida con esta misma reserva."
+					},
+					"response": []
+				},
+				{
+					"name": "CommitReservation",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"const body = pm.response.json();\r",
+									"if (body && body.redemptionId) {\r",
+									"    pm.environment.set('growthRedemptionId', body.redemptionId);\r",
+									"    // discountAmountCents es dinamico (depende de percentageBasisPoints de\r",
+									"    // Codes/CreateCode) -- capturado aca para que CompensateRedemption pueda\r",
+									"    // mandar la reversion COMPLETA exacta que RestoreAvailability exige.\r",
+									"    pm.environment.set('growthRedemptionDiscountCents', body.discountAmountCents);\r",
+									"    console.log('growthRedemptionId:', body.redemptionId, '- discount:', body.discountAmountCents);\r",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentId\": \"{{growthPaymentId}}\",\n  \"snapshotHash\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"sourceEventId\": \"{{$guid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/codes/reservations/{{growthReservationId}}/commit",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"codes",
+								"reservations",
+								"{{growthReservationId}}",
+								"commit"
+							]
+						},
+						"description": "Reserved -> Committed (produce el CodeRedemption). Requiere scope growth.codes.commit. Verificado en vivo: 200, redemptionId capturado en {{growthRedemptionId}} para CompensateRedemption. NOTA: es una transicion TERMINAL de la reserva -- CancelReservation/ExpireReservation ya no aplicaran sobre esta misma {{growthReservationId}} despues de correr esto (son ramas alternativas a Commit, no un paso siguiente; para probarlas hay que generar una reserva nueva con ReserveCode y NO correr Commit sobre esa)."
+					},
+					"response": []
+				},
+				{
+					"name": "CancelReservation (rama alternativa a Commit)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentId\": \"{{growthPaymentId}}\",\n  \"reason\": \"tarjeta declinada\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/codes/reservations/{{growthReservationId}}/cancel",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"codes",
+								"reservations",
+								"{{growthReservationId}}",
+								"cancel"
+							]
+						},
+						"description": "Reserved -> Cancelled (libera disponibilidad). Requiere scope growth.codes.cancel. RAMA ALTERNATIVA a CommitReservation, no un paso posterior: una reserva solo puede terminar en Committed, Cancelled o Expired, nunca mas de uno. Si CommitReservation ya corrio sobre {{growthReservationId}} en esta misma corrida, esta request va a fallar (la reserva ya no esta en Reserved) -- eso es esperado, no un bug. Para probarla de verdad, correr ReserveCode de nuevo (nueva reserva) y llamar esta request en vez de CommitReservation."
+					},
+					"response": []
+				},
+				{
+					"name": "ExpireReservation (rama alternativa a Commit)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/codes/reservations/{{growthReservationId}}/expire",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"codes",
+								"reservations",
+								"{{growthReservationId}}",
+								"expire"
+							]
+						},
+						"description": "Reserved -> Expired (job de expiracion, TTL vencido). Requiere scope growth.codes.cancel (mismo scope que Cancel). RAMA ALTERNATIVA a CommitReservation/CancelReservation, mismo motivo que esa -- ver su descripcion."
+					},
+					"response": []
+				},
+				{
+					"name": "CompensateRedemption",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"type\": \"RestoreAvailability\",\n  \"adjustmentAmountCents\": {{growthRedemptionDiscountCents}},\n  \"currency\": \"USD\",\n  \"reason\": \"refund parcial\",\n  \"sourceEventId\": \"{{$guid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/codes/redemptions/{{growthRedemptionId}}/compensate",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"codes",
+								"redemptions",
+								"{{growthRedemptionId}}",
+								"compensate"
+							]
+						},
+						"description": "Registra un ajuste (refund/chargeback) sobre un CodeRedemption ya comprometido. type=RestoreAvailability|RevokeBenefit (ver B-03 del audit: RevokeBenefit no exige reversion completa del descuento, hueco pendiente -- RestoreAvailability SI la exige). Requiere scope growth.codes.compensate. adjustmentAmountCents se captura dinamicamente ({{growthRedemptionDiscountCents}}, seteado por el test-script de CommitReservation) porque RestoreAvailability exige la reversion EXACTA del discountAmountCents original -- un valor fijo se habia roto antes al cambiar percentageBasisPoints en Codes/CreateCode (20% de 5000 = 1000, no 500). growthRedemptionId tambien se captura automaticamente del response de CommitReservation."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Referrals",
+			"item": [
+				{
+					"name": "IssueCode",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Idempotency-Key fija (no {{$guid}}): reusarla es lo que permite pedir\r",
+									"// el mismo codigo de vuelta sin chocar con ReferralCode.ActiveOwnerExists.\r",
+									"if (!pm.environment.get('growthIssueCodeIdempotencyKey')) {\r",
+									"    pm.environment.set('growthIssueCodeIdempotencyKey', 'postman-issue-' + Date.now());\r",
+									"}"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"const body = pm.response.json();\r",
+									"if (body && body.referralCode) {\r",
+									"    console.log('Tu codigo de referido:', body.referralCode, '- link: https://app.taxvision.com/signup?ref=' + body.referralCode);\r",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{growthIssueCodeIdempotencyKey}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"programId\": \"{{growthReferralProgramId}}\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/codes",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"codes"
+							]
+						},
+						"description": "Fase 1 del diseno de Referrals: el tenant pide su propio codigo (get-or-create idempotente). Requiere referrals.own.read (se reusa el permiso existente -- agregar uno nuevo tipo referrals.code.issue hubiera requerido tocar el catalogo de permisos de Auth, fuera de alcance sin pedir permiso). El texto plano del codigo se recalcula en el controller (determinista sobre ProgramId+TenantId+IdempotencyKey) y nunca queda persistido en la respuesta idempotente guardada -- por eso es seguro devolverlo de nuevo si el tenant repite la misma Idempotency-Key. Requiere que exista un ReferralProgram con ScopeType=Platform y FlowType=TenantToTenant (growthReferralProgramId ya apunta al sembrado en SQL de esta coleccion)."
+					},
+					"response": []
+				},
+				{
+					"name": "CreateAttribution",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Solo un tenant puede tener UNA atribucion activa por programa/referido: correr\r",
+									"// esta request mas de una vez con el mismo {{accessToken}} da 409 a proposito\r",
+									"// (Persistence.UniqueConstraint) -- es el comportamiento correcto, no un fallo.\r",
+									"pm.test('Status code is 200 or 409 (ya atribuido)', () => pm.expect([200, 409]).to.include(pm.response.code));\r",
+									"\r",
+									"if (pm.response.code === 200) {\r",
+									"    const body = pm.response.json();\r",
+									"    if (body && body.attributionId) {\r",
+									"        pm.environment.set('growthAttributionId', body.attributionId);\r",
+									"        console.log('growthAttributionId:', body.attributionId);\r",
+									"    }\r",
+									"    // Fase 3 (opcion B, 2026-07-20): refereeBenefit viene poblado si el programa\r",
+									"    // tiene referee-benefit configurado -- un CodeDefinition BenefitGift ya activo\r",
+									"    // para el referido. Null si el programa no lo configura (opcion A, backward\r",
+									"    // compatible) o si la emision/activacion en Codes fallo (best-effort, no\r",
+									"    // bloquea la atribucion ya confirmada).\r",
+									"    if (body && body.refereeBenefit) {\r",
+									"        pm.environment.set('growthRefereeBenefitCodeDefinitionId', body.refereeBenefit.codeDefinitionId);\r",
+									"        console.log('refereeBenefit.codeDefinitionId:', body.refereeBenefit.codeDefinitionId);\r",
+									"        console.log('refereeBenefit.code (plaintext):', body.refereeBenefit.code);\r",
+									"        console.log('refereeBenefit.expiresAtUtc:', body.refereeBenefit.expiresAtUtc);\r",
+									"    } else {\r",
+									"        console.log('refereeBenefit: null (sin beneficio configurado, o emision fallida best-effort).');\r",
+									"    }\r",
+									"} else {\r",
+									"    console.log('409 esperado: ya existia una atribucion activa para este tenant+programa; growthAttributionId conserva el valor de la corrida anterior.');\r",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"programId\": \"{{growthReferralProgramId}}\",\n  \"referralCode\": \"REF-POSTMAN\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/attributions",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"attributions"
+							]
+						},
+						"description": "Ingreso self-service: el referee sale del JWT (tenantId del caller), nunca del body. Sin permiso explicito requerido (solo [Authorize] de clase — ver B-07 del audit). Rate limited: politica growth-referral-attribution, 30 req/min particionado por tenant+IP (B-02, verificado en vivo) -- correr esta request 31+ veces seguidas en la misma ventana de 1 min debe dar 429.\n\nNo existe NINGUN endpoint HTTP para crear un ReferralProgram ni para emitir un ReferralCode -- growthReferralProgramId apunta a un programa sembrado directo en SQL (ver seed en la descripcion del top de la coleccion). referralCode=REF-POSTMAN hashea (HMAC-SHA256 con GROWTH_REFERRAL_CODE_TOKEN_PEPPER) a 8deaa554c5f77a5ea679f877d7c99f36f204a04d43f0a89f1cfb24edf66eb2be, que es el CodeHash sembrado. El {{accessToken}} usado debe ser de un tenant DISTINTO al dueno del codigo (b2b2b2b2-0000-0000-0000-000000000001 en el seed) o falla con ReferralAttribution.SelfReferral. Verificado en vivo: 200, status Active.\n\nFASE 3 (opcion B, 2026-07-20 -- referido tambien recibe descuento): la respuesta 200 ahora incluye un campo opcional `refereeBenefit`. Si el ReferralProgram tiene terminos de referee-benefit configurados en su Policy (RefereeBenefitType/Percentage|FixedAmount + expiracion), el controller (unico lugar que conoce Referrals Y Codes) orquesta CreateCodeDefinitionCommand + ActivateCodeCommand para emitir y activar automaticamente un CodeDefinition Kind=BenefitGift, MaxRedemptions=1, ya activo, a nombre del tenant referido, y devuelve su codigo en texto plano una sola vez (refereeBenefit.code) junto con codeDefinitionId, displayPrefix/lastFour y expiresAtUtc. Es best-effort y no bloqueante: si la emision o activacion en Codes falla, refereeBenefit viene null pero la atribucion igual se confirma con 200 (nunca se revierte por un fallo secundario). Tambien viene null si el programa NO tiene referee-benefit configurado (opcion A, comportamiento anterior, 100% backward compatible). Reintentable: reenviar la misma Idempotency-Key reintenta solo la parte de emision del beneficio si fallo antes (usa sufijos `:create`/`:activate` propios, la atribucion en si ya es idempotente y no se duplica). Verificado en vivo end-to-end el 2026-07-21: 200 con refereeBenefit poblado (CodeDefinition real en codes.CodeDefinitions, Kind=BenefitGift, Status=Active, Benefit_Type=Percentage, BenefitBasisPoints=1500 coincidiendo con el 15% configurado en el programa de prueba) y, por separado, 200 con refereeBenefit=null al probar contra un programa sin el beneficio configurado."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Internal Referrals (M2M, sin Gateway)",
+			"item": [
+				{
+					"name": "QualifyReferral",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"const body = pm.response.json();\r",
+									"if (body && body.rewardCaseId) {\r",
+									"    pm.environment.set('growthRewardCaseId', body.rewardCaseId);\r",
+									"    console.log('rewardCaseId:', body.rewardCaseId, '- decision:', body.decision);\r",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"attributionId\": \"{{growthAttributionId}}\",\n  \"qualifyingEventId\": \"{{$guid}}\",\n  \"paymentId\": \"{{$guid}}\",\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentAmountCents\": 5000,\n  \"paymentCurrency\": \"USD\",\n  \"isFirstSuccessfulPayment\": true,\n  \"paymentSucceededAtUtc\": \"2027-01-01T00:00:00Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/referrals/qualifications",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"referrals",
+								"qualifications"
+							]
+						},
+						"description": "Decision idempotente de calificacion sobre un evento financiero (paymentId). Requiere scope growth.referrals.qualify. M2M, NO pasa por Gateway. paymentSucceededAtUtc debe ser POSTERIOR al momento en que se creo la atribucion (CreateAttribution) o falla con PaymentPredatesAttribution -- 2027-01-01 es un valor fijo comodo mientras el reloj del sistema siga en 2026. Verificado en vivo: 200, decision=Qualified, rewardCaseId real devuelto y capturado en {{growthRewardCaseId}}."
+					},
+					"response": []
+				},
+				{
+					"name": "ConfirmGrant",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"attemptId\": \"{{growthRewardAttemptId}}\",\n  \"materializedBenefitReference\": \"sub-credit-postman-001\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/referrals/grants/{{growthGrantId}}/confirm",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"referrals",
+								"grants",
+								"{{growthGrantId}}",
+								"confirm"
+							]
+						},
+						"description": "Confirma que el beneficio del reward ya se materializo del lado del sistema consumidor (p.ej. credito aplicado en Subscription). Requiere scope growth.referrals.reward.confirm.\n\nNo existe ningun endpoint HTTP para BeginReferralRewardGrant (crea el ReferralRewardAttempt que este endpoint necesita) -- hay que sembrar manualmente un ReferralRewardCase en PendingGrant + un ReferralRewardAttempt en SQL (mismo RewardCaseId que devuelve QualifyReferral). OJO: el ReferralRewardAttempt debe llevar el TenantId del tenant REFERRER (dueno del ReferralCode, NO el referee que crea la atribucion) -- confundir estos dos tenants produce 404 ReferralReward.NotFound (investigado con Extended Events de SQL Server: la query de ReferralRewardCaseRepository SI encontraba la fila, la de ReferralRewardAttemptRepository no, por tenant equivocado en el seed). Con el tenant correcto: verificado en vivo, 204, el RewardCase queda en Status=Granted. growthGrantId/growthRewardAttemptId no se auto-completan -- setealos a mano con los valores del seed."
+					},
+					"response": []
+				},
+				{
+					"name": "ConfirmClawback",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{serviceAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"attemptId\": \"{{growthRewardAttemptId}}\",\n  \"reversalReference\": \"sub-credit-reversal-postman-001\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{GrowthDirectBase}}/internal/referrals/grants/{{growthGrantId}}/clawbacks/confirm",
+							"host": [
+								"{{GrowthDirectBase}}"
+							],
+							"path": [
+								"internal",
+								"referrals",
+								"grants",
+								"{{growthGrantId}}",
+								"clawbacks",
+								"confirm"
+							]
+						},
+						"description": "Confirma que la reversion del beneficio ya se aplico del lado del sistema consumidor. Requiere scope growth.referrals.reward.confirm. Mismo prerequisito de seeding que ConfirmGrant (ver esa descripcion): el RewardCase debe estar en ClawbackPending y el Attempt (Operation=Clawback) debe tener el TenantId del REFERRER. Verificado en vivo: 204, el RewardCase queda en Status=Reversed."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Cleanup (opcional, corre al final)",
+			"item": [
+				{
+					"name": "RevokeCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"pm.test('Status is Revoked', () => pm.expect(pm.response.json().status).to.eql('Revoked'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/revoke",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"revoke"
+							]
+						},
+						"description": "Active/Suspended -> Revoked (transicion terminal). Requiere codes.code.revoke. Movida al FINAL de la coleccion a propósito: si corriera antes que 'Internal Codes', revocaría el mismo código que esa carpeta usa via {{growthCodeToken}}, y CreateQuote fallaría con 422 (código no Active). Verificado en vivo: 200, status Revoked."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Negative Cases — Actor Type",
+			"item": [
+				{
+					"name": "CustomerPortal token rejected — GetCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{customerPortalAccessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}"
+							]
+						},
+						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"GetCode\" (requiere codes.read, actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP.\n\n---\nDescripción original: Detalle de una CodeDefinition (reglas, scopes, estado). Requiere codes.code.read. Único endpoint de LECTURA público de Growth."
+					},
+					"response": []
+				}
+			],
+			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
+		}
+	]
 }

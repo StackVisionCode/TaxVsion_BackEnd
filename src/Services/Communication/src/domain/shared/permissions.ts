@@ -58,6 +58,15 @@ export function hasPermission(
   permissions: readonly string[],
   required: CommunicationPermission,
 ): boolean {
-  if (actorType === 'PlatformAdmin') return true;
+  if (isPlatformAdmin(actorType)) return true;
   return permissions.includes(required);
+}
+
+/**
+ * Unico punto de comparacion para el bypass de PlatformAdmin — evita repetir el string
+ * literal `'PlatformAdmin'` en cada route/handler que necesita un chequeo directo (fuera de
+ * `hasPermission`, ej. endpoints admin sin un `CommunicationPermission` propio).
+ */
+export function isPlatformAdmin(actorType: string): boolean {
+  return actorType === 'PlatformAdmin';
 }

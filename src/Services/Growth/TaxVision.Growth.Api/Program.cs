@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging;
@@ -31,7 +32,8 @@ builder.Host.UseTaxVisionSerilog("growth-service");
 
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
@@ -44,6 +46,11 @@ builder.Services.Configure<AuthorizationOptions>(options =>
 {
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
 });
+
+// Mecanismo propio de Growth (Variante B, ver Actor_Type_Authorization_Layers_Plan.md Fase 4):
+// scopes M2M con Audience+scope, sin migrar a PermissionPolicyProvider de BuildingBlocks — se le
+// agrega la Capa 2 (ActorTypeAuthorizationFilter, vía .AddActorTypeAuthorization() arriba) ENCIMA,
+// sin tocar este provider.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, GrowthAuthorizationPolicyProvider>();
 
 // Rate limiting propio de Growth (B-02): el Gateway solo limita /auth/* y /storage/*, así que

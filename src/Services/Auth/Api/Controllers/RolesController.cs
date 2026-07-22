@@ -1,7 +1,7 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Auth.Api.Authorization;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Roles.Commands;
 using TaxVision.Auth.Application.Roles.Queries;
@@ -17,6 +17,7 @@ namespace TaxVision.Auth.Api.Controllers;
 [ApiController]
 [Route("auth/roles")]
 [HasPermission(PermissionCatalog.RolesManage)]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class RolesController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Lista los roles definidos en el tenant del usuario autenticado.</summary>

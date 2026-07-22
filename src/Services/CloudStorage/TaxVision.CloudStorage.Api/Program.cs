@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
-using BuildingBlocks.Authorization;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -9,6 +9,7 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
@@ -28,7 +29,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("cloudstorage-service");
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
@@ -36,28 +38,13 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddCloudStorageInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "cloudstorage-service");
-builder.Services.AddAuthorization(options =>
-{
-    foreach (
-        var permission in new[]
-        {
-            CloudStoragePermissions.FileView,
-            CloudStoragePermissions.FileUpload,
-            CloudStoragePermissions.FileDownload,
-            CloudStoragePermissions.FileDelete,
-            CloudStoragePermissions.SettingsManage,
-            CloudStoragePermissions.AuditView,
-            CloudStoragePermissions.RecycleBinManage,
-            CloudStoragePermissions.FolderManage,
-            CloudStoragePermissions.ShareCreate,
-            CloudStoragePermissions.ShareRevoke,
-            CloudStoragePermissions.ShareManage,
-            CloudStoragePermissions.LegalManage,
-            CloudStoragePermissions.DmcaCounterNotice,
-        }
-    )
-        options.AddPolicy(permission, policy => policy.RequireClaim("perm", permission));
-});
+
+// Migrado de las 13 policies enumeradas a mano (RequireClaim("perm", ...), sin bypass de
+// PlatformAdmin) al mecanismo compartido de BuildingBlocks.Web — ActorType F4 del plan de
+// autorización. Mismo criterio que los 11 servicios "estándar": PermissionPolicyProvider ya
+// incluye el bypass de PlatformAdmin (ClaimsPrincipalExtensions.HasPermission), alineando
+// CloudStorage con el resto del monorepo.
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // Fase C3 — 20 req/min por IP+ruta en el endpoint publico de resolucion de
 // tokens: desanima enumeracion por fuerza bruta sin bloquear un uso legitimo

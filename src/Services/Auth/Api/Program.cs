@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
@@ -15,7 +16,6 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
-using TaxVision.Auth.Api.Authorization;
 using TaxVision.Auth.Api.Bootstrap;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Api.Jobs;
@@ -35,7 +35,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("auth-service");
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
@@ -64,7 +65,9 @@ builder.Services.AddScoped<IResolvedTenantContext, ResolvedTenantContext>();
 
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
-// Autorización por permisos: [HasPermission("users.invite")] ⇒ claim "perm".
+// Autorización por permisos: [HasPermission("users.invite")] ⇒ claim "perm" (BuildingBlocks.
+// ActorTypeAuthorization — Fase 3 del plan de autorización por actor type, reemplaza a la copia
+// local que tenía este servicio).
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "auth-service");

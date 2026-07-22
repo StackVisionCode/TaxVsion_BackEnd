@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -15,6 +16,7 @@ namespace TaxVision.Subscription.Api.Controllers.Internal;
 [ApiController]
 [Route("internal/users")]
 [Authorize(Policy = "ServiceOnly")]
+[AllowActorTypes(ActorType.Service)]
 public sealed class UserAccessController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("{userId:guid}/access")]

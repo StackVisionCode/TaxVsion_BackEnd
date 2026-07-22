@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TaxVision.Tenant.Domain.Enums;
+using TaxVision.Tenant.Domain.ValueObjects;
 using DomainTenant = TaxVision.Tenant.Domain.Tenant;
 
 namespace TaxVision.Tenant.Infrastructure.Persistence.Configurations;
@@ -25,6 +26,13 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
         // un tenant sin logo cae a fallback de sistema en Scribe (LogoResolver).
         b.Property(t => t.LogoContentType).HasMaxLength(100);
 
+        // Branding colors por tenant (Tenant_Branding_Colors_Plan.md) — todos nullable: un campo en
+        // null se resuelve a SystemBrandingDefaults en Tenant.ResolveBrandingPalette, nunca en la DB.
+        ConfigureHexColor(b.Property(t => t.PrimaryColor), "PrimaryColorHex");
+        ConfigureHexColor(b.Property(t => t.AccentColor), "AccentColorHex");
+        ConfigureHexColor(b.Property(t => t.BackgroundColor), "BackgroundColorHex");
+        ConfigureHexColor(b.Property(t => t.TextColor), "TextColorHex");
+
         b.HasData(
             new
             {
@@ -38,4 +46,13 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
             }
         );
     }
+
+    private static void ConfigureHexColor(PropertyBuilder<HexColor?> property, string columnName) =>
+        property
+            .HasConversion(
+                color => color == null ? null : color.Value,
+                value => value == null ? null : HexColor.Create(value).Value
+            )
+            .HasColumnName(columnName)
+            .HasMaxLength(7);
 }

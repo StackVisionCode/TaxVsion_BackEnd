@@ -263,6 +263,222 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "GetTenantBrandingColors",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/tenants/{{tenantId}}/branding/colors",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"tenants",
+						"{{tenantId}}",
+						"branding",
+						"colors"
+					]
+				},
+				"description": "Devuelve los 4 colores de marca del tenant ya resueltos (custom o default de la empresa, nunca un campo vacio) mas isCustomized. Requiere solo autenticacion (cualquier usuario del propio tenant, incluido CustomerPortal), sin permiso branding.manage (Tenant_Branding_Colors_Plan.md)."
+			},
+			"response": []
+		},
+		{
+			"name": "UpdateTenantBrandingColors",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"primaryColor\": \"#1E466B\",\n  \"accentColor\": \"#67BAF4\",\n  \"backgroundColor\": null,\n  \"textColor\": null\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{UrlBase}}/tenants/{{tenantId}}/branding/colors",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"tenants",
+						"{{tenantId}}",
+						"branding",
+						"colors"
+					]
+				},
+				"description": "Actualiza los colores de marca del tenant. Un campo en null vuelve al default de la empresa para ese campo (patch parcial, atomico: si un valor no nulo tiene formato invalido, no se aplica ningun cambio). Formato #RRGGBB (7 caracteres). Requiere permiso branding.manage sobre el tenant propio (o PlatformAdmin)."
+			},
+			"response": [],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "ResetTenantBrandingColors",
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{accessToken}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{UrlBase}}/tenants/{{tenantId}}/branding/colors",
+					"host": [
+						"{{UrlBase}}"
+					],
+					"path": [
+						"tenants",
+						"{{tenantId}}",
+						"branding",
+						"colors"
+					]
+				},
+				"description": "Restaura los 4 colores de marca del tenant al default de la empresa (atajo de PUT con los 4 campos en null). Idempotente - 204 aunque ya estuviera en default. Requiere permiso branding.manage."
+			},
+			"response": [],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "Negative Cases — Actor Type",
+			"item": [
+				{
+					"name": "CustomerPortal token rejected — GetTenantLogo",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{customerPortalAccessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/tenants/{{tenantId}}/logo",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"tenants",
+								"{{tenantId}}",
+								"logo"
+							]
+						},
+						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"GetTenantLogo\" (requiere branding.manage (lectura), actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP.\n\n---\nDescripción original: Devuelve un download-url presignado (URL + expiracion) para el logo confirmado del tenant. 404 (Tenant.Logo.NotFound) si el tenant no tiene logo o el upload todavia esta en escaneo. Requiere solo autenticacion (cualquier usuario del propio tenant), sin permiso branding.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "CustomerPortal token rejected — UpdateTenantBrandingColors",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{customerPortalAccessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"primaryColor\": \"#1E466B\",\n  \"accentColor\": null,\n  \"backgroundColor\": null,\n  \"textColor\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/tenants/{{tenantId}}/branding/colors",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"tenants",
+								"{{tenantId}}",
+								"branding",
+								"colors"
+							]
+						},
+						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"UpdateTenantBrandingColors\" (requiere branding.manage + actor type staff: TenantEmployee/TenantAdmin/PlatformAdmin), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la coleccion Customer). Debe rechazar con 403 — a diferencia de GetTenantBrandingColors, CustomerPortal nunca tiene branding.manage asignado ni figura en el AllowActorTypes de este endpoint de escritura."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			],
+			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
 		}
 	]
 }

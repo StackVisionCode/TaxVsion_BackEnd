@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContainer } from '../../../infrastructure/container.js';
+import { isPlatformAdmin } from '../../../domain/shared/permissions.js';
 
 const CreateBody = z.object({
   eventKey: z.string().min(1).max(100),
@@ -26,7 +27,7 @@ export async function registerNotificationActionMappingRoutes(
 ): Promise<void> {
   app.get('/communication/admin/notification-action-mappings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    if (principal.actorType !== 'PlatformAdmin') {
+    if (!isPlatformAdmin(principal.actorType)) {
       return reply.code(403).send({ code: 'Auth.Forbidden', message: 'PlatformAdmin only.' });
     }
     const mappings = await container.notificationActionMappings.list();
@@ -35,7 +36,7 @@ export async function registerNotificationActionMappingRoutes(
 
   app.post('/communication/admin/notification-action-mappings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    if (principal.actorType !== 'PlatformAdmin') {
+    if (!isPlatformAdmin(principal.actorType)) {
       return reply.code(403).send({ code: 'Auth.Forbidden', message: 'PlatformAdmin only.' });
     }
     const body = CreateBody.parse(request.body);
@@ -65,7 +66,7 @@ export async function registerNotificationActionMappingRoutes(
 
   app.put('/communication/admin/notification-action-mappings/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    if (principal.actorType !== 'PlatformAdmin') {
+    if (!isPlatformAdmin(principal.actorType)) {
       return reply.code(403).send({ code: 'Auth.Forbidden', message: 'PlatformAdmin only.' });
     }
     const { id } = request.params as { id: string };

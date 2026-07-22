@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Authorization;
 using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Settings.Commands.ApplyPlanConstraints;
@@ -18,6 +18,7 @@ namespace TaxVision.Signature.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("admin/tenants/{tenantId:guid}")]
+[AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
 {
     /// <summary>

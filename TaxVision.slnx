@@ -110,6 +110,7 @@
   </Folder>
   <Folder Name="/deploy/" />
   <Folder Name="/deploy/tests/">
+    <Project Path="deploy/tests/TaxVision.BuildingBlocks.Tests/TaxVision.BuildingBlocks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />

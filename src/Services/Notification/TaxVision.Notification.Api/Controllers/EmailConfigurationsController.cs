@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Notification.Api.Authorization;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Application.Email.Configurations;
 using TaxVision.Notification.Application.Email.Configurations.Commands;
@@ -32,6 +32,7 @@ namespace TaxVision.Notification.Api.Controllers;
 [ApiController]
 [Route("notifications/email/configurations")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEmailConfigurationRequest(

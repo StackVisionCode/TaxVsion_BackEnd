@@ -10,6 +10,8 @@ using TaxVision.Referrals.Application.Rewards.ConfirmReferralRewardClawback;
 using TaxVision.Referrals.Application.Rewards.ConfirmReferralRewardGrant;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
+using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
+using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 
@@ -20,6 +22,7 @@ namespace TaxVision.Growth.Api.Controllers;
 [ApiController]
 [Route("internal/referrals")]
 [Authorize]
+[AllowActorTypes(ActorType.Service)]
 public sealed class InternalReferralsController(IMessageBus bus) : ControllerBase
 {
     public sealed record QualifyReferralRequest(

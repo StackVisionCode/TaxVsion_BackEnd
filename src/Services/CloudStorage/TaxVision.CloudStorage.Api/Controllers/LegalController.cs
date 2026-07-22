@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
@@ -11,10 +12,15 @@ using Wolverine;
 
 namespace TaxVision.CloudStorage.Api.Controllers;
 
-/// <summary>Fase L1.3 — flujo de notificaciones DMCA (17 U.S.C. § 512): registro, contranotificacion y reinstalacion.</summary>
+/// <summary>
+/// Fase L1.3 — flujo de notificaciones DMCA (17 U.S.C. § 512): registro, contranotificacion y
+/// reinstalacion. Staff-only (equipo legal de plataforma + tenant/uploader) — nunca CustomerPortal,
+/// ninguno de los 3 permisos usados aca esta en el bundle default del rol Customer Portal.
+/// </summary>
 [ApiController]
 [Route("storage/legal/dmca-notices")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class LegalController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
 {
     public sealed record RegisterDmcaTakedownRequest(
@@ -28,7 +34,7 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
 
     /// <summary>Equipo legal de la plataforma registra un takedown: bloquea el archivo y lo pone bajo legal hold.</summary>
     [HttpPost]
-    [Authorize(Policy = CloudStoragePermissions.LegalManage)]
+    [HasPermission(CloudStoragePermissions.LegalManage)]
     [ProducesResponseType<object>(StatusCodes.Status201Created)]
     public async Task<IActionResult> RegisterTakedown(RegisterDmcaTakedownRequest request, CancellationToken ct)
     {
@@ -58,7 +64,7 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
 
     /// <summary>El tenant/uploader disputa un takedown recibido sobre un archivo propio.</summary>
     [HttpPost("{dmcaNoticeId:guid}/counter-notice")]
-    [Authorize(Policy = CloudStoragePermissions.DmcaCounterNotice)]
+    [HasPermission(CloudStoragePermissions.DmcaCounterNotice)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SubmitCounterNotice(
         Guid dmcaNoticeId,
@@ -87,7 +93,7 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
 
     /// <summary>Equipo legal de la plataforma cierra el expediente reinstalando el archivo.</summary>
     [HttpPost("{dmcaNoticeId:guid}/reinstate")]
-    [Authorize(Policy = CloudStoragePermissions.LegalManage)]
+    [HasPermission(CloudStoragePermissions.LegalManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reinstate(Guid dmcaNoticeId, ReinstateRequest request, CancellationToken ct)
     {

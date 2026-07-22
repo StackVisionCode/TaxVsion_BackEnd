@@ -516,6 +516,11 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AllowedActorTypes")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -554,6 +559,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000001"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "users.view",
                             Description = "Ver usuarios del tenant",
                             IsAssignableByTenant = true,
@@ -565,6 +571,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000002"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "users.invite",
                             Description = "Invitar usuarios",
                             IsAssignableByTenant = true,
@@ -576,6 +583,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000003"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "users.manage",
                             Description = "Activar, desactivar y editar usuarios",
                             IsAssignableByTenant = true,
@@ -587,6 +595,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000004"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "roles.manage",
                             Description = "Gestionar roles y permisos",
                             IsAssignableByTenant = false,
@@ -598,6 +607,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000005"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "audit.view",
                             Description = "Consultar auditoría",
                             IsAssignableByTenant = true,
@@ -609,6 +619,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000006"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "settings.manage",
                             Description = "Gestionar configuración del tenant",
                             IsAssignableByTenant = true,
@@ -620,6 +631,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000007"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "billing.view",
                             Description = "Ver facturación y suscripción",
                             IsAssignableByTenant = false,
@@ -631,6 +643,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000008"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "billing.manage",
                             Description = "Gestionar métodos de pago y facturación",
                             IsAssignableByTenant = false,
@@ -642,6 +655,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000009"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "subscription.manage",
                             Description = "Cambiar plan y gestionar suscripción",
                             IsAssignableByTenant = false,
@@ -653,6 +667,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000010"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "customers.view",
                             Description = "Ver clientes",
                             IsAssignableByTenant = true,
@@ -664,6 +679,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000011"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "customers.manage",
                             Description = "Crear y editar clientes",
                             IsAssignableByTenant = true,
@@ -675,6 +691,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000012"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signatures.request",
                             Description = "Solicitar firmas",
                             IsAssignableByTenant = true,
@@ -686,6 +703,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000013"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "documents.view",
                             Description = "Ver documentos",
                             IsAssignableByTenant = true,
@@ -697,6 +715,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000014"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "documents.manage",
                             Description = "Gestionar documentos",
                             IsAssignableByTenant = true,
@@ -708,6 +727,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000015"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "email.use",
                             Description = "Usar el módulo de correo",
                             IsAssignableByTenant = true,
@@ -719,6 +739,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000016"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "comms.calls",
                             Description = "Realizar llamadas y meetings",
                             IsAssignableByTenant = true,
@@ -730,6 +751,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000017"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "campaigns.manage",
                             Description = "Gestionar campañas",
                             IsAssignableByTenant = true,
@@ -741,6 +763,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000018"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "reports.view",
                             Description = "Ver dashboard y reportes",
                             IsAssignableByTenant = true,
@@ -752,6 +775,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000019"),
+                            AllowedActorTypes = "CustomerPortal",
                             Code = "portal.calls.use",
                             Description = "El cliente puede realizar llamadas",
                             IsAssignableByTenant = true,
@@ -763,6 +787,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000020"),
+                            AllowedActorTypes = "CustomerPortal",
                             Code = "portal.miles.use",
                             Description = "El cliente puede usar el módulo de millas",
                             IsAssignableByTenant = true,
@@ -774,6 +799,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000021"),
+                            AllowedActorTypes = "CustomerPortal",
                             Code = "portal.folders.view",
                             Description = "El cliente puede ver folders de su perfil",
                             IsAssignableByTenant = true,
@@ -784,18 +810,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000022"),
-                            Code = "portal.signatures.sign",
-                            Description = "El cliente puede firmar documentos",
-                            IsAssignableByTenant = true,
-                            IsCustomerPortal = true,
-                            MinPlanTier = 0,
-                            Module = "portal",
-                            PlatformOnly = false
-                        },
-                        new
-                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000023"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "cloudstorage.file.view",
                             Description = "Ver metadatos de archivos",
                             IsAssignableByTenant = true,
@@ -807,6 +823,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000024"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "cloudstorage.file.upload",
                             Description = "Subir archivos mediante el gateway seguro",
                             IsAssignableByTenant = true,
@@ -818,6 +835,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000025"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "cloudstorage.file.download",
                             Description = "Descargar archivos disponibles",
                             IsAssignableByTenant = true,
@@ -829,6 +847,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000026"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.file.delete",
                             Description = "Eliminar archivos",
                             IsAssignableByTenant = true,
@@ -840,6 +859,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000027"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.settings.manage",
                             Description = "Gestionar políticas de almacenamiento",
                             IsAssignableByTenant = true,
@@ -851,6 +871,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000028"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.audit.view",
                             Description = "Consultar auditoría de archivos",
                             IsAssignableByTenant = true,
@@ -862,6 +883,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000065"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.recyclebin.manage",
                             Description = "Restaurar y purgar archivos de la papelera",
                             IsAssignableByTenant = true,
@@ -873,6 +895,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000066"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.folder.manage",
                             Description = "Crear, renombrar y mover carpetas de archivos",
                             IsAssignableByTenant = true,
@@ -884,6 +907,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000067"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.share.create",
                             Description = "Crear links para compartir archivos",
                             IsAssignableByTenant = true,
@@ -895,6 +919,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000068"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.share.revoke",
                             Description = "Revocar links de compartir existentes",
                             IsAssignableByTenant = true,
@@ -906,6 +931,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000069"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.share.manage",
                             Description = "Otorgar permisos elevados en links y gestionar su expiracion",
                             IsAssignableByTenant = false,
@@ -917,6 +943,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000070"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.legal.manage",
                             Description = "Gestionar legal hold y takedowns DMCA",
                             IsAssignableByTenant = false,
@@ -928,6 +955,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000071"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "cloudstorage.file.dmca_counternotice",
                             Description = "Presentar contranotificacion DMCA sobre un archivo propio",
                             IsAssignableByTenant = true,
@@ -939,6 +967,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000072"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "correspondence.read",
                             Description = "Ver la bandeja de correspondencia con customers",
                             IsAssignableByTenant = true,
@@ -950,6 +979,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000073"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "correspondence.attachment.download",
                             Description = "Descargar adjuntos de la bandeja de correspondencia",
                             IsAssignableByTenant = true,
@@ -961,6 +991,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000074"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "correspondence.compose",
                             Description = "Crear, editar y descartar borradores de correspondencia",
                             IsAssignableByTenant = true,
@@ -972,6 +1003,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000075"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "correspondence.reply",
                             Description = "Responder a un mensaje entrante de correspondencia",
                             IsAssignableByTenant = true,
@@ -983,6 +1015,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000076"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "correspondence.send",
                             Description = "Enviar un borrador de correspondencia ya redactado",
                             IsAssignableByTenant = true,
@@ -994,6 +1027,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000077"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "connectors.accounts.read",
                             Description = "Ver las cuentas de correo conectadas del tenant",
                             IsAssignableByTenant = true,
@@ -1005,6 +1039,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000078"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "connectors.accounts.write",
                             Description = "Conectar, reconectar y desconectar cuentas de correo del tenant",
                             IsAssignableByTenant = true,
@@ -1016,6 +1051,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000079"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.templates.read",
                             Description = "Ver templates de correo (System y del tenant)",
                             IsAssignableByTenant = true,
@@ -1027,6 +1063,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000080"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.templates.write",
                             Description = "Crear, editar y publicar versiones de templates de correo",
                             IsAssignableByTenant = true,
@@ -1038,6 +1075,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000081"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.layouts.read",
                             Description = "Ver layouts de correo (System y del tenant)",
                             IsAssignableByTenant = true,
@@ -1049,6 +1087,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000082"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.layouts.write",
                             Description = "Crear, editar y publicar versiones de layouts de correo",
                             IsAssignableByTenant = true,
@@ -1060,6 +1099,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000083"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.event_mappings.read",
                             Description = "Ver las reglas de resolución evento→template",
                             IsAssignableByTenant = true,
@@ -1071,6 +1111,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000084"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.event_mappings.write",
                             Description = "Crear, editar y borrar reglas de resolución evento→template",
                             IsAssignableByTenant = true,
@@ -1082,6 +1123,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000085"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.campaigns.read",
                             Description = "Ver campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
@@ -1093,6 +1135,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000086"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "scribe.campaigns.write",
                             Description = "Gestionar campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
@@ -1104,6 +1147,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000087"),
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "scribe.render",
                             Description = "Invocar el render de templates (M2M — Notification u otros servicios via token de servicio)",
                             IsAssignableByTenant = false,
@@ -1115,6 +1159,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000029"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.request.create",
                             Description = "Crear solicitudes de firma electrónica",
                             IsAssignableByTenant = true,
@@ -1126,6 +1171,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000030"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.request.read",
                             Description = "Consultar solicitudes de firma",
                             IsAssignableByTenant = true,
@@ -1137,6 +1183,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000031"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.request.cancel",
                             Description = "Cancelar solicitudes de firma",
                             IsAssignableByTenant = true,
@@ -1148,6 +1195,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000032"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.request.resend",
                             Description = "Reenviar invitaciones a firmantes",
                             IsAssignableByTenant = true,
@@ -1159,6 +1207,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000033"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.request.expire",
                             Description = "Extender el vencimiento de solicitudes",
                             IsAssignableByTenant = true,
@@ -1170,6 +1219,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000034"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.document.prepare",
                             Description = "Validar y preparar documentos para firma",
                             IsAssignableByTenant = true,
@@ -1181,6 +1231,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000035"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.document.sign",
                             Description = "Aplicar firma del preparador al documento",
                             IsAssignableByTenant = true,
@@ -1192,6 +1243,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000036"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.document.view",
                             Description = "Ver documentos firmados y sus metadatos",
                             IsAssignableByTenant = true,
@@ -1203,6 +1255,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000037"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.document.download",
                             Description = "Descargar sellado, original o certificado",
                             IsAssignableByTenant = true,
@@ -1214,6 +1267,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000038"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.document.audit.read",
                             Description = "Consultar el audit trail de una firma",
                             IsAssignableByTenant = true,
@@ -1225,6 +1279,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000039"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.template.create",
                             Description = "Crear plantillas de firma reutilizables",
                             IsAssignableByTenant = true,
@@ -1236,6 +1291,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000040"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.template.update",
                             Description = "Modificar plantillas de firma",
                             IsAssignableByTenant = true,
@@ -1247,6 +1303,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000041"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.template.delete",
                             Description = "Eliminar plantillas de firma",
                             IsAssignableByTenant = true,
@@ -1258,6 +1315,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000042"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.settings.manage",
                             Description = "Gestionar la configuración de firma del tenant",
                             IsAssignableByTenant = true,
@@ -1269,6 +1327,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000043"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.preparer.manage",
                             Description = "Gestionar firmas persistentes del preparador",
                             IsAssignableByTenant = true,
@@ -1280,6 +1339,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000044"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.certificate.verify",
                             Description = "Verificar certificados de firma (endpoint público)",
                             IsAssignableByTenant = true,
@@ -1291,6 +1351,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000088"),
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "signature.constraints.manage",
                             Description = "Gestionar los techos de plan de Signature de un tenant (uso exclusivo de plataforma)",
                             IsAssignableByTenant = false,
@@ -1302,6 +1363,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000063"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "customers.fiscalprofile.reveal",
                             Description = "Revelar el SSN/ITIN/EIN completo de un customer",
                             IsAssignableByTenant = true,
@@ -1313,6 +1375,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000141"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "customers.preparer.manage",
                             Description = "Asignar o reasignar el preparador responsable de un customer",
                             IsAssignableByTenant = true,
@@ -1324,6 +1387,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000064"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "tenant.domains.manage",
                             Description = "Gestionar dominios propios del tenant (custom hostnames)",
                             IsAssignableByTenant = false,
@@ -1335,6 +1399,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000045"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "communication.chat.start",
                             Description = "Iniciar conversaciones de chat",
                             IsAssignableByTenant = true,
@@ -1346,6 +1411,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000046"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "communication.chat.reply",
                             Description = "Responder en conversaciones de chat",
                             IsAssignableByTenant = true,
@@ -1357,6 +1423,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000047"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.chat.moderate",
                             Description = "Moderar mensajes en conversaciones del tenant",
                             IsAssignableByTenant = true,
@@ -1368,6 +1435,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000048"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "communication.support.open",
                             Description = "Abrir chat de soporte hacia el PlatformTenant",
                             IsAssignableByTenant = true,
@@ -1379,6 +1447,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000049"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.support.agent",
                             Description = "Atender chats de soporte como agente (PlatformTenant)",
                             IsAssignableByTenant = true,
@@ -1390,6 +1459,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000050"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.call.start",
                             Description = "Iniciar llamadas de audio 1:1",
                             IsAssignableByTenant = true,
@@ -1401,6 +1471,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000051"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.videocall.start",
                             Description = "Iniciar llamadas de video 1:1",
                             IsAssignableByTenant = true,
@@ -1412,6 +1483,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000052"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.call.record",
                             Description = "Grabar llamadas 1:1 (con banner de disclosure)",
                             IsAssignableByTenant = true,
@@ -1423,6 +1495,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000053"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.meeting.create",
                             Description = "Crear reuniones multi-party",
                             IsAssignableByTenant = true,
@@ -1434,6 +1507,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000054"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "communication.meeting.join",
                             Description = "Unirse a reuniones (previa invitación válida)",
                             IsAssignableByTenant = true,
@@ -1445,6 +1519,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000055"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.meeting.host",
                             Description = "Actuar como host de reuniones (waiting room, mute all, transfer)",
                             IsAssignableByTenant = true,
@@ -1456,6 +1531,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000056"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.meeting.record",
                             Description = "Grabar reuniones (con banner de disclosure)",
                             IsAssignableByTenant = true,
@@ -1467,6 +1543,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000057"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "communication.screenshot.create",
                             Description = "Adjuntar screenshots/voice/video en chat",
                             IsAssignableByTenant = true,
@@ -1478,6 +1555,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000058"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.group.create",
                             Description = "Crear grupos internos por tenant",
                             IsAssignableByTenant = true,
@@ -1489,6 +1567,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000059"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.group.manage_members",
                             Description = "Gestionar miembros de grupos internos",
                             IsAssignableByTenant = true,
@@ -1500,6 +1579,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000060"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "communication.notification.read",
                             Description = "Consultar notificaciones in-app propias",
                             IsAssignableByTenant = true,
@@ -1511,6 +1591,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000061"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.settings.manage",
                             Description = "Gestionar la configuración de Communication del tenant",
                             IsAssignableByTenant = true,
@@ -1522,6 +1603,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000062"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "communication.analytics.read",
                             Description = "Consultar analytics de Communication del tenant",
                             IsAssignableByTenant = true,
@@ -1533,6 +1615,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000089"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "postmaster.messages.read",
                             Description = "Ver el historial de correos enviados del tenant",
                             IsAssignableByTenant = true,
@@ -1544,6 +1627,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000090"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "postmaster.suppression.read",
                             Description = "Ver la suppression list (direcciones que rebotaron o se dieron de baja) del tenant",
                             IsAssignableByTenant = true,
@@ -1555,6 +1639,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000091"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "postmaster.suppression.write",
                             Description = "Agregar o quitar direcciones de la suppression list del tenant",
                             IsAssignableByTenant = true,
@@ -1566,6 +1651,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000092"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "postmaster.providers.read",
                             Description = "Ver el proveedor de correo configurado para el tenant",
                             IsAssignableByTenant = true,
@@ -1577,6 +1663,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000093"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "postmaster.providers.write",
                             Description = "Configurar el proveedor de correo (SMTP/API) del tenant",
                             IsAssignableByTenant = true,
@@ -1588,6 +1675,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000094"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.settings.manage",
                             Description = "Gestionar la configuración SMTP/API de Notification del tenant",
                             IsAssignableByTenant = true,
@@ -1599,6 +1687,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000095"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.email.send",
                             Description = "Enviar un correo puntual desde Notification",
                             IsAssignableByTenant = true,
@@ -1610,6 +1699,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000096"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.email.view",
                             Description = "Ver el historial de correos enviados desde Notification",
                             IsAssignableByTenant = true,
@@ -1621,6 +1711,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000097"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.template.view",
                             Description = "Ver los templates de correo del tenant",
                             IsAssignableByTenant = true,
@@ -1632,6 +1723,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000098"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.template.manage",
                             Description = "Crear, editar y publicar templates de correo del tenant",
                             IsAssignableByTenant = true,
@@ -1643,6 +1735,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000099"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.layout.manage",
                             Description = "Gestionar los layouts base de correo del tenant",
                             IsAssignableByTenant = true,
@@ -1654,6 +1747,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000100"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.campaign.view",
                             Description = "Ver campañas de correo del tenant (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
@@ -1665,6 +1759,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000101"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.campaign.manage",
                             Description = "Gestionar campañas de correo del tenant (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
@@ -1676,6 +1771,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000102"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "notification.log.view",
                             Description = "Ver logs de auditoría de Notification del tenant (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
@@ -1687,6 +1783,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000103"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_app.saas_payment.read",
                             Description = "Ver los pagos SaaS (suscripción/seats/add-ons) del propio tenant",
                             IsAssignableByTenant = true,
@@ -1698,6 +1795,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000104"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_app.saas_payment.refund",
                             Description = "Reembolsar un pago SaaS del propio tenant",
                             IsAssignableByTenant = true,
@@ -1709,6 +1807,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000105"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_app.provider_customer.read",
                             Description = "Ver el método de pago guardado (provider customer) del propio tenant",
                             IsAssignableByTenant = true,
@@ -1720,6 +1819,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000106"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_app.provider_customer.manage",
                             Description = "Gestionar el método de pago guardado del propio tenant",
                             IsAssignableByTenant = true,
@@ -1731,6 +1831,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000107"),
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "payment_app.admin.cross_tenant",
                             Description = "Ver pagos SaaS de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
                             IsAssignableByTenant = false,
@@ -1742,6 +1843,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000108"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.config.read",
                             Description = "Ver la configuración de cobro (Stripe DirectApiKeys/Connect) del propio tenant",
                             IsAssignableByTenant = true,
@@ -1753,6 +1855,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000109"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.config.manage",
                             Description = "Configurar el modo/credenciales de cobro del propio tenant",
                             IsAssignableByTenant = true,
@@ -1764,6 +1867,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000110"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.payment.read",
                             Description = "Ver los pagos que el tenant cobró a sus propios clientes",
                             IsAssignableByTenant = true,
@@ -1775,6 +1879,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000111"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.payment.charge",
                             Description = "Cobrar un pago a un cliente del tenant",
                             IsAssignableByTenant = true,
@@ -1786,6 +1891,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000112"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.payment.refund",
                             Description = "Reembolsar un pago cobrado a un cliente del tenant",
                             IsAssignableByTenant = true,
@@ -1797,6 +1903,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000113"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.payment_link.read",
                             Description = "Ver los links de pago del tenant",
                             IsAssignableByTenant = true,
@@ -1808,6 +1915,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000114"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.payment_link.manage",
                             Description = "Crear y gestionar links de pago del tenant",
                             IsAssignableByTenant = true,
@@ -1819,6 +1927,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000115"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.connect_account.read",
                             Description = "Ver el estado de la cuenta Stripe Connect del tenant",
                             IsAssignableByTenant = true,
@@ -1830,6 +1939,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000116"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.connect_account.onboard",
                             Description = "Iniciar el onboarding de la cuenta Stripe Connect del tenant",
                             IsAssignableByTenant = true,
@@ -1841,6 +1951,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000117"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.payout.read",
                             Description = "Ver los payouts programados del tenant",
                             IsAssignableByTenant = true,
@@ -1852,6 +1963,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000118"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.payout.manage",
                             Description = "Gestionar el calendario de payouts del tenant",
                             IsAssignableByTenant = true,
@@ -1863,6 +1975,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000119"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.recurring.read",
                             Description = "Ver los pagos recurrentes configurados del tenant",
                             IsAssignableByTenant = true,
@@ -1874,6 +1987,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000120"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "payment_client.recurring.manage",
                             Description = "Crear y gestionar pagos recurrentes del tenant",
                             IsAssignableByTenant = true,
@@ -1885,6 +1999,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000121"),
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "payment_client.admin.cross_tenant",
                             Description = "Ver pagos de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
                             IsAssignableByTenant = false,
@@ -1896,6 +2011,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000122"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "branding.manage",
                             Description = "Gestionar el logo/branding del tenant",
                             IsAssignableByTenant = true,
@@ -1907,6 +2023,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000123"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.code.read",
                             Description = "Ver códigos del propio tenant",
                             IsAssignableByTenant = true,
@@ -1918,6 +2035,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000124"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.code.manage",
                             Description = "Gestionar códigos del propio tenant",
                             IsAssignableByTenant = true,
@@ -1929,6 +2047,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000125"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.code.issue",
                             Description = "Emitir códigos de beneficio",
                             IsAssignableByTenant = true,
@@ -1940,6 +2059,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000126"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.code.activate",
                             Description = "Activar códigos",
                             IsAssignableByTenant = true,
@@ -1951,6 +2071,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000127"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.code.revoke",
                             Description = "Revocar códigos",
                             IsAssignableByTenant = true,
@@ -1962,6 +2083,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000128"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.audit.read",
                             Description = "Consultar auditoría de códigos",
                             IsAssignableByTenant = true,
@@ -1973,6 +2095,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000129"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.redemption.read",
                             Description = "Consultar redemptions",
                             IsAssignableByTenant = true,
@@ -1984,6 +2107,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000130"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "codes.compensation.manage",
                             Description = "Gestionar compensaciones promocionales",
                             IsAssignableByTenant = false,
@@ -1995,6 +2119,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000131"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.own.read",
                             Description = "Ver referidos propios",
                             IsAssignableByTenant = true,
@@ -2006,6 +2131,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000132"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.program.read",
                             Description = "Ver programas de referidos",
                             IsAssignableByTenant = true,
@@ -2017,6 +2143,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000133"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.program.manage",
                             Description = "Gestionar programas de referidos",
                             IsAssignableByTenant = true,
@@ -2028,6 +2155,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000134"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.attribution.read",
                             Description = "Consultar atribuciones",
                             IsAssignableByTenant = true,
@@ -2039,6 +2167,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000135"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.fraud.read",
                             Description = "Consultar revisiones antifraude",
                             IsAssignableByTenant = true,
@@ -2050,6 +2179,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000136"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.fraud.manage",
                             Description = "Gestionar revisiones antifraude",
                             IsAssignableByTenant = false,
@@ -2061,6 +2191,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000137"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.reward.read",
                             Description = "Consultar rewards",
                             IsAssignableByTenant = true,
@@ -2072,6 +2203,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000138"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.reward.manage",
                             Description = "Gestionar rewards no monetarios",
                             IsAssignableByTenant = false,
@@ -2083,6 +2215,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000139"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.audit.read",
                             Description = "Consultar auditoría de referidos",
                             IsAssignableByTenant = true,
@@ -2094,6 +2227,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000140"),
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "growth.admin.cross_tenant",
                             Description = "Operar recursos Growth de cualquier tenant",
                             IsAssignableByTenant = false,

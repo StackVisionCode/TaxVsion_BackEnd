@@ -1,11 +1,11 @@
 using System.Text;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Csv;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.PaymentApp.Api.Authorization;
 using TaxVision.PaymentApp.Application.Admin.Queries;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using Wolverine;
@@ -21,6 +21,7 @@ namespace TaxVision.PaymentApp.Api.Controllers;
 [ApiController]
 [Route("payments-app/admin")]
 [Authorize]
+[AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("payments")]

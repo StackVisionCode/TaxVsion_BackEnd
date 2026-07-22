@@ -142,17 +142,15 @@ public static class CreateInvitationHandler
                 );
             }
 
-            // Fase A1: si se invita a un Tenant Customer con roles explícitos, esos roles
-            // no pueden colar permisos internos (ver CustomerPortalRoleGuard). El flujo de
-            // invitación disparado por Customer (CustomerPortalInvitationRequestedConsumer)
-            // nunca pasa RoleIds, así que cae siempre en el rol de sistema portal-safe.
-            if (command.ActorType == UserActorType.CustomerPortal)
-            {
-                var catalog = await roles.GetPermissionsCatalogAsync(ct);
-                var portalGuard = CustomerPortalRoleGuard.ValidateRolesForCustomerPortal(tenantRoles, catalog);
-                if (portalGuard.IsFailure)
-                    return Result.Failure<CreateInvitationResponse>(portalGuard.Error);
-            }
+            // Fase A1 + Fase 2 (Actor_Type_Authorization_Layers_Plan.md): si se invita con roles
+            // explícitos, esos roles no pueden colar permisos fuera del actor type invitado, en
+            // cualquier sentido (ver ActorTypeRoleGuard). El flujo de invitación disparado por
+            // Customer (CustomerPortalInvitationRequestedConsumer) nunca pasa RoleIds, así que cae
+            // siempre en el rol de sistema portal-safe.
+            var catalog = await roles.GetPermissionsCatalogAsync(ct);
+            var actorTypeGuard = ActorTypeRoleGuard.ValidateRolesForActorType(command.ActorType, tenantRoles, catalog);
+            if (actorTypeGuard.IsFailure)
+                return Result.Failure<CreateInvitationResponse>(actorTypeGuard.Error);
 
             roleIdsJson = JsonSerializer.Serialize(requestedIds);
         }

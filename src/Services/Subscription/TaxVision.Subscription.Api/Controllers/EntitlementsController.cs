@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -10,6 +11,7 @@ namespace TaxVision.Subscription.Api.Controllers;
 [ApiController]
 [Route("entitlements")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("summary")]

@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
@@ -13,7 +14,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
-using TaxVision.PaymentApp.Api.Authorization;
 using TaxVision.PaymentApp.Api.Common;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
 using TaxVision.PaymentApp.Infrastructure;
@@ -33,7 +33,8 @@ builder.Host.UseTaxVisionSerilog("payment-app-service");
 
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .AddActorTypeAuthorization();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -46,6 +47,8 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "payment-app-s
 builder.Services.AddRedisCache(builder.Configuration);
 
 // Autorización por permiso ([HasPermission("payment_app.*")]); los admins pasan siempre.
+// BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
+// reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // Rate limiter para /webhooks/*: 1000 req/min por IP (§28.4/§K.1 del diseño) — deja pasar

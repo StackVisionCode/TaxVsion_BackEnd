@@ -1,9 +1,9 @@
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Extensions.Options;
-using TaxVision.Scribe.Api.Authorization;
 
 namespace TaxVision.Scribe.Tests.Authorization;
 

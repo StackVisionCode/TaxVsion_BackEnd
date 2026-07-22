@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +19,7 @@ namespace TaxVision.Notification.Api.Controllers;
 [ApiController]
 [Route("notifications/push/devices")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.CustomerPortal, ActorType.PlatformAdmin)]
 public sealed class PushDevicesController(IMessageBus bus) : ControllerBase
 {
     public sealed record RegisterRequest(PushPlatform Platform, string Token, string? DeviceId = null);

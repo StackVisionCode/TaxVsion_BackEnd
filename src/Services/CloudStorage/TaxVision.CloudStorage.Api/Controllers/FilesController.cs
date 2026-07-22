@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
@@ -30,7 +31,13 @@ public sealed class FilesController(
 ) : ControllerBase
 {
     [HttpPost("uploads")]
-    [Authorize(Policy = CloudStoragePermissions.FileUpload)]
+    [HasPermission(CloudStoragePermissions.FileUpload)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<InitiatedUploadResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> InitiateUpload(InitiateUploadRequest request, CancellationToken ct)
     {
@@ -47,7 +54,13 @@ public sealed class FilesController(
     }
 
     [HttpPost("{fileId:guid}/complete")]
-    [Authorize(Policy = CloudStoragePermissions.FileUpload)]
+    [HasPermission(CloudStoragePermissions.FileUpload)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteUpload(Guid fileId, CancellationToken ct)
     {
@@ -65,7 +78,13 @@ public sealed class FilesController(
 
     /// <summary>Fase U — arranca un upload multiparte: el browser sube cada parte directo a MinIO con las URLs devueltas, sin pasar por CloudStorage.</summary>
     [HttpPost("uploads/initiate-multipart")]
-    [Authorize(Policy = CloudStoragePermissions.FileUpload)]
+    [HasPermission(CloudStoragePermissions.FileUpload)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<InitiatedMultipartUploadResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> InitiateMultipartUpload(
         InitiateMultipartUploadRequest request,
@@ -86,7 +105,13 @@ public sealed class FilesController(
 
     /// <summary>Fase U — ensambla las partes ya subidas y sigue el mismo pipeline que el complete de un solo POST (verificar tamano, disparar escaneo).</summary>
     [HttpPost("{fileId:guid}/complete-multipart")]
-    [Authorize(Policy = CloudStoragePermissions.FileUpload)]
+    [HasPermission(CloudStoragePermissions.FileUpload)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteMultipartUpload(
         Guid fileId,
@@ -107,7 +132,13 @@ public sealed class FilesController(
     }
 
     [HttpGet("{fileId:guid}")]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<FileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid fileId, CancellationToken ct)
     {
@@ -119,7 +150,13 @@ public sealed class FilesController(
     }
 
     [HttpGet]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<IReadOnlyList<FileResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] int skip = 0,
@@ -138,7 +175,13 @@ public sealed class FilesController(
     }
 
     [HttpPost("{fileId:guid}/download-url")]
-    [Authorize(Policy = CloudStoragePermissions.FileDownload)]
+    [HasPermission(CloudStoragePermissions.FileDownload)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<DownloadUrlResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> IssueDownloadUrl(Guid fileId, CancellationToken ct)
     {
@@ -164,7 +207,13 @@ public sealed class FilesController(
     /// arranco; es una limitacion inherente a este tipo de endpoint, no un gap.
     /// </summary>
     [HttpPost("zip")]
-    [Authorize(Policy = CloudStoragePermissions.FileDownload)]
+    [HasPermission(CloudStoragePermissions.FileDownload)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [EnableRateLimiting("zip-download")]
     public async Task<IActionResult> DownloadZip(ZipDownloadRequest request, CancellationToken ct)
     {
@@ -203,7 +252,8 @@ public sealed class FilesController(
     }
 
     [HttpDelete("{fileId:guid}")]
-    [Authorize(Policy = CloudStoragePermissions.FileDelete)]
+    [HasPermission(CloudStoragePermissions.FileDelete)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid fileId, CancellationToken ct)
     {
@@ -221,7 +271,8 @@ public sealed class FilesController(
 
     /// <summary>Fase C2 — mueve el archivo a otra carpeta navegable (o a la raiz con FolderId=null). No toca MinIO.</summary>
     [HttpPut("{fileId:guid}/folder")]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> MoveToFolder(Guid fileId, MoveToFolderRequest request, CancellationToken ct)
     {
@@ -239,7 +290,8 @@ public sealed class FilesController(
 
     /// <summary>Fase L1.2 — bloquea purge/hard-delete/soft-delete. Platform-only (cloudstorage.legal.manage).</summary>
     [HttpPut("{fileId:guid}/legal-hold")]
-    [Authorize(Policy = CloudStoragePermissions.LegalManage)]
+    [HasPermission(CloudStoragePermissions.LegalManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetLegalHold(Guid fileId, LegalHoldRequest request, CancellationToken ct)
     {
@@ -254,7 +306,8 @@ public sealed class FilesController(
     }
 
     [HttpDelete("{fileId:guid}/legal-hold")]
-    [Authorize(Policy = CloudStoragePermissions.LegalManage)]
+    [HasPermission(CloudStoragePermissions.LegalManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> LiftLegalHold(Guid fileId, LegalHoldRequest request, CancellationToken ct)
     {

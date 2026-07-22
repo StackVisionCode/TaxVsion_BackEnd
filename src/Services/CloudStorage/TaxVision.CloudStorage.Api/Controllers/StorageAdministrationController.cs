@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
@@ -11,10 +12,11 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 [ApiController]
 [Route("storage")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class StorageAdministrationController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("usage")]
-    [Authorize(Policy = CloudStoragePermissions.SettingsManage)]
+    [HasPermission(CloudStoragePermissions.SettingsManage)]
     [ProducesResponseType<StorageUsageResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUsage(CancellationToken ct)
     {
@@ -26,7 +28,7 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
     }
 
     [HttpGet("audit")]
-    [Authorize(Policy = CloudStoragePermissions.AuditView)]
+    [HasPermission(CloudStoragePermissions.AuditView)]
     [ProducesResponseType<IReadOnlyList<AuditEntryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAudit(
         [FromQuery] int skip = 0,
@@ -48,7 +50,7 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
 
     /// <summary>Fase C3 — habilita/deshabilita links Visibility.Public. Deshabilitado por defecto (datos fiscales).</summary>
     [HttpPut("settings/public-sharing")]
-    [Authorize(Policy = CloudStoragePermissions.SettingsManage)]
+    [HasPermission(CloudStoragePermissions.SettingsManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetPublicSharingPolicy(SetPublicSharingPolicyRequest request, CancellationToken ct)
     {

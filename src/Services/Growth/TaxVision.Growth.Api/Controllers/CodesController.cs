@@ -13,12 +13,20 @@ using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
 using Wolverine;
+using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
+using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 
+/// <summary>
+/// Gestión de códigos de descuento por el propio tenant (staff). AdminCrossTenant (creación de
+/// código de plataforma cross-tenant) es un chequeo adicional en código, no un actor type distinto
+/// — sigue siendo un staff member (PlatformAdmin) el que llama.
+/// </summary>
 [ApiController]
 [Route("growth/codes")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class CodesController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateCodeRequest(

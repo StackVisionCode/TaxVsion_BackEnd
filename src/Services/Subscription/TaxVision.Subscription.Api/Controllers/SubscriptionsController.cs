@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -16,9 +17,15 @@ using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers;
 
+/// <summary>
+/// Suscripción del TENANT (la firma contable) a la plataforma TaxVision — nunca un cliente
+/// final. Staff-only en todas las acciones (algunas TenantAdmin, otras PlatformAdmin, ambas
+/// dentro del set staff); confirmado: cero referencias a customer_id en todo el servicio.
+/// </summary>
 [ApiController]
 [Route("subscriptions")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Suscripción base del tenant autenticado (plan, límites, renovación, estado).

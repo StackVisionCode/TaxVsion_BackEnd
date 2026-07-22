@@ -13,9 +13,13 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\PaymentClient\TaxVision.PaymentClient.Domain\TaxVision.PaymentClient.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\PaymentClient\TaxVision.PaymentClient.Application\TaxVision.PaymentClient.Application.csproj" />
+    <!-- ActorType Fase 6: agregado para probar la fitness function AllowActorTypes vía reflexión
+         sobre los controllers reales del Api. -->
+    <ProjectReference Include="..\..\..\src\Services\PaymentClient\TaxVision.PaymentClient.Api\TaxVision.PaymentClient.Api.csproj" />
   </ItemGroup>
 </Project>

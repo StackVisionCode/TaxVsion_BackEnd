@@ -1,10 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Scribe.Api.Authorization;
-using TaxVision.Scribe.Api.Common;
 using TaxVision.Scribe.Application.EventMappings;
 using TaxVision.Scribe.Application.EventMappings.Commands;
 using TaxVision.Scribe.Application.EventMappings.Queries;
@@ -21,6 +20,7 @@ namespace TaxVision.Scribe.Api.Controllers;
 [ApiController]
 [Route("scribe/event-mappings")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EventTemplateMappingsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEventTemplateMappingRequest(

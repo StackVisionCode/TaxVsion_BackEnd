@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,7 @@ namespace TaxVision.Auth.Api.Controllers;
 [ApiController]
 [Route("auth/sessions")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.CustomerPortal, ActorType.PlatformAdmin)]
 public sealed class SessionsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("me")]
@@ -29,7 +31,8 @@ public sealed class SessionsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Sesiones activas de un usuario del tenant (requiere users.manage).</summary>
     [HttpGet("users/{targetUserId:guid}")]
-    [Authorization.HasPermission(PermissionCatalog.UsersManage)]
+    [HasPermission(PermissionCatalog.UsersManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<IReadOnlyList<SessionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> UserSessions(Guid targetUserId, CancellationToken ct)
     {

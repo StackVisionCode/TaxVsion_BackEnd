@@ -129,6 +129,10 @@ async function wireSocket(
       resolveDisplayName(container.userDirectory, parsed.data.recipientUserId),
       resolveActorType(container.userDirectory, parsed.data.recipientUserId),
     ]);
+    if (recipientActorType === null) {
+      ack?.({ ok: false, code: 'Directory.Unresolved', message: 'Recipient actor type could not be resolved yet.' });
+      return;
+    }
     const result = await startDirectConversation(
       {
         tenantId,
@@ -159,13 +163,23 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.group.create.' });
       return;
     }
-    const members = await Promise.all(
+    const resolvedMembers = await Promise.all(
       parsed.data.memberUserIds.map(async (memberUserId) => ({
         userId: memberUserId,
         displayName: await resolveDisplayName(container.userDirectory, memberUserId),
         actorType: await resolveActorType(container.userDirectory, memberUserId),
       })),
     );
+    const unresolvedMember = resolvedMembers.find((member) => member.actorType === null);
+    if (unresolvedMember) {
+      ack?.({
+        ok: false,
+        code: 'Directory.Unresolved',
+        message: `Member actor type could not be resolved yet: ${unresolvedMember.userId}.`,
+      });
+      return;
+    }
+    const members = resolvedMembers as { userId: string; displayName: string; actorType: string }[];
     const result = await startGroupConversation(
       {
         tenantId,
@@ -220,6 +234,10 @@ async function wireSocket(
       resolveDisplayName(container.userDirectory, parsed.data.newMemberUserId),
       resolveActorType(container.userDirectory, parsed.data.newMemberUserId),
     ]);
+    if (newMemberActorType === null) {
+      ack?.({ ok: false, code: 'Directory.Unresolved', message: 'New member actor type could not be resolved yet.' });
+      return;
+    }
     const result = await addGroupParticipant(
       {
         tenantId,

@@ -152,7 +152,6 @@ public static class PermissionCatalog
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
     public const string PortalFoldersView = "portal.folders.view";
-    public const string PortalSignaturesSign = "portal.signatures.sign";
 
     // Communication — chat, llamadas, meetings (bounded context propio, ver microservicio
     // Communication). Los 18 GUID/Code de abajo YA existen como filas reales en la tabla
@@ -239,7 +238,11 @@ public static class PermissionCatalog
         bool IsCustomerPortal,
         int MinPlanTier = (int)PlanTier.Starter,
         bool IsAssignableByTenant = true,
-        bool PlatformOnly = false
+        bool PlatformOnly = false,
+        // Explícito solo cuando la inferencia por defecto (ver Permission.InferAllowedActorTypes)
+        // no alcanza — Fase 7 del plan anota permiso por permiso, no hace falta tocar los ~140 ya
+        // sembrados de una sola vez.
+        UserActorType[]? AllowedActorTypes = null
     );
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
@@ -384,32 +387,55 @@ public static class PermissionCatalog
             true
         ),
         new(
-            new Guid("a1000000-0000-0000-0000-000000000022"),
-            PortalSignaturesSign,
-            "portal",
-            "El cliente puede firmar documentos",
-            true
-        ),
-        new(
+            // Explícito (no inferido): SystemRoleDefaults(SystemCustomerPortal) ya le otorga
+            // este permiso al rol Customer Portal sembrado en cada tenant — un cliente real
+            // sube/ve/descarga sus propios archivos hoy. IsCustomerPortal queda en false porque
+            // el permiso NO es exclusivo de cliente (staff también lo usa) — InferAllowedActorTypes
+            // no modela "compartido", así que hace falta declarar el AllowedActorTypes real acá.
+            // El scope por customer_id (quién ve QUÉ archivo) lo resuelve StorageIdentity.cs, no
+            // esta capa (ver Actor_Type_Authorization_Layers_Plan.md §4.1).
             new Guid("a1000000-0000-0000-0000-000000000023"),
             CloudStorageFileView,
             "cloudstorage",
             "Ver metadatos de archivos",
-            false
+            false,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
+            // Ver nota de CloudStorageFileView — mismo caso: rol Customer Portal ya lo tiene.
             new Guid("a1000000-0000-0000-0000-000000000024"),
             CloudStorageFileUpload,
             "cloudstorage",
             "Subir archivos mediante el gateway seguro",
-            false
+            false,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
+            // Ver nota de CloudStorageFileView — mismo caso: rol Customer Portal ya lo tiene.
             new Guid("a1000000-0000-0000-0000-000000000025"),
             CloudStorageFileDownload,
             "cloudstorage",
             "Descargar archivos disponibles",
-            false
+            false,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000026"),
@@ -793,20 +819,43 @@ public static class PermissionCatalog
         ),
         // --- Communication (reconciliado, ver comentario arriba) ---
         new(
+            // Explícito (no inferido): SystemRoleDefaults(SystemEmployee) Y
+            // SystemRoleDefaults(SystemCustomerPortal) otorgan este permiso por defecto —
+            // staff Y cliente lo usan hoy (mismo hallazgo que CloudStorageFileView/Upload/
+            // Download en Fase 4: IsCustomerPortal=true infería CustomerPortal-only, pero un
+            // TenantEmployee real también lo tiene vía el rol de sistema "Employee". Sin este
+            // fix, ActorTypeRoleGuard rechaza la propia asignación del rol "Employee" a
+            // cualquier TenantEmployee — encontrado en Fase 7 (catalogación explícita), antes
+            // de que llegara a producción).
             new Guid("a1000000-0000-0000-0000-000000000045"),
             CommunicationChatStart,
             "communication",
             "Iniciar conversaciones de chat",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso.
             new Guid("a1000000-0000-0000-0000-000000000046"),
             CommunicationChatReply,
             "communication",
             "Responder en conversaciones de chat",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000047"),
@@ -817,12 +866,24 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Explícito (no inferido): a diferencia de ChatStart/ChatReply arriba, este tiene
+            // IsCustomerPortal=false (infiere staff-only), pero SystemRoleDefaults
+            // (SystemCustomerPortal) también lo otorga — el cliente abre su propio chat de
+            // soporte hacia el PlatformTenant. Mismo bug, sentido inverso (mismo hallazgo de
+            // Fase 7 que ChatStart/ChatReply arriba).
             new Guid("a1000000-0000-0000-0000-000000000048"),
             CommunicationSupportOpen,
             "communication",
             "Abrir chat de soporte hacia el PlatformTenant",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000049"),
@@ -865,12 +926,20 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
             new Guid("a1000000-0000-0000-0000-000000000054"),
             CommunicationMeetingJoin,
             "communication",
             "Unirse a reuniones (previa invitación válida)",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000055"),
@@ -889,12 +958,20 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
             new Guid("a1000000-0000-0000-0000-000000000057"),
             CommunicationScreenshotCreate,
             "communication",
             "Adjuntar screenshots/voice/video en chat",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000058"),
@@ -913,12 +990,20 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
             new Guid("a1000000-0000-0000-0000-000000000060"),
             CommunicationNotificationRead,
             "communication",
             "Consultar notificaciones in-app propias",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000061"),
@@ -1420,7 +1505,6 @@ public static class PermissionCatalog
             Role.SystemCustomerPortal =>
             [
                 PortalFoldersView,
-                PortalSignaturesSign,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,

@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Auth.Api.Authorization;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Invitations.Commands;
 using TaxVision.Auth.Application.Invitations.Queries;
@@ -21,6 +21,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 {
     [HttpPost]
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CreateInvitationResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(CreateInvitationRequest request, CancellationToken ct)
@@ -47,6 +48,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 
     [HttpGet]
     [HasPermission(PermissionCatalog.UsersInvite)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<PagedResult<InvitationResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetInvitations(
         [FromQuery] InvitationStatus? status = null,
@@ -79,6 +81,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{invitationId:guid}/resend")]
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Resend(Guid invitationId, CancellationToken ct)
@@ -93,6 +96,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{invitationId:guid}/cancel")]
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Cancel(Guid invitationId, CancellationToken ct)

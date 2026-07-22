@@ -1,10 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Scribe.Api.Authorization;
-using TaxVision.Scribe.Api.Common;
 using TaxVision.Scribe.Application.Layouts;
 using TaxVision.Scribe.Application.Layouts.Commands;
 using TaxVision.Scribe.Domain;
@@ -16,6 +15,7 @@ namespace TaxVision.Scribe.Api.Controllers;
 [ApiController]
 [Route("scribe/layouts")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEmailLayoutRequest(

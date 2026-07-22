@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using TaxVision.PaymentApp.Application.Abstractions;
 
 namespace TaxVision.PaymentApp.Api.Common;

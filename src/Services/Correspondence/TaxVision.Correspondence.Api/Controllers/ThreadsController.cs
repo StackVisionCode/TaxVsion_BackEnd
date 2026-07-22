@@ -1,10 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Correspondence.Api.Authorization;
-using TaxVision.Correspondence.Api.Common;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Application.Threads;
 using Wolverine;
@@ -20,6 +19,7 @@ namespace TaxVision.Correspondence.Api.Controllers;
 /// nunca de la ruta/query — mismo criterio que el resto de Correspondence.Api.
 /// </summary>
 [ApiController]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class ThreadsController(IMessageBus bus) : ControllerBase
 {
     private const int DefaultSize = 20;
