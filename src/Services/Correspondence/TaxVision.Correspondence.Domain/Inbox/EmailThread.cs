@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Correspondence.Domain.Inbox;
@@ -7,7 +8,7 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 /// customer. <see cref="CustomerId"/> es obligatorio por el mismo motivo que en
 /// <see cref="IncomingEmail"/>: un hilo sin customer no tiene sentido en este modelo.
 /// </summary>
-public sealed class EmailThread
+public sealed class EmailThread : ITenantOwned
 {
     public const int SubjectMaxLength = 1000;
     public const int ProviderThreadIdMaxLength = 200;
@@ -24,6 +25,9 @@ public sealed class EmailThread
     public int MessageCount { get; private set; }
     public EmailThreadStatus Status { get; private set; }
     public DateTime? ArchivedAtUtc { get; private set; }
+
+    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public static Result<EmailThread> NewFromMessage(
         Guid tenantId,

@@ -11,7 +11,8 @@ public sealed class TenantTermsAcceptanceRepository(AuthDbContext db) : ITenantT
 
     public Task<TenantTermsAcceptance?> GetLatestAsync(Guid tenantId, CancellationToken ct = default) =>
         db
-            .TenantTermsAcceptances.AsNoTracking()
+            .TenantTermsAcceptances.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(acceptance => acceptance.TenantId == tenantId)
             .OrderByDescending(acceptance => acceptance.AcceptedAtUtc)
             .FirstOrDefaultAsync(ct);

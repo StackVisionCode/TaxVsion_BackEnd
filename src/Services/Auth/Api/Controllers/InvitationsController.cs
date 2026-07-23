@@ -20,7 +20,7 @@ namespace TaxVision.Auth.Api.Controllers;
 public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 {
     [HttpPost]
-    [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CreateInvitationResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -80,7 +80,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{invitationId:guid}/resend")]
-    [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -95,7 +95,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{invitationId:guid}/cancel")]
-    [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]

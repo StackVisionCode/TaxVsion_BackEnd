@@ -9,7 +9,7 @@ namespace TaxVision.CloudStorage.Domain.Sharing;
 /// resuelto (ver ResolvePublicShareHandler/ResolvePrivateShareHandler) emite una
 /// presigned URL de MinIO efimera (60-300s), fresca en cada request.
 /// </summary>
-public sealed class ShareLink : TenantEntity
+public sealed class ShareLink : TenantEntity, IHasOwner
 {
     public const int DefaultLifetimeDays = 7;
 

@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging;
@@ -9,6 +10,7 @@ using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -39,6 +41,8 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
 builder.Services.AddGrowthInfrastructure(builder.Configuration);
+builder.Services.AddRedisCache(builder.Configuration);
+builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "growth-service", GrowthMetrics.MeterName);
 
@@ -47,11 +51,25 @@ builder.Services.Configure<AuthorizationOptions>(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
 });
 
-// Mecanismo propio de Growth (Variante B, ver Actor_Type_Authorization_Layers_Plan.md Fase 4):
-// scopes M2M con Audience+scope, sin migrar a PermissionPolicyProvider de BuildingBlocks — se le
+// GrowthAuthorizationPolicyProvider sigue siendo el único IAuthorizationPolicyProvider de Growth
+// (ASP.NET Core solo permite uno por app) — ahora compone DOS mecanismos independientes en vez de
+// reimplementar permisos a mano: "perm:" delega a PermissionPolicyProvider de BuildingBlocks
+// (RBAC Fase 8 — mismo IUserPermissionsSource que los otros 13 microservicios, ver abajo), y
+// "service-scope:" sigue siendo el mecanismo propio de Growth para M2M (Audience+scope, Variante B
+// de Actor_Type_Authorization_Layers_Plan.md Fase 4) sin relación con permisos de usuario. Se le
 // agrega la Capa 2 (ActorTypeAuthorizationFilter, vía .AddActorTypeAuthorization() arriba) ENCIMA,
 // sin tocar este provider.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, GrowthAuthorizationPolicyProvider>();
+
+// RBAC Fase 8 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
+// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
+// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness) — mismo
+// wiring que CloudStorage y los otros 8 servicios que ya adoptaron el mecanismo compartido.
+builder.Services.AddMemoryCache();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 // Rate limiting propio de Growth (B-02): el Gateway solo limita /auth/* y /storage/*, así que
 // /growth/* y los endpoints M2M /internal/* quedaban sin tope. Sin esto, la atribución pública
@@ -116,6 +134,11 @@ builder.Host.UseWolverine(options =>
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Codes.Application"));
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Referrals.Application"));
+    // RBAC Fase 7/8 — UserRolesChangedPermissionsProjectionConsumer y
+    // RolePermissionsChangedPermissionsProjectionConsumer viven en Growth.Infrastructure (no hay
+    // un "Growth.Application" genérico — ver PermissionsProjectionConsumers.cs), así que este
+    // assembly también necesita registrarse explícitamente para que Wolverine los descubra.
+    options.Discovery.IncludeAssembly(typeof(TaxVision.Growth.Infrastructure.DependencyInjection).Assembly);
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
     options.Policies.ForMessagesOfType<IIntegrationEvent>().AddMiddleware(typeof(GrowthTenantMessageMiddleware));
     // Global (no message-type filter): restores tenant context for LOCAL commands invoked via
@@ -163,6 +186,7 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseMiddleware<JwtTenantContextMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();

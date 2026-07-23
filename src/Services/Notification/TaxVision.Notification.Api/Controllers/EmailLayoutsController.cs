@@ -16,6 +16,8 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Gestión de layouts de correo (System/Tenant). El layout envuelve el cuerpo de la plantilla
 /// (marcador {{ body }}). Un layout default por scope/tenant; fallback al global del SaaS.
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización que salte validaciones).
 ///
 /// NO retirado en la Fase 18 del plan de hardening (Notification) por el mismo motivo exacto que
 /// <see cref="EmailTemplatesController"/>: es el único punto de entrada para crear/marcar-default un

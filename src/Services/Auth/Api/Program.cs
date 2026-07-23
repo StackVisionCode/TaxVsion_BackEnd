@@ -5,11 +5,14 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Tenancy;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -42,6 +45,12 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
+
+// RBAC Fase 6 — flag para SessionDenylistMiddleware (BuildingBlocks.Web.Session); el reader en sí
+// (IAccessTokenDenylist/ISessionDenylistReader) ya se registra en AddAuthInfrastructure.
+builder.Services.Configure<BuildingBlocks.Web.Session.SessionDenylistOptions>(
+    builder.Configuration.GetSection(BuildingBlocks.Web.Session.SessionDenylistOptions.SectionName)
+);
 builder.Services.Configure<PlatformBootstrapOptions>(
     builder.Configuration.GetSection(PlatformBootstrapOptions.SectionName)
 );
@@ -69,6 +78,19 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 // ActorTypeAuthorization — Fase 3 del plan de autorización por actor type, reemplaza a la copia
 // local que tenía este servicio).
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// RBAC Fase 7 — perm_v enforcement vía IUserPermissionsSource. Default "Jwt" (comportamiento
+// actual, sin cambios) — "Projection" se activa por servicio tras validar performance en
+// staging (Authorization:PermissionsSource). Auth es el único de los 14 servicios sin
+// proyección eventual: ya es la fuente de verdad de User/Role, así que
+// AuthUserPermissionsProjectionReader resuelve en vivo contra sus propias tablas (cero
+// staleness posible salvo la del propio JWT).
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<IUserPermissionsProjectionReader, AuthUserPermissionsProjectionReader>();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "auth-service");
 
@@ -138,6 +160,12 @@ builder.Host.UseWolverine(options =>
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, AuthDbContext>();
     options.Policies.AutoApplyTransactions();
+
+    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // crea para cada handler (bus.InvokeAsync local o consumer de integration event), ver
+    // JwtTenantContextMiddleware/LocalCommandTenantMiddleware para el porqué.
+    options.Policies.ForMessagesOfType<IIntegrationEvent>().AddMiddleware(typeof(IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(LocalCommandTenantMiddleware));
 
     // Eventos publicados por Auth
     options.PublishMessage<UserRegisteredIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -224,11 +252,24 @@ app.UseForwardedHeaders(forwardedHeadersOptions);
 app.UseMiddleware<TenantHostResolutionMiddleware>();
 
 app.UseAuthentication();
+
+// RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT, para que el
+// HasQueryFilter global de AuthDbContext tenga tenant listo. Distinto de
+// TenantHostResolutionMiddleware (arriba, pre-auth, resuelve por Host). Va ANTES de
+// UseAuthorization(): RBAC Fase 7 (Authorization:PermissionsSource=Projection) resuelve el
+// permiso con una consulta tenant-scoped DURANTE la evaluación de [HasPermission], que corre
+// dentro del propio middleware de UseAuthorization() — si el tenant context se poblara después,
+// esa consulta vería EffectiveTenantId=Guid.Empty y fallaría cerrado (403) para todo el mundo en
+// modo Projection. En modo Jwt (default) esto nunca importó porque JwtEmbeddedPermissionsSource
+// no toca la base de datos.
+app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// Revocación inmediata de access tokens de sesiones denylistadas (Redis).
-app.UseMiddleware<SessionDenylistMiddleware>();
+// Revocación inmediata de access tokens de sesiones denylistadas (Redis). RBAC Fase 6 — middleware
+// compartido (BuildingBlocks.Web.Session), reemplaza la copia local que tenía Auth.
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 
 // Fase L1.4 — bloquea con 409 a un tenant que no acepto la version vigente del ToS/AUP.
 app.UseMiddleware<TermsAcceptanceMiddleware>();

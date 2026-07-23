@@ -11,7 +11,10 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     private const int MaxPageSize = 100;
 
     public Task<Draft?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
-        db.Drafts.Include(d => d.Recipients).FirstOrDefaultAsync(d => d.TenantId == tenantId && d.Id == id, ct);
+        db
+            .Drafts.IgnoreQueryFilters()
+            .Include(d => d.Recipients)
+            .FirstOrDefaultAsync(d => d.TenantId == tenantId && d.Id == id, ct);
 
     /// <summary>
     /// <see cref="Draft.ReplyContext"/> vive en una columna JSON (plan §23) — no hay forma de
@@ -30,7 +33,8 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     )
     {
         var openDrafts = await db
-            .Drafts.Where(d => d.TenantId == tenantId && d.CustomerId == customerId && d.Status == DraftStatus.Draft)
+            .Drafts.IgnoreQueryFilters()
+            .Where(d => d.TenantId == tenantId && d.CustomerId == customerId && d.Status == DraftStatus.Draft)
             .ToListAsync(ct);
 
         return openDrafts.Find(d => d.ReplyContext?.IncomingEmailId == incomingEmailId);
@@ -57,6 +61,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
 
         var query = db
             .Drafts.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(d => d.TenantId == tenantId && d.CustomerId == customerId && d.Status == DraftStatus.Draft);
 
         var totalCount = await query.CountAsync(ct);
@@ -80,6 +85,7 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     ) =>
         await db
             .Drafts.AsNoTracking()
+            .IgnoreQueryFilters()
             .Include(d => d.Recipients)
             .Where(d => d.TenantId == tenantId && d.EmailThreadId == emailThreadId && d.Status == DraftStatus.Sent)
             .ToListAsync(ct);
@@ -87,13 +93,16 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
     // Tracked (sin AsNoTracking): DraftCleanupJob muta cada fila (Draft.Discard()) y guarda por el
     // mismo UnitOfWork/DbContext del scope — a diferencia de los listados de solo lectura de arriba.
     // Usa IX_Drafts_Status_UpdatedAtUtc (Fase 16, ver el WHY-comment del índice en DraftConfiguration).
+    // IgnoreQueryFilters: job cross-tenant (RBAC Fase 5) — recorre drafts abandonados de todos los
+    // tenants, nunca sirve una request autenticada.
     public async Task<IReadOnlyList<Draft>> ListAbandonedAsync(
         DateTime updatedBeforeUtc,
         int limit,
         CancellationToken ct = default
     ) =>
         await db
-            .Drafts.Where(d => d.Status == DraftStatus.Draft && d.UpdatedAtUtc < updatedBeforeUtc)
+            .Drafts.IgnoreQueryFilters()
+            .Where(d => d.Status == DraftStatus.Draft && d.UpdatedAtUtc < updatedBeforeUtc)
             .OrderBy(d => d.UpdatedAtUtc)
             .Take(limit)
             .ToListAsync(ct);

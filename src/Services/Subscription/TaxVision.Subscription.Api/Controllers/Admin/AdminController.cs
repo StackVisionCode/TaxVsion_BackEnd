@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
@@ -14,7 +15,8 @@ namespace TaxVision.Subscription.Api.Controllers.Admin;
 /// no puede ver datos de otros tenants.</summary>
 [ApiController]
 [Route("admin/subscription")]
-[Authorize(Roles = "PlatformAdmin")]
+[Authorize]
+[HasPermission(SubscriptionPermissions.AdminCrossTenant)]
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class AdminController(IMessageBus bus) : ControllerBase
 {

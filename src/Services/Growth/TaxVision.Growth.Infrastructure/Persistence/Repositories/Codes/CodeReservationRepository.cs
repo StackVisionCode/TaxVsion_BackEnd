@@ -11,10 +11,12 @@ public sealed class CodeReservationRepository(GrowthDbContext dbContext, ITenant
     public Task<CodeReservation?> GetByIdAsync(Guid tenantId, Guid reservationId, CancellationToken ct = default) =>
         !TenantRepositoryGuard.Matches(tenantContext, tenantId) || reservationId == Guid.Empty
             ? Task.FromResult<CodeReservation?>(null)
-            : dbContext.CodeReservations.FirstOrDefaultAsync(
-                reservation => reservation.Id == reservationId && reservation.TenantId == tenantId,
-                ct
-            );
+            : dbContext
+                .CodeReservations.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(
+                    reservation => reservation.Id == reservationId && reservation.TenantId == tenantId,
+                    ct
+                );
 
     public async Task AddAsync(CodeReservation reservation, CancellationToken ct = default)
     {

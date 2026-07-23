@@ -25,7 +25,7 @@ public sealed class AuthAuditStore(AuthDbContext db) : IAuthAuditWriter, IAuthAu
         CancellationToken ct = default
     )
     {
-        var query = db.AuthAuditLogs.AsNoTracking().Where(log => log.TenantId == tenantId);
+        var query = db.AuthAuditLogs.IgnoreQueryFilters().AsNoTracking().Where(log => log.TenantId == tenantId);
 
         if (userId is not null)
             query = query.Where(log => log.UserId == userId);

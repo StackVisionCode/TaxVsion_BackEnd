@@ -25,7 +25,7 @@ namespace TaxVision.Signature.Domain.Requests;
 /// explícito con su regla concreta. Cada método privado tiene un propósito único.
 /// </para>
 /// </summary>
-public sealed class SignatureRequest : TenantEntity
+public sealed class SignatureRequest : TenantEntity, IHasOwner
 {
     public const int MinTitleLength = 3;
     public const int MaxTitleLength = 300;

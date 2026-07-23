@@ -180,7 +180,13 @@ public sealed class FilesController(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
         ActorType.PlatformAdmin,
-        ActorType.CustomerPortal
+        ActorType.CustomerPortal,
+        // Scribe (y cualquier otro M2M client con permiso cloudstorage.file.download) llama este
+        // mismo endpoint vía token de servicio (client-credentials) para bajar logos/base layouts
+        // — ver CloudStorageClient.FetchDownloadUrlAsync en Scribe. El allowlist nunca se actualizó
+        // cuando esa integración M2M se conectó (Hardening Fase 9), así que todo intento fallaba
+        // con 403 en ActorTypeAuthorizationFilter antes de llegar siquiera al chequeo de permiso.
+        ActorType.Service
     )]
     [ProducesResponseType<DownloadUrlResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> IssueDownloadUrl(Guid fileId, CancellationToken ct)

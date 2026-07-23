@@ -1,13 +1,16 @@
 using System.Text.Json.Serialization;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -41,6 +44,8 @@ builder.Services.AddSwaggerGen();
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
 builder.Services.AddScribeInfrastructure(builder.Configuration);
+builder.Services.AddRedisCache(builder.Configuration);
+builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "scribe-service");
 
@@ -48,6 +53,15 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "scribe-servic
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
+// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
+// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
+builder.Services.AddMemoryCache();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 // Sube y publica los layouts base system-base/tenant-base (Fase 4.6) si todavía no existen.
 builder.Services.AddHostedService<ScribeBaseLayoutSeeder>();
@@ -119,6 +133,13 @@ builder.Host.UseWolverine(options =>
     options
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+
+    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
+    options
+        .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
+        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
 });
 
 var app = builder.Build();
@@ -140,8 +161,19 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+
+// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header X-Tenant-Id
+// sin validar, confiando en el caller — inseguro) por el middleware compartido que resuelve el
+// tenant SOLO del claim tenant_id del JWT verificado. Los tokens M2M (RenderController,
+// ActorType.Service) no llevan ese claim y pasan sin tenant seteado — el render pipeline resuelve
+// el tenantId explícito por parámetro, ver comentarios de IgnoreQueryFilters en los repos.
+// RBAC Fase 7 hotfix (2026-07-22): va ANTES de UseAuthorization() — en modo Projection,
+// [HasPermission] necesita el tenant ya poblado durante su propia evaluación, que corre dentro
+// de UseAuthorization().
+app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
-app.UseMiddleware<TenantResolutionMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

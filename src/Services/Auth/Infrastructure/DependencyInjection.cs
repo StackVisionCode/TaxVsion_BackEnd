@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Sessions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,7 +80,12 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IAuthSessionIssuer, AuthSessionIssuer>();
         services.AddScoped<ILoginThrottler, LoginThrottler>();
-        services.AddScoped<IAccessTokenDenylist, AccessTokenDenylist>();
+        // RBAC Fase 6 — un solo AccessTokenDenylist por scope resuelve ambas interfaces: escritura
+        // (IAccessTokenDenylist, revocación) y lectura (ISessionDenylistReader, consumida por el
+        // SessionDenylistMiddleware compartido de BuildingBlocks.Web).
+        services.AddScoped<AccessTokenDenylist>();
+        services.AddScoped<IAccessTokenDenylist>(sp => sp.GetRequiredService<AccessTokenDenylist>());
+        services.AddScoped<ISessionDenylistReader>(sp => sp.GetRequiredService<AccessTokenDenylist>());
 
         return services;
     }

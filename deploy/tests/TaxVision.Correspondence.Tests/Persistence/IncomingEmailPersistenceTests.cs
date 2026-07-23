@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.ValueObjects;
@@ -18,8 +19,22 @@ namespace TaxVision.Correspondence.Tests.Persistence;
 /// </summary>
 public sealed class IncomingEmailPersistenceTests
 {
-    private static CorrespondenceDbContext CreateContext(string databaseName) =>
-        new(new DbContextOptionsBuilder<CorrespondenceDbContext>().UseInMemoryDatabase(databaseName).Options);
+    // RBAC Fase 5 — EmailThread/IncomingEmail ahora son ITenantOwned; se setea el tenant "propio"
+    // del test antes de consultar, igual que haría JwtTenantContextMiddleware en producción.
+    private sealed class FakeTenantContext : ITenantContext
+    {
+        private Guid? _tenantId;
+        public Guid TenantId => _tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+        public bool HasTenant => _tenantId.HasValue;
+
+        public void SetTenant(Guid tenantId) => _tenantId = tenantId;
+    }
+
+    private static CorrespondenceDbContext CreateContext(string databaseName, ITenantContext tenantContext) =>
+        new(
+            new DbContextOptionsBuilder<CorrespondenceDbContext>().UseInMemoryDatabase(databaseName).Options,
+            tenantContext
+        );
 
     private static IncomingEmail NewIncomingEmail(Guid tenantId, Guid customerId, Guid emailThreadId) =>
         IncomingEmail
@@ -58,9 +73,11 @@ public sealed class IncomingEmailPersistenceTests
         var databaseName = Guid.NewGuid().ToString();
         var tenantId = Guid.NewGuid();
         var customerId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
         Guid threadId;
 
-        await using (var db = CreateContext(databaseName))
+        await using (var db = CreateContext(databaseName, tenantContext))
         {
             var thread = EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, DateTime.UtcNow).Value;
             threadId = thread.Id;
@@ -75,7 +92,7 @@ public sealed class IncomingEmailPersistenceTests
             Assert.Equal(1, await db.IncomingEmailAttachments.CountAsync(a => a.IncomingEmailId == email.Id));
         }
 
-        await using var reloadDb = CreateContext(databaseName);
+        await using var reloadDb = CreateContext(databaseName, tenantContext);
         var reloaded = await reloadDb
             .IncomingEmails.Include(x => x.Recipients)
             .Include(x => x.Attachments)

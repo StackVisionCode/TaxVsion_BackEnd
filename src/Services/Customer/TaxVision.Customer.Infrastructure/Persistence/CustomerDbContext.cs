@@ -1,6 +1,9 @@
+using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Domain.Addresses;
@@ -10,6 +13,7 @@ using TaxVision.Customer.Domain.ContactPoints;
 using TaxVision.Customer.Domain.Employees;
 using TaxVision.Customer.Domain.FiscalProfiles;
 using TaxVision.Customer.Domain.Imports;
+using TaxVision.Customer.Domain.Permissions;
 using TaxVision.Customer.Domain.Relations;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -24,7 +28,14 @@ namespace TaxVision.Customer.Infrastructure.Persistence;
 /// Opciones del contexto, incluida la conexión a SQL Server, proporcionadas por el
 /// contenedor de dependencias.
 /// </param>
-public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> options) : DbContext(options), IUnitOfWork
+/// <param name="tenantContext">
+/// RBAC Fase 5 (RBAC_Hardening_Plan.md) — tenant del actor autenticado, poblado por
+/// <c>JwtTenantContextMiddleware</c> desde el JWT. Alimenta el <c>HasQueryFilter</c> global
+/// fail-closed (safety net EF Core).
+/// </param>
+public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> options, ITenantContext tenantContext)
+    : DbContext(options),
+        IUnitOfWork
 {
     /// <summary>Clientes administrados por el servicio.</summary>
     public DbSet<DomainCustomer> Customers => Set<DomainCustomer>();
@@ -61,6 +72,8 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
 
     /// <summary>Proyección local de usuarios del staff del tenant, alimentada por eventos de Auth.</summary>
     public DbSet<TenantEmployeeDirectoryEntry> TenantEmployeeDirectoryEntries => Set<TenantEmployeeDirectoryEntry>();
+    public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
+    public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
 
     /// <summary>
     /// Construye el modelo de EF Core aplicando las configuraciones de entidades declaradas
@@ -76,8 +89,43 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
         // dentro de este ensamblado.
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
 
+        ApplyFailClosedTenantFilter(modelBuilder);
+
         // Permite que DbContext complete la configuración definida por la clase base.
         base.OnModelCreating(modelBuilder);
+    }
+
+    /// <summary>
+    /// RBAC Fase 5 — tenant efectivo para el filtro, expuesto como miembro de ESTA instancia de
+    /// DbContext (no del servicio inyectado directo): EF Core cachea el modelo compilado por tipo
+    /// de DbContext, así que cerrar la expresión del filtro sobre <c>tenantContext</c> (constante
+    /// externa) la congelaría con el valor del primer contexto construido en el proceso. Cerrar
+    /// sobre <c>this</c> sí se reevalúa por-instancia.
+    /// </summary>
+    private Guid EffectiveTenantId => tenantContext.HasTenant ? tenantContext.TenantId : Guid.Empty;
+
+    /// <summary>
+    /// Safety net EF Core (defense-in-depth): filtra toda entidad <see cref="ITenantOwned"/> por
+    /// el tenant del actor autenticado. Fail-closed — sin tenant en contexto, compara contra
+    /// <see cref="Guid.Empty"/> (0 filas). Jobs de background que necesitan cross-tenant
+    /// (<c>CustomerImportCleanupHostedService</c>) usan <c>IgnoreQueryFilters()</c> explícito.
+    /// </summary>
+    private void ApplyFailClosedTenantFilter(ModelBuilder modelBuilder)
+    {
+        var contextConstant = Expression.Constant(this);
+        var effectiveTenantIdAccess = Expression.Property(contextConstant, nameof(EffectiveTenantId));
+
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            if (!typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType))
+                continue;
+
+            var parameter = Expression.Parameter(entityType.ClrType, "e");
+            var tenantProperty = Expression.Property(parameter, nameof(ITenantOwned.TenantId));
+
+            var filter = Expression.Lambda(Expression.Equal(tenantProperty, effectiveTenantIdAccess), parameter);
+            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(filter);
+        }
     }
 
     /// <summary>

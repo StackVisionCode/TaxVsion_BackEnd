@@ -1,8 +1,8 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,7 +34,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<SeatResponse>>>(
@@ -49,7 +49,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<SeatResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<SeatResponse>>(new GetSeatByIdQuery(tenantId, id), ct);
@@ -60,11 +60,12 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     public sealed record PurchaseSeatsRequest(string SeatType, int Quantity, bool AutoRenew);
 
     [HttpPost("purchase")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<IReadOnlyList<Guid>>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Purchase(PurchaseSeatsRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<IReadOnlyList<Guid>>>(
@@ -80,11 +81,12 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     public sealed record AssignSeatRequest(Guid UserId);
 
     [HttpPost("{id:guid}/assign")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Assign(Guid id, AssignSeatRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -98,11 +100,12 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     public sealed record ReleaseSeatRequest(string? Reason);
 
     [HttpPost("{id:guid}/release")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Release(Guid id, ReleaseSeatRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -116,11 +119,12 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     public sealed record ReassignSeatRequest(Guid ToUserId, string? Reason);
 
     [HttpPost("{id:guid}/reassign")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reassign(Guid id, ReassignSeatRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -133,26 +137,16 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Renovación manual (mientras no exista Billing).</summary>
     [HttpPost("{id:guid}/renew")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Renew(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RenewSeatCommand(tenantId, id, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        userId = Guid.Empty;
-        if (!Guid.TryParse(User.FindFirst("tenant_id")?.Value, out tenantId))
-            return false;
-
-        var raw =
-            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(raw, out userId);
     }
 }

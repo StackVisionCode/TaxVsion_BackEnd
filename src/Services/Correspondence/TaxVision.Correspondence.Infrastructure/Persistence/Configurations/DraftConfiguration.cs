@@ -36,6 +36,11 @@ internal sealed class DraftConfiguration : IEntityTypeConfiguration<Draft>
 
         builder.Property(d => d.TenantId).IsRequired();
         builder.Property(d => d.CustomerId).IsRequired();
+
+        // RBAC Fase 4 (RBAC_Hardening_Plan.md) — additive, default Guid.Empty para las filas
+        // previas a esta columna (ver doc-comment de Draft.CreatedByUserId).
+        builder.Property(d => d.CreatedByUserId).IsRequired().HasDefaultValue(Guid.Empty);
+
         builder.Property(d => d.AccountId).IsRequired();
         builder.Property(d => d.Subject).IsRequired().HasMaxLength(Draft.SubjectMaxLength);
         builder.Property(d => d.HtmlBody).IsRequired().HasColumnType("nvarchar(max)");

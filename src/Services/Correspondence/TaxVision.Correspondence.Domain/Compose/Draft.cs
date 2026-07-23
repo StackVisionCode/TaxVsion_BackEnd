@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Correspondence.Domain.Compose;
@@ -18,7 +19,7 @@ namespace TaxVision.Correspondence.Domain.Compose;
 /// "un-enviar" un correo, así que tampoco se puede volver a <see cref="Discard"/> desde ahí.
 /// </para>
 /// </summary>
-public sealed class Draft
+public sealed class Draft : IHasOwner, ITenantOwned
 {
     public const int SubjectMaxLength = 1000;
     public const int FailureReasonMaxLength = 500;
@@ -31,6 +32,15 @@ public sealed class Draft
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public Guid CustomerId { get; private set; }
+
+    /// <summary>
+    /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — quién creó este draft, para el chequeo de resource
+    /// ownership (<see cref="IHasOwner"/>). <see cref="Guid.Empty"/> para filas que existían antes
+    /// de que este campo se capturara — nunca coincide con un userId real del JWT, así que el
+    /// ownership check falla-cerrado para esos drafts legacy en vez de asumir un dueño que no se
+    /// conoce (ver migración additive que agrega esta columna con ese default).
+    /// </summary>
+    public Guid CreatedByUserId { get; private set; }
 
     /// <summary>Referencia opaca al <c>TenantEmailAccount</c> de Connectors desde la que se enviará — sin FK ni navegación, mismo tratamiento que <see cref="Inbox.IncomingEmail.AccountId"/>.</summary>
     public Guid AccountId { get; private set; }
@@ -67,10 +77,19 @@ public sealed class Draft
     public IReadOnlyCollection<DraftRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<DraftAttachmentRef> Attachments => _attachments.AsReadOnly();
 
+    /// <summary>
+    /// RBAC Fase 5 (RBAC_Hardening_Plan.md) — implementación de <see cref="ITenantOwned"/> para el
+    /// <c>HasQueryFilter</c> global de <c>CorrespondenceDbContext</c>. <see cref="TenantId"/> ya se
+    /// fija una sola vez en <see cref="CreateNew"/>/<see cref="CreateReply"/> — este método existe
+    /// solo para satisfacer la interfaz, EF Core nunca lo invoca (materializa filas ya persistidas
+    /// con el TenantId original vía el mapeo de columna, no vía este setter).
+    /// </summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
+
     /// <summary>Correspondencia nueva desde cero — subject/body vacíos, el autoguardado los llena a medida que el usuario escribe.</summary>
-    public static Result<Draft> CreateNew(Guid tenantId, Guid customerId, Guid accountId)
+    public static Result<Draft> CreateNew(Guid tenantId, Guid customerId, Guid accountId, Guid createdByUserId)
     {
-        var validationError = ValidateIds(tenantId, customerId, accountId);
+        var validationError = ValidateIds(tenantId, customerId, accountId, createdByUserId);
         if (validationError is not null)
             return Result.Failure<Draft>(validationError);
 
@@ -81,6 +100,7 @@ public sealed class Draft
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
                 CustomerId = customerId,
+                CreatedByUserId = createdByUserId,
                 AccountId = accountId,
                 Subject = string.Empty,
                 HtmlBody = string.Empty,
@@ -99,13 +119,14 @@ public sealed class Draft
         Guid tenantId,
         Guid customerId,
         Guid accountId,
+        Guid createdByUserId,
         ReplyContext replyContext,
         string originalSubject
     )
     {
         ArgumentNullException.ThrowIfNull(replyContext);
 
-        var validationError = ValidateIds(tenantId, customerId, accountId);
+        var validationError = ValidateIds(tenantId, customerId, accountId, createdByUserId);
         if (validationError is not null)
             return Result.Failure<Draft>(validationError);
 
@@ -119,6 +140,7 @@ public sealed class Draft
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
                 CustomerId = customerId,
+                CreatedByUserId = createdByUserId,
                 AccountId = accountId,
                 Subject = Truncate(BuildReplySubject(originalSubject), SubjectMaxLength),
                 HtmlBody = string.Empty,
@@ -290,7 +312,7 @@ public sealed class Draft
         return trimmed.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? trimmed : "Re: " + trimmed;
     }
 
-    private static Error? ValidateIds(Guid tenantId, Guid customerId, Guid accountId)
+    private static Error? ValidateIds(Guid tenantId, Guid customerId, Guid accountId, Guid createdByUserId)
     {
         if (tenantId == Guid.Empty)
             return new Error("Draft.TenantIdRequired", "TenantId is required.");
@@ -298,6 +320,8 @@ public sealed class Draft
             return new Error("Draft.CustomerIdRequired", "CustomerId is required.");
         if (accountId == Guid.Empty)
             return new Error("Draft.AccountIdRequired", "AccountId is required.");
+        if (createdByUserId == Guid.Empty)
+            return new Error("Draft.CreatedByUserIdRequired", "CreatedByUserId is required.");
 
         return null;
     }

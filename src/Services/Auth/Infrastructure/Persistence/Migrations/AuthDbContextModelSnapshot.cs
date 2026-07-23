@@ -537,6 +537,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsCustomerPortal")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsDangerous")
+                        .HasColumnType("bit");
+
                     b.Property<int>("MinPlanTier")
                         .HasColumnType("int");
 
@@ -564,6 +567,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver usuarios del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
@@ -576,6 +580,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Invitar usuarios",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
@@ -588,6 +593,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Activar, desactivar y editar usuarios",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
@@ -600,6 +606,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar roles y permisos",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = true,
                             MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
@@ -612,6 +619,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar auditoría",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "audit",
                             PlatformOnly = false
@@ -624,6 +632,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar configuración del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "settings",
                             PlatformOnly = false
@@ -636,6 +645,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver facturación y suscripción",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = true,
                             MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
@@ -648,6 +658,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar métodos de pago y facturación",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = true,
                             MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
@@ -660,6 +671,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Cambiar plan y gestionar suscripción",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = true,
                             MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
@@ -672,6 +684,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver clientes",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
@@ -684,6 +697,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear y editar clientes",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
@@ -696,6 +710,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Solicitar firmas",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signatures",
                             PlatformOnly = false
@@ -708,6 +723,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver documentos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "documents",
                             PlatformOnly = false
@@ -720,6 +736,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar documentos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "documents",
                             PlatformOnly = false
@@ -732,6 +749,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Usar el módulo de correo",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "email",
                             PlatformOnly = false
@@ -744,6 +762,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Realizar llamadas y meetings",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "comms",
                             PlatformOnly = false
@@ -756,6 +775,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar campañas",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "campaigns",
                             PlatformOnly = false
@@ -768,6 +788,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver dashboard y reportes",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "reports",
                             PlatformOnly = false
@@ -780,6 +801,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "El cliente puede realizar llamadas",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "portal",
                             PlatformOnly = false
@@ -792,6 +814,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "El cliente puede usar el módulo de millas",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "portal",
                             PlatformOnly = false
@@ -804,6 +827,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "El cliente puede ver folders de su perfil",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "portal",
                             PlatformOnly = false
@@ -816,6 +840,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver metadatos de archivos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -828,6 +853,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Subir archivos mediante el gateway seguro",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -840,6 +866,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Descargar archivos disponibles",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -852,6 +879,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Eliminar archivos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -864,6 +892,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar políticas de almacenamiento",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -876,6 +905,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar auditoría de archivos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -888,6 +918,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Restaurar y purgar archivos de la papelera",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -900,6 +931,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear, renombrar y mover carpetas de archivos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -912,6 +944,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear links para compartir archivos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -924,6 +957,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Revocar links de compartir existentes",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -936,6 +970,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Otorgar permisos elevados en links y gestionar su expiracion",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -948,6 +983,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar legal hold y takedowns DMCA",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = true,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -960,6 +996,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Presentar contranotificacion DMCA sobre un archivo propio",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
@@ -972,6 +1009,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver la bandeja de correspondencia con customers",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
@@ -984,6 +1022,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Descargar adjuntos de la bandeja de correspondencia",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
@@ -996,6 +1035,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear, editar y descartar borradores de correspondencia",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
@@ -1008,6 +1048,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Responder a un mensaje entrante de correspondencia",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
@@ -1020,6 +1061,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Enviar un borrador de correspondencia ya redactado",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
@@ -1032,6 +1074,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver las cuentas de correo conectadas del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "connectors",
                             PlatformOnly = false
@@ -1044,6 +1087,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Conectar, reconectar y desconectar cuentas de correo del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "connectors",
                             PlatformOnly = false
@@ -1056,6 +1100,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver templates de correo (System y del tenant)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1068,6 +1113,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear, editar y publicar versiones de templates de correo",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1080,6 +1126,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver layouts de correo (System y del tenant)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1092,6 +1139,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear, editar y publicar versiones de layouts de correo",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1104,6 +1152,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver las reglas de resolución evento→template",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1116,6 +1165,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear, editar y borrar reglas de resolución evento→template",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1128,6 +1178,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1140,6 +1191,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar campañas de correo basadas en templates de Scribe (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
@@ -1152,6 +1204,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Invocar el render de templates (M2M — Notification u otros servicios via token de servicio)",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = true
@@ -1164,6 +1217,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear solicitudes de firma electrónica",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1176,6 +1230,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar solicitudes de firma",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1188,6 +1243,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Cancelar solicitudes de firma",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1200,6 +1256,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Reenviar invitaciones a firmantes",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1212,6 +1269,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Extender el vencimiento de solicitudes",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "signature",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000142"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "signature.request.manage",
+                            Description = "Gestionar solicitudes de firma creadas por otros usuarios del tenant",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1224,6 +1295,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Validar y preparar documentos para firma",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1236,6 +1308,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Aplicar firma del preparador al documento",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1248,6 +1321,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver documentos firmados y sus metadatos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1260,6 +1334,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Descargar sellado, original o certificado",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1272,6 +1347,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar el audit trail de una firma",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1284,6 +1360,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear plantillas de firma reutilizables",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1296,6 +1373,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Modificar plantillas de firma",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1308,6 +1386,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Eliminar plantillas de firma",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1320,6 +1399,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar la configuración de firma del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1332,6 +1412,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar firmas persistentes del preparador",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1344,6 +1425,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Verificar certificados de firma (endpoint público)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
@@ -1356,6 +1438,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar los techos de plan de Signature de un tenant (uso exclusivo de plataforma)",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = true,
                             MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = true
@@ -1368,6 +1451,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Revelar el SSN/ITIN/EIN completo de un customer",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
@@ -1380,6 +1464,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Asignar o reasignar el preparador responsable de un customer",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
@@ -1392,6 +1477,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar dominios propios del tenant (custom hostnames)",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = true,
                             MinPlanTier = 0,
                             Module = "domains",
                             PlatformOnly = false
@@ -1404,6 +1490,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Iniciar conversaciones de chat",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1416,6 +1503,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Responder en conversaciones de chat",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1428,6 +1516,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Moderar mensajes en conversaciones del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1440,6 +1529,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Abrir chat de soporte hacia el PlatformTenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1452,6 +1542,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Atender chats de soporte como agente (PlatformTenant)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1464,6 +1555,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Iniciar llamadas de audio 1:1",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1476,6 +1568,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Iniciar llamadas de video 1:1",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1488,6 +1581,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Grabar llamadas 1:1 (con banner de disclosure)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1500,6 +1594,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear reuniones multi-party",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1512,6 +1607,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Unirse a reuniones (previa invitación válida)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1524,6 +1620,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Actuar como host de reuniones (waiting room, mute all, transfer)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1536,6 +1633,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Grabar reuniones (con banner de disclosure)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1548,6 +1646,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Adjuntar screenshots/voice/video en chat",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1560,6 +1659,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear grupos internos por tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1572,6 +1672,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar miembros de grupos internos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1584,6 +1685,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar notificaciones in-app propias",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1596,6 +1698,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar la configuración de Communication del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1608,6 +1711,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar analytics de Communication del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
@@ -1620,6 +1724,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver el historial de correos enviados del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
@@ -1632,6 +1737,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver la suppression list (direcciones que rebotaron o se dieron de baja) del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
@@ -1644,6 +1750,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Agregar o quitar direcciones de la suppression list del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
@@ -1656,6 +1763,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver el proveedor de correo configurado para el tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
@@ -1668,6 +1776,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Configurar el proveedor de correo (SMTP/API) del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
@@ -1680,6 +1789,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar la configuración SMTP/API de Notification del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1692,6 +1802,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Enviar un correo puntual desde Notification",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1704,6 +1815,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver el historial de correos enviados desde Notification",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1716,6 +1828,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver los templates de correo del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1728,6 +1841,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear, editar y publicar templates de correo del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1740,6 +1854,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar los layouts base de correo del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1752,6 +1867,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver campañas de correo del tenant (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1764,6 +1880,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar campañas de correo del tenant (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1776,6 +1893,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver logs de auditoría de Notification del tenant (reservado, sin controller aún)",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
@@ -1788,6 +1906,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver los pagos SaaS (suscripción/seats/add-ons) del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = false
@@ -1800,6 +1919,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Reembolsar un pago SaaS del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = false
@@ -1812,6 +1932,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver el método de pago guardado (provider customer) del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = false
@@ -1824,6 +1945,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar el método de pago guardado del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = false
@@ -1836,6 +1958,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver pagos SaaS de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = true
@@ -1848,6 +1971,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver la configuración de cobro (Stripe DirectApiKeys/Connect) del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1860,6 +1984,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Configurar el modo/credenciales de cobro del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1872,6 +1997,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver los pagos que el tenant cobró a sus propios clientes",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1884,6 +2010,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Cobrar un pago a un cliente del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1896,6 +2023,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Reembolsar un pago cobrado a un cliente del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1908,6 +2036,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver los links de pago del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1920,6 +2049,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear y gestionar links de pago del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1932,6 +2062,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver el estado de la cuenta Stripe Connect del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1944,6 +2075,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Iniciar el onboarding de la cuenta Stripe Connect del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1956,6 +2088,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver los payouts programados del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1968,6 +2101,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar el calendario de payouts del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1980,6 +2114,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver los pagos recurrentes configurados del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -1992,6 +2127,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Crear y gestionar pagos recurrentes del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
@@ -2004,6 +2140,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver pagos de CUALQUIER tenant, incluso suspendido (soporte/investigación, uso exclusivo de plataforma)",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = true
@@ -2016,6 +2153,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar el logo/branding del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "branding",
                             PlatformOnly = false
@@ -2028,6 +2166,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver códigos del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2040,6 +2179,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar códigos del propio tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2052,6 +2192,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Emitir códigos de beneficio",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2064,6 +2205,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Activar códigos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2076,6 +2218,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Revocar códigos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2088,6 +2231,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar auditoría de códigos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2100,6 +2244,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar redemptions",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2112,6 +2257,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar compensaciones promocionales",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "codes",
                             PlatformOnly = false
@@ -2124,6 +2270,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver referidos propios",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2136,6 +2283,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Ver programas de referidos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2148,6 +2296,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar programas de referidos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2160,6 +2309,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar atribuciones",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2172,6 +2322,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar revisiones antifraude",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2184,6 +2335,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar revisiones antifraude",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2196,6 +2348,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar rewards",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2208,6 +2361,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Gestionar rewards no monetarios",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2220,6 +2374,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Consultar auditoría de referidos",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "referrals",
                             PlatformOnly = false
@@ -2232,8 +2387,126 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             Description = "Operar recursos Growth de cualquier tenant",
                             IsAssignableByTenant = false,
                             IsCustomerPortal = false,
+                            IsDangerous = false,
                             MinPlanTier = 0,
                             Module = "growth",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000143"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "subscription.plan.change",
+                            Description = "Cambiar plan, activar, cancelar y gestionar el ciclo de vida de la suscripción del propio tenant",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "subscription",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000144"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "subscription.suspend",
+                            Description = "Suspender la suscripción de cualquier tenant (uso exclusivo de plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "subscription",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000145"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "subscription.reactivate",
+                            Description = "Reactivar la suscripción de cualquier tenant (uso exclusivo de plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "subscription",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000146"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "subscription.renew",
+                            Description = "Renovación manual de la suscripción de cualquier tenant, mientras no exista Billing (uso exclusivo de plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "subscription",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000147"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "subscription.admin.cross_tenant",
+                            Description = "Consultar renovaciones próximas, seats vencidos y suscripciones en mora de CUALQUIER tenant, y forzar el recálculo de entitlements (uso exclusivo de plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "subscription",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000148"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "seats.manage",
+                            Description = "Comprar, asignar, liberar, reasignar y renovar seats del propio tenant",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "seats",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000149"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "addons.manage",
+                            Description = "Comprar, cancelar y renovar add-ons del propio tenant",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "addons",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000150"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "tenant.status.change",
+                            Description = "Cambiar el estado de cualquier tenant (uso exclusivo de plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tenant",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000151"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "tenant.list.view",
+                            Description = "Listar todos los tenants de la plataforma (uso exclusivo de plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tenant",
                             PlatformOnly = true
                         });
                 });

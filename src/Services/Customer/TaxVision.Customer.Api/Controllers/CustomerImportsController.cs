@@ -1,8 +1,7 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -39,7 +38,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         if (string.IsNullOrWhiteSpace(idempotencyKey))
@@ -90,7 +89,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<CustomerImportAttemptResponse>>(
@@ -113,7 +112,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
         CancellationToken ct = default
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var list = await bus.InvokeAsync<IReadOnlyList<CustomerImportAttemptResponse>>(
@@ -130,7 +129,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new CancelCustomerImportCommand(tenantId, id, userId), ct);
@@ -153,7 +152,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
         CancellationToken ct = default
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
         {
             Response.StatusCode = StatusCodes.Status401Unauthorized;
             return;
@@ -231,22 +230,6 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
     }
 
     // ============ Helpers ============
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        tenantId = Guid.Empty;
-        userId = Guid.Empty;
-
-        var tidClaim = User.FindFirst("tenant_id")?.Value;
-        var subClaim =
-            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-        if (string.IsNullOrEmpty(tidClaim) || !Guid.TryParse(tidClaim, out tenantId))
-            return false;
-        if (string.IsNullOrEmpty(subClaim) || !Guid.TryParse(subClaim, out userId))
-            return false;
-        return true;
-    }
 
     private static string Escape(string? value)
     {

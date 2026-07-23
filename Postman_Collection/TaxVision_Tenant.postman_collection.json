@@ -92,7 +92,7 @@
 						}
 					]
 				},
-				"description": "Lista paginada de tenants comerciales. Requiere rol PlatformAdmin."
+				"description": "Lista paginada de tenants comerciales. Requiere permiso tenant.list.view (PlatformAdmin)."
 			},
 			"response": [],
 			"event": [
@@ -139,7 +139,7 @@
 						"status"
 					]
 				},
-				"description": "Cambia el estado del tenant (Active | Suspended | Closed). Requiere PlatformAdmin. Suspender/cerrar bloquea login y refresh."
+				"description": "Cambia el estado del tenant (Active | Suspended | Closed). Requiere permiso tenant.status.change (PlatformAdmin). Suspender/cerrar bloquea login y refresh."
 			},
 			"response": [],
 			"event": [

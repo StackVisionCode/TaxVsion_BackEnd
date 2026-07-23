@@ -1,7 +1,7 @@
 ﻿import { randomUUID } from 'node:crypto';
 import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
-import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import type {
   CommunicationIoServer,
@@ -179,9 +179,12 @@ function wireMeetingSocket(
         ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Guest ticket is not scoped to this meeting.' });
         return;
       }
-    } else if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.MeetingJoin)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.meeting.join.' });
-      return;
+    } else {
+      const joinPermCheck = await checkPermission(principal, CommunicationPermissions.MeetingJoin, container.userPermissions);
+      if (!joinPermCheck.allowed) {
+        ack?.({ ok: false, code: joinPermCheck.code, message: joinPermCheck.message });
+        return;
+      }
     }
 
     const guestDisplayName = typeof principal.raw['display_name'] === 'string' ? principal.raw['display_name'] : undefined;

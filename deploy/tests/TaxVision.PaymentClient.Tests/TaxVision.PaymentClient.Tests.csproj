@@ -7,6 +7,7 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.9" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
@@ -18,6 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\PaymentClient\TaxVision.PaymentClient.Domain\TaxVision.PaymentClient.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\PaymentClient\TaxVision.PaymentClient.Application\TaxVision.PaymentClient.Application.csproj" />
+    <!-- RBAC Fase 5.8: agregado para probar el HasQueryFilter global de PaymentClientDbContext directamente. -->
+    <ProjectReference Include="..\..\..\src\Services\PaymentClient\TaxVision.PaymentClient.Infrastructure\TaxVision.PaymentClient.Infrastructure.csproj" />
     <!-- ActorType Fase 6: agregado para probar la fitness function AllowActorTypes vía reflexión
          sobre los controllers reales del Api. -->
     <ProjectReference Include="..\..\..\src\Services\PaymentClient\TaxVision.PaymentClient.Api\TaxVision.PaymentClient.Api.csproj" />

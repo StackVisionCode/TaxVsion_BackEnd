@@ -29,6 +29,15 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                     conflict.Message,
                     conflict.Code
                 ),
+                // RBAC Fase 7 — ProjectionPermissionsSource lanza esto cuando el perm_v del JWT
+                // quedó atrás de la proyección local: el frontend debe refrescar el token y
+                // reintentar, no es un error del servidor.
+                UnauthorizedAccessException staleToken => (
+                    StatusCodes.Status401Unauthorized,
+                    "Unauthorized",
+                    "Your session's permissions are out of date. Refresh your token and try again.",
+                    staleToken.Message
+                ),
                 _ => (
                     StatusCodes.Status500InternalServerError,
                     "Internal Server Error",

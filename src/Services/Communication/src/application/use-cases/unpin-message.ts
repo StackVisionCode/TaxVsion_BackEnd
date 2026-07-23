@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Result, makeError } from '../../domain/shared/result.js';
-import { hasPermission, CommunicationPermissions } from '../../domain/shared/permissions.js';
+import { checkPermission, CommunicationPermissions } from '../../domain/shared/permissions.js';
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import {
   ChatSocketEvents,
   type MessageUnpinnedDto,
@@ -15,13 +16,14 @@ export interface UnpinMessageCommand {
   readonly messageId: string;
   readonly actorUserId: string;
   readonly actorType: string;
-  readonly actorPermissions: readonly string[];
+  readonly actorPermissionVersion: number;
 }
 
 export interface UnpinMessageDeps {
   readonly messages: MessageRepository;
   readonly conversations: ConversationRepository;
   readonly emitter: RealtimeEmitter;
+  readonly userPermissions: UserPermissionsProjectionRepository;
 }
 
 export async function unpinMessage(
@@ -42,8 +44,17 @@ export async function unpinMessage(
 
   const requiresModerate = conversation.kind === 'Group' || conversation.kind === 'Meeting';
   if (requiresModerate) {
-    if (!hasPermission(cmd.actorType, cmd.actorPermissions, CommunicationPermissions.ChatModerate)) {
-      return Result.fail(makeError('Auth.Forbidden', 'Unpin in Group/Meeting requires communication.chat.moderate.'));
+    const permCheck = await checkPermission(
+      {
+        userId: cmd.actorUserId,
+        actorType: cmd.actorType,
+        permissionVersion: cmd.actorPermissionVersion,
+      },
+      CommunicationPermissions.ChatModerate,
+      deps.userPermissions,
+    );
+    if (!permCheck.allowed) {
+      return Result.fail(makeError(permCheck.code, permCheck.message));
     }
   }
 

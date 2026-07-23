@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Correspondence.Domain.Audit;
@@ -12,7 +13,7 @@ namespace TaxVision.Correspondence.Domain.Audit;
 /// transiciones de estado que modelar, por eso no hereda la forma de aggregate con Result-returning
 /// mutators del resto de este bounded context (<see cref="Compose.Draft"/>).
 /// </summary>
-public sealed class CorrespondenceAuditLog
+public sealed class CorrespondenceAuditLog : ITenantOwned
 {
     public const int ActionMaxLength = 100;
     public const int TargetTypeMaxLength = 100;
@@ -32,6 +33,9 @@ public sealed class CorrespondenceAuditLog
     public string CorrelationId { get; private set; } = default!;
     public string Detail { get; private set; } = default!;
     public DateTime TimestampUtc { get; private set; }
+
+    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public static Result<CorrespondenceAuditLog> Record(
         Guid tenantId,

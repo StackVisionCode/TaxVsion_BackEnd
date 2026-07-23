@@ -24,7 +24,10 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
         if (ids.Count == 0)
             return [];
 
-        return await db.Customers.Where(c => c.TenantId == tenantId && ids.Contains(c.Id)).ToListAsync(ct);
+        return await db
+            .Customers.IgnoreQueryFilters()
+            .Where(c => c.TenantId == tenantId && ids.Contains(c.Id))
+            .ToListAsync(ct);
     }
 
     public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
@@ -35,7 +38,8 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
     )
     {
         var query = db
-            .CustomerFiscalProfiles.AsNoTracking()
+            .CustomerFiscalProfiles.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex);
 
         if (excludeCustomerId.HasValue)
@@ -52,7 +56,8 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
     )
     {
         var query = db
-            .CustomerRelationFiscalProfiles.AsNoTracking()
+            .CustomerRelationFiscalProfiles.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex);
 
         if (excludeRelationId.HasValue)

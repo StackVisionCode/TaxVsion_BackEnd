@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.ValueObjects;
@@ -8,11 +9,23 @@ namespace TaxVision.Correspondence.Tests.Persistence;
 
 public sealed class IncomingEmailRepositoryTests
 {
-    private static CorrespondenceDbContext CreateContext() =>
+    // RBAC Fase 5 — IncomingEmail ahora es ITenantOwned; se setea el tenant "propio" de cada test
+    // antes de consultar, igual que haría JwtTenantContextMiddleware en producción.
+    private sealed class FakeTenantContext : ITenantContext
+    {
+        private Guid? _tenantId;
+        public Guid TenantId => _tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+        public bool HasTenant => _tenantId.HasValue;
+
+        public void SetTenant(Guid tenantId) => _tenantId = tenantId;
+    }
+
+    private static CorrespondenceDbContext CreateContext(ITenantContext tenantContext) =>
         new(
             new DbContextOptionsBuilder<CorrespondenceDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .Options
+                .Options,
+            tenantContext
         );
 
     private static IncomingEmail NewIncomingEmail(Guid tenantId, Guid customerId, Guid emailThreadId) =>
@@ -37,9 +50,11 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task GetByIdAsync_returns_the_email_scoped_by_tenant()
     {
-        await using var db = CreateContext();
-        var repository = new IncomingEmailRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new IncomingEmailRepository(db);
         var email = NewIncomingEmail(tenantId, Guid.NewGuid(), Guid.NewGuid());
         await repository.AddAsync(email);
         await db.SaveChangesAsync();
@@ -53,13 +68,16 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task GetByIdAsync_returns_null_when_the_email_belongs_to_another_tenant()
     {
-        await using var db = CreateContext();
+        var queryTenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(queryTenantId);
+        await using var db = CreateContext(tenantContext);
         var repository = new IncomingEmailRepository(db);
         var email = NewIncomingEmail(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         await repository.AddAsync(email);
         await db.SaveChangesAsync();
 
-        var found = await repository.GetByIdAsync(Guid.NewGuid(), email.Id);
+        var found = await repository.GetByIdAsync(queryTenantId, email.Id);
 
         Assert.Null(found);
     }
@@ -67,7 +85,7 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task GetByIdAsync_returns_null_when_the_id_does_not_exist()
     {
-        await using var db = CreateContext();
+        await using var db = CreateContext(new FakeTenantContext());
         var repository = new IncomingEmailRepository(db);
 
         var found = await repository.GetByIdAsync(Guid.NewGuid(), Guid.NewGuid());
@@ -80,9 +98,11 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task ListByThreadAsync_WithFiveMessages_PaginatesInReceivedAtUtcAscendingOrder()
     {
-        await using var db = CreateContext();
-        var repository = new IncomingEmailRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new IncomingEmailRepository(db);
         var customerId = Guid.NewGuid();
         var emailThreadId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -125,9 +145,11 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task ListByThreadAsync_WithZeroOrNegativePageAndSize_ClampsToDefaults()
     {
-        await using var db = CreateContext();
-        var repository = new IncomingEmailRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new IncomingEmailRepository(db);
         var emailThreadId = Guid.NewGuid();
         var email = NewIncomingEmail(tenantId, Guid.NewGuid(), emailThreadId);
         await repository.AddAsync(email);
@@ -143,9 +165,11 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task ListByThreadAsync_WithMessageFromAnotherThread_NeverReturnsIt()
     {
-        await using var db = CreateContext();
-        var repository = new IncomingEmailRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new IncomingEmailRepository(db);
         var customerId = Guid.NewGuid();
         var ownThreadId = Guid.NewGuid();
         var ownEmail = NewIncomingEmail(tenantId, customerId, ownThreadId);
@@ -165,9 +189,11 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task ListAllByThreadAsync_ReturnsAllMessagesUnpaginatedInReceivedAtUtcAscendingOrder()
     {
-        await using var db = CreateContext();
-        var repository = new IncomingEmailRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new IncomingEmailRepository(db);
         var customerId = Guid.NewGuid();
         var emailThreadId = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -205,9 +231,11 @@ public sealed class IncomingEmailRepositoryTests
     [Fact]
     public async Task ListAllByThreadAsync_WithMessageFromAnotherThreadOrTenant_NeverReturnsIt()
     {
-        await using var db = CreateContext();
-        var repository = new IncomingEmailRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new IncomingEmailRepository(db);
         var customerId = Guid.NewGuid();
         var ownThreadId = Guid.NewGuid();
         var ownEmail = NewIncomingEmail(tenantId, customerId, ownThreadId);

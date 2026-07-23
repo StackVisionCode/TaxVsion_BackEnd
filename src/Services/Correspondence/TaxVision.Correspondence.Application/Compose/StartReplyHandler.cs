@@ -66,6 +66,7 @@ public static class StartReplyHandler
             command.TenantId,
             incomingEmail.CustomerId,
             command.AccountId,
+            command.ActorId,
             replyContextResult.Value,
             incomingEmail.Subject
         );

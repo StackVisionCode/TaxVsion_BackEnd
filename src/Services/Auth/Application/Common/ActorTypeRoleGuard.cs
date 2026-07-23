@@ -57,4 +57,56 @@ public static class ActorTypeRoleGuard
             )
         );
     }
+
+    /// <summary>
+    /// RBAC Fase 3 (RBAC_Hardening_Plan.md) — valida permisos SUELTOS (antes de que existan como
+    /// <see cref="RolePermission"/> de un <see cref="Role"/> persistido) contra un actor type
+    /// destino. Complementa a <see cref="ValidateRolesForActorType"/>, que valida roles YA
+    /// existentes al asignarlos a un usuario — esta versión corre antes, al crear el rol o
+    /// reemplazar su set de permisos, para que un rol mezclando permisos de actor types
+    /// incompatibles (ej. <c>portal.folders.view</c> con <c>customers.view</c>) nunca llegue a
+    /// persistirse, en vez de fallar recién al intentar asignarlo.
+    /// </summary>
+    /// <param name="targetActorType">
+    /// Actor type declarado para el rol. <c>null</c> cuando no se conoce el destino (ej.
+    /// <c>SetRolePermissionsHandler</c>, que edita un rol custom ya existente sin un
+    /// <c>TargetActorType</c> propio) — en ese caso se exige que cada permiso sea válido para AL
+    /// MENOS UNO de {TenantEmployee, TenantAdmin}, la defensa razonable para no dejar colar un
+    /// permiso exclusivo de CustomerPortal en un rol sin destino declarado.
+    /// </param>
+    public static Result ValidatePermissionsForActorType(
+        UserActorType? targetActorType,
+        IReadOnlyCollection<Guid> permissionIds,
+        IReadOnlyCollection<Permission> catalog
+    )
+    {
+        var actorTypesToTry = targetActorType.HasValue
+            ? [targetActorType.Value]
+            : new[] { UserActorType.TenantEmployee, UserActorType.TenantAdmin };
+
+        var byId = catalog.ToDictionary(permission => permission.Id);
+        var rejected = new List<string>();
+
+        foreach (var permissionId in permissionIds.Distinct())
+        {
+            if (!byId.TryGetValue(permissionId, out var permission))
+                continue;
+
+            if (!actorTypesToTry.Any(actorType => permission.AllowedActorTypes.Contains(actorType)))
+                rejected.Add(permission.Code);
+        }
+
+        if (rejected.Count == 0)
+            return Result.Success();
+
+        return Result.Failure(
+            new Error(
+                "Role.NotAssignableToActorType",
+                "The following permissions are not assignable to actor type "
+                    + (targetActorType?.ToString() ?? "staff (TenantEmployee/TenantAdmin)")
+                    + ": "
+                    + string.Join(", ", rejected.OrderBy(code => code))
+            )
+        );
+    }
 }

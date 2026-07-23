@@ -10,8 +10,10 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -52,6 +54,7 @@ builder.Services.AddBuildingBlocks();
 
 //  Added Cache's Services
 builder.Services.AddRedisCache(builder.Configuration);
+builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTenantInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-service");
@@ -68,6 +71,15 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-servic
 // que se agregue un mecanismo de opt-out explícito para este tipo de token (decisión pendiente,
 // post Fase 3).
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
+// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
+// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
+builder.Services.AddMemoryCache();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 // Acepta el ticket firmado por Auth (ReserveSubdomainHandler, claim reg_slug) o un
 // PlatformAdmin creando un tenant directamente — ver TenantController.Create.
@@ -189,7 +201,6 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-app.UseMiddleware<TenantResolutionMiddleware>();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -197,6 +208,18 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+
+// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header
+// X-Tenant-Id sin validar, confiando en el caller — inseguro) por el middleware compartido
+// que resuelve el tenant SOLO del claim tenant_id del JWT verificado. Este servicio no tiene
+// entidades ITenantOwned (Tenant ES el registro de tenants, no algo que le pertenezca a uno),
+// así que hoy nada consume el TenantContext que este middleware llena — se mantiene por
+// consistencia con los otros 12 servicios y para no dejar el header-trust inseguro activo.
+// RBAC Fase 7 hotfix (2026-07-22): va ANTES de UseAuthorization() por consistencia con el resto
+// de servicios, aunque acá no exista todavía un consumer de Projection que dependa del orden.
+app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });

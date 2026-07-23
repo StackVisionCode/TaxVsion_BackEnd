@@ -9,7 +9,7 @@ namespace TaxVision.Scribe.Domain.Layouts;
 /// EmailTemplateVersion debe extender una versión Published de un layout (§14.7 del plan): no se
 /// permite un template standalone con HTML completo propio.
 /// </summary>
-public sealed class EmailLayout : BaseEntity
+public sealed class EmailLayout : BaseEntity, INullableTenantOwned
 {
     private readonly List<EmailLayoutVersion> _versions = [];
 

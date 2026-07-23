@@ -7,9 +7,10 @@ namespace BuildingBlocks.ActorTypeAuthorization;
 /// duplicado (con variaciones reales entre servicios: algunos tenían <c>TryGetUserId</c> o
 /// <c>IsPlatformAdmin</c>, otros no) en cada uno de los 11 microservicios "estándar" (ver Fase 1
 /// y Fase 3 de Actor_Type_Authorization_Layers_Plan.md). <c>HasPermission</c> es la versión que
-/// ya coincidía en 11 de esas 12 copias (con bypass de <c>PlatformAdmin</c>) — Growth usa
-/// deliberadamente un modelo distinto (scopes M2M, sin este bypass) y queda fuera de esta
-/// consolidación, ver Fase 4.
+/// ya coincidía en 11 de esas 12 copias (con bypass de <c>PlatformAdmin</c>). RBAC Fase 7.5:
+/// Growth también adoptó <c>HasPermission</c> (agregó el bypass de <c>PlatformAdmin</c> a su
+/// propia copia local, todavía usada fuera del pipeline <c>[HasPermission]</c>) — su mecanismo
+/// M2M de scopes (<c>service-scope:</c>) sigue siendo un modelo aparte, no relacionado con esto.
 /// <para>
 /// El <c>tenant_id</c> siempre proviene del token, nunca del cuerpo/query/ruta del cliente
 /// (aislamiento multitenant estricto) — el mismo criterio que ya documentaban todas las copias.
@@ -48,6 +49,13 @@ public static class ClaimsPrincipalExtensions
     // poblado en cada caso borde (mismo criterio ya documentado en las 11 copias originales).
     public static bool HasPermission(this ClaimsPrincipal principal, string permission) =>
         principal.HasClaim(ClaimNames.Permission, permission) || principal.IsPlatformAdmin();
+
+    /// <summary>Versión de permisos embebida en el JWT (claim <c>perm_v</c>, ver
+    /// <c>JwtTokenGenerator.cs</c>) — RBAC Fase 7 la compara contra la proyección local para
+    /// detectar un token con permisos desactualizados. 0 si el claim falta o no parsea (JWTs
+    /// emitidos antes de que este claim existiera, o de un actor sin este claim).</summary>
+    public static int GetPermissionsVersion(this ClaimsPrincipal principal) =>
+        int.TryParse(principal.FindFirst("perm_v")?.Value, out var version) ? version : 0;
 
     /// <summary>Null si el claim falta o trae un valor que no matchea ningún <see cref="ActorType"/>
     /// conocido — se trata como "no confiable", nunca se asume un actor type por default

@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "5655905e-59ee-49c4-8c18-ab7b22b5307a",
 		"name": "TaxVision - Subscription",
-		"description": "Colección de pruebas del microservicio Subscription de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047). La mayoría de mutaciones requieren rol TenantAdmin; los endpoints bajo Admin requieren PlatformAdmin.",
+		"description": "Colección de pruebas del microservicio Subscription de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047). RBAC Fase 8: la mayoría de mutaciones requieren el permiso subscription.plan.change/seats.manage/addons.manage (TenantAdmin lo tiene por default); los endpoints solo-plataforma requieren subscription.suspend/reactivate/renew/admin.cross_tenant (PlatformOnly).",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -137,7 +137,7 @@
 								}
 							}
 						},
-						"description": "Self-service (TenantAdmin): paga YA en vez de esperar a que termine el trial. Solo funciona si la suscripcion esta en Trialing — convierte a Active y dispara un cobro real via PaymentApp (mismo evento SubscriptionRenewalDueIntegrationEvent que usa el job de renovacion periodica). Requiere que el tenant ya tenga un metodo de pago adjunto en PaymentApp (ver coleccion PaymentApp > ProviderCustomers > AttachPaymentMethod) — si no, el cobro falla y la suscripcion queda PastDue con reintentos via DunningJob, igual que cualquier renovacion fallida. 204 en exito; correr GetMySubscription despues para confirmar status=Active. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con la activacion; si se omite o es null, mantiene el ciclo que ya tenia el trial. Sin prorrateo: el cobro se hace al precio completo del ciclo elegido."
+						"description": "Self-service (permiso: subscription.plan.change). Solo funciona si la suscripcion esta en Trialing — convierte a Active y dispara un cobro real via PaymentApp (mismo evento SubscriptionRenewalDueIntegrationEvent que usa el job de renovacion periodica). Requiere que el tenant ya tenga un metodo de pago adjunto en PaymentApp (ver coleccion PaymentApp > ProviderCustomers > AttachPaymentMethod) — si no, el cobro falla y la suscripcion queda PastDue con reintentos via DunningJob, igual que cualquier renovacion fallida. 204 en exito; correr GetMySubscription despues para confirmar status=Active. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con la activacion; si se omite o es null, mantiene el ciclo que ya tenia el trial. Sin prorrateo: el cobro se hace al precio completo del ciclo elegido."
 					},
 					"response": []
 				},
@@ -171,7 +171,7 @@
 								}
 							}
 						},
-						"description": "Upgrade/downgrade de plan (TenantAdmin). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con el plan en el mismo request para elegir/cambiar el ciclo de facturacion a la vez que el plan. Si se omite o es null, mantiene el ciclo actual. Sin prorrateo: el periodo en curso sigue como esta (ya cobrado con el ciclo/precio anteriores); el ciclo nuevo se cobra recien en la proxima renovacion, al precio de ESE ciclo."
+						"description": "Upgrade/downgrade de plan (permiso: subscription.plan.change). Si SubscriptionTenantSettings.PlanChangeEffective es Immediate (default), cambia y factura de una vez; si es EndOfPeriod, encola un PlanChangeRequest para GetPendingPlanChange. billingCycle es opcional (\"Monthly\"/\"Yearly\") — se manda junto con el plan en el mismo request para elegir/cambiar el ciclo de facturacion a la vez que el plan. Si se omite o es null, mantiene el ciclo actual. Sin prorrateo: el periodo en curso sigue como esta (ya cobrado con el ciclo/precio anteriores); el ciclo nuevo se cobra recien en la proxima renovacion, al precio de ESE ciclo."
 					},
 					"response": []
 				},
@@ -222,7 +222,7 @@
 								"cancel"
 							]
 						},
-						"description": "Cancela el cambio de plan diferido pendiente (TenantAdmin)."
+						"description": "Cancela el cambio de plan diferido pendiente (permiso: subscription.plan.change)."
 					},
 					"response": []
 				},
@@ -256,7 +256,7 @@
 								}
 							}
 						},
-						"description": "Cancelacion inmediata (TenantAdmin)."
+						"description": "Cancelacion inmediata (permiso: subscription.plan.change)."
 					},
 					"response": []
 				},
@@ -291,7 +291,7 @@
 								}
 							}
 						},
-						"description": "Solo PlatformAdmin."
+						"description": "Solo PlatformAdmin (permiso: subscription.suspend)."
 					},
 					"response": []
 				},
@@ -317,7 +317,7 @@
 								"reactivate"
 							]
 						},
-						"description": "Solo PlatformAdmin."
+						"description": "Solo PlatformAdmin (permiso: subscription.reactivate)."
 					},
 					"response": []
 				},
@@ -343,7 +343,7 @@
 								"renew"
 							]
 						},
-						"description": "Renovacion manual mientras no exista Billing. Solo PlatformAdmin."
+						"description": "Renovacion manual mientras no exista Billing. Solo PlatformAdmin (permiso: subscription.renew)."
 					},
 					"response": []
 				}
@@ -455,7 +455,7 @@
 								}
 							}
 						},
-						"description": "Compra seats adicionales (TenantAdmin). Devuelve los ids creados."
+						"description": "Compra seats adicionales (permiso: seats.manage). Devuelve los ids creados."
 					},
 					"response": [],
 					"event": [
@@ -509,7 +509,7 @@
 								}
 							}
 						},
-						"description": "Asigna un seat comprado a un usuario del tenant (TenantAdmin)."
+						"description": "Asigna un seat comprado a un usuario del tenant (permiso: seats.manage)."
 					},
 					"response": []
 				},
@@ -544,7 +544,7 @@
 								}
 							}
 						},
-						"description": "Libera un seat de su usuario actual (TenantAdmin)."
+						"description": "Libera un seat de su usuario actual (permiso: seats.manage)."
 					},
 					"response": []
 				},
@@ -579,7 +579,7 @@
 								}
 							}
 						},
-						"description": "Reasigna un seat directamente de un usuario a otro (TenantAdmin), sujeto a AllowSeatReassignment/cooldown."
+						"description": "Reasigna un seat directamente de un usuario a otro (permiso: seats.manage), sujeto a AllowSeatReassignment/cooldown."
 					},
 					"response": []
 				},
@@ -605,7 +605,7 @@
 								"renew"
 							]
 						},
-						"description": "Renovacion manual de un seat mientras no exista Billing (TenantAdmin)."
+						"description": "Renovacion manual de un seat mientras no exista Billing (permiso: seats.manage)."
 					},
 					"response": []
 				}
@@ -703,7 +703,7 @@
 								}
 							}
 						},
-						"description": "Compra un add-on para el tenant (TenantAdmin)."
+						"description": "Compra un add-on para el tenant (permiso: addons.manage)."
 					},
 					"response": [],
 					"event": [
@@ -755,7 +755,7 @@
 								}
 							}
 						},
-						"description": "Cancela un add-on del tenant (TenantAdmin)."
+						"description": "Cancela un add-on del tenant (permiso: addons.manage)."
 					},
 					"response": []
 				},
@@ -781,7 +781,7 @@
 								"renew"
 							]
 						},
-						"description": "Renovacion manual de un add-on mientras no exista Billing (TenantAdmin)."
+						"description": "Renovacion manual de un add-on mientras no exista Billing (permiso: addons.manage)."
 					},
 					"response": []
 				}
@@ -895,7 +895,7 @@
 								}
 							]
 						},
-						"description": "Historial de auditoria del tenant (TenantAdmin o PlatformAdmin). Filtros opcionales por tipo/id de agregado y rango de fechas."
+						"description": "Historial de auditoria del tenant (permiso: audit.view, TenantAdmin o PlatformAdmin). Filtros opcionales por tipo/id de agregado y rango de fechas."
 					},
 					"response": []
 				}
@@ -932,7 +932,7 @@
 								}
 							]
 						},
-						"description": "Suscripciones que renuevan en los proximos N dias, cross-tenant. Solo PlatformAdmin."
+						"description": "Suscripciones que renuevan en los proximos N dias, cross-tenant. Solo PlatformAdmin (permiso: subscription.admin.cross_tenant)."
 					},
 					"response": []
 				},
@@ -968,7 +968,7 @@
 								}
 							]
 						},
-						"description": "Seats expirados, cross-tenant. Solo PlatformAdmin."
+						"description": "Seats expirados, cross-tenant. Solo PlatformAdmin (permiso: subscription.admin.cross_tenant)."
 					},
 					"response": []
 				},
@@ -1004,7 +1004,7 @@
 								}
 							]
 						},
-						"description": "Suscripciones en PastDue, cross-tenant. Solo PlatformAdmin."
+						"description": "Suscripciones en PastDue, cross-tenant. Solo PlatformAdmin (permiso: subscription.admin.cross_tenant)."
 					},
 					"response": []
 				},
@@ -1032,7 +1032,7 @@
 								"recalculate-entitlements"
 							]
 						},
-						"description": "Fuerza el recalculo del TenantEntitlementSnapshot del tenant y republica TenantEntitlementsChangedIntegrationEvent. Solo PlatformAdmin. Via de escape para reconciliar un tenant que quedo con TenantSubscription valida pero sin snapshot (p.ej. tras una falla transitoria en un intento anterior de RecalculateEntitlementsCommand) — ver README §32.6. Devuelve 204 en exito."
+						"description": "Fuerza el recalculo del TenantEntitlementSnapshot del tenant y republica TenantEntitlementsChangedIntegrationEvent. Solo PlatformAdmin (permiso: subscription.admin.cross_tenant). Via de escape para reconciliar un tenant que quedo con TenantSubscription valida pero sin snapshot (p.ej. tras una falla transitoria en un intento anterior de RecalculateEntitlementsCommand) — ver README §32.6. Devuelve 204 en exito."
 					},
 					"response": []
 				}

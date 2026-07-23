@@ -6,7 +6,7 @@ namespace TaxVision.PaymentClient.Api.Common;
 /// <summary>
 /// Rechaza cualquier request de un tenant que no esté activo (Suspended/Closed) o que sea el
 /// Platform tenant (nunca sujeto de cobro). Corre después de
-/// <see cref="JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana en
+/// <see cref="BuildingBlocks.Tenancy.JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana en
 /// la que un tenant recién suspendido podría seguir cobrando con un JWT todavía vigente.
 /// </summary>
 public sealed class TenantStatusGateMiddleware(RequestDelegate next)

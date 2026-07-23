@@ -1,5 +1,6 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -49,7 +50,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetServiceActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<QualifyReferralResult>>(
@@ -82,7 +83,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetServiceActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -110,7 +111,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetServiceActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -126,12 +127,6 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    private bool TryGetServiceActor(out Guid tenantId, out Guid actorId)
-    {
-        actorId = Guid.Empty;
-        return User.TryGetTenantId(out tenantId) && User.TryGetUserId(out actorId);
     }
 
     private IActionResult ToActionResult<T>(Result<T> result) =>

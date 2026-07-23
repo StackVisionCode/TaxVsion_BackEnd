@@ -10,4 +10,11 @@ public interface ITenantContext
 {
     Guid TenantId { get; }
     bool HasTenant { get; }
+
+    /// <summary>
+    /// RBAC Fase 5 — permite a background jobs/consumers en capa Infrastructure (sin
+    /// dependencia a BuildingBlocks.Web/ASP.NET Core) sellar el tenant efectivo antes de
+    /// una query cross-tenant por-item, sin necesitar el tipo concreto <c>TenantContext</c>.
+    /// </summary>
+    void SetTenant(Guid tenantId);
 }

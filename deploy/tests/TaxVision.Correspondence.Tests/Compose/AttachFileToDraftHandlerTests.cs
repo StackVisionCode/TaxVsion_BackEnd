@@ -14,7 +14,7 @@ public sealed class AttachFileToDraftHandlerTests
     public async Task Handle_ThreeDifferentFiles_AreAllPersistedOnTheDraft()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
         var unitOfWork = new FakeUnitOfWork();
@@ -48,7 +48,7 @@ public sealed class AttachFileToDraftHandlerTests
     public async Task Handle_SameFileIdTwice_DoesNotCreateADuplicate()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
         var unitOfWork = new FakeUnitOfWork();
@@ -85,7 +85,7 @@ public sealed class AttachFileToDraftHandlerTests
     public async Task Handle_OnADraftNotInDraftStatus_ReturnsInvalidTransition(DraftStatus status)
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         MoveTo(draft, status);
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
@@ -115,7 +115,7 @@ public sealed class AttachFileToDraftHandlerTests
     public async Task Handle_WhenCloudStorageVerificationFails_StillAttachesTheFile()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
         var unitOfWork = new FakeUnitOfWork();

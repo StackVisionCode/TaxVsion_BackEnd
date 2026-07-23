@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Backfill;
 using TaxVision.Correspondence.Infrastructure.Persistence;
@@ -7,11 +8,23 @@ namespace TaxVision.Correspondence.Tests.Persistence;
 
 public sealed class TenantBackfillStateRepositoryTests
 {
+    // NoTenantContext: ambos tests ejercitan exclusivamente ListAllTenantIdsAsync, que usa
+    // IgnoreQueryFilters() (job cross-tenant, RBAC Fase 5) — el filtro global fail-closed nunca
+    // entra en juego acá.
+    private sealed class NoTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
+    }
+
     private static CorrespondenceDbContext CreateContext() =>
         new(
             new DbContextOptionsBuilder<CorrespondenceDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .Options
+                .Options,
+            new NoTenantContext()
         );
 
     [Fact]

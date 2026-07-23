@@ -11,7 +11,11 @@ using Wolverine;
 
 namespace TaxVision.Scribe.Api.Controllers;
 
-/// <summary>CRUD de EmailLayout/EmailLayoutVersion (Fase 5).</summary>
+/// <summary>
+/// CRUD de EmailLayout/EmailLayoutVersion (Fase 5).
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización) — ver nota en EmailTemplatesController.
+/// </summary>
 [ApiController]
 [Route("scribe/layouts")]
 [Authorize]

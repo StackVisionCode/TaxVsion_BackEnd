@@ -1,3 +1,5 @@
+using BuildingBlocks.Domain;
+
 namespace TaxVision.Scribe.Domain.Projections;
 
 /// <summary>
@@ -6,9 +8,17 @@ namespace TaxVision.Scribe.Domain.Projections;
 /// un 1:1, no tiene sentido un Id sintético. Soft-delete vía DeletedAtUtc: se conserva la fila
 /// para no perder historial, LogoResolver la trata como "sin logo" si DeletedAtUtc no es null.
 /// </summary>
-public sealed class TenantLogoRef
+public sealed class TenantLogoRef : ITenantOwned
 {
     private TenantLogoRef() { }
+
+    /// <summary>
+    /// RBAC Fase 5 (RBAC_Hardening_Plan.md) — implementación de <see cref="ITenantOwned"/> para el
+    /// <c>HasQueryFilter</c> global de <c>ScribeDbContext</c>. <see cref="TenantId"/> ya se fija una
+    /// sola vez en <see cref="Create"/> — este método existe solo para satisfacer la interfaz, EF
+    /// Core nunca lo invoca.
+    /// </summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public Guid TenantId { get; private set; }
     public Guid CloudStorageFileId { get; private set; }

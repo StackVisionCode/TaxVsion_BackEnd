@@ -5,4 +5,4 @@ namespace TaxVision.Correspondence.Application.Compose;
 /// de <see cref="StartReplyCommand"/>, que arranca desde un <see cref="Domain.Inbox.IncomingEmail"/>
 /// existente).
 /// </summary>
-public sealed record CreateDraftCommand(Guid TenantId, Guid CustomerId, Guid AccountId);
+public sealed record CreateDraftCommand(Guid TenantId, Guid CustomerId, Guid AccountId, Guid ActorId);

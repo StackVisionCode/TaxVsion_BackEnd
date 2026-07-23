@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { checkPermission, permissionCheckHttpStatus, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import { scheduleMeeting } from '../../../application/use-cases/schedule-meeting.js';
 import { startMeeting, endMeeting } from '../../../application/use-cases/meeting-lifecycle.js';
 import { cancelMeeting } from '../../../application/use-cases/cancel-meeting.js';
@@ -38,8 +38,9 @@ const HistoryQuery = z.object({
 export async function registerMeetingRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   app.post('/communication/meetings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.MeetingCreate)) {
-      return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.meeting.create.' });
+    const permCheck = await checkPermission(principal, CommunicationPermissions.MeetingCreate, container.userPermissions);
+    if (!permCheck.allowed) {
+      return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
     }
     const body = CreateMeetingBody.parse(request.body);
     const result = await scheduleMeeting(

@@ -1048,6 +1048,43 @@
 					]
 				},
 				{
+					"name": "RevokeShareLink_AsNonOwner_Returns403 (RBAC Fase 4, requiere Authorization:ResourceOwnership:Enabled=true)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessTokenOtherUser}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/shares/{{shareLinkId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"shares",
+								"{{shareLinkId}}"
+							]
+						},
+						"description": "RBAC Fase 4 (RBAC_Hardening_Plan.md) — con el flag de resource ownership prendido, un usuario que no creó el ShareLink (y no tiene cloudstorage.share.manage) recibe 403 ShareLink.NotOwner en vez de poder revocar el link de un colega. Con el flag apagado (default), este mismo request devuelve 204 igual que RevokeShareLink — variable de entorno {{accessTokenOtherUser}} debe ser un token de OTRO usuario del mismo tenant, sin el permiso share.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.environment.get('resourceOwnershipEnabled') === 'true') { pm.test(\"status 403\", () => pm.response.code === 403); }"
+								]
+							}
+						}
+					]
+				},
+				{
 					"name": "UpdateShareExpiration",
 					"request": {
 						"method": "PUT",

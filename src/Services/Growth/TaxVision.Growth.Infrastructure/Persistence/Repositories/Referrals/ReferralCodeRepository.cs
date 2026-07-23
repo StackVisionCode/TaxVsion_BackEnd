@@ -19,15 +19,17 @@ public sealed class ReferralCodeRepository(GrowthDbContext dbContext, ITenantCon
     ) =>
         programId == Guid.Empty || ownerId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
             ? Task.FromResult<ReferralCode?>(null)
-            : dbContext.ReferralCodes.FirstOrDefaultAsync(
-                code =>
-                    code.TenantId == ownerTenantId
-                    && code.ProgramId == programId
-                    && code.OwnerType == ownerType
-                    && code.OwnerId == ownerId
-                    && code.Status == ReferralCodeStatus.Active,
-                ct
-            );
+            : dbContext
+                .ReferralCodes.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(
+                    code =>
+                        code.TenantId == ownerTenantId
+                        && code.ProgramId == programId
+                        && code.OwnerType == ownerType
+                        && code.OwnerId == ownerId
+                        && code.Status == ReferralCodeStatus.Active,
+                    ct
+                );
 
     public Task<ReferralCode?> ResolveByHashAsync(Guid programId, string codeHash, CancellationToken ct = default)
     {

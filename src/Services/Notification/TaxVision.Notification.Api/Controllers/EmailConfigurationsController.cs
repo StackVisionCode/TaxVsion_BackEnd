@@ -17,6 +17,8 @@ namespace TaxVision.Notification.Api.Controllers;
 /// Gestión de configuraciones de proveedor de correo (SMTP/API), globales (System) o por tenant.
 /// El <c>tenant_id</c> se toma del JWT; el scope System solo lo gestiona PlatformAdmin.
 /// Los secretos nunca se devuelven (solo flags Has*).
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización que salte validaciones).
 /// </summary>
 /// <remarks>
 /// NO retirado en la Fase 21 del plan de hardening (Notification, 2026-07-18), que flippeó

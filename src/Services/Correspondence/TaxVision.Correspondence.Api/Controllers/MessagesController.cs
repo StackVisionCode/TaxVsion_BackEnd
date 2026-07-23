@@ -92,16 +92,26 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     /// que <c>/body</c>/<c>/attachments</c> de arriba — aunque el resultado tenga forma de draft.
     /// Devuelve <c>{ draftId, subject, replyContext }</c> tal cual lo arma
     /// <see cref="StartReplyResult"/> (Fase 10) para pre-poblar el composer del frontend.
+    ///
+    /// <para>
+    /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — deliberadamente SIN chequeo de resource ownership acá
+    /// (a diferencia de <see cref="DraftsController"/>): este endpoint es get-or-create, no una
+    /// mutación directa sobre un draft ya identificado — no se sabe de antemano si va a reutilizar
+    /// un draft existente de OTRO colega o crear uno nuevo hasta que <c>StartReplyHandler</c> ya
+    /// resolvió cuál es. Reutilizar el reply abierto de un colega sobre el MISMO hilo (mismo tenant,
+    /// mismo customer) es un riesgo mucho menor que los casos que sí motivan la Fase 4 (revocar
+    /// el share de otro, cancelar la firma de otro) — no estaba en el alcance que pidió el plan.
+    /// </para>
     /// </summary>
     [HttpPost("{id:guid}/reply/draft")]
     [HasPermission(CorrespondencePermissions.Reply)]
     public async Task<IActionResult> StartReplyDraft(Guid id, [FromBody] StartReplyBody body, CancellationToken ct)
     {
-        if (!User.TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result<StartReplyResult>>(
-            new StartReplyCommand(tenantId, id, body.AccountId),
+            new StartReplyCommand(tenantId, id, body.AccountId, userId),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

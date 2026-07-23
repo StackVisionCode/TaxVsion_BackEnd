@@ -173,6 +173,82 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("ConsentEvents", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Permissions.AuthzRolePermissionsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("AuthzRolePermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.Permissions.AuthzUserPermissionsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleIdsJson")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("AuthzUserPermissionsProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.Projections.CustomerEmailProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -303,7 +379,6 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignatureField", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -473,7 +548,6 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.Signer", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("CaptureMethod")
@@ -551,7 +625,6 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignerVerificationChallenge", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("AnswerHash")
@@ -696,7 +769,6 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Signature.Domain.Templates.TemplateField", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("IsRequired")
@@ -727,7 +799,6 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Signature.Domain.Templates.TemplateSignerSlot", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("DefaultLanguage")

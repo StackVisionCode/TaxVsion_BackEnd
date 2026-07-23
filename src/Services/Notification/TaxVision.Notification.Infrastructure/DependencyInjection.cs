@@ -1,9 +1,11 @@
 using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Authorization.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Email.Sending;
 using TaxVision.Notification.Infrastructure.Email;
@@ -42,6 +44,21 @@ public static class DependencyInjection
         services.AddScoped<IUserPermissionsProjectionRepository, UserPermissionsProjectionRepository>();
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
         services.AddScoped<IRecipientResolver, RecipientResolver>();
+
+        // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para AUTORIZACION,
+        // consultada por ProjectionPermissionsSource cuando Authorization:PermissionsSource=
+        // "Projection". Distinta de la proyeccion de arriba (Fase 4, fan-out de notificaciones) —
+        // ver el comentario XML de AuthzUserPermissionsProjection. La misma instancia scoped
+        // satisface el puerto local rico (para los consumers) y el puerto compartido y angosto
+        // de BuildingBlocks (para la autorizacion), evitando dos lecturas separadas del mismo dato.
+        services.AddScoped<AuthzUserPermissionsProjectionRepository>();
+        services.AddScoped<IAuthzUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
 
         // Fase 5 — el interruptor que consulta NotificationDispatcher antes de cada envío.
         services.AddScoped<IUserNotificationPreferenceRepository, UserNotificationPreferenceRepository>();

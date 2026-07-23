@@ -7,6 +7,7 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Roles.Commands;
@@ -16,7 +17,11 @@ public sealed record CreateRoleCommand(
     Guid CreatedByUserId,
     string Name,
     string? Description,
-    IReadOnlyList<Guid> PermissionIds
+    IReadOnlyList<Guid> PermissionIds,
+    // RBAC Fase 3: opcional — el TenantAdmin declara para qué actor type es este rol custom
+    // (staff vs. CustomerPortal). null se trata como "staff" (TenantEmployee/TenantAdmin) — ver
+    // ActorTypeRoleGuard.ValidatePermissionsForActorType.
+    UserActorType? TargetActorType = null
 );
 
 public sealed record RoleResponse(
@@ -65,6 +70,18 @@ public static class CreateRoleHandler
         );
         if (validation.IsFailure)
             return Result.Failure<RoleResponse>(validation.Error);
+
+        // RBAC Fase 3: cierra el gap donde un rol custom podía persistirse mezclando permisos de
+        // actor types incompatibles (ej. portal.folders.view + customers.view) y solo fallar
+        // recién al intentar asignarlo — ver ActorTypeRoleGuard.ValidatePermissionsForActorType.
+        var catalogForActorTypeCheck = await roles.GetPermissionsCatalogAsync(ct);
+        var actorTypeCheck = ActorTypeRoleGuard.ValidatePermissionsForActorType(
+            command.TargetActorType,
+            command.PermissionIds ?? [],
+            catalogForActorTypeCheck
+        );
+        if (actorTypeCheck.IsFailure)
+            return Result.Failure<RoleResponse>(actorTypeCheck.Error);
 
         var setResult = role.SetPermissions(command.PermissionIds?.Distinct().ToList() ?? []);
         if (setResult.IsFailure)
@@ -219,6 +236,19 @@ public static class SetRolePermissionsHandler
         );
         if (validation.IsFailure)
             return validation;
+
+        // RBAC Fase 3: mismo guardarraíl que CreateRoleHandler — acá el rol ya existe y no
+        // conocemos su actor type destino, así que se valida contra "staff" (null → ver
+        // ActorTypeRoleGuard.ValidatePermissionsForActorType), la defensa razonable para no
+        // dejar colar un permiso exclusivo de CustomerPortal en un rol custom sin destino.
+        var catalogForActorTypeCheck = await roles.GetPermissionsCatalogAsync(ct);
+        var actorTypeCheck = ActorTypeRoleGuard.ValidatePermissionsForActorType(
+            null,
+            command.PermissionIds ?? [],
+            catalogForActorTypeCheck
+        );
+        if (actorTypeCheck.IsFailure)
+            return actorTypeCheck;
 
         var result = role.SetPermissions(command.PermissionIds?.Distinct().ToList() ?? []);
         if (result.IsFailure)

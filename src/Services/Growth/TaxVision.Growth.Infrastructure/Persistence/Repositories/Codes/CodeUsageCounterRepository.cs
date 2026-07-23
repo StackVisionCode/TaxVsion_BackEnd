@@ -65,12 +65,14 @@ public sealed class CodeUsageCounterRepository(GrowthDbContext dbContext, ITenan
         CodeUsageScopeKey scopeKey,
         CancellationToken ct
     ) =>
-        dbContext.CodeUsageCounters.FirstOrDefaultAsync(
-            counter =>
-                counter.TenantId == tenantId
-                && counter.CodeDefinitionId == codeDefinitionId
-                && counter.Dimension == dimension
-                && counter.ScopeKey == scopeKey,
-            ct
-        );
+        dbContext
+            .CodeUsageCounters.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                counter =>
+                    counter.TenantId == tenantId
+                    && counter.CodeDefinitionId == codeDefinitionId
+                    && counter.Dimension == dimension
+                    && counter.ScopeKey == scopeKey,
+                ct
+            );
 }

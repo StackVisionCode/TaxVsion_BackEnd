@@ -212,4 +212,87 @@ public sealed class ActorTypeRoleGuardTests
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
     }
+
+    // --- ValidatePermissionsForActorType (RBAC Fase 3) — mismo contrato que
+    // ValidateRolesForActorType arriba, pero sobre permisos SUELTOS (antes de que existan como
+    // RolePermission de un rol persistido) — usado por CreateRoleHandler/SetRolePermissionsHandler
+    // para rechazar un rol mal formado ANTES de guardarlo, no recién al intentar asignarlo. ---
+
+    [Fact]
+    public void ValidatePermissionsForActorType_with_no_permissions_is_always_valid()
+    {
+        var result = ActorTypeRoleGuard.ValidatePermissionsForActorType(UserActorType.TenantAdmin, [], []);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidatePermissionsForActorType_rejects_a_portal_only_permission_for_a_declared_staff_target()
+    {
+        var portalPermission = PortalPermission();
+
+        var result = ActorTypeRoleGuard.ValidatePermissionsForActorType(
+            UserActorType.TenantAdmin,
+            [portalPermission.Id],
+            [portalPermission]
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Role.NotAssignableToActorType", result.Error.Code);
+        Assert.Contains(portalPermission.Code, result.Error.Message);
+    }
+
+    [Fact]
+    public void ValidatePermissionsForActorType_accepts_a_staff_permission_for_a_declared_staff_target()
+    {
+        var staffPermission = StaffPermission();
+
+        var result = ActorTypeRoleGuard.ValidatePermissionsForActorType(
+            UserActorType.TenantEmployee,
+            [staffPermission.Id],
+            [staffPermission]
+        );
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidatePermissionsForActorType_with_null_target_rejects_a_portal_only_permission()
+    {
+        var portalPermission = PortalPermission();
+
+        var result = ActorTypeRoleGuard.ValidatePermissionsForActorType(
+            null,
+            [portalPermission.Id],
+            [portalPermission]
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("staff", result.Error.Message);
+        Assert.Contains(portalPermission.Code, result.Error.Message);
+    }
+
+    [Fact]
+    public void ValidatePermissionsForActorType_with_null_target_accepts_a_staff_permission()
+    {
+        var staffPermission = StaffPermission();
+
+        var result = ActorTypeRoleGuard.ValidatePermissionsForActorType(null, [staffPermission.Id], [staffPermission]);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidatePermissionsForActorType_silently_skips_unknown_permission_ids()
+    {
+        // La existencia del permiso la valida por separado CreateRoleHandler.ValidatePermissionIdsAsync
+        // (Permission.NotFound) — este guardarraíl no debe duplicar ese error.
+        var result = ActorTypeRoleGuard.ValidatePermissionsForActorType(
+            UserActorType.TenantAdmin,
+            [Guid.NewGuid()],
+            []
+        );
+
+        Assert.True(result.IsSuccess);
+    }
 }

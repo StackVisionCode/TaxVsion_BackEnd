@@ -21,7 +21,8 @@ internal sealed class CustomerImportReadService(CustomerDbContext db) : ICustome
     )
     {
         return await db
-            .CustomerImportAttempts.AsNoTracking()
+            .CustomerImportAttempts.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(a => a.TenantId == tenantId)
             .OrderByDescending(a => a.CreatedAtUtc)
             .Skip((page - 1) * size)

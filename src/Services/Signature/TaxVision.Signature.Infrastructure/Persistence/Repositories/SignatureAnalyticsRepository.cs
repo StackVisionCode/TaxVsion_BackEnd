@@ -19,10 +19,12 @@ public sealed class SignatureAnalyticsRepository(SignatureDbContext db) : ISigna
         CancellationToken ct = default
     )
     {
-        var existing = await db.SignatureAnalyticsSnapshots.FirstOrDefaultAsync(
-            s => s.TenantId == tenantId && s.Day == day && s.Category == category,
-            ct
-        );
+        // Mismo bug de scope de Wolverine (ver LocalCommandTenantMiddleware.cs): tenantId ya viene
+        // explícito y validado — IgnoreQueryFilters() porque el filtro ambiental global puede no
+        // estar poblado en este scope de DI (este repo es usado por consumers de eventos).
+        var existing = await db
+            .SignatureAnalyticsSnapshots.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Day == day && s.Category == category, ct);
         if (existing is not null)
             return existing;
 

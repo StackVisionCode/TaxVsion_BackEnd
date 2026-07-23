@@ -3,7 +3,6 @@ using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Application.Analytics;
 using Wolverine;
 

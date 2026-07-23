@@ -6,6 +6,7 @@ using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Roles.Commands;
 using TaxVision.Auth.Application.Roles.Queries;
 using TaxVision.Auth.Domain.Roles;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
@@ -46,8 +47,17 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Datos de entrada para crear un rol: nombre, descripción y permisos iniciales.</summary>
-    public sealed record CreateRoleRequest(string Name, string? Description, IReadOnlyList<Guid> PermissionIds);
+    /// <summary>
+    /// Datos de entrada para crear un rol: nombre, descripción, permisos iniciales y, opcional,
+    /// el actor type destino (RBAC Fase 3 — null se valida contra staff por defecto, ver
+    /// <see cref="TaxVision.Auth.Application.Common.ActorTypeRoleGuard.ValidatePermissionsForActorType"/>).
+    /// </summary>
+    public sealed record CreateRoleRequest(
+        string Name,
+        string? Description,
+        IReadOnlyList<Guid> PermissionIds,
+        UserActorType? TargetActorType = null
+    );
 
     /// <summary>Crea un nuevo rol en el tenant con los permisos indicados.</summary>
     [HttpPost]
@@ -58,7 +68,14 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<RoleResponse>>(
-            new CreateRoleCommand(tenantId, userId, request.Name, request.Description, request.PermissionIds),
+            new CreateRoleCommand(
+                tenantId,
+                userId,
+                request.Name,
+                request.Description,
+                request.PermissionIds,
+                request.TargetActorType
+            ),
             ct
         );
 

@@ -118,14 +118,13 @@ public static class VerifyMfaChallengeHandler
 
         challenge.Consume();
 
-        var (roleNames, permissions) = await UserAccessResolver.ResolveAsync(user, roles, ct);
+        var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
 
         var issued = await issuer.StartSessionAsync(
             user,
             timeZone,
             roleNames,
-            permissions,
             ["pwd", methodAmr],
             command.DeviceName,
             ct

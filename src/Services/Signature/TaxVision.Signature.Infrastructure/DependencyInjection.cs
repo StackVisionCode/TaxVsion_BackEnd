@@ -121,6 +121,20 @@ public static class DependencyInjection
         services.AddScoped<ICustomerEmailProjectionRepository, CustomerEmailProjectionRepository>();
         services.AddScoped<IFileMetadataRefRepository, FileMetadataRefRepository>();
         services.AddScoped<IUserPermissionsProjectionRepository, UserPermissionsProjectionRepository>();
+        // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos de AUTORIZACION
+        // consultada por ProjectionPermissionsSource cuando Authorization:PermissionsSource=
+        // "Projection". Distinta de IUserPermissionsProjectionRepository de arriba (esa alimenta
+        // la proyeccion de auditoria homonima, no de autorizacion). La misma instancia scoped
+        // satisface el puerto local rico (para los consumers) y el puerto compartido y angosto de
+        // BuildingBlocks (para la autorizacion), evitando dos lecturas separadas del mismo dato.
+        services.AddScoped<AuthzUserPermissionsProjectionRepository>();
+        services.AddScoped<IAuthzUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<BuildingBlocks.Permissions.IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
         services.AddScoped<IAuditSecretFactory, AuditSecretFactory>();
         services.AddSingleton<IRsaKeyProvider, RsaSigningKeyProvider>();
         services.AddSingleton<ISigningTokenService, SigningTokenService>();

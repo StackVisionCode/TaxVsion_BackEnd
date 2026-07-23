@@ -1,6 +1,7 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,11 +11,15 @@ using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
 using TaxVision.Codes.Application.Definitions.GetCodeDetails;
 using TaxVision.Codes.Application.Definitions.RevokeCode;
 using TaxVision.Codes.Domain.Definitions;
-using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
 using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
+// Alias puntual (no `using BuildingBlocks.ActorTypeAuthorization;` completo) — ese namespace
+// también trae ClaimsPrincipalExtensions.TryGetTenantId/TryGetUserId, que colisionarían
+// (CS0121, ambiguo) con las mismas firmas de TaxVision.Growth.Api.Common (ClaimsPrincipalExtensions
+// local de Growth, que este controller sigue usando para esas dos).
+using HasPermissionAttribute = BuildingBlocks.ActorTypeAuthorization.HasPermissionAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 
@@ -27,7 +32,10 @@ namespace TaxVision.Growth.Api.Controllers;
 [Route("growth/codes")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class CodesController(IMessageBus bus) : ControllerBase
+public sealed class CodesController(
+    IMessageBus bus,
+    BuildingBlocks.ActorTypeAuthorization.IUserPermissionsSource permissionsSource
+) : ControllerBase
 {
     public sealed record CreateCodeRequest(
         CodeOwnerScope OwnerScope,
@@ -64,10 +72,10 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
-        var ownership = ResolveOwnership(request, tenantId);
+        var ownership = await ResolveOwnershipAsync(request, tenantId, ct);
         if (ownership is null)
             return Forbid();
 
@@ -107,7 +115,7 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid codeDefinitionId, CancellationToken ct)
     {
-        if (!TryGetActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<CodeDefinitionDetailsResponse>>(
@@ -127,7 +135,7 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<CodeDefinitionStateResponse>>(
@@ -146,7 +154,7 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<CodeDefinitionStateResponse>>(
@@ -156,7 +164,11 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
         return ToActionResult(result);
     }
 
-    private (Guid OwnerTenantId, Guid? TenantScopeId)? ResolveOwnership(CreateCodeRequest request, Guid callerTenantId)
+    private async Task<(Guid OwnerTenantId, Guid? TenantScopeId)?> ResolveOwnershipAsync(
+        CreateCodeRequest request,
+        Guid callerTenantId,
+        CancellationToken ct
+    )
     {
         if (request.OwnerScope == CodeOwnerScope.Tenant)
         {
@@ -172,16 +184,13 @@ public sealed class CodesController(IMessageBus bus) : ControllerBase
         if (request.OwnerScope != CodeOwnerScope.Platform || callerTenantId != PlatformTenant.Id)
             return null;
 
-        if (request.TenantScopeId is not null && !User.HasPermission(GrowthPermissions.AdminCrossTenant))
+        if (
+            request.TenantScopeId is not null
+            && !await permissionsSource.HasPermissionAsync(User, GrowthPermissions.AdminCrossTenant, ct)
+        )
             return null;
 
         return (PlatformTenant.Id, request.TenantScopeId);
-    }
-
-    private bool TryGetActor(out Guid tenantId, out Guid actorId)
-    {
-        actorId = Guid.Empty;
-        return User.TryGetTenantId(out tenantId) && User.TryGetUserId(out actorId);
     }
 
     private IActionResult ToActionResult<T>(Result<T> result) =>

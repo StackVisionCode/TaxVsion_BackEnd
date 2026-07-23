@@ -1,3 +1,4 @@
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -33,7 +34,8 @@ public static class DependencyInjection
         services.AddScoped<ISaaSPaymentRepository, SaaSPaymentRepository>();
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IPaymentAuditLogWriter, PaymentAuditLogWriter>();
-        services.AddScoped<ISessionDenylistReader, SessionDenylistReader>();
+        // RBAC Fase 6 — ISessionDenylistReader se registra en Program.cs (AddSessionDenylist vive en
+        // BuildingBlocks.Web, capa que Infrastructure no debe referenciar).
         services.AddScoped<IPaymentAttemptThrottle, PaymentAttemptThrottle>();
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
         services.AddScoped<ITenantProviderCustomerRepository, TenantProviderCustomerRepository>();
@@ -52,6 +54,19 @@ public static class DependencyInjection
 
         services.AddSingleton<IPaymentAppMetrics, PaymentAppMetrics>();
 
+        // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
+        // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
+        // instancia scoped satisface el puerto local rico (para los consumers) y el puerto
+        // compartido y angosto de BuildingBlocks (para la autorizacion), evitando dos lecturas
+        // separadas del mismo dato.
+        services.AddScoped<UserPermissionsProjectionRepository>();
+        services.AddScoped<IUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
         return services;
     }
 }

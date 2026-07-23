@@ -1,5 +1,6 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -46,11 +47,14 @@ public sealed class PermissionsBackfillService(
             var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
             var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
             var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+            var tenantContext = scope.ServiceProvider.GetRequiredService<TenantContext>();
 
+            // RBAC Fase 5 — este job recorre usuarios de TODOS los tenants en un mismo batch, no
+            // uno solo — IgnoreQueryFilters() explícito porque es el descubrimiento cross-tenant
+            // que el job existe para hacer, no un descuido.
             var pending = await db
-                .Users.Where(user =>
-                    user.IsActive && user.PermissionsVersion > 0 && user.PermissionsBackfilledAt == null
-                )
+                .Users.IgnoreQueryFilters()
+                .Where(user => user.IsActive && user.PermissionsVersion > 0 && user.PermissionsBackfilledAt == null)
                 .OrderBy(user => user.Id)
                 .Take(BatchSize)
                 .ToListAsync(cancellationToken);
@@ -60,6 +64,11 @@ public sealed class PermissionsBackfillService(
 
             foreach (var user in pending)
             {
+                // RBAC Fase 5 — cada usuario procesado es de su propio tenant real; sin esto,
+                // GetUserRolesAsync/GetEffectivePermissionCodesAsync (que consultan Role, sí
+                // tenant-owned) devolverían 0 filas bajo el filtro fail-closed sin tenant seteado.
+                tenantContext.SetTenant(user.TenantId);
+
                 var userRoles = await roles.GetUserRolesAsync(user.Id, cancellationToken);
                 var permissionCodes = await roles.GetEffectivePermissionCodesAsync(user.Id, cancellationToken);
 

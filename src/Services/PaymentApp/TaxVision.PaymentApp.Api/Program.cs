@@ -7,8 +7,10 @@ using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -42,6 +44,7 @@ builder.Services.AddSwaggerGen();
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
 builder.Services.AddPaymentAppInfrastructure(builder.Configuration);
+builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "payment-app-service", PaymentAppMetrics.MeterName);
 builder.Services.AddRedisCache(builder.Configuration);
@@ -50,6 +53,15 @@ builder.Services.AddRedisCache(builder.Configuration);
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
+// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
+// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
+builder.Services.AddMemoryCache();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 // Rate limiter para /webhooks/*: 1000 req/min por IP (§28.4/§K.1 del diseño) — deja pasar
 // reintentos legítimos del provider sin abrir la puerta a un flood.
@@ -137,6 +149,13 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
+    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
+    options
+        .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
+        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+
     options
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
@@ -157,10 +176,16 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
-app.UseMiddleware<SessionDenylistMiddleware>();
+
+// RBAC Fase 5 — reemplaza la copia local (no sellaba IMessageBus.TenantId, así que un handler
+// invocado vía bus.InvokeAsync nunca heredaba el tenant de la petición HTTP). RBAC Fase 7 hotfix
+// (2026-07-22): va ANTES de UseAuthorization() — en modo Projection, [HasPermission] necesita el
+// tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
+app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
-app.UseMiddleware<JwtTenantContextMiddleware>();
 app.UseMiddleware<TenantStatusGateMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });

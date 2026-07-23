@@ -23,6 +23,7 @@ public sealed class OutboundEmailRepository(NotificationDbContext db) : IOutboun
     ) =>
         await db
             .OutboundEmailMessages.AsNoTracking()
+            .IgnoreQueryFilters()
             .Include(m => m.Recipients)
             .FirstOrDefaultAsync(m => m.Id == messageId && m.TenantId == tenantId, ct);
 
@@ -34,7 +35,7 @@ public sealed class OutboundEmailRepository(NotificationDbContext db) : IOutboun
         CancellationToken ct = default
     )
     {
-        var query = db.OutboundEmailMessages.AsNoTracking().Where(m => m.TenantId == tenantId);
+        var query = db.OutboundEmailMessages.AsNoTracking().IgnoreQueryFilters().Where(m => m.TenantId == tenantId);
         if (status is not null)
             query = query.Where(m => m.Status == status);
 

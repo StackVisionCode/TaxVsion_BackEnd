@@ -32,6 +32,7 @@ public sealed class CodeRedemptionRepository(GrowthDbContext dbContext, ITenantC
         !TenantRepositoryGuard.Matches(tenantContext, tenantId) || requiredId == Guid.Empty
             ? Task.FromResult<CodeRedemption?>(null)
             : dbContext
-                .CodeRedemptions.Where(redemption => redemption.TenantId == tenantId)
+                .CodeRedemptions.IgnoreQueryFilters()
+                .Where(redemption => redemption.TenantId == tenantId)
                 .FirstOrDefaultAsync(predicate, ct);
 }

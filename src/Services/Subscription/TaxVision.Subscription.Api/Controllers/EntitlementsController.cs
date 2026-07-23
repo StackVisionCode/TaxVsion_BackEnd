@@ -18,7 +18,7 @@ public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<EntitlementSummaryResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSummary(CancellationToken ct)
     {
-        if (!TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<EntitlementSummaryResponse>>(
@@ -33,7 +33,7 @@ public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<EntitlementValueResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetByKey(string key, CancellationToken ct)
     {
-        if (!TryGetTenantId(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<EntitlementValueResponse>>(
@@ -43,6 +43,4 @@ public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
-
-    private bool TryGetTenantId(out Guid tenantId) => Guid.TryParse(User.FindFirst("tenant_id")?.Value, out tenantId);
 }

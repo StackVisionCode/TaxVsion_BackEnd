@@ -1,11 +1,11 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Application.Documents.Commands.Validate;
 using Wolverine;
 
@@ -36,7 +36,7 @@ public sealed class SignatureDocumentsController(IMessageBus bus) : ControllerBa
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Validate([FromForm] IFormFile file, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         if (file is null || file.Length == 0)
@@ -57,15 +57,5 @@ public sealed class SignatureDocumentsController(IMessageBus bus) : ControllerBa
         using var stream = new MemoryStream((int)file.Length);
         await file.CopyToAsync(stream, ct);
         return stream.ToArray();
-    }
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        if (!User.TryGetTenantId(out tenantId))
-        {
-            userId = Guid.Empty;
-            return false;
-        }
-        return User.TryGetUserId(out userId);
     }
 }

@@ -15,7 +15,7 @@ namespace TaxVision.Auth.Api.Controllers;
 [Route("auth/sessions")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.CustomerPortal, ActorType.PlatformAdmin)]
-public sealed class SessionsController(IMessageBus bus) : ControllerBase
+public sealed class SessionsController(IMessageBus bus, IUserPermissionsSource permissionsSource) : ControllerBase
 {
     [HttpGet("me")]
     [ProducesResponseType<IReadOnlyList<SessionResponse>>(StatusCodes.Status200OK)]
@@ -60,7 +60,7 @@ public sealed class SessionsController(IMessageBus bus) : ControllerBase
                 userId,
                 tenantId,
                 sessionId,
-                CanManageOthers: User.HasPermission(PermissionCatalog.UsersManage)
+                CanManageOthers: await permissionsSource.HasPermissionAsync(User, PermissionCatalog.UsersManage, ct)
             ),
             ct
         );

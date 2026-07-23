@@ -7,8 +7,13 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 
 public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenantPaymentRepository
 {
+    // IgnoreQueryFilters: este repo corre dentro de un handler de Wolverine (bus.InvokeAsync),
+    // en un scope de DI distinto al de la request HTTP que pobló ITenantContext vía
+    // JwtTenantContextMiddleware; el HasQueryFilter ambiental de PaymentClientDbContext ve
+    // Guid.Empty ahí. tenantId ya viene explícito y validado desde el controller/evento.
     public Task<TenantPayment?> GetByIdAsync(Guid tenantPaymentId, Guid tenantId, CancellationToken ct = default) =>
         WithChildren(db.TenantPayments)
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(payment => payment.Id == tenantPaymentId && payment.TenantId == tenantId, ct);
 
     public Task<TenantPayment?> GetByIdempotencyKeyAsync(
@@ -23,6 +28,7 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
 
         var key = keyResult.Value;
         return WithChildren(db.TenantPayments)
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(payment => payment.TenantId == tenantId && payment.IdempotencyKey == key, ct);
     }
 
@@ -33,6 +39,7 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
         CancellationToken ct = default
     ) =>
         WithChildren(db.TenantPayments)
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(
                 payment =>
                     payment.TenantId == tenantId
@@ -78,7 +85,13 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
         CancellationToken ct = default
     )
     {
-        var query = WithChildren(db.TenantPayments).AsNoTracking().AsQueryable();
+        // IgnoreQueryFilters() deliberado: este endpoint es cross-tenant por diseño (§42.6,
+        // ver PaymentClientAdminController) — gateado por AllowActorTypes(PlatformAdmin) +
+        // HasPermission(AdminCrossTenant), no por pertenencia a un tenant. Sin esto, además de
+        // sufrir el mismo bug de scope de Wolverine que el resto del repo, la rama tenantId=null
+        // (búsqueda explícitamente cross-tenant) quedaría rota incluso si se arreglara la
+        // propagación del TenantContext, porque no hay ningún tenantId que comparar.
+        var query = WithChildren(db.TenantPayments).AsNoTracking().IgnoreQueryFilters().AsQueryable();
 
         if (tenantId is not null)
             query = query.Where(payment => payment.TenantId == tenantId);

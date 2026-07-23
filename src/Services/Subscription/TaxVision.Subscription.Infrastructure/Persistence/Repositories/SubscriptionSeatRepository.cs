@@ -7,12 +7,18 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubscriptionSeatRepository
 {
     public Task<SubscriptionSeat?> GetByIdAsync(Guid seatId, Guid tenantId, CancellationToken ct = default) =>
-        WithChildren(db.Seats).FirstOrDefaultAsync(seat => seat.Id == seatId && seat.TenantId == tenantId, ct);
+        WithChildren(db.Seats)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(seat => seat.Id == seatId && seat.TenantId == tenantId, ct);
 
     public async Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(
         Guid tenantId,
         CancellationToken ct = default
-    ) => await WithChildren(db.Seats.AsNoTracking()).Where(seat => seat.TenantId == tenantId).ToListAsync(ct);
+    ) =>
+        await WithChildren(db.Seats.AsNoTracking())
+            .IgnoreQueryFilters()
+            .Where(seat => seat.TenantId == tenantId)
+            .ToListAsync(ct);
 
     public Task<SubscriptionSeat?> GetByCurrentUserIdAsync(
         Guid tenantId,
@@ -20,17 +26,21 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
         CancellationToken ct = default
     ) =>
         WithChildren(db.Seats.AsNoTracking())
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(seat => seat.TenantId == tenantId && seat.CurrentUserId == userId, ct);
 
     public async Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default) =>
         await db.Seats.AddAsync(seat, ct);
 
+    // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — recorren seats de todos los tenants
+    // buscando renovaciones/expiraciones vencidas, nunca sirven una request autenticada.
     public async Task<IReadOnlyList<SubscriptionSeat>> GetDueForRenewalAsync(
         DateTime nowUtc,
         int batchSize,
         CancellationToken ct = default
     ) =>
         await WithChildren(db.Seats)
+            .IgnoreQueryFilters()
             .Where(seat =>
                 seat.Status == SeatStatus.Active
                 && seat.AutoRenew
@@ -47,7 +57,8 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
         CancellationToken ct = default
     ) =>
         await db
-            .Seats.Where(seat =>
+            .Seats.IgnoreQueryFilters()
+            .Where(seat =>
                 seat.Status == SeatStatus.GracePeriod
                 && seat.GracePeriodEndsAtUtc != null
                 && seat.GracePeriodEndsAtUtc <= nowUtc
@@ -62,7 +73,8 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
         CancellationToken ct = default
     ) =>
         await db
-            .Seats.Where(seat =>
+            .Seats.IgnoreQueryFilters()
+            .Where(seat =>
                 seat.Status == SeatStatus.Suspended && seat.SuspendedAtUtc != null && seat.SuspendedAtUtc <= cutoffUtc
             )
             .OrderBy(seat => seat.SuspendedAtUtc)
@@ -75,7 +87,8 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
         CancellationToken ct = default
     ) =>
         await db
-            .Seats.Where(seat =>
+            .Seats.IgnoreQueryFilters()
+            .Where(seat =>
                 seat.Status == SeatStatus.Cancelled
                 && seat.CurrentPeriodEndUtc != null
                 && seat.CurrentPeriodEndUtc <= nowUtc
@@ -91,7 +104,8 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
         CancellationToken ct = default
     ) =>
         await db
-            .Seats.Where(seat =>
+            .Seats.IgnoreQueryFilters()
+            .Where(seat =>
                 seat.Status == SeatStatus.Active
                 && seat.AutoRenew
                 && seat.NextRenewalAtUtc != null
@@ -102,13 +116,15 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
             .Take(batchSize)
             .ToListAsync(ct);
 
+    // IgnoreQueryFilters: query admin cross-tenant (GetExpiredSeatsHandler, PlatformAdmin only) —
+    // lista seats expirados de todos los tenants a propósito.
     public async Task<(IReadOnlyList<SubscriptionSeat> Items, int TotalCount)> GetExpiredAsync(
         int page,
         int pageSize,
         CancellationToken ct = default
     )
     {
-        var query = db.Seats.AsNoTracking().Where(seat => seat.Status == SeatStatus.Expired);
+        var query = db.Seats.IgnoreQueryFilters().AsNoTracking().Where(seat => seat.Status == SeatStatus.Expired);
 
         var totalCount = await query.CountAsync(ct);
         var items = await query

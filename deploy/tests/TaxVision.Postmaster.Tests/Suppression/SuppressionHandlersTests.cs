@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Postmaster.Application.Suppression.Commands.AddSuppressionEntry;
 using TaxVision.Postmaster.Application.Suppression.Commands.RemoveSuppressionEntry;
@@ -10,8 +11,21 @@ namespace TaxVision.Postmaster.Tests.Suppression;
 
 public sealed class SuppressionHandlersTests
 {
+    // SuppressionListEntry no implementa ITenantOwned (ver PostmasterDbContext) — el filtro
+    // global de RBAC Fase 5 no lo alcanza, así que un tenant vacío acá es inofensivo.
+    private sealed class NoTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
+    }
+
     private static PostmasterDbContext CreateContext() =>
-        new(new DbContextOptionsBuilder<PostmasterDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        new(
+            new DbContextOptionsBuilder<PostmasterDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            new NoTenantContext()
+        );
 
     [Fact]
     public async Task AddSuppressionEntryHandler_creates_a_new_entry_when_none_exists()

@@ -13,7 +13,7 @@ public sealed class SendDraftHandlerTests
 {
     private static Draft SeedSendableDraft(FakeDraftRepository drafts, Guid tenantId)
     {
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         draft
             .AutoSave(
                 "Subject",
@@ -84,7 +84,7 @@ public sealed class SendDraftHandlerTests
     public async Task Handle_SplitsRecipientsByType_BeforeCallingPostmaster()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         draft
             .AutoSave(
                 "Subject",
@@ -230,7 +230,7 @@ public sealed class SendDraftHandlerTests
     public async Task Handle_OnADraftMissingSubject_ReturnsBadRequest_AndNeverCallsPostmaster()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         draft
             .AutoSave(
                 null,
@@ -265,7 +265,7 @@ public sealed class SendDraftHandlerTests
     public async Task Handle_OnADraftWithNoRecipients_ReturnsBadRequest_AndNeverCallsPostmaster()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         draft.AutoSave("Subject", "<p>body</p>", null, null).EnsureSuccess();
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);

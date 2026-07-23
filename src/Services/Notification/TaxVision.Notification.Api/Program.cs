@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
@@ -7,6 +8,7 @@ using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -42,12 +44,27 @@ builder.Services.AddSwaggerGen();
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
 builder.Services.AddNotificationInfrastructure(builder.Configuration);
+builder.Services.AddRedisCache(builder.Configuration);
+builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
 // Autorización por permiso ([HasPermission("notification.*")]); los admins pasan siempre.
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
+// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
+// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness). Cierra un
+// gap real: Notification ya usaba [HasPermission] en ~28 acciones de controller sin registrar
+// nunca ningun IUserPermissionsSource en DI — cualquier endpoint asi decorado tiraba
+// InvalidOperationException al resolver la policy. Mismo bloque de 5 lineas que CloudStorage/
+// Customer/Connectors/Correspondence/PaymentApp/PaymentClient/Postmaster/Scribe/Tenant.
+builder.Services.AddMemoryCache();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 // Cliente HTTP a CloudStorage (plantillas/layouts). El token del usuario se reenvía en contexto request;
 // en background (sync) se usa un token de servicio M2M del Auth.
@@ -154,6 +171,13 @@ builder.Host.UseWolverine(options =>
         .Sequential()
         .UseDurableInbox();
 
+    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
+    options
+        .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
+        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+
     options
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
@@ -174,8 +198,16 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
+
+// RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter
+// global de NotificationDbContext. Reemplaza al TenantResolutionMiddleware anterior (leía
+// X-Tenant-Id sin nunca sellar IMessageBus.TenantId). RBAC Fase 7 hotfix (2026-07-22): va ANTES
+// de UseAuthorization() — en modo Projection, [HasPermission] necesita el tenant ya poblado
+// durante su propia evaluación, que corre dentro de UseAuthorization().
+app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
-app.UseMiddleware<TenantResolutionMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

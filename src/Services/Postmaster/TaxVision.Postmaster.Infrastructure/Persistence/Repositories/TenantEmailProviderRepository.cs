@@ -16,10 +16,9 @@ public sealed class TenantEmailProviderRepository(PostmasterDbContext dbContext)
         CancellationToken ct = default
     )
     {
-        var provider = await dbContext.TenantEmailProviders.FirstOrDefaultAsync(
-            p => p.TenantId == tenantId && p.ProviderCode == providerCode,
-            ct
-        );
+        var provider = await dbContext
+            .TenantEmailProviders.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.ProviderCode == providerCode, ct);
         return provider is null
             ? Result.Failure<TenantEmailProvider>(
                 new Error("TenantEmailProvider.NotFound", $"Provider '{providerCode}' not found for tenant {tenantId}.")
@@ -33,7 +32,8 @@ public sealed class TenantEmailProviderRepository(PostmasterDbContext dbContext)
     )
     {
         var provider = await dbContext
-            .TenantEmailProviders.Where(p => p.TenantId == tenantId && p.Enabled)
+            .TenantEmailProviders.IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && p.Enabled)
             .OrderBy(p => p.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
         return provider is null

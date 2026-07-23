@@ -20,7 +20,7 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
     [ProducesResponseType<StorageUsageResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUsage(CancellationToken ct)
     {
-        if (!TryGetTenant(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<StorageUsageResponse>>(new GetStorageUsageQuery(tenantId), ct);
@@ -36,7 +36,7 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
         CancellationToken ct = default
     )
     {
-        if (!TryGetTenant(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<IReadOnlyList<AuditEntryResponse>>(
@@ -54,12 +54,10 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetPublicSharingPolicy(SetPublicSharingPolicyRequest request, CancellationToken ct)
     {
-        if (!TryGetTenant(out var tenantId))
+        if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new SetPublicSharingPolicyCommand(tenantId, request.Allow), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
-
-    private bool TryGetTenant(out Guid tenantId) => Guid.TryParse(User.FindFirst("tenant_id")?.Value, out tenantId);
 }

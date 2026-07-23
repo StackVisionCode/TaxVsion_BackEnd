@@ -15,7 +15,7 @@ public sealed class GetDraftHandlerTests
         var tenantId = Guid.NewGuid();
         var customerId = Guid.NewGuid();
         var accountId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, customerId, accountId).Value;
+        var draft = Draft.CreateNew(tenantId, customerId, accountId, Guid.NewGuid()).Value;
         draft.AutoSave(
             "Tax question",
             "<p>Hello</p>",
@@ -72,7 +72,7 @@ public sealed class GetDraftHandlerTests
     [Fact]
     public async Task Handle_WithDraftFromAnotherTenant_ReturnsNotFound()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
 

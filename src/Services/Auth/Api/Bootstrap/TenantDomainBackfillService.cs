@@ -31,10 +31,16 @@ public sealed class TenantDomainBackfillService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
 
+        // RBAC Fase 5 — este backfill recorre TODOS los tenants en una sola query correlacionada
+        // (Tenant no es ITenantOwned, no lo afecta el filtro; TenantDomain sí lo es — la subquery
+        // necesita IgnoreQueryFilters() explícito porque compara contra el TenantId de CADA fila
+        // de Tenants, no contra un tenant ambiente único).
         var tenantsWithoutPrimaryDomain = await db
             .Tenants.Where(tenant =>
                 tenant.Kind == TenantKind.Customer
-                && !db.TenantDomains.Any(domain => domain.TenantId == tenant.Id && domain.IsPrimary)
+                && !db
+                    .TenantDomains.IgnoreQueryFilters()
+                    .Any(domain => domain.TenantId == tenant.Id && domain.IsPrimary)
             )
             .ToListAsync(cancellationToken);
 
@@ -58,7 +64,8 @@ public sealed class TenantDomainBackfillService(
             }
 
             var host = $"{slugResult.Value.Value}.{_options.BaseDomain}";
-            if (await db.TenantDomains.AnyAsync(domain => domain.Host == host, cancellationToken))
+            // RBAC Fase 5 — unicidad de host es GLOBAL (cruza tenants a propósito).
+            if (await db.TenantDomains.IgnoreQueryFilters().AnyAsync(domain => domain.Host == host, cancellationToken))
             {
                 logger.LogWarning(
                     "Backfill: host {Host} for tenant {TenantId} already claimed by another TenantDomain row; "

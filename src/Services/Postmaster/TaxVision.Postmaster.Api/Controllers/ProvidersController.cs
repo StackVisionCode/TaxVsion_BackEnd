@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Postmaster.Api.Requests;
@@ -22,7 +23,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
     [HasPermission(PostmasterPermissions.ProvidersRead)]
     public async Task<IActionResult> GetStatus([FromQuery] Guid? tenantId, CancellationToken ct)
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var status = await bus.InvokeAsync<ProviderStatusDto>(new GetProviderStatusQuery(resolvedTenantId), ct);
@@ -33,7 +34,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
     [HasPermission(PostmasterPermissions.ProvidersRead)]
     public async Task<IActionResult> GetProvider(Guid tenantId, [FromQuery] string providerCode, CancellationToken ct)
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result<TenantEmailProviderDto>>(
@@ -67,7 +68,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result>(
@@ -87,8 +88,8 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!User.IsInRole("PlatformAdmin"))
-            return Forbid();
+        // RBAC Fase 2: chequeo defensivo redundante retirado — [AllowActorTypes(ActorType.PlatformAdmin)]
+        // de esta acción ya bloquea a cualquier no-PlatformAdmin antes de llegar acá (Layer 2).
 
         var cmd = new UpsertSystemEmailProviderCommand(
             providerCode,
@@ -113,7 +114,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         if (!User.TryGetUserId(out var actingUserId))
@@ -136,27 +137,5 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
         );
         var result = await bus.InvokeAsync<Result>(cmd, ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    /// <summary>PlatformAdmin puede operar sobre cualquier tenant; el resto solo sobre el propio (claim del JWT).</summary>
-    private bool TryResolveTenantId(Guid? requestedTenantId, out Guid tenantId)
-    {
-        tenantId = Guid.Empty;
-        if (!User.TryGetTenantId(out var tokenTenantId) && !User.IsInRole("PlatformAdmin"))
-            return false;
-
-        if (requestedTenantId is null)
-        {
-            tenantId = tokenTenantId;
-            return tenantId != Guid.Empty;
-        }
-
-        if (User.IsInRole("PlatformAdmin") || requestedTenantId == tokenTenantId)
-        {
-            tenantId = requestedTenantId.Value;
-            return true;
-        }
-
-        return false;
     }
 }

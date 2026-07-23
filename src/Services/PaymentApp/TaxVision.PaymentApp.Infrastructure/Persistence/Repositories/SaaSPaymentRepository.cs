@@ -7,8 +7,14 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Repositories;
 
 public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPaymentRepository
 {
+    // IgnoreQueryFilters: mismo bug/fix que CustomerReadService/SignatureAnalyticsReadService —
+    // este repo puede correr dentro de un handler de Wolverine (bus.InvokeAsync) en un scope de DI
+    // desconectado del que pobló ITenantContext vía JwtTenantContextMiddleware. tenantId ya viene
+    // explícito y validado del caller (controller/JWT); el filtro explícito de abajo garantiza el
+    // aislamiento sin depender del filtro ambiental roto.
     public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, Guid tenantId, CancellationToken ct = default) =>
         WithChildren(db.SaaSPayments)
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(payment => payment.Id == saaSPaymentId && payment.TenantId == tenantId, ct);
 
     public Task<SaaSPayment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default)
@@ -35,12 +41,15 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
                 ct
             );
 
+    // IgnoreQueryFilters: job cross-tenant (RBAC Fase 5) — recorre pagos de todos los tenants
+    // buscando reintentos/atascos vencidos, nunca sirve una request autenticada.
     public async Task<IReadOnlyList<SaaSPayment>> GetStuckProcessingAsync(
         DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default
     ) =>
         await WithChildren(db.SaaSPayments)
+            .IgnoreQueryFilters()
             .Where(payment => payment.Status == PaymentStatus.Processing && payment.UpdatedAtUtc < cutoffUtc)
             .OrderBy(payment => payment.UpdatedAtUtc)
             .Take(batchSize)
@@ -52,6 +61,7 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
         CancellationToken ct = default
     ) =>
         await WithChildren(db.SaaSPayments)
+            .IgnoreQueryFilters()
             .Where(payment =>
                 payment.Status == PaymentStatus.Failed
                 && payment.NextRetryAtUtc != null
@@ -92,7 +102,10 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
         CancellationToken ct = default
     )
     {
-        var query = WithChildren(db.SaaSPayments).AsNoTracking().AsQueryable();
+        // IgnoreQueryFilters: búsqueda admin, tenantId opcional (null = todos los tenants).
+        // Cuando se provee, el .Where explícito de abajo ya aísla por tenant; el filtro ambiental
+        // no es confiable en este path (mismo bug documentado en LocalCommandTenantMiddleware).
+        var query = WithChildren(db.SaaSPayments).AsNoTracking().IgnoreQueryFilters().AsQueryable();
 
         if (tenantId is not null)
             query = query.Where(payment => payment.TenantId == tenantId);

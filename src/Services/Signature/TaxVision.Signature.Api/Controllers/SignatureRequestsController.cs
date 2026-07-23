@@ -1,12 +1,15 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Common;
+using Microsoft.Extensions.Options;
 using TaxVision.Signature.Api.Requests;
+using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Application.Requests.Commands.AddSigner;
 using TaxVision.Signature.Application.Requests.Commands.Cancel;
@@ -39,8 +42,45 @@ namespace TaxVision.Signature.Api.Controllers;
 [Route("signature/requests")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBase
+public sealed class SignatureRequestsController(
+    IMessageBus bus,
+    ISignatureRequestRepository signatureRequests,
+    IAuthorizationService authorizationService,
+    IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions
+) : ControllerBase
 {
+    /// <summary>
+    /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — chequeo de ownership tras flag, compartido por
+    /// Send/Cancel/ExtendExpiration. Mismo criterio que ShareLinksController.CheckOwnershipAsync:
+    /// si el flag está apagado (default) o la solicitud ya no existe, no bloquea nada acá — el 404
+    /// real lo sigue devolviendo el handler de siempre.
+    /// </summary>
+    private async Task<IActionResult?> CheckOwnershipAsync(
+        Guid tenantId,
+        Guid signatureRequestId,
+        Microsoft.AspNetCore.Authorization.Infrastructure.OperationAuthorizationRequirement operation,
+        CancellationToken ct
+    )
+    {
+        if (!ownershipOptions.CurrentValue.Enabled)
+            return null;
+
+        var existing = await signatureRequests.GetByIdAsync(tenantId, signatureRequestId, ct);
+        if (existing is null)
+            return null;
+
+        var authorized = await authorizationService.AuthorizeAsync(User, existing, operation);
+        return authorized.Succeeded
+            ? null
+            : StatusCode(
+                StatusCodes.Status403Forbidden,
+                new Error(
+                    "SignatureRequest.NotOwner",
+                    "Only the request's creator or a user with signature-request-management permission can perform this action."
+                )
+            );
+    }
+
     // ---------- POST /signature/requests ----------
     [HttpPost]
     [HasPermission(SignaturePermissions.RequestCreate)]
@@ -48,7 +88,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateSignatureRequestBody body, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new CreateSignatureRequestCommand(
@@ -82,7 +122,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct = default
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<ListSignatureRequestsResult>(
@@ -99,7 +139,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<SignatureRequestResponse?>(
@@ -117,7 +157,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> AddSigner([FromRoute] Guid id, [FromBody] AddSignerBody body, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var cmd = new AddSignerCommand(tenantId, id, body.Email, body.FullName);
@@ -135,7 +175,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveSigner([FromRoute] Guid id, [FromRoute] Guid signerId, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveSignerCommand(tenantId, id, signerId), ct);
@@ -153,7 +193,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ReorderSignersCommand(tenantId, id, body.OrderedSignerIds), ct);
@@ -171,7 +211,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var cmd = new PlaceFieldCommand(
@@ -205,7 +245,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveFieldCommand(tenantId, id, signerId, fieldId), ct);
@@ -219,8 +259,12 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Send([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Send, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var result = await bus.InvokeAsync<Result>(new SendSignatureRequestCommand(tenantId, id), ct);
         return result.IsSuccess ? Accepted() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -237,8 +281,12 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Cancel, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var result = await bus.InvokeAsync<Result>(
             new CancelSignatureRequestCommand(tenantId, id, userId, body.Reason),
@@ -258,8 +306,12 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var result = await bus.InvokeAsync<Result>(
             new ExtendExpirationCommand(tenantId, id, userId, body.AdditionalHours),
@@ -279,7 +331,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ResendSignerInvitationCommand(tenantId, id, signerId), ct);
@@ -297,7 +349,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new SetPractitionerPinCommand(tenantId, id, userId, body.Pin), ct);
@@ -311,7 +363,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ClearPractitionerPin([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ClearPractitionerPinCommand(tenantId, id), ct);
@@ -329,7 +381,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new PlaceLegalHoldCommand(tenantId, id, userId, body.Reason), ct);
@@ -343,7 +395,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> LiftLegalHold([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new LiftLegalHoldCommand(tenantId, id, userId), ct);
@@ -361,7 +413,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -378,7 +430,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ClearPreparer([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ClearPreparerCommand(tenantId, id), ct);
@@ -392,7 +444,7 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SignAsPreparer([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
@@ -402,19 +454,5 @@ public sealed class SignatureRequestsController(IMessageBus bus) : ControllerBas
             ct
         );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    // ------------------------------------------------------------------
-    // Helpers privados: cada uno una única responsabilidad
-    // ------------------------------------------------------------------
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        if (!User.TryGetTenantId(out tenantId))
-        {
-            userId = Guid.Empty;
-            return false;
-        }
-        return User.TryGetUserId(out userId);
     }
 }

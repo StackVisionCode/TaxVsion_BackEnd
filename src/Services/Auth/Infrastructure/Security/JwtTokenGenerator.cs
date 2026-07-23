@@ -34,7 +34,6 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         string effectiveTimeZoneId,
         Guid sessionId,
         IReadOnlyCollection<string> roles,
-        IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods
     )
     {
@@ -55,7 +54,6 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
             claims.Add(new Claim(ClaimNames.CustomerId, customerId.ToString()));
 
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
-        claims.AddRange(permissions.Select(permission => new Claim(ClaimNames.Permission, permission)));
         claims.AddRange(authMethods.Select(method => new Claim(JwtRegisteredClaimNames.Amr, method)));
 
         var token = new JwtSecurityToken(

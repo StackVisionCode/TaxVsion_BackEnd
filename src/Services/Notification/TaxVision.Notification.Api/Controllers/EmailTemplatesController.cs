@@ -16,6 +16,8 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Gestión de plantillas de correo (System/Tenant). La BD guarda metadata + storage keys; el HTML,
 /// design JSON y preview se guardan en CloudStorage. Cada edición crea una versión; publicar activa una.
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización que salte validaciones).
 ///
 /// NO retirado en la Fase 18 del plan de hardening (Notification), a pesar de que el frontend no
 /// llama a este controller (confirmado por el usuario) y de que Scribe existe para reemplazarlo:

@@ -1,9 +1,8 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -47,13 +46,13 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 {
     // ---------- POST /customers ----------
     [HttpPost]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateCustomerRequest body, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new CreateCustomerCommand(
@@ -87,7 +86,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     // ---------- GET /customers ----------
     [HttpGet]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<PagedResult<CustomerSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<CustomerSummaryResponse>>> Search(
@@ -98,7 +97,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct = default
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<PagedResult<CustomerSummaryResponse>>(
@@ -110,7 +109,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     // ---------- GET /customers/check-exists ----------
     [HttpGet("check-exists")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerExistsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -120,7 +119,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(taxIdentifier))
@@ -135,13 +134,13 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     // ---------- GET /customers/{id} ----------
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<CustomerResponse>>(new GetCustomerByIdQuery(tenantId, id), ct);
@@ -155,12 +154,12 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     // ---------- PATCH /customers/{id} ----------
     [HttpPatch("{id:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCustomerRequest body, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new UpdateCustomerCommand(
@@ -198,12 +197,12 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ============== Addresses ==============
 
     [HttpPost("{id:guid}/addresses")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<AddressResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddAddress(Guid id, [FromBody] AddAddressRequest body, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new AddAddressCommand(
@@ -228,7 +227,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPatch("{id:guid}/addresses/{addressId:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -239,7 +238,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new UpdateAddressCommand(
@@ -266,13 +265,13 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpDelete("{id:guid}/addresses/{addressId:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveAddress(Guid id, Guid addressId, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveAddressCommand(tenantId, id, addressId, userId), ct);
@@ -287,7 +286,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ============== Contact points ==============
 
     [HttpPost("{id:guid}/contact-points")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<ContactPointResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddContactPoint(
@@ -296,7 +295,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new AddContactPointCommand(tenantId, id, userId, body.Type, body.Value, body.Label, body.IsPrimary);
@@ -309,7 +308,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPatch("{id:guid}/contact-points/{contactPointId:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -320,7 +319,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new UpdateContactPointCommand(
@@ -343,13 +342,13 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpDelete("{id:guid}/contact-points/{contactPointId:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveContactPoint(Guid id, Guid contactPointId, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -367,12 +366,12 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ============== Relations ==============
 
     [HttpPost("{id:guid}/relations")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<RelationResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddRelation(Guid id, [FromBody] AddRelationRequest body, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new AddRelationCommand(
@@ -405,7 +404,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPatch("{id:guid}/relations/{relationId:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -416,7 +415,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new UpdateRelationCommand(
@@ -451,13 +450,13 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpDelete("{id:guid}/relations/{relationId:guid}")]
-    [Authorize(Roles = "TenantEmployee,TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveRelation(Guid id, Guid relationId, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveRelationCommand(tenantId, id, relationId, userId), ct);
@@ -472,12 +471,12 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ============== Status transitions ==============
 
     [HttpPost("{id:guid}/archive")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ArchiveCustomerCommand(tenantId, id, userId), ct);
@@ -490,14 +489,14 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{id:guid}/reactivate")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Reactivate(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ReactivateCustomerCommand(tenantId, id, userId), ct);
@@ -510,14 +509,14 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{id:guid}/deactivate")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new DeactivateCustomerCommand(tenantId, id, userId), ct);
@@ -530,14 +529,14 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{id:guid}/activate")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Activate(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ActivateCustomerCommand(tenantId, id, userId), ct);
@@ -563,7 +562,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -586,7 +585,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UnassignPreparer(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new UnassignPreparerCommand(tenantId, id, userId), ct);
@@ -601,7 +600,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ============== Bulk status transitions ==============
 
     [HttpPost("bulk/{action}")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<BulkStatusActionResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -611,7 +610,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         if (!Enum.TryParse<BulkStatusAction>(action, ignoreCase: true, out var parsedAction))
@@ -635,14 +634,14 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     // ============== Portal + Fiscal profile ==============
 
     [HttpPost("{id:guid}/portal-invitations")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<RequestPortalInvitationResponse>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RequestPortalInvitation(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<RequestPortalInvitationResponse>>(
@@ -658,7 +657,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPut("{id:guid}/fiscal-profile")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CustomerFiscalProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -669,7 +668,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new SetCustomerFiscalProfileCommand(
@@ -705,7 +704,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RevealTaxIdentifier(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new RevealTaxIdentifierCommand(
@@ -726,7 +725,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPut("{id:guid}/relations/{relationId:guid}/fiscal-profile")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<RelationFiscalProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -738,7 +737,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new SetRelationFiscalProfileCommand(
@@ -759,25 +758,5 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         if (result.Error.Code is "Customer.NotFound" or "Relation.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    // ---------- Helpers ----------
-    private bool TryGetUserId(out Guid userId)
-    {
-        var raw =
-            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(raw, out userId);
-    }
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        tenantId = Guid.Empty;
-        var tenantRaw = User.FindFirst("tenant_id")?.Value;
-        if (!Guid.TryParse(tenantRaw, out tenantId))
-        {
-            userId = Guid.Empty;
-            return false;
-        }
-        return TryGetUserId(out userId);
     }
 }

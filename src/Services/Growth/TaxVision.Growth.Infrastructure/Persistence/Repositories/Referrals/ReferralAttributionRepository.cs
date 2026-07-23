@@ -15,10 +15,12 @@ public sealed class ReferralAttributionRepository(GrowthDbContext dbContext, ITe
     ) =>
         attributionId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
             ? Task.FromResult<ReferralAttribution?>(null)
-            : dbContext.ReferralAttributions.FirstOrDefaultAsync(
-                attribution => attribution.Id == attributionId && attribution.TenantId == ownerTenantId,
-                ct
-            );
+            : dbContext
+                .ReferralAttributions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(
+                    attribution => attribution.Id == attributionId && attribution.TenantId == ownerTenantId,
+                    ct
+                );
 
     public async Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default)
     {

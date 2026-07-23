@@ -33,11 +33,14 @@ public sealed class ActorTypeAuthorizationFilter : IAuthorizationFilter
         var declared = ResolveDeclaredActorTypes(descriptor);
         if (declared is null)
         {
+            context.HttpContext.RequestServices.GetRequiredService<AuthorizationMetrics>().RecordDecision(false, "2");
             context.Result = new ForbidResult();
             return;
         }
 
-        if (!IsActorAllowed(context.HttpContext.User.GetActorType(), declared))
+        var allowed = IsActorAllowed(context.HttpContext.User.GetActorType(), declared);
+        context.HttpContext.RequestServices.GetRequiredService<AuthorizationMetrics>().RecordDecision(allowed, "2");
+        if (!allowed)
             context.Result = new ForbidResult();
     }
 
@@ -75,6 +78,12 @@ public static class ActorTypeAuthorizationExtensions
     /// — Fase 3/4 del plan. No hace nada hasta que se llama explícitamente; agregar este único
     /// paquete acá no cambia el comportamiento de ningún servicio todavía.
     /// </summary>
-    public static IMvcBuilder AddActorTypeAuthorization(this IMvcBuilder builder) =>
-        builder.AddMvcOptions(options => options.Filters.Add<ActorTypeAuthorizationFilter>());
+    public static IMvcBuilder AddActorTypeAuthorization(this IMvcBuilder builder)
+    {
+        // RBAC Fase 10: AuthorizationMetrics es singleton (Meter propio) — registrado acá porque
+        // los 14 servicios ya llaman este método una vez desde su Program.cs, así PermissionPolicyProvider
+        // (Layer 1) e IsOwnerOrHasManageHandler (Layer 3b, cuando aplica) lo resuelven sin wiring extra.
+        builder.Services.AddSingleton<AuthorizationMetrics>();
+        return builder.AddMvcOptions(options => options.Filters.Add<ActorTypeAuthorizationFilter>());
+    }
 }

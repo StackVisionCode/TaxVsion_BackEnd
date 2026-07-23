@@ -1,7 +1,7 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -40,7 +40,7 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<IReadOnlyList<AddOnResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTenantAddOns(CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<IReadOnlyList<AddOnResponse>>>(
@@ -54,11 +54,12 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
     public sealed record PurchaseAddOnRequest(string AddOnCode, int Quantity, bool AutoRenew);
 
     [HttpPost]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.AddOnsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<Guid>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Purchase(PurchaseAddOnRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<Guid>>(
@@ -74,11 +75,12 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
     public sealed record CancelAddOnRequest(string Reason);
 
     [HttpPost("{id:guid}/cancel")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.AddOnsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Cancel(Guid id, CancelAddOnRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new CancelAddOnCommand(tenantId, id, request.Reason, userId), ct);
@@ -88,26 +90,16 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Renovación manual (mientras no exista Billing).</summary>
     [HttpPost("{id:guid}/renew")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.AddOnsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Renew(Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RenewAddOnCommand(tenantId, id, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        userId = Guid.Empty;
-        if (!Guid.TryParse(User.FindFirst("tenant_id")?.Value, out tenantId))
-            return false;
-
-        var raw =
-            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(raw, out userId);
     }
 }

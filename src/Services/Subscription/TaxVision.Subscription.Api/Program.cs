@@ -8,7 +8,9 @@ using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
@@ -40,6 +42,7 @@ builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "subscription-service");
 builder.Services.AddRedisCache(builder.Configuration);
+builder.Services.AddSessionDenylist(builder.Configuration);
 
 // Jobs de renovacion/expiracion/grace (Fase 4). Cada uno es independiente: renovar la
 // suscripcion base no renueva seats ni add-ons, y viceversa (ver diseno §34).
@@ -61,6 +64,17 @@ builder.Services.AddHostedService<RenewalNotificationJob>();
 builder
     .Services.AddAuthorizationBuilder()
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
+// RBAC Fase 8 (RBAC_Hardening_Plan.md) — primera vez que Subscription usa [HasPermission]. La
+// tabla UserPermissionsProjection + su repo/consumers ya existían desde RBAC Fase 7 (sembrada
+// pero sin wiring de enforcement, ver README §41.10) — solo faltaba este bloque, idéntico al de
+// los otros 13 servicios (mismo criterio que CloudStorage/Program.cs).
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddMemoryCache();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
@@ -119,6 +133,13 @@ builder.Host.UseWolverine(options =>
     options
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+
+    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
+    options
+        .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
+        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
 });
 
 var app = builder.Build();
@@ -142,8 +163,16 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
+
+// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header
+// X-Tenant-Id sin validar, confiando en el caller — inseguro) por el middleware compartido
+// que resuelve el tenant SOLO del claim tenant_id del JWT verificado. RBAC Fase 7 hotfix
+// (2026-07-22): va ANTES de UseAuthorization() — en modo Projection, [HasPermission] necesita
+// el tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
+app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
-app.UseMiddleware<TenantResolutionMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

@@ -4,7 +4,6 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Settings.Commands.ApplyPlanConstraints;
 using TaxVision.Signature.Domain.Settings;
@@ -37,14 +36,12 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        // [HasPermission] por sí solo no alcanza acá: TenantAdmin recibe el mismo set de permisos
-        // que PlatformAdmin por defecto (PermissionCatalog.SystemRoleDefaults), así que sin este
-        // chequeo cualquier TenantAdmin podía reescribir los techos de plan de CUALQUIER tenant
-        // (el tenantId viene de la ruta, no del JWT del caller) — mismo patrón que ya usan
-        // Postmaster.UpsertSystemProvider y los handlers System-scope de Scribe/Notification.
-        if (!User.IsPlatformAdmin())
-            return Forbid();
-
+        // RBAC Fase 2: el chequeo defensivo inline que vivía acá ("TenantAdmin recibe el mismo
+        // set de permisos que PlatformAdmin por defecto") ya no hace falta — SignaturePlanConstraintsManage
+        // es PlatformOnly (nunca en SystemRoleDefaults(SystemTenantAdmin)) y esta acción además
+        // requiere [AllowActorTypes(ActorType.PlatformAdmin)] a nivel de clase, así que
+        // el tenantId de la ruta nunca puede ser manipulado por un TenantAdmin: [HasPermission] +
+        // [AllowActorTypes] ya son 2 capas independientes que lo bloquean.
         if (!User.TryGetUserId(out var adminUserId))
             return Unauthorized();
 

@@ -17,7 +17,8 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
     )
     {
         var message = await dbContext
-            .SentMessages.Include(m => m.Events)
+            .SentMessages.IgnoreQueryFilters()
+            .Include(m => m.Events)
             .FirstOrDefaultAsync(m => m.Id == id && m.TenantId == tenantId, ct);
 
         return message is null

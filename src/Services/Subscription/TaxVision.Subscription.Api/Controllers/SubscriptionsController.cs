@@ -1,7 +1,7 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,7 +34,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<MySubscriptionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetMySubscription(CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<MySubscriptionResponse>>(new GetMySubscriptionQuery(tenantId), ct);
@@ -53,12 +53,13 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     public sealed record ChangePlanResponse(string Status, Guid? PlanChangeRequestId);
 
     [HttpPost("change-plan")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ChangePlanResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ChangePlan(ChangePlanRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<ChangePlanResult>>(
@@ -83,11 +84,12 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     public sealed record ActivateRequest(string? BillingCycle = null);
 
     [HttpPost("activate")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Activate([FromBody] ActivateRequest? request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -103,7 +105,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<PendingPlanChangeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPendingPlanChange(CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PendingPlanChangeResponse?>>(
@@ -115,11 +117,12 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("plan-change/cancel")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> CancelPendingPlanChange(CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new CancelPendingPlanChangeCommand(tenantId, userId), ct);
@@ -130,11 +133,12 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     public sealed record CancelRequest(string Reason);
 
     [HttpPost("cancel")]
-    [Authorize(Roles = "TenantAdmin")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Cancel(CancelRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new CancelSubscriptionCommand(tenantId, request.Reason, userId), ct);
@@ -146,11 +150,12 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Suspensión administrativa (impago, violación de políticas). Solo plataforma.</summary>
     [HttpPatch("{tenantId:guid}/suspend")]
-    [Authorize(Roles = "PlatformAdmin")]
+    [HasPermission(SubscriptionPermissions.Suspend)]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Suspend(Guid tenantId, SuspendRequest request, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out _, out var userId))
+        if (!this.TryGetTenantAndUser(out _, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -162,11 +167,12 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPatch("{tenantId:guid}/reactivate")]
-    [Authorize(Roles = "PlatformAdmin")]
+    [HasPermission(SubscriptionPermissions.Reactivate)]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reactivate(Guid tenantId, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out _, out var userId))
+        if (!this.TryGetTenantAndUser(out _, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ReactivateSubscriptionCommand(tenantId, userId), ct);
@@ -176,26 +182,16 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Renovación manual (mientras no exista Billing). Solo plataforma.</summary>
     [HttpPost("{tenantId:guid}/renew")]
-    [Authorize(Roles = "PlatformAdmin")]
+    [HasPermission(SubscriptionPermissions.Renew)]
+    [AllowActorTypes(ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Renew(Guid tenantId, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out _, out var userId))
+        if (!this.TryGetTenantAndUser(out _, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RenewTenantSubscriptionCommand(tenantId, userId), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        userId = Guid.Empty;
-        if (!Guid.TryParse(User.FindFirst("tenant_id")?.Value, out tenantId))
-            return false;
-
-        var raw =
-            User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(raw, out userId);
     }
 }

@@ -92,10 +92,10 @@ public static class RefreshAccessTokenHandler
             return Result.Failure<AuthTokensResponse>(new Error("Tenant.Inactive", "Tenant is inactive."));
         }
 
-        var (roleNames, permissions) = await UserAccessResolver.ResolveAsync(user, roles, ct);
+        var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
 
-        var issued = await issuer.RotateAsync(stored, session, user, timeZone, roleNames, permissions, ["refresh"], ct);
+        var issued = await issuer.RotateAsync(stored, session, user, timeZone, roleNames, ["refresh"], ct);
         session.Touch(request.IpAddress);
 
         await audit.AddAsync(

@@ -991,7 +991,7 @@
 								}
 							}
 						},
-						"description": "Crea una invitacion (requiere TenantAdmin/PlatformAdmin). Valida limites del plan."
+						"description": "Crea una invitacion (permiso: users.invite, TenantAdmin/PlatformAdmin). Valida limites del plan."
 					},
 					"response": [],
 					"event": [
@@ -1040,7 +1040,8 @@
 									"value": "20"
 								}
 							]
-						}
+						},
+						"description": "Lista invitaciones del tenant (permiso: users.invite)."
 					},
 					"response": []
 				},
@@ -1066,7 +1067,8 @@
 								"{{invitationId}}",
 								"resend"
 							]
-						}
+						},
+						"description": "Reenvia una invitacion pendiente (permiso: users.invite, TenantAdmin/PlatformAdmin)."
 					},
 					"response": []
 				},
@@ -1092,7 +1094,8 @@
 								"{{invitationId}}",
 								"cancel"
 							]
-						}
+						},
+						"description": "Cancela una invitacion pendiente (permiso: users.invite, TenantAdmin/PlatformAdmin)."
 					},
 					"response": []
 				}
@@ -1384,13 +1387,14 @@
 						},
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Equipo comercial\",\n  \"permissionIds\": []\n}",
+							"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Equipo comercial\",\n  \"permissionIds\": [],\n  \"targetActorType\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
 								}
 							}
-						}
+						},
+						"description": "targetActorType (RBAC Fase 3, opcional): 'TenantEmployee' | 'TenantAdmin' | 'CustomerPortal' | 'PlatformAdmin' | null. Declara para qué actor type es el rol custom; null se valida contra staff (TenantEmployee/TenantAdmin) por defecto. Ver ActorTypeRoleGuard.ValidatePermissionsForActorType."
 					},
 					"response": [],
 					"event": [
@@ -1917,6 +1921,67 @@
 				}
 			],
 			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
+		},
+		{
+			"name": "RBAC Fase 7 — perm_v Enforcement",
+			"item": [
+				{
+					"name": "TokenStale after role change (requires Authorization:PermissionsSource=Projection)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{staleAccessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/users?page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"users"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "RBAC Fase 7 (RBAC_Hardening_Plan.md) — caso negativo runnable, OFF por default. Este servicio (Auth) debe tener `Authorization:PermissionsSource=\"Projection\"` en su config para que este caso aplique — con el default (\"Jwt\") este endpoint responde 200 igual que siempre, el test se salta.\n\nPasos manuales para reproducir:\n1. Login normal → guardar el access token en la variable {{staleAccessToken}} (NO refrescarlo después).\n2. Sin refrescar ese token, quitarle a ese mismo usuario un permiso (p.ej. `users.view`) vía SetRolePermissions o AssignUserRoles — esto incrementa `PermissionsVersion` en Auth y publica `UserRolesChangedIntegrationEvent`/`RolePermissionsChangedIntegrationEvent`, que el consumer de este servicio procesa y sube la versión de su `UserPermissionsProjection`.\n2b. Esperar a que expire el cache de 30s de `ProjectionPermissionsSource` si se repite la prueba (o usar un tenant/usuario nuevo cada vez).\n3. Reenviar este request con el mismo {{staleAccessToken}} (perm_v desactualizado) — debe responder 401 con code `Auth.TokenStale`, no 200 ni 403.\n\nEsto confirma el mecanismo end-to-end (JWT viejo → proyección más nueva → rechazo), no solo la unidad ProjectionPermissionsSource (ver PermissionsSourceTests.cs para esa cobertura)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Skipped — Authorization:PermissionsSource is \\\"Jwt\\\" (default) on this environment, perm_v is not enforced\", () => {",
+									"        pm.expect(pm.response.code).to.eql(200);",
+									"    });",
+									"} else {",
+									"    pm.test(\"401 Auth.TokenStale — JWT perm_v is behind the UserPermissionsProjection\", () => {",
+									"        pm.response.to.have.status(401);",
+									"        pm.expect(pm.response.json().code).to.eql(\"Auth.TokenStale\");",
+									"    });",
+									"}"
+								]
+							}
+						}
+					]
+				}
+			],
+			"description": "RBAC Fase 7 (RBAC_Hardening_Plan.md) — enforcement de perm_v contra la proyección local de permisos, apagado por default (Authorization:PermissionsSource=\"Jwt\" en todos los servicios). El caso de esta carpeta documenta y ejercita el flujo TokenStale cuando un servicio activa \"Projection\"; con el default no hace nada distinto de un request normal. Ver README §41.11."
 		}
 	]
 }

@@ -16,8 +16,10 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
     public Task<MfaMethod?> GetMethodAsync(Guid userId, MfaMethodType type, CancellationToken ct = default) =>
         db.MfaMethods.FirstOrDefaultAsync(method => method.UserId == userId && method.Type == type, ct);
 
+    // IgnoreQueryFilters(): methodId siempre viene de challenge.MfaMethodId, un desafío ya
+    // resuelto por hash del ticket de login (flujo anónimo, ver GetChallengeByTicketHashAsync).
     public Task<MfaMethod?> GetMethodByIdAsync(Guid methodId, CancellationToken ct = default) =>
-        db.MfaMethods.FirstOrDefaultAsync(method => method.Id == methodId, ct);
+        db.MfaMethods.IgnoreQueryFilters().FirstOrDefaultAsync(method => method.Id == methodId, ct);
 
     public async Task AddMethodAsync(MfaMethod method, CancellationToken ct = default) =>
         await db.MfaMethods.AddAsync(method, ct);
@@ -27,8 +29,10 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
     public async Task AddChallengeAsync(MfaChallenge challenge, CancellationToken ct = default) =>
         await db.MfaChallenges.AddAsync(challenge, ct);
 
+    // IgnoreQueryFilters(): flujo de MFA en login corre sin JWT todavía (el ticket firmado es
+    // la credencial), igual razón que UserRepository.GetByEmailAsync.
     public Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default) =>
-        db.MfaChallenges.FirstOrDefaultAsync(challenge => challenge.LoginTicketHash == ticketHash, ct);
+        db.MfaChallenges.IgnoreQueryFilters().FirstOrDefaultAsync(challenge => challenge.LoginTicketHash == ticketHash, ct);
 
     public async Task<IReadOnlyList<RecoveryCode>> GetRecoveryCodesAsync(Guid userId, CancellationToken ct = default) =>
         await db.RecoveryCodes.Where(code => code.UserId == userId).ToListAsync(ct);
@@ -38,8 +42,9 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
 
     public void RemoveRecoveryCodes(IEnumerable<RecoveryCode> codes) => db.RecoveryCodes.RemoveRange(codes);
 
+    // IgnoreQueryFilters(): misma razón — chequeado durante login, antes de tener JWT.
     public Task<TrustedDevice?> GetTrustedDeviceByHashAsync(string deviceTokenHash, CancellationToken ct = default) =>
-        db.TrustedDevices.FirstOrDefaultAsync(device => device.DeviceTokenHash == deviceTokenHash, ct);
+        db.TrustedDevices.IgnoreQueryFilters().FirstOrDefaultAsync(device => device.DeviceTokenHash == deviceTokenHash, ct);
 
     public async Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(
         Guid userId,

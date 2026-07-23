@@ -17,7 +17,15 @@ internal sealed class SignatureRequestReadService(SignatureDbContext db) : ISign
         var page = query.Page < 1 ? 1 : query.Page;
         var pageSize = ClampPageSize(query.PageSize);
 
-        var baseQuery = db.SignatureRequests.AsNoTracking().Where(r => r.TenantId == query.TenantId);
+        // Bug real de producción (2026-07-22, mismo patrón que FileObjectRepository.GetAsync en
+        // CloudStorage): este query se despacha vía bus.InvokeAsync de Wolverine, que corre en un
+        // scope de DI distinto al del request HTTP — el TenantContext ambiente que puebla el filtro
+        // global de SignatureDbContext no está seteado ahí. query.TenantId ya viene explícito y
+        // confiable desde el controller — IgnoreQueryFilters() explícito.
+        var baseQuery = db
+            .SignatureRequests.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(r => r.TenantId == query.TenantId);
 
         if (query.Status.HasValue)
             baseQuery = baseQuery.Where(r => r.Status == query.Status.Value);

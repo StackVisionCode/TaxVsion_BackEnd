@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.Security;
 
+[Collection(TaxVision.BuildingBlocks.Tests.ActorTypeAuthorization.AuthorizationMetricsCollection.Name)]
 public sealed class ActorTypeAuthorizationFilterTests
 {
     [Fact]
@@ -184,7 +186,11 @@ public sealed class ActorTypeAuthorizationFilterTests
             ControllerTypeInfo = controllerType.GetTypeInfo(),
         };
 
-        var httpContext = new DefaultHttpContext { User = BuildPrincipal(actorType) };
+        // RBAC Fase 10: ActorTypeAuthorizationFilter ahora resuelve AuthorizationMetrics vía
+        // RequestServices para el counter authz.decision — sin este provider mínimo,
+        // RequestServices queda null (DefaultHttpContext no lo setea por su cuenta).
+        var services = new ServiceCollection().AddSingleton<AuthorizationMetrics>().BuildServiceProvider();
+        var httpContext = new DefaultHttpContext { User = BuildPrincipal(actorType), RequestServices = services };
         var actionContext = new ActionContext(httpContext, new RouteData(), descriptor);
         return new AuthorizationFilterContext(actionContext, []);
     }

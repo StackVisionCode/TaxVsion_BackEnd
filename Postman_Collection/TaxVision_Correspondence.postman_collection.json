@@ -581,6 +581,52 @@
 					]
 				},
 				{
+					"name": "AutoSave_AsNonOwner_Returns403 (RBAC Fase 4, requiere Authorization:ResourceOwnership:Enabled=true)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessTokenOtherUser}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"subject\": \"Tax question\",\n  \"htmlBody\": \"<p>Hello</p>\",\n  \"textBody\": \"Hello\",\n  \"to\": [\n    { \"address\": \"customer@example.com\", \"displayName\": \"The Customer\" }\n  ],\n  \"cc\": null,\n  \"bcc\": null\n}"
+						},
+						"url": {
+							"raw": "{{UrlBase}}/correspondence/drafts/{{correspondenceDraftId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"correspondence",
+								"drafts",
+								"{{correspondenceDraftId}}"
+							]
+						},
+						"description": "RBAC Fase 4 (RBAC_Hardening_Plan.md) - con el flag de resource ownership prendido, un usuario que no creo el Draft recibe 403 Draft.NotOwner en vez de poder autoguardar el borrador de un colega. A diferencia de ShareLink/SignatureRequest, Draft no tiene un permiso manage de override - solo el creador o PlatformAdmin pasan. Con el flag apagado (default), este mismo request devuelve 204 igual que AutoSave - variable de entorno {{accessTokenOtherUser}} debe ser un token de OTRO usuario del mismo tenant."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.environment.get('resourceOwnershipEnabled') === 'true') { pm.test(\"status 403\", () => pm.response.code === 403); }"
+								]
+							}
+						}
+					]
+				},
+				{
 					"name": "AttachFile",
 					"request": {
 						"method": "POST",

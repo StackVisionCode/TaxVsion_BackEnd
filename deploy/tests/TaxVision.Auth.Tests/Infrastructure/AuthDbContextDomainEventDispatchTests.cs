@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.TenantDomains.Events;
@@ -14,8 +15,21 @@ namespace TaxVision.Auth.Tests.Infrastructure;
 /// </summary>
 public sealed class AuthDbContextDomainEventDispatchTests
 {
+    /// <summary>RBAC Fase 5 — sin tenant seteado a propósito: estos tests solo agregan/guardan, nunca vuelven a leer.</summary>
+    private sealed class NoTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
+    }
+
     private static AuthDbContext CreateContext(FakeMessageBus bus) =>
-        new(new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, bus);
+        new(
+            new DbContextOptionsBuilder<AuthDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            bus,
+            new NoTenantContext()
+        );
 
     [Fact]
     public async Task SaveChangesAsync_dispatches_pending_domain_events_and_clears_them()

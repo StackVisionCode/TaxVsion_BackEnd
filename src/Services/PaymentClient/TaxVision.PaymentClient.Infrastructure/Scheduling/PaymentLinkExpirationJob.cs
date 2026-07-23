@@ -34,6 +34,10 @@ public sealed class PaymentLinkExpirationJob(
 
         foreach (var link in expired)
         {
+            // RBAC Fase 5 — bus.InvokeAsync crea un scope Wolverine nuevo; sin este stamp
+            // LocalCommandTenantMiddleware no tiene tenant que restaurar y el filtro
+            // fail-closed de PaymentClientDbContext bloquearía el handler.
+            bus.TenantId = link.TenantId.ToString();
             var result = await bus.InvokeAsync<Result>(new ExpirePaymentLinkCommand(link.TenantId, link.Id), ct);
 
             if (result.IsFailure)

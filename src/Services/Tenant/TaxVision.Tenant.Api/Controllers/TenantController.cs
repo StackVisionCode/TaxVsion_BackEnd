@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -70,7 +71,8 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "PlatformAdmin")]
+    [Authorize]
+    [HasPermission(TenantPermissions.ListView)]
     [ProducesResponseType<IReadOnlyList<TenantResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<TenantResponse>>> Get(
         [FromQuery] int page = 1,
@@ -94,7 +96,8 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPatch("{tenantId:guid}/status")]
-    [Authorize(Roles = "PlatformAdmin")]
+    [Authorize]
+    [HasPermission(TenantPermissions.StatusChange)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ChangeStatus(
         Guid tenantId,

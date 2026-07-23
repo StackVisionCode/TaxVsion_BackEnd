@@ -69,9 +69,12 @@ internal sealed class CustomerImportCleanupHostedService(
         var db = scope.ServiceProvider.GetRequiredService<CustomerDbContext>();
         var cloudStorage = scope.ServiceProvider.GetRequiredService<ICustomerImportCloudStorageClient>();
 
+        // RBAC Fase 5 — purga deliberadamente cross-tenant (recorre TODOS los tenants en cada
+        // corrida diaria); IgnoreQueryFilters() explícito en ambas queries de este método.
         // Filas se borran por cascade desde attempts via FK. Pero por seguridad las borramos primero.
         var oldAttempts = await db
-            .CustomerImportAttempts.Where(a =>
+            .CustomerImportAttempts.IgnoreQueryFilters()
+            .Where(a =>
                 a.CreatedAtUtc < cutoff
                 && (
                     a.Status == ImportStatus.Completed
@@ -101,7 +104,8 @@ internal sealed class CustomerImportCleanupHostedService(
 
         var attemptIds = oldAttempts.Select(a => a.Id).ToList();
         var deletedAttempts = await db
-            .CustomerImportAttempts.Where(a => attemptIds.Contains(a.Id))
+            .CustomerImportAttempts.IgnoreQueryFilters()
+            .Where(a => attemptIds.Contains(a.Id))
             .ExecuteDeleteAsync(ct);
 
         logger.LogInformation(

@@ -14,20 +14,21 @@ internal sealed class CustomerImportRepository(CustomerDbContext db) : ICustomer
         string idempotencyKey,
         CancellationToken ct
     ) =>
-        db.CustomerImportAttempts.FirstOrDefaultAsync(
-            a => a.TenantId == tenantId && a.IdempotencyKey == idempotencyKey,
-            ct
-        );
+        db
+            .CustomerImportAttempts.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.IdempotencyKey == idempotencyKey, ct);
 
     public Task<int> CountActiveByTenantAsync(Guid tenantId, CancellationToken ct) =>
-        db.CustomerImportAttempts.CountAsync(
-            a =>
-                a.TenantId == tenantId
-                && a.Status != ImportStatus.Completed
-                && a.Status != ImportStatus.Failed
-                && a.Status != ImportStatus.Canceled,
-            ct
-        );
+        db
+            .CustomerImportAttempts.IgnoreQueryFilters()
+            .CountAsync(
+                a =>
+                    a.TenantId == tenantId
+                    && a.Status != ImportStatus.Completed
+                    && a.Status != ImportStatus.Failed
+                    && a.Status != ImportStatus.Canceled,
+                ct
+            );
 
     public async Task AddAsync(CustomerImportAttempt attempt, CancellationToken ct)
     {

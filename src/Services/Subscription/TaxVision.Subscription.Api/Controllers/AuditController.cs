@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
@@ -11,7 +12,8 @@ namespace TaxVision.Subscription.Api.Controllers;
 
 [ApiController]
 [Route("audit")]
-[Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+[Authorize]
+[HasPermission(SubscriptionPermissions.AuditView)]
 [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class AuditController(IMessageBus bus) : ControllerBase
 {

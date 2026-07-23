@@ -12,7 +12,13 @@ using Wolverine;
 
 namespace TaxVision.Scribe.Api.Controllers;
 
-/// <summary>CRUD de EmailTemplate/EmailTemplateVersion + preview/validate (Fase 5).</summary>
+/// <summary>
+/// CRUD de EmailTemplate/EmailTemplateVersion + preview/validate (Fase 5).
+/// RBAC Fase 10: los <c>User.IsPlatformAdmin()</c> de este archivo NO son el atajo que la Fase 10
+/// audita — se pasan como dato al command/query para que el handler de Application decida si el
+/// actor puede operar sobre <c>TemplateScope.System</c> (ver <c>CreateEmailTemplateHandler</c> y
+/// símiles: <c>if (scope == System &amp;&amp; !isPlatformAdmin) return Forbid</c>). Se mantienen.
+/// </summary>
 [ApiController]
 [Route("scribe/templates")]
 [Authorize]

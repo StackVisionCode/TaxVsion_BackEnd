@@ -15,17 +15,17 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
         string internetMessageId,
         CancellationToken ct = default
     ) =>
-        db.IncomingEmails.FirstOrDefaultAsync(
-            x => x.TenantId == tenantId && x.InternetMessageId == internetMessageId,
-            ct
-        );
+        db
+            .IncomingEmails.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.InternetMessageId == internetMessageId, ct);
 
     // Include(Attachments) desde Fase 7 (ListMessageAttachmentsHandler necesita la colección
     // hidratada); Fase 5 (GetMessageBodyHandler) no la usa pero tampoco le molesta cargarla, son
     // pocas filas de metadata, nunca binarios.
     public Task<IncomingEmail?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         db
-            .IncomingEmails.Include(x => x.Attachments)
+            .IncomingEmails.IgnoreQueryFilters()
+            .Include(x => x.Attachments)
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
 
     public async Task AddAsync(IncomingEmail entity, CancellationToken ct = default)
@@ -50,6 +50,7 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
         // IX_IncomingEmails_TenantId_EmailThreadId_ReceivedAtUtc.
         var query = db
             .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId);
 
         var totalCount = await query.CountAsync(ct);
@@ -73,6 +74,7 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
     ) =>
         await db
             .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId)
             .OrderBy(x => x.ReceivedAtUtc)
             .ToListAsync(ct);

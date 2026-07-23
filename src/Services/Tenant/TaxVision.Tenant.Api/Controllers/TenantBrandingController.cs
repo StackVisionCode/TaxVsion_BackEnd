@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -40,7 +41,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Upload(Guid tenantId, IFormFile file, CancellationToken ct)
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         if (!User.TryGetUserId(out var actorId))
@@ -87,7 +88,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Remove(Guid tenantId, CancellationToken ct)
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result>(new RemoveTenantLogoCommand(resolvedTenantId), ct);
@@ -108,7 +109,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(Guid tenantId, CancellationToken ct)
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result<TenantLogoResponse>>(new GetTenantLogoQuery(resolvedTenantId), ct);
@@ -129,7 +130,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetColors(Guid tenantId, CancellationToken ct)
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result<TenantBrandingColorsResponse>>(
@@ -151,7 +152,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result>(
@@ -174,27 +175,11 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ResetColors(Guid tenantId, CancellationToken ct)
     {
-        if (!TryResolveTenantId(tenantId, out var resolvedTenantId))
+        if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
             return Forbid();
 
         var result = await bus.InvokeAsync<Result>(new ResetTenantBrandingColorsCommand(resolvedTenantId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    /// <summary>PlatformAdmin puede operar sobre cualquier tenant; el resto solo sobre el propio (claim del JWT).</summary>
-    private bool TryResolveTenantId(Guid requestedTenantId, out Guid tenantId)
-    {
-        tenantId = Guid.Empty;
-        if (!User.TryGetTenantId(out var tokenTenantId) && !User.IsInRole("PlatformAdmin"))
-            return false;
-
-        if (User.IsInRole("PlatformAdmin") || requestedTenantId == tokenTenantId)
-        {
-            tenantId = requestedTenantId;
-            return true;
-        }
-
-        return false;
     }
 }
 

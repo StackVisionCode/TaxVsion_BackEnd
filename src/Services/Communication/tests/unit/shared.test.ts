@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Result, makeError } from '../../src/domain/shared/result.js';
 import { TenantId, UserId } from '../../src/domain/shared/ids.js';
-import { hasPermission, CommunicationPermissions } from '../../src/domain/shared/permissions.js';
+import { checkPermission, CommunicationPermissions } from '../../src/domain/shared/permissions.js';
 import { normalizeCorrelationId } from '../../src/domain/shared/correlation.js';
+import { createFakeProjectionRepository, fakeSnapshot } from '../helpers/fake-user-permissions-projection-repository.js';
 
 describe('Result', () => {
   it('ok wraps a value and flags success', () => {
@@ -32,25 +33,81 @@ describe('branded ids', () => {
 });
 
 describe('permissions', () => {
-  it('PlatformAdmin bypasses catalog', () => {
-    expect(hasPermission('PlatformAdmin', [], CommunicationPermissions.MeetingHost)).toBe(true);
+  it('PlatformAdmin bypasses catalog', async () => {
+    // Repo vacio a proposito: si el bypass no cortara antes de la proyeccion, esto fallaria cerrado.
+    const repo = createFakeProjectionRepository([]);
+    const result = await checkPermission(
+      { userId: 'u-platform-admin', actorType: 'PlatformAdmin', permissionVersion: 1 },
+      CommunicationPermissions.MeetingHost,
+      repo,
+    );
+    expect(result.allowed).toBe(true);
   });
 
-  it('TenantAdmin without the perm claim is rejected (bypass retirado — mismo hallazgo que en .NET)', () => {
-    expect(hasPermission('TenantAdmin', [], CommunicationPermissions.MeetingHost)).toBe(false);
+  it('TenantAdmin without the permission in the projection is rejected (RBAC Fase 7.5.9 — ya no lee el claim perm del JWT)', async () => {
+    const repo = createFakeProjectionRepository([fakeSnapshot({ userId: 'u-tenant-admin-1', permissions: [] })]);
+    const result = await checkPermission(
+      { userId: 'u-tenant-admin-1', actorType: 'TenantAdmin', permissionVersion: 1 },
+      CommunicationPermissions.MeetingHost,
+      repo,
+    );
+    expect(result.allowed).toBe(false);
   });
 
-  it('TenantAdmin with the perm claim is authorized', () => {
-    expect(
-      hasPermission('TenantAdmin', [CommunicationPermissions.MeetingHost], CommunicationPermissions.MeetingHost),
-    ).toBe(true);
+  it('TenantAdmin with the permission in the projection is authorized', async () => {
+    const repo = createFakeProjectionRepository([
+      fakeSnapshot({ userId: 'u-tenant-admin-2', permissions: [CommunicationPermissions.MeetingHost] }),
+    ]);
+    const result = await checkPermission(
+      { userId: 'u-tenant-admin-2', actorType: 'TenantAdmin', permissionVersion: 1 },
+      CommunicationPermissions.MeetingHost,
+      repo,
+    );
+    expect(result.allowed).toBe(true);
   });
 
-  it('regular actor needs the exact permission', () => {
-    expect(hasPermission('TenantEmployee', [], CommunicationPermissions.ChatStart)).toBe(false);
-    expect(
-      hasPermission('TenantEmployee', ['communication.chat.start'], CommunicationPermissions.ChatStart),
-    ).toBe(true);
+  it('regular actor needs the exact permission', async () => {
+    const repoWithout = createFakeProjectionRepository([fakeSnapshot({ userId: 'u-employee-1', permissions: [] })]);
+    const denied = await checkPermission(
+      { userId: 'u-employee-1', actorType: 'TenantEmployee', permissionVersion: 1 },
+      CommunicationPermissions.ChatStart,
+      repoWithout,
+    );
+    expect(denied.allowed).toBe(false);
+
+    const repoWith = createFakeProjectionRepository([
+      fakeSnapshot({ userId: 'u-employee-2', permissions: ['communication.chat.start'] }),
+    ]);
+    const granted = await checkPermission(
+      { userId: 'u-employee-2', actorType: 'TenantEmployee', permissionVersion: 1 },
+      CommunicationPermissions.ChatStart,
+      repoWith,
+    );
+    expect(granted.allowed).toBe(true);
+  });
+
+  it('a JWT permissionVersion older than the projection is rejected as stale (Auth.TokenStale)', async () => {
+    const repo = createFakeProjectionRepository([
+      fakeSnapshot({ userId: 'u-employee-3', permissions: [CommunicationPermissions.ChatStart], permissionVersion: 2 }),
+    ]);
+    const result = await checkPermission(
+      { userId: 'u-employee-3', actorType: 'TenantEmployee', permissionVersion: 1 },
+      CommunicationPermissions.ChatStart,
+      repo,
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.code).toBe('Auth.TokenStale');
+  });
+
+  it('a user with no projection row yet fails closed (never synced / consumer lag)', async () => {
+    const repo = createFakeProjectionRepository([]);
+    const result = await checkPermission(
+      { userId: 'u-never-synced', actorType: 'TenantEmployee', permissionVersion: 1 },
+      CommunicationPermissions.ChatStart,
+      repo,
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) expect(result.code).toBe('Auth.Forbidden');
   });
 });
 

@@ -11,7 +11,8 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
 
     public async Task<EmailCampaign?> GetByIdAsync(Guid id, Guid tenantId, CancellationToken ct = default) =>
         await db
-            .EmailCampaigns.Include(c => c.Recipients)
+            .EmailCampaigns.IgnoreQueryFilters()
+            .Include(c => c.Recipients)
             .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);
 
     public async Task<EmailCampaign?> GetForProcessingAsync(Guid id, CancellationToken ct = default) =>
@@ -34,13 +35,16 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
             .Take(take)
             .ToListAsync(ct);
 
+    // RBAC Fase 5 — cross-tenant por diseño (CampaignSchedulerService recorre TODOS los tenants
+    // en cada corrida), único consumidor de este método. IgnoreQueryFilters() explícito.
     public async Task<IReadOnlyList<EmailCampaign>> GetDueAsync(
         DateTime nowUtc,
         int max,
         CancellationToken ct = default
     ) =>
         await db
-            .EmailCampaigns.Where(c => c.Status == CampaignStatus.Scheduled && c.ScheduledAtUtc <= nowUtc)
+            .EmailCampaigns.IgnoreQueryFilters()
+            .Where(c => c.Status == CampaignStatus.Scheduled && c.ScheduledAtUtc <= nowUtc)
             .OrderBy(c => c.ScheduledAtUtc)
             .Take(max)
             .ToListAsync(ct);
@@ -53,7 +57,7 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
         CancellationToken ct = default
     )
     {
-        var query = db.EmailCampaigns.AsNoTracking().Where(c => c.TenantId == tenantId);
+        var query = db.EmailCampaigns.AsNoTracking().IgnoreQueryFilters().Where(c => c.TenantId == tenantId);
         if (status is not null)
             query = query.Where(c => c.Status == status);
 

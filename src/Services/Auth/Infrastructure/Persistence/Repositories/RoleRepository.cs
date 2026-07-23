@@ -10,12 +10,16 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
 /// </summary>
 public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
 {
+    // IgnoreQueryFilters(): mismo bug que UserRepository.GetByIdAsync (ver su comentario) —
+    // los 3 llamadores (Update/SetPermissions/DeactivateRole) ya validan
+    // role.TenantId != command.TenantId post-fetch, así que el filtro ambiental era redundante.
     public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) =>
-        db.Roles.Include(role => role.Permissions).FirstOrDefaultAsync(role => role.Id == roleId, ct);
+        db.Roles.IgnoreQueryFilters().Include(role => role.Permissions).FirstOrDefaultAsync(role => role.Id == roleId, ct);
 
     public async Task<IReadOnlyList<Role>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
         await db
-            .Roles.Include(role => role.Permissions)
+            .Roles.IgnoreQueryFilters()
+            .Include(role => role.Permissions)
             .Where(role => role.TenantId == tenantId)
             .OrderBy(role => role.Name)
             .ToListAsync(ct);
@@ -26,14 +30,15 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
         CancellationToken ct = default
     ) =>
         await db
-            .Roles.Include(role => role.Permissions)
+            .Roles.IgnoreQueryFilters()
+            .Include(role => role.Permissions)
             .Where(role => role.TenantId == tenantId && roleIds.Contains(role.Id))
             .ToListAsync(ct);
 
     public async Task AddAsync(Role role, CancellationToken ct = default) => await db.Roles.AddAsync(role, ct);
 
     public Task<bool> NameExistsAsync(Guid tenantId, string name, CancellationToken ct = default) =>
-        db.Roles.AnyAsync(role => role.TenantId == tenantId && role.Name == name, ct);
+        db.Roles.IgnoreQueryFilters().AnyAsync(role => role.TenantId == tenantId && role.Name == name, ct);
 
     public Task<int> CountUsersInRoleAsync(Guid roleId, CancellationToken ct = default) =>
         db.UserRoles.CountAsync(link => link.RoleId == roleId, ct);
@@ -96,7 +101,8 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
         var systemNames = new[] { Role.SystemTenantAdmin, Role.SystemEmployee, Role.SystemCustomerPortal };
 
         var existingNames = await db
-            .Roles.Where(role => role.TenantId == tenantId && role.IsSystem)
+            .Roles.IgnoreQueryFilters()
+            .Where(role => role.TenantId == tenantId && role.IsSystem)
             .Select(role => role.Name)
             .ToListAsync(ct);
 
@@ -113,8 +119,7 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
     }
 
     public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
-        db.Roles.FirstOrDefaultAsync(
-            role => role.TenantId == tenantId && role.IsSystem && role.Name == systemRoleName,
-            ct
-        );
+        db
+            .Roles.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(role => role.TenantId == tenantId && role.IsSystem && role.Name == systemRoleName, ct);
 }

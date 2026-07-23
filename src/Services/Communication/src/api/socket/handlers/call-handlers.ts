@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
-import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import type {
   CommunicationIoServer,
@@ -112,8 +112,9 @@ function wireCallSocket(
       parsed.data.kind === 'Video'
         ? CommunicationPermissions.VideoCallStart
         : CommunicationPermissions.CallStart;
-    if (!hasPermission(principal.actorType, principal.permissions, requiredPermission)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: `Missing ${requiredPermission}.` });
+    const permCheck = await checkPermission(principal, requiredPermission, container.userPermissions);
+    if (!permCheck.allowed) {
+      ack?.({ ok: false, code: permCheck.code, message: permCheck.message });
       return;
     }
     const allowed = await container.rateLimiter.allow({

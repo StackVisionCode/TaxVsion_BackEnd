@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
-import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import type {
   CommunicationIoServer,
@@ -121,8 +121,9 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.ChatStart)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.start.' });
+    const startDirectPermCheck = await checkPermission(principal, CommunicationPermissions.ChatStart, container.userPermissions);
+    if (!startDirectPermCheck.allowed) {
+      ack?.({ ok: false, code: startDirectPermCheck.code, message: startDirectPermCheck.message });
       return;
     }
     const [recipientDisplayName, recipientActorType] = await Promise.all([
@@ -159,8 +160,9 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.GroupCreate)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.group.create.' });
+    const groupCreatePermCheck = await checkPermission(principal, CommunicationPermissions.GroupCreate, container.userPermissions);
+    if (!groupCreatePermCheck.allowed) {
+      ack?.({ ok: false, code: groupCreatePermCheck.code, message: groupCreatePermCheck.message });
       return;
     }
     const resolvedMembers = await Promise.all(
@@ -226,8 +228,13 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.GroupManageMembers)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.group.manage_members.' });
+    const addParticipantPermCheck = await checkPermission(
+      principal,
+      CommunicationPermissions.GroupManageMembers,
+      container.userPermissions,
+    );
+    if (!addParticipantPermCheck.allowed) {
+      ack?.({ ok: false, code: addParticipantPermCheck.code, message: addParticipantPermCheck.message });
       return;
     }
     const [newMemberDisplayName, newMemberActorType] = await Promise.all([
@@ -288,9 +295,16 @@ async function wireSocket(
     const targetUserId = parsed.data.targetUserId ?? userId;
     // Salir de un grupo (targetUserId === self) no requiere el permiso de
     // gestion — solo expulsar a otro participante lo requiere.
-    if (targetUserId !== userId && !hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.GroupManageMembers)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.group.manage_members.' });
-      return;
+    if (targetUserId !== userId) {
+      const removeParticipantPermCheck = await checkPermission(
+        principal,
+        CommunicationPermissions.GroupManageMembers,
+        container.userPermissions,
+      );
+      if (!removeParticipantPermCheck.allowed) {
+        ack?.({ ok: false, code: removeParticipantPermCheck.code, message: removeParticipantPermCheck.message });
+        return;
+      }
     }
     const result = await removeGroupParticipant(
       {
@@ -340,8 +354,9 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.ChatReply)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.reply.' });
+    const sendMessagePermCheck = await checkPermission(principal, CommunicationPermissions.ChatReply, container.userPermissions);
+    if (!sendMessagePermCheck.allowed) {
+      ack?.({ ok: false, code: sendMessagePermCheck.code, message: sendMessagePermCheck.message });
       return;
     }
     const allowed = await container.rateLimiter.allow({
@@ -389,8 +404,9 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.ChatReply)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.reply.' });
+    const editMessagePermCheck = await checkPermission(principal, CommunicationPermissions.ChatReply, container.userPermissions);
+    if (!editMessagePermCheck.allowed) {
+      ack?.({ ok: false, code: editMessagePermCheck.code, message: editMessagePermCheck.message });
       return;
     }
     const allowed = await container.rateLimiter.allow({
@@ -436,11 +452,9 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    const canModerate = hasPermission(
-      principal.actorType,
-      principal.permissions,
-      CommunicationPermissions.ChatModerate,
-    );
+    const canModerate = (
+      await checkPermission(principal, CommunicationPermissions.ChatModerate, container.userPermissions)
+    ).allowed;
     const result = await deleteMessage(
       {
         tenantId,
@@ -547,8 +561,9 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.ChatReply)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.reply.' });
+    const addReactionPermCheck = await checkPermission(principal, CommunicationPermissions.ChatReply, container.userPermissions);
+    if (!addReactionPermCheck.allowed) {
+      ack?.({ ok: false, code: addReactionPermCheck.code, message: addReactionPermCheck.message });
       return;
     }
     const result = await addMessageReaction(
@@ -608,7 +623,7 @@ async function wireSocket(
         messageId: parsed.data.messageId,
         actorUserId: userId,
         actorType: principal.actorType,
-        actorPermissions: principal.permissions,
+        actorPermissionVersion: principal.permissionVersion,
       },
       { ...container, emitter },
     );
@@ -634,7 +649,7 @@ async function wireSocket(
         messageId: parsed.data.messageId,
         actorUserId: userId,
         actorType: principal.actorType,
-        actorPermissions: principal.permissions,
+        actorPermissionVersion: principal.permissionVersion,
       },
       { ...container, emitter },
     );
@@ -653,8 +668,9 @@ async function wireSocket(
       ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
       return;
     }
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.ChatReply)) {
-      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.chat.reply.' });
+    const forwardMessagePermCheck = await checkPermission(principal, CommunicationPermissions.ChatReply, container.userPermissions);
+    if (!forwardMessagePermCheck.allowed) {
+      ack?.({ ok: false, code: forwardMessagePermCheck.code, message: forwardMessagePermCheck.message });
       return;
     }
     const result = await forwardMessage(

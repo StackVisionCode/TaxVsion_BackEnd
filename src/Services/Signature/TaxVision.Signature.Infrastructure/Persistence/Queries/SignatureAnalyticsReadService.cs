@@ -21,6 +21,7 @@ internal sealed class SignatureAnalyticsReadService(SignatureDbContext db) : ISi
 
         var totals = await db
             .SignatureAnalyticsSnapshots.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(s => s.TenantId == query.TenantId && s.Day >= from && s.Day <= to)
             .GroupBy(_ => 1)
             .Select(g => new
@@ -76,6 +77,7 @@ internal sealed class SignatureAnalyticsReadService(SignatureDbContext db) : ISi
 
         var raw = await db
             .SignatureAnalyticsSnapshots.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(s => s.TenantId == query.TenantId && s.Day >= from && s.Day <= to)
             .GroupBy(s => s.Day)
             .Select(g => new
@@ -119,6 +121,7 @@ internal sealed class SignatureAnalyticsReadService(SignatureDbContext db) : ISi
 
         var entries = await db
             .SignatureAnalyticsSnapshots.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(s => s.TenantId == query.TenantId && s.Day >= from && s.Day <= to)
             .GroupBy(s => s.Category)
             .Select(g => new SignatureAnalyticsByCategoryEntry(

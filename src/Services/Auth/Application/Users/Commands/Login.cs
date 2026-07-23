@@ -209,7 +209,7 @@ public static class LoginHandler
 
         user.RegisterSuccessfulLogin();
 
-        var (roleNames, permissions) = await UserAccessResolver.ResolveAsync(user, roles, ct);
+        var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
 
         // 5. Evaluación MFA (política del tenant + preferencia del usuario).
@@ -235,7 +235,6 @@ public static class LoginHandler
                     user,
                     timeZone,
                     roleNames,
-                    permissions,
                     ["pwd"],
                     command.DeviceName,
                     ct
@@ -276,7 +275,6 @@ public static class LoginHandler
                         user,
                         timeZone,
                         roleNames,
-                        permissions,
                         ["pwd"],
                         command.DeviceName,
                         ct
@@ -370,15 +368,7 @@ public static class LoginHandler
         }
 
         // 6. Sin MFA: emitir sesión y tokens directamente.
-        var issued = await issuer.StartSessionAsync(
-            user,
-            timeZone,
-            roleNames,
-            permissions,
-            ["pwd"],
-            command.DeviceName,
-            ct
-        );
+        var issued = await issuer.StartSessionAsync(user, timeZone, roleNames, ["pwd"], command.DeviceName, ct);
 
         await audit.AddAsync(
             AuthAuditLog.Record(

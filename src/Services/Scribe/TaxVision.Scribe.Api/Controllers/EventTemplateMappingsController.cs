@@ -16,6 +16,8 @@ namespace TaxVision.Scribe.Api.Controllers;
 /// Reglas de resolución evento→template (ej. "auth.password_reset_requested.v1" → "auth.password_reset").
 /// EventKey/Scope/TenantId/Locale son la identidad de la regla; editar solo cambia a qué TemplateKey
 /// apunta, su prioridad o si está habilitada — no la identidad (borrar y recrear para eso).
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización) — ver nota en EmailTemplatesController.
 /// </summary>
 [ApiController]
 [Route("scribe/event-mappings")]

@@ -109,8 +109,12 @@ public sealed class TenantIsolationTests
 
     private sealed class TestTenantContext(Guid? tenantId = null) : ITenantContext
     {
-        public Guid TenantId => tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+        private Guid? _tenantId = tenantId;
 
-        public bool HasTenant => tenantId.HasValue;
+        public Guid TenantId => _tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+
+        public bool HasTenant => _tenantId.HasValue;
+
+        public void SetTenant(Guid tenantId) => _tenantId = tenantId;
     }
 }

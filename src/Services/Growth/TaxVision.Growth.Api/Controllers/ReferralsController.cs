@@ -9,7 +9,6 @@ using TaxVision.Codes.Application.Definitions.ActivateCode;
 using TaxVision.Codes.Application.Definitions.Common;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
 using TaxVision.Codes.Domain.Definitions;
-using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
 using TaxVision.Growth.Api.RateLimiting;
 using TaxVision.Referrals.Application.Abstractions;
@@ -20,6 +19,8 @@ using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
 using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
+// Alias puntual — ver mismo comentario en CodesController.cs.
+using HasPermissionAttribute = BuildingBlocks.ActorTypeAuthorization.HasPermissionAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 

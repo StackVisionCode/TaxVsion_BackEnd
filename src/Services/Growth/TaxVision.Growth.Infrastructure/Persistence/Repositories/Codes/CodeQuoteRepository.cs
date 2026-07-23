@@ -10,7 +10,9 @@ public sealed class CodeQuoteRepository(GrowthDbContext dbContext, ITenantContex
     public Task<CodeQuote?> GetByIdAsync(Guid tenantId, Guid quoteId, CancellationToken ct = default) =>
         !TenantRepositoryGuard.Matches(tenantContext, tenantId) || quoteId == Guid.Empty
             ? Task.FromResult<CodeQuote?>(null)
-            : dbContext.CodeQuotes.FirstOrDefaultAsync(quote => quote.Id == quoteId && quote.TenantId == tenantId, ct);
+            : dbContext
+                .CodeQuotes.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(quote => quote.Id == quoteId && quote.TenantId == tenantId, ct);
 
     public async Task AddAsync(CodeQuote quote, CancellationToken ct = default)
     {
