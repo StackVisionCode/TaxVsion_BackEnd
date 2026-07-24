@@ -13,7 +13,10 @@ internal sealed class CustomerImportReadService(CustomerDbContext db) : ICustome
     // post-fetch (attempt.TenantId != tenantId) inmediatamente.
     public async Task<CustomerImportAttemptResponse?> GetByIdAsync(Guid id, CancellationToken ct)
     {
-        var a = await db.CustomerImportAttempts.AsNoTracking().IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id, ct);
+        var a = await db
+            .CustomerImportAttempts.AsNoTracking()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
         return a is null ? null : Map(a);
     }
 

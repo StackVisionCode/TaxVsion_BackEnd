@@ -235,6 +235,69 @@ public sealed class RoleCommandsTests
     }
 
     [Fact]
+    public async Task CreateRoleHandler_rejects_PlatformAdmin_target_when_caller_is_not_PlatformAdmin()
+    {
+        var staffPermission = StaffPermission();
+        var roles = new FakeRoleRepository { Catalog = [staffPermission] };
+        var tenantId = Guid.NewGuid();
+
+        var command = new CreateRoleCommand(
+            tenantId,
+            Guid.NewGuid(),
+            "Rol falso platform admin",
+            null,
+            [staffPermission.Id],
+            UserActorType.PlatformAdmin,
+            CallerIsPlatformAdmin: false
+        );
+
+        var result = await CreateRoleHandler.Handle(
+            command,
+            roles,
+            new FakeTenantPlanLimitsStore(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Role.TargetActorTypeForbidden", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task CreateRoleHandler_allows_PlatformAdmin_target_when_caller_is_PlatformAdmin()
+    {
+        var staffPermission = StaffPermission();
+        var roles = new FakeRoleRepository { Catalog = [staffPermission] };
+        var tenantId = Guid.NewGuid();
+
+        var command = new CreateRoleCommand(
+            tenantId,
+            Guid.NewGuid(),
+            "Rol platform admin legítimo",
+            null,
+            [staffPermission.Id],
+            UserActorType.PlatformAdmin,
+            CallerIsPlatformAdmin: true
+        );
+
+        var result = await CreateRoleHandler.Handle(
+            command,
+            roles,
+            new FakeTenantPlanLimitsStore(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+    }
+
+    [Fact]
     public async Task SetRolePermissionsHandler_rejects_customer_portal_only_permission_added_to_existing_role()
     {
         var portalPermission = PortalPermission();

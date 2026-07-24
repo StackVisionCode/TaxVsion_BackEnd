@@ -24,8 +24,7 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Repositories;
 internal static class TenantRepositoryGuard
 {
     public static bool Matches(ITenantContext tenantContext, Guid tenantId) =>
-        tenantId != Guid.Empty
-        && (!tenantContext.HasTenant || tenantContext.TenantId == tenantId);
+        tenantId != Guid.Empty && (!tenantContext.HasTenant || tenantContext.TenantId == tenantId);
 
     public static void EnsureMatches(ITenantContext tenantContext, Guid tenantId)
     {

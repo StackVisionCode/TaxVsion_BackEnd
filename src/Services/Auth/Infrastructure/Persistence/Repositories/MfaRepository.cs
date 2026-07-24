@@ -32,7 +32,9 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
     // IgnoreQueryFilters(): flujo de MFA en login corre sin JWT todavía (el ticket firmado es
     // la credencial), igual razón que UserRepository.GetByEmailAsync.
     public Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default) =>
-        db.MfaChallenges.IgnoreQueryFilters().FirstOrDefaultAsync(challenge => challenge.LoginTicketHash == ticketHash, ct);
+        db
+            .MfaChallenges.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(challenge => challenge.LoginTicketHash == ticketHash, ct);
 
     public async Task<IReadOnlyList<RecoveryCode>> GetRecoveryCodesAsync(Guid userId, CancellationToken ct = default) =>
         await db.RecoveryCodes.Where(code => code.UserId == userId).ToListAsync(ct);
@@ -44,7 +46,9 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
 
     // IgnoreQueryFilters(): misma razón — chequeado durante login, antes de tener JWT.
     public Task<TrustedDevice?> GetTrustedDeviceByHashAsync(string deviceTokenHash, CancellationToken ct = default) =>
-        db.TrustedDevices.IgnoreQueryFilters().FirstOrDefaultAsync(device => device.DeviceTokenHash == deviceTokenHash, ct);
+        db
+            .TrustedDevices.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(device => device.DeviceTokenHash == deviceTokenHash, ct);
 
     public async Task<IReadOnlyList<TrustedDevice>> GetTrustedDevicesAsync(
         Guid userId,

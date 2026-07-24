@@ -35,7 +35,9 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
     // resuelto en el mismo scope. Sin esto, el webhook nunca encontraba el link relacionado y no
     // podía actualizar su estado.
     public Task<PaymentLink?> GetByRelatedTenantPaymentIdAsync(Guid tenantPaymentId, CancellationToken ct = default) =>
-        db.PaymentLinks.IgnoreQueryFilters().FirstOrDefaultAsync(link => link.RelatedTenantPaymentId == tenantPaymentId, ct);
+        db
+            .PaymentLinks.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(link => link.RelatedTenantPaymentId == tenantPaymentId, ct);
 
     public async Task<IReadOnlyList<PaymentLink>> SearchByTenantAsync(
         Guid tenantId,

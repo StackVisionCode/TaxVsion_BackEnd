@@ -48,7 +48,9 @@ public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
     // revoke no revocaba nada en la base de datos (bug real, no solo teórico).
     public async Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default)
     {
-        var session = await db.UserSessions.IgnoreQueryFilters().FirstOrDefaultAsync(value => value.Id == sessionId, ct);
+        var session = await db
+            .UserSessions.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(value => value.Id == sessionId, ct);
         session?.Revoke(reason);
 
         var tokens = await db

@@ -84,13 +84,15 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
     // IgnoreQueryFilters: métrica cross-tenant (PaymentAppMetrics observable gauge, sin request
     // HTTP asociada — ITenantContext vacío por diseño).
     public Task<int> CountDueForRetryAsync(DateTime nowUtc, CancellationToken ct = default) =>
-        db.SaaSPayments.IgnoreQueryFilters().CountAsync(
-            payment =>
-                payment.Status == PaymentStatus.Failed
-                && payment.NextRetryAtUtc != null
-                && payment.NextRetryAtUtc <= nowUtc,
-            ct
-        );
+        db
+            .SaaSPayments.IgnoreQueryFilters()
+            .CountAsync(
+                payment =>
+                    payment.Status == PaymentStatus.Failed
+                    && payment.NextRetryAtUtc != null
+                    && payment.NextRetryAtUtc <= nowUtc,
+                ct
+            );
 
     // IgnoreQueryFilters: métrica cross-tenant (PaymentAppMetrics revenue by type).
     public Task<long> SumSucceededAmountCentsAsync(

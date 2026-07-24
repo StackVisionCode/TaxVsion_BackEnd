@@ -81,8 +81,8 @@ public static class QualifyReferralHandler
                 if (qualification.Decision == ReferralQualificationDecision.Qualified)
                 {
                     // En T2T el owner de la cuota es el tenant del referrer (mismo GUID que
-                        // ReferrerId — ver SqlReferralRewardQuota XML doc). El comando corre bajo
-                        // el tenant del referee (quien paga), así que se pasa explícito.
+                    // ReferrerId — ver SqlReferralRewardQuota XML doc). El comando corre bajo
+                    // el tenant del referee (quien paga), así que se pasa explícito.
                     var slotReserved = await rewardQuota.TryReserveAnnualSlotAsync(
                         attribution.ReferrerId,
                         program.Id,

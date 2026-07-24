@@ -111,7 +111,12 @@ internal sealed class GrowthRefereeBenefitClient(
         return new Guid(hash[..16]);
     }
 
-    private static string ComputeSnapshotHash(string offerId, long grossAmountCents, string currency, string idempotencyKey)
+    private static string ComputeSnapshotHash(
+        string offerId,
+        long grossAmountCents,
+        string currency,
+        string idempotencyKey
+    )
     {
         var canonical = $"{offerId}|{grossAmountCents}|{currency.Trim().ToUpperInvariant()}|{idempotencyKey}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));

@@ -14,7 +14,10 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
     // los 3 llamadores (Update/SetPermissions/DeactivateRole) ya validan
     // role.TenantId != command.TenantId post-fetch, así que el filtro ambiental era redundante.
     public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) =>
-        db.Roles.IgnoreQueryFilters().Include(role => role.Permissions).FirstOrDefaultAsync(role => role.Id == roleId, ct);
+        db
+            .Roles.IgnoreQueryFilters()
+            .Include(role => role.Permissions)
+            .FirstOrDefaultAsync(role => role.Id == roleId, ct);
 
     public async Task<IReadOnlyList<Role>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
         await db

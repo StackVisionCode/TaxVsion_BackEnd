@@ -243,6 +243,13 @@ public static class AssignUserRolesHandler
         CancellationToken ct
     )
     {
+        // RBAC hardening follow-up: guardarraíl anti-auto-escalada — nada más lo frenaba
+        // explícitamente (solo RolePermissionGuard/IsDangerous, indirecto). Mismo código
+        // "User.SelfAction" que ya usa DeactivateUserHandler para el mismo tipo de acción
+        // (admin actuando sobre sí mismo). Corre antes de cualquier acceso a datos.
+        if (command.TargetUserId == command.AssignedByUserId)
+            return Result.Failure(new Error("User.SelfAction", "You cannot change your own role assignment."));
+
         var target = await users.GetByIdAsync(command.TargetUserId, ct);
         if (target is null || target.TenantId != command.TenantId)
             return Result.Failure(new Error("User.NotFound", "User does not exist in this tenant."));

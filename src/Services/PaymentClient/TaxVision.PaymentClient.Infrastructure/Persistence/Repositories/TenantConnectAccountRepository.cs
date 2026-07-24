@@ -35,10 +35,9 @@ public sealed class TenantConnectAccountRepository(PaymentClientDbContext db) : 
         if (idResult.IsFailure)
             return Task.FromResult<TenantConnectAccount?>(null);
 
-        return db.TenantConnectAccounts.IgnoreQueryFilters().FirstOrDefaultAsync(
-            account => account.StripeConnectAccountId == idResult.Value,
-            ct
-        );
+        return db
+            .TenantConnectAccounts.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(account => account.StripeConnectAccountId == idResult.Value, ct);
     }
 
     public async Task AddAsync(TenantConnectAccount account, CancellationToken ct = default) =>

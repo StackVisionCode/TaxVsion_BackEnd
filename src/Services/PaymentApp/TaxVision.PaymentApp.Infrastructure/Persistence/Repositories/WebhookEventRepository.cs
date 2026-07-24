@@ -11,7 +11,9 @@ public sealed class WebhookEventRepository(PaymentAppDbContext db) : IWebhookEve
     // tenantId; providerCode+providerEventId es único global. Sin esto, todos los webhooks
     // duplicados se reprocesaban silenciosamente porque el Exists check siempre devolvía false.
     public Task<bool> ExistsAsync(PaymentProviderCode code, string providerEventId, CancellationToken ct = default) =>
-        db.WebhookEvents.IgnoreQueryFilters().AnyAsync(e => e.ProviderCode == code && e.ProviderEventId == providerEventId, ct);
+        db
+            .WebhookEvents.IgnoreQueryFilters()
+            .AnyAsync(e => e.ProviderCode == code && e.ProviderEventId == providerEventId, ct);
 
     public async Task AddAsync(WebhookEvent webhookEvent, CancellationToken ct = default) =>
         await db.WebhookEvents.AddAsync(webhookEvent, ct);

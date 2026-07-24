@@ -21,7 +21,12 @@ public sealed record CreateRoleCommand(
     // RBAC Fase 3: opcional — el TenantAdmin declara para qué actor type es este rol custom
     // (staff vs. CustomerPortal). null se trata como "staff" (TenantEmployee/TenantAdmin) — ver
     // ActorTypeRoleGuard.ValidatePermissionsForActorType.
-    UserActorType? TargetActorType = null
+    UserActorType? TargetActorType = null,
+    // RBAC hardening follow-up: actor type real del caller (desde el JWT, no del body) — el único
+    // uso es rechazar TargetActorType=PlatformAdmin cuando quien llama no es PlatformAdmin. No
+    // persiste en Role (se descarta tras la validación de abajo), así que hoy no era explotable,
+    // pero faltaba el guardarraíl duro.
+    bool CallerIsPlatformAdmin = false
 );
 
 public sealed record RoleResponse(
@@ -46,6 +51,18 @@ public static class CreateRoleHandler
         CancellationToken ct
     )
     {
+        // RBAC hardening follow-up: solo un PlatformAdmin puede declarar un rol destinado a
+        // PlatformAdmin — cierra el hueco antes de cualquier acceso a datos.
+        if (command.TargetActorType == UserActorType.PlatformAdmin && !command.CallerIsPlatformAdmin)
+        {
+            return Result.Failure<RoleResponse>(
+                new Error(
+                    "Role.TargetActorTypeForbidden",
+                    "Only a PlatformAdmin can create a role targeted at the PlatformAdmin actor type."
+                )
+            );
+        }
+
         if (await roles.NameExistsAsync(command.TenantId, command.Name?.Trim() ?? string.Empty, ct))
         {
             return Result.Failure<RoleResponse>(

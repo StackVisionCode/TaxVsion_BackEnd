@@ -74,7 +74,8 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
                 request.Name,
                 request.Description,
                 request.PermissionIds,
-                request.TargetActorType
+                request.TargetActorType,
+                User.GetActorType() == ActorType.PlatformAdmin
             ),
             ct
         );

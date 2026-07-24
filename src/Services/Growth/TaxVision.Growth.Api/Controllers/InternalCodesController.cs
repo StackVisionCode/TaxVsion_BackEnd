@@ -82,7 +82,16 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
         DateTime? ExpiresAtUtc
     )
     {
-        public static readonly ReserveBenefitGiftResponse NotFound = new(false, null, null, null, null, null, null, null);
+        public static readonly ReserveBenefitGiftResponse NotFound = new(
+            false,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
     }
 
     public sealed record CommitReservationRequest(

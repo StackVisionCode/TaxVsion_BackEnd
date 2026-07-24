@@ -20,7 +20,10 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
     // ya validado; los consumers mutan contadores del aggregate — sin esto, la campaña quedaba
     // atascada porque el fetch siempre devolvía null y nadie incrementaba Sent/Failed.
     public async Task<EmailCampaign?> GetForProcessingAsync(Guid id, CancellationToken ct = default) =>
-        await db.EmailCampaigns.IgnoreQueryFilters().Include(c => c.Recipients).FirstOrDefaultAsync(c => c.Id == id, ct);
+        await db
+            .EmailCampaigns.IgnoreQueryFilters()
+            .Include(c => c.Recipients)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
 
     // IgnoreQueryFilters(): invocado desde EmailCampaignStarted/BatchConsumer — mismo bug del scope
     // Wolverine. Sin esto, el fan-out por lotes de la campaña nunca se disparaba (campaign is null).
