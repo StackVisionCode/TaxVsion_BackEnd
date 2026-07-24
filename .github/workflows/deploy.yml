@@ -317,7 +317,7 @@ jobs:
       - name: Provision scoped MinIO service accounts
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
-      - name: Apply .NET EF Core migrations (7 servicios)
+      - name: Apply .NET EF Core migrations (14 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
 
       - name: Apply Communication Prisma migrations
