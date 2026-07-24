@@ -48,6 +48,12 @@ public sealed class ProjectionPermissionsSource(
             $"perm-proj:{tenantId:N}:{userId:N}",
             async entry =>
             {
+                // Size explícito: IMemoryCache es un singleton compartido con el resto del proceso
+                // (ej. Scribe también lo usa para su cache de renders con SizeLimit configurado) —
+                // cualquier entrada sin Size revienta con InvalidOperationException en cuanto CUALQUIER
+                // consumidor del mismo IMemoryCache le puso un SizeLimit, sin importar que esta clase
+                // nunca configuró uno. No asumir nada sobre cómo el host configuró la cache compartida.
+                entry.Size = 1;
                 entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
                 return await reader.GetSnapshotAsync(tenantId, userId, ct);
             }
