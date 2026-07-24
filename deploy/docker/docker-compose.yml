@@ -478,6 +478,13 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Cifrado AES-256-GCM del tax identifier (SSN/EIN) — AesGcmSensitiveDataProtector lo
+      # exige en el arranque de CUALQUIER handler que toque CustomerReadService (incluyendo
+      # Search, que solo enmascara, no revela), no únicamente RevealTaxIdentifierHandler.
+      # Base64 de 32 bytes; mismo secreto ya usado por Notification/Postmaster/Connectors/
+      # Signature/PaymentClient — nunca generar uno nuevo, o los tax identifiers ya cifrados
+      # en la base con la clave vieja quedan indescifrables.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
       # Microservicio CloudStorage donde vive el archivo de import mientras se procesa.
       CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
       # Credenciales de servicio (M2M) — solo para DownloadAsync/DeleteAsync del archivo de
