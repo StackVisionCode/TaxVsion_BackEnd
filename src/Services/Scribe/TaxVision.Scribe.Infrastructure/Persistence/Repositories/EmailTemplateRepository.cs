@@ -74,8 +74,13 @@ public sealed class EmailTemplateRepository(ScribeDbContext dbContext) : IEmailT
         CancellationToken ct = default
     )
     {
+        // IgnoreQueryFilters: mismo bug que GetByIdAsync arriba — invocado desde handlers vía
+        // bus.InvokeAsync, ITenantContext ambiente puede llegar vacío. Es seguro porque la
+        // llamada encadenada a GetByIdAsync abajo termina en el post-fetch check del handler
+        // (ver PublishEmailTemplateVersionHandler / AddEmailTemplateDraftVersionHandler).
         var version = await dbContext
             .EmailTemplateVersions.AsNoTracking()
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(v => v.Id == versionId, ct);
         if (version is null)
             return Result.Failure<(EmailTemplate, EmailTemplateVersion)>(

@@ -41,6 +41,7 @@ public static class CancelReservationHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             "Codes.CancelReservation.v1",
             command.ReservationId,
             keyResult.Value,

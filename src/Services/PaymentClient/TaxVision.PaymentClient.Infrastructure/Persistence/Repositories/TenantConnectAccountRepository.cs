@@ -22,6 +22,10 @@ public sealed class TenantConnectAccountRepository(PaymentClientDbContext db) : 
 
     // Mismo motivo que PaymentLinkRepository.GetByTokenAsync: StripeConnectAccountId es un
     // value converter (columna escalar), no un owned type — hay que comparar el VO completo.
+    // IgnoreQueryFilters: lookup tenant-agnóstico deliberado — Stripe no conoce ni pasa
+    // tenantId en el path del webhook (el `account` del payload es lo único que identifica al
+    // tenant, ver interface XML doc). Sin esto, TODOS los webhooks Connect de Stripe caían en
+    // account is null y no se procesaban.
     public Task<TenantConnectAccount?> GetByStripeConnectAccountIdAsync(
         string stripeConnectAccountId,
         CancellationToken ct = default
@@ -31,7 +35,7 @@ public sealed class TenantConnectAccountRepository(PaymentClientDbContext db) : 
         if (idResult.IsFailure)
             return Task.FromResult<TenantConnectAccount?>(null);
 
-        return db.TenantConnectAccounts.FirstOrDefaultAsync(
+        return db.TenantConnectAccounts.IgnoreQueryFilters().FirstOrDefaultAsync(
             account => account.StripeConnectAccountId == idResult.Value,
             ct
         );

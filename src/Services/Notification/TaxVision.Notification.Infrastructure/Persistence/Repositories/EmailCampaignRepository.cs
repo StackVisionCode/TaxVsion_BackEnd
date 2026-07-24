@@ -15,12 +15,20 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
             .Include(c => c.Recipients)
             .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);
 
+    // IgnoreQueryFilters(): invocado desde CampaignDeliverySucceeded/FailedConsumer (consumers de
+    // Wolverine con nuevo DI scope, ITenantContext vacío). El CampaignId viene del propio evento
+    // ya validado; los consumers mutan contadores del aggregate — sin esto, la campaña quedaba
+    // atascada porque el fetch siempre devolvía null y nadie incrementaba Sent/Failed.
     public async Task<EmailCampaign?> GetForProcessingAsync(Guid id, CancellationToken ct = default) =>
-        await db.EmailCampaigns.Include(c => c.Recipients).FirstOrDefaultAsync(c => c.Id == id, ct);
+        await db.EmailCampaigns.IgnoreQueryFilters().Include(c => c.Recipients).FirstOrDefaultAsync(c => c.Id == id, ct);
 
+    // IgnoreQueryFilters(): invocado desde EmailCampaignStarted/BatchConsumer — mismo bug del scope
+    // Wolverine. Sin esto, el fan-out por lotes de la campaña nunca se disparaba (campaign is null).
     public async Task<EmailCampaign?> GetByIdNoRecipientsAsync(Guid id, CancellationToken ct = default) =>
-        await db.EmailCampaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        await db.EmailCampaigns.AsNoTracking().IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == id, ct);
 
+    // IgnoreQueryFilters(): invocado desde EmailCampaignBatchConsumer justo después de
+    // GetByIdNoRecipientsAsync ya validado. Sin esto, ningún recipient se cargaba en el lote.
     public async Task<IReadOnlyList<EmailCampaignRecipient>> GetRecipientsPageAsync(
         Guid campaignId,
         int skip,
@@ -29,6 +37,7 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
     ) =>
         await db
             .EmailCampaignRecipients.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(r => r.CampaignId == campaignId)
             .OrderBy(r => r.Id)
             .Skip(skip)

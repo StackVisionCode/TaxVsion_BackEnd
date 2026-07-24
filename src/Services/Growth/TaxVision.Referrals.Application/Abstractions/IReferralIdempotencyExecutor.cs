@@ -12,7 +12,13 @@ namespace TaxVision.Referrals.Application.Abstractions;
 /// </summary>
 public interface IReferralIdempotencyExecutor
 {
+    /// <remarks>
+    /// <paramref name="tenantId"/> es explícito — el caller ya lo tiene validado del command/JWT.
+    /// Necesario porque los handlers de Referrals corren dentro de un scope de DI de Wolverine
+    /// (bus.InvokeAsync) donde el <c>ITenantContext</c> ambiental no está disponible.
+    /// </remarks>
     Task<Result<TResponse>> ExecuteAsync<TResponse>(
+        Guid tenantId,
         string operation,
         Guid scopeId,
         string idempotencyKey,

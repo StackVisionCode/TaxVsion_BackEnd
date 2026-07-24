@@ -27,6 +27,7 @@ public static class ConfirmReferralRewardGrantHandler
             command.MaterializedBenefitReference
         );
         var executed = await idempotency.ExecuteAsync(
+            command.TenantId,
             Operation,
             command.GrantId,
             command.IdempotencyKey,

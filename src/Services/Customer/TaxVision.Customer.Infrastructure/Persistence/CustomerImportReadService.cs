@@ -7,9 +7,13 @@ namespace TaxVision.Customer.Infrastructure.Persistence;
 
 internal sealed class CustomerImportReadService(CustomerDbContext db) : ICustomerImportReadService
 {
+    // IgnoreQueryFilters(): mismo bug que UserRepository.GetByIdAsync — corre en handler
+    // (GetCustomerImportAttemptHandler) via bus.InvokeAsync, ITenantContext puede llegar vacío.
+    // Es seguro: ambos llamadores (handler + CustomerImportsController.GetReport) validan
+    // post-fetch (attempt.TenantId != tenantId) inmediatamente.
     public async Task<CustomerImportAttemptResponse?> GetByIdAsync(Guid id, CancellationToken ct)
     {
-        var a = await db.CustomerImportAttempts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        var a = await db.CustomerImportAttempts.AsNoTracking().IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id, ct);
         return a is null ? null : Map(a);
     }
 
@@ -57,8 +61,12 @@ internal sealed class CustomerImportReadService(CustomerDbContext db) : ICustome
         [EnumeratorCancellation] CancellationToken ct
     )
     {
+        // IgnoreQueryFilters(): llamado justo después de GetByIdAsync que ya validó tenant en
+        // GetReport controller — sin esto, el stream siempre devolvía 0 filas dentro del scope
+        // de la request (mismo bug ambiental descrito arriba).
         var rows = db
             .CustomerImportRows.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(r => r.CustomerImportAttemptId == importId)
             .OrderBy(r => r.RowNumber)
             .AsAsyncEnumerable();

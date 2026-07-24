@@ -21,6 +21,7 @@ public sealed class SqlBusinessIdempotencyExecutor(
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<Result<TResponse>> ExecuteAsync<TResponse>(
+        Guid tenantId,
         string operation,
         Guid scopeId,
         IdempotencyKey idempotencyKey,
@@ -29,10 +30,22 @@ public sealed class SqlBusinessIdempotencyExecutor(
         CancellationToken ct = default
     )
     {
-        if (!tenantContext.HasTenant || tenantContext.TenantId == Guid.Empty)
+        // tenantId explícito: el caller (handler) ya lo trae validado del comando/JWT. Antes
+        // este método leía tenantContext.TenantId directamente y fallaba dentro de handlers de
+        // Wolverine porque el ITenantContext ambiental llega vacío al nuevo scope de DI.
+        // Defensa en profundidad: si además existe contexto ambiental (request HTTP), debe
+        // coincidir con el parámetro — protege contra bugs donde el controller pase un tenantId
+        // espurio dentro de una request autenticada.
+        if (tenantId == Guid.Empty)
             return Failure<TResponse>(
                 "Growth.Idempotency.TenantRequired",
-                "A tenant context is required for a mutating operation."
+                "A tenant is required for a mutating operation."
+            );
+
+        if (tenantContext.HasTenant && tenantContext.TenantId != tenantId)
+            return Failure<TResponse>(
+                "Growth.Idempotency.TenantMismatch",
+                "The provided tenant does not match the active request scope."
             );
 
         if (string.IsNullOrWhiteSpace(operation) || operation.Length > 100 || scopeId == Guid.Empty)
@@ -67,7 +80,7 @@ public sealed class SqlBusinessIdempotencyExecutor(
         {
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
             var claim = ProcessedBusinessMessage.Begin(
-                tenantContext.TenantId,
+                tenantId,
                 operation,
                 scopeId,
                 idempotencyKey.Value,
@@ -93,7 +106,7 @@ public sealed class SqlBusinessIdempotencyExecutor(
                     await transaction.DisposeAsync();
 
                 return await ResolveExistingAsync<TResponse>(
-                    tenantContext.TenantId,
+                    tenantId,
                     operation,
                     scopeId,
                     idempotencyKey.Value,

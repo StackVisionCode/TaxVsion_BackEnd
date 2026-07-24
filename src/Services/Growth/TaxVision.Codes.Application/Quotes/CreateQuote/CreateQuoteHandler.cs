@@ -61,6 +61,7 @@ public static class CreateQuoteHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             "Codes.CreateQuote.v1",
             command.TenantId,
             keyResult.Value,

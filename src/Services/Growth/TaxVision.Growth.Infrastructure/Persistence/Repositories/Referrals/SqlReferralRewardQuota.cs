@@ -15,6 +15,7 @@ public sealed class SqlReferralRewardQuota(
 ) : IReferralRewardQuota
 {
     public async Task<bool> TryReserveAnnualSlotAsync(
+        Guid ownerTenantId,
         Guid programId,
         Guid referrerId,
         int calendarYear,
@@ -23,9 +24,13 @@ public sealed class SqlReferralRewardQuota(
         CancellationToken ct = default
     )
     {
+        // ownerTenantId explícito: el caller ya lo trae del ReferralProgram (dueño de la cuota
+        // en T2T = tenant del referrer). Antes se chequeaba tenantContext.HasTenant y devolvía
+        // false silencioso dentro de handlers de Wolverine porque el ITenantContext ambiental
+        // no cruza el scope de DI del handler. Defensa en profundidad: si además hay contexto
+        // ambiental (request HTTP), debe coincidir con el owner o el pago se rechaza.
         if (
-            !tenantContext.HasTenant
-            || tenantContext.TenantId == Guid.Empty
+            ownerTenantId == Guid.Empty
             || programId == Guid.Empty
             || referrerId == Guid.Empty
             || qualificationId == Guid.Empty
@@ -35,10 +40,9 @@ public sealed class SqlReferralRewardQuota(
         )
             return false;
 
-        // T2T quota ownership follows the referrer tenant. The calling payment event
-        // runs under the referee tenant, so every elevated statement below is constrained
-        // to an exact program/referrer/year or qualification ID.
-        var ownerTenantId = referrerId;
+        if (tenantContext.HasTenant && tenantContext.TenantId != ownerTenantId)
+            return false;
+
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var counterId = Guid.NewGuid();
 

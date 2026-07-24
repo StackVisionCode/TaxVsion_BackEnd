@@ -18,17 +18,24 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
     // link.Token.Value == token no traduce a SQL: Token está mapeado como value converter
     // (columna escalar), no como owned type, así que EF no puede navegar ".Value" sobre el
     // objeto CLR — hay que comparar el VO completo para que aplique el converter en ambos lados.
+    // IgnoreQueryFilters: lookup tenant-agnóstico deliberado — el checkout público solo tiene el
+    // token, el tenant se deriva del link encontrado (ver IPaymentLinkRepository XML doc). El
+    // token es un secreto opaco no adivinable. Sin esto, el checkout público siempre daba 404.
     public Task<PaymentLink?> GetByTokenAsync(string token, CancellationToken ct = default)
     {
         var tokenResult = PaymentLinkToken.FromExisting(token);
         if (tokenResult.IsFailure)
             return Task.FromResult<PaymentLink?>(null);
 
-        return db.PaymentLinks.FirstOrDefaultAsync(link => link.Token == tokenResult.Value, ct);
+        return db.PaymentLinks.IgnoreQueryFilters().FirstOrDefaultAsync(link => link.Token == tokenResult.Value, ct);
     }
 
+    // IgnoreQueryFilters: reverse lookup dentro del webhook handler (ProcessTenantWebhookHandler)
+    // que ya validó el tenant del payment padre — el tenantPaymentId viene de un TenantPayment ya
+    // resuelto en el mismo scope. Sin esto, el webhook nunca encontraba el link relacionado y no
+    // podía actualizar su estado.
     public Task<PaymentLink?> GetByRelatedTenantPaymentIdAsync(Guid tenantPaymentId, CancellationToken ct = default) =>
-        db.PaymentLinks.FirstOrDefaultAsync(link => link.RelatedTenantPaymentId == tenantPaymentId, ct);
+        db.PaymentLinks.IgnoreQueryFilters().FirstOrDefaultAsync(link => link.RelatedTenantPaymentId == tenantPaymentId, ct);
 
     public async Task<IReadOnlyList<PaymentLink>> SearchByTenantAsync(
         Guid tenantId,

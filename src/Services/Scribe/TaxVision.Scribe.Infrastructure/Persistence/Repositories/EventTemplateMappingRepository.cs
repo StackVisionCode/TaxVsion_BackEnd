@@ -12,9 +12,16 @@ public sealed class EventTemplateMappingRepository(ScribeDbContext dbContext) : 
     public async Task AddAsync(EventTemplateMapping mapping, CancellationToken ct = default) =>
         await dbContext.EventTemplateMappings.AddAsync(mapping, ct);
 
+    // IgnoreQueryFilters: mismo patrón que ListAsync arriba — llamado desde
+    // Update/DeleteEventTemplateMappingHandler vía bus.InvokeAsync, ITenantContext ambiente
+    // puede llegar vacío, y EventTemplateMapping es INullableTenantOwned. Ambos handlers ya
+    // validan post-fetch (mapping.Scope + mapping.TenantId != command.TenantId), así que el
+    // filtro ambiental era redundante con esa guarda y solo devolvía NotFound espurio.
     public async Task<Result<EventTemplateMapping>> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var mapping = await dbContext.EventTemplateMappings.FirstOrDefaultAsync(m => m.Id == id, ct);
+        var mapping = await dbContext
+            .EventTemplateMappings.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(m => m.Id == id, ct);
         return mapping is null
             ? Result.Failure<EventTemplateMapping>(
                 new Error("EventTemplateMapping.NotFound", $"Event template mapping {id} was not found.")
@@ -54,9 +61,14 @@ public sealed class EventTemplateMappingRepository(ScribeDbContext dbContext) : 
             )
             .ToListAsync(ct);
 
+    // IgnoreQueryFilters: llamado desde DeleteEventTemplateMappingHandler después del GetByIdAsync
+    // que ya validó el tenant post-fetch — sin esto el re-fetch acá devolvería null y Delete
+    // sería un no-op silencioso a pesar del ok del handler.
     public async Task<bool> RemoveAsync(Guid id, CancellationToken ct = default)
     {
-        var mapping = await dbContext.EventTemplateMappings.FirstOrDefaultAsync(m => m.Id == id, ct);
+        var mapping = await dbContext
+            .EventTemplateMappings.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(m => m.Id == id, ct);
         if (mapping is null)
             return false;
 

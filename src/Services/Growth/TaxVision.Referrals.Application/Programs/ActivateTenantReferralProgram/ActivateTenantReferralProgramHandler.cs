@@ -29,7 +29,9 @@ public static class ActivateTenantReferralProgramHandler
 
         var fingerprint = CanonicalPayloadFingerprint.Compute(command.ProgramId, command.ActorUserId);
 
+        // Los programs T2T son platform-owned (ver GetOwnedByIdAsync abajo con PlatformTenant.Id).
         return await idempotency.ExecuteAsync(
+            PlatformTenant.Id,
             Operation,
             command.ProgramId,
             command.IdempotencyKey,

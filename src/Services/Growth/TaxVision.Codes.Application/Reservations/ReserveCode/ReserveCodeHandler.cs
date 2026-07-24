@@ -44,6 +44,7 @@ public static class ReserveCodeHandler
             command.TtlSeconds
         );
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             "Codes.ReserveCode.v1",
             command.TenantId,
             keyResult.Value,

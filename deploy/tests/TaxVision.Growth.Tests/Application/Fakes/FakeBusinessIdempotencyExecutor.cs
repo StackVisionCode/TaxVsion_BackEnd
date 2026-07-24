@@ -11,6 +11,7 @@ internal sealed class FakeBusinessIdempotencyExecutor : IBusinessIdempotencyExec
     internal int ExecutedBodyCount { get; private set; }
 
     public async Task<Result<TResponse>> ExecuteAsync<TResponse>(
+        Guid tenantId,
         string operation,
         Guid scopeId,
         IdempotencyKey idempotencyKey,
@@ -19,6 +20,7 @@ internal sealed class FakeBusinessIdempotencyExecutor : IBusinessIdempotencyExec
         CancellationToken ct = default
     )
     {
+        _ = tenantId; // el fake ignora el tenant — el key ya incluye scopeId + operation + idempotencyKey
         var storageKey = (operation, scopeId, idempotencyKey.Value);
         if (_responses.TryGetValue(storageKey, out var stored))
         {

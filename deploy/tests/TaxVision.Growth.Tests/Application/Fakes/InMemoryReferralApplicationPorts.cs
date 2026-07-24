@@ -219,6 +219,7 @@ internal sealed class FakeReferralRewardQuota : IReferralRewardQuota, IFakeRefer
     internal bool SlotAvailable { get; set; } = true;
 
     public Task<bool> TryReserveAnnualSlotAsync(
+        Guid ownerTenantId,
         Guid programId,
         Guid referrerId,
         int calendarYear,
@@ -227,6 +228,7 @@ internal sealed class FakeReferralRewardQuota : IReferralRewardQuota, IFakeRefer
         CancellationToken ct = default
     )
     {
+        _ = ownerTenantId; // fake — el reservation-set en memoria es global al test
         InvocationCount++;
         if (SlotAvailable && !_qualificationReservations.Contains(qualificationId))
             _qualificationReservations.Add(qualificationId);

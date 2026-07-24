@@ -30,6 +30,7 @@ public static class RequestReferralRewardClawbackHandler
         var businessKey = $"event:{command.SourceEventId:N}";
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             Operation,
             command.RewardCaseId,
             businessKey,

@@ -49,12 +49,15 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
                 ct
             );
 
+    // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — barren pagos atascados/vencidos de
+    // todos los tenants, nunca sirven una request autenticada.
     public async Task<IReadOnlyList<TenantPayment>> GetStuckProcessingAsync(
         DateTime cutoffUtc,
         int batchSize,
         CancellationToken ct = default
     ) =>
         await WithChildren(db.TenantPayments)
+            .IgnoreQueryFilters()
             .Where(payment => payment.Status == PaymentStatus.Processing && payment.UpdatedAtUtc < cutoffUtc)
             .OrderBy(payment => payment.UpdatedAtUtc)
             .Take(batchSize)
@@ -66,6 +69,7 @@ public sealed class TenantPaymentRepository(PaymentClientDbContext db) : ITenant
         CancellationToken ct = default
     ) =>
         await WithChildren(db.TenantPayments)
+            .IgnoreQueryFilters()
             .Where(payment =>
                 payment.Status == PaymentStatus.Failed
                 && payment.NextRetryAtUtc != null
