@@ -40,6 +40,11 @@ public static class DependencyInjection
         services.Configure<MinioOptions>(configuration.GetSection(MinioOptions.SectionName));
         services.Configure<ClamAvOptions>(configuration.GetSection(ClamAvOptions.SectionName));
 
+        // Sin key = cliente INTERNO (red de Docker / loopback) — todas las operaciones reales:
+        // bootstrap de buckets, upload/download/copy/delete server-side, multipart
+        // initiate/complete/abort. Nunca depende de DNS público ni de Caddy/TLS, así que
+        // MinioBucketBootstrapper no puede quedar bloqueado por un certificado o un DNS que
+        // todavía no propagó en un deploy fresco.
         services.AddSingleton<IMinioClient>(provider =>
         {
             var options = provider.GetRequiredService<IOptions<MinioOptions>>().Value;
@@ -58,11 +63,33 @@ public static class DependencyInjection
             return builder.Build();
         });
 
+        // Key "public" = SOLO para generar URLs presignadas (upload policy / GET) que el
+        // navegador del cliente debe poder alcanzar directo. Cae al mismo endpoint que el
+        // interno si Minio:PublicEndpoint no está configurado (dev local: un solo host).
+        services.AddKeyedSingleton<IMinioClient>(
+            "public",
+            (provider, _) =>
+            {
+                var options = provider.GetRequiredService<IOptions<MinioOptions>>().Value;
+                if (string.IsNullOrWhiteSpace(options.AccessKey) || string.IsNullOrWhiteSpace(options.SecretKey))
+                    throw new InvalidOperationException("MinIO endpoint and credentials are required.");
+
+                var builder = new MinioClient()
+                    .WithEndpoint(options.EffectivePublicEndpoint)
+                    .WithCredentials(options.AccessKey, options.SecretKey);
+                if (options.EffectivePublicUseTls)
+                    builder = builder.WithSSL();
+                return builder.Build();
+            }
+        );
+
         services.AddSingleton<IObjectStorage, MinioObjectStorage>();
 
         // Fase U — mismo servidor MinIO, mismas credenciales root que arriba, pero via
         // AWSSDK.S3 (el SDK "Minio" no expone publicamente los primitivos de multipart
-        // presign — ver docblock de IMultipartUploadStorage).
+        // presign — ver docblock de IMultipartUploadStorage). Mismo split interno/publico
+        // que IMinioClient arriba, y por la misma razon: Complete/Abort/Initiate son
+        // operaciones reales, no deben depender de Caddy/DNS publico.
         services.AddSingleton<IAmazonS3>(provider =>
         {
             var options = provider.GetRequiredService<IOptions<MinioOptions>>().Value;
@@ -82,6 +109,24 @@ public static class DependencyInjection
             };
             return new AmazonS3Client(options.AccessKey, options.SecretKey, config);
         });
+        services.AddKeyedSingleton<IAmazonS3>(
+            "public",
+            (provider, _) =>
+            {
+                var options = provider.GetRequiredService<IOptions<MinioOptions>>().Value;
+                if (string.IsNullOrWhiteSpace(options.AccessKey) || string.IsNullOrWhiteSpace(options.SecretKey))
+                    throw new InvalidOperationException("MinIO endpoint and credentials are required.");
+
+                var scheme = options.EffectivePublicUseTls ? "https" : "http";
+                var config = new AmazonS3Config
+                {
+                    ServiceURL = $"{scheme}://{options.EffectivePublicEndpoint}",
+                    ForcePathStyle = true,
+                    UseHttp = !options.EffectivePublicUseTls,
+                };
+                return new AmazonS3Client(options.AccessKey, options.SecretKey, config);
+            }
+        );
         services.AddSingleton<IMultipartUploadStorage, S3MultipartUploadStorage>();
         services.AddSingleton<IObjectKeyBuilder, DefaultObjectKeyBuilder>();
         services.AddSingleton<IVirusScanner, ClamAvVirusScanner>();

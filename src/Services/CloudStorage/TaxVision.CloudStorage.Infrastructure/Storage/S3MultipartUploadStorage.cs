@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Amazon.S3.Model;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Abstractions;
 
@@ -15,9 +16,16 @@ namespace TaxVision.CloudStorage.Infrastructure.Storage;
 /// despues falla con "part not found"). `AmazonS3Config.UseHttp`/`SignatureVersion`
 /// tampoco los respeta GetPreSignedURLAsync — el esquema hay que forzarlo por
 /// request via `.Protocol`.
+///
+/// Initiate/Complete/Abort son operaciones reales contra el servidor -> cliente
+/// INTERNO. Las URLs de cada parte las tiene que poder alcanzar el navegador del
+/// cliente directo -> cliente PUBLICO.
 /// </summary>
-public sealed class S3MultipartUploadStorage(IAmazonS3 client, IOptions<MinioOptions> minioOptions)
-    : IMultipartUploadStorage
+public sealed class S3MultipartUploadStorage(
+    IAmazonS3 client,
+    [FromKeyedServices("public")] IAmazonS3 publicClient,
+    IOptions<MinioOptions> minioOptions
+) : IMultipartUploadStorage
 {
     public async Task<MultipartUploadInitiation> InitiateAsync(
         string bucket,
@@ -39,13 +47,13 @@ public sealed class S3MultipartUploadStorage(IAmazonS3 client, IOptions<MinioOpt
             ct
         );
 
-        var protocol = minioOptions.Value.UseTls ? Protocol.HTTPS : Protocol.HTTP;
+        var protocol = minioOptions.Value.EffectivePublicUseTls ? Protocol.HTTPS : Protocol.HTTP;
         var expires = DateTime.UtcNow.Add(urlLifetime);
         var partCount = (int)Math.Ceiling((double)totalSizeBytes / partSizeBytes);
         var parts = new List<MultipartPartUploadUrl>(partCount);
         for (var partNumber = 1; partNumber <= partCount; partNumber++)
         {
-            var url = await client.GetPreSignedURLAsync(
+            var url = await publicClient.GetPreSignedURLAsync(
                 new GetPreSignedUrlRequest
                 {
                     BucketName = bucket,

@@ -892,20 +892,26 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
-      # El endpoint es el dominio PUBLICO, no el DNS interno de docker (minio:9000):
-      # las URLs presignadas que genera este servicio se le entregan directo al
-      # navegador del cliente para subir/bajar bytes sin pasar por la API — tienen
-      # que ser alcanzables desde fuera del server. Caddy rutea los 3 prefijos de
-      # bucket (taxvision-storage/temp/quarantine) de ese mismo dominio hacia
-      # minio:9000 internamente (ver deploy/docker/caddy/Caddyfile) — MinIO en si
-      # nunca se expone directo.
-      Minio__Endpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxprocore.com}
+      # Endpoint INTERNO (red de Docker) — todas las operaciones reales: bootstrap de
+      # buckets, upload/download/copy/delete server-side, multipart initiate/complete/
+      # abort. Nunca depende de Caddy/DNS/TLS, así que MinioBucketBootstrapper no puede
+      # quedar bloqueado por un certificado o DNS público que todavía no propagó en un
+      # deploy fresco (ver postmortem: NullReferenceException en el SDK de MinIO cuando
+      # este bootstrapper intentaba resolver el dominio público antes de que Caddy
+      # estuviera listo).
+      Minio__Endpoint: minio:9000
+      Minio__UseTls: "false"
       Minio__AccessKey: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       Minio__SecretKey: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-      # Default "true" para producción (Caddy termina TLS en el dominio público). En
-      # dev local sin Caddy/dominio real, overridear MINIO_PUBLIC_ENDPOINT=minio:9000
-      # y MINIO_USE_TLS=false en .env — minio local sirve HTTP plano.
-      Minio__UseTls: ${MINIO_USE_TLS:-true}
+      # Endpoint PUBLICO — usado ÚNICAMENTE para generar URLs presignadas (upload
+      # policy, GET, partes de multipart) que el navegador del cliente debe poder
+      # alcanzar directo, sin pasar por esta API. Caddy rutea los 3 prefijos de bucket
+      # (taxvision-storage/temp/quarantine) de ese dominio hacia minio:9000
+      # internamente (ver deploy/docker/caddy/Caddyfile) — MinIO en si nunca se expone
+      # directo. Default "true" para producción (Caddy termina TLS ahí). En dev local
+      # sin Caddy/dominio real, dejar sin configurar: cae al endpoint interno de arriba.
+      Minio__PublicEndpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxprocore.com}
+      Minio__PublicUseTls: ${MINIO_USE_TLS:-true}
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
@@ -913,16 +919,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     # /health/ready incluye un chequeo TCP a Minio__Endpoint (sql-server + rabbitmq + minio +
-    # clamav, tag "ready") — en producción ese endpoint es el dominio PUBLICO (api.taxprocore.com,
-    # ver Minio__Endpoint arriba), no minio:9000 directo, porque el mismo IMinioClient que usa
-    # este servicio para sus operaciones reales (no solo para presigned URLs) ya está configurado
-    # así desde la Fase 5 de MinIO-endpoint-público. Eso significa que la salud de este contenedor
-    # depende de que Caddy ya esté arriba y con certificado válido — real, no un falso negativo:
-    # si Caddy/DNS no responden, las subidas/bajadas reales de CloudStorage tampoco funcionarían.
-    # start_period + retries dan ~160s de margen total para que Caddy termine de arrancar antes de
-    # marcar esto "unhealthy". Si en algún deploy real esto resulta muy ajustado, la solución
-    # correcta es separar el IMinioClient interno (admin) del endpoint público (solo presigned
-    # URLs) — no ampliar más estos tiempos a ciegas.
+    # clamav, tag "ready") — ahora ese endpoint es SIEMPRE el interno (minio:9000), así que
+    # este healthcheck ya no depende de que Caddy/DNS/TLS estén listos.
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
       interval: 10s
