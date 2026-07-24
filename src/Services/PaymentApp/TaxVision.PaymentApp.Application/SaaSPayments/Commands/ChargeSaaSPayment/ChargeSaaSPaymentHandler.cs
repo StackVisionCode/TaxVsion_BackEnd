@@ -111,7 +111,11 @@ public static class ChargeSaaSPaymentHandler
             command.Provider,
             descriptorResult.Value,
             command.RequestedByUserId,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            command.CodeReservationId,
+            command.CodeReservationPaymentId,
+            command.DiscountAmountCents,
+            command.PromotionSnapshotHash
         );
     }
 

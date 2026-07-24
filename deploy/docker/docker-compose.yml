@@ -409,6 +409,7 @@ services:
       ServiceAuth__Clients__11__Audience: taxvision-growth
       ServiceAuth__Clients__11__Scopes__0: growth.referrals.reward.confirm
       ServiceAuth__Clients__11__Scopes__1: growth.grants.confirm
+      ServiceAuth__Clients__11__Scopes__2: growth.codes.reserve-benefit-gift
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -537,6 +538,13 @@ services:
       Subscriptions__DefaultPlanCode: starter
       Subscriptions__TrialDays: "14"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Fase 4 Referidos (2026-07-21) — M2M contra Growth para reservar el descuento de
+      # bienvenida del referido en la primera activacion. Mismo patron que
+      # Correspondence/Signature/Postmaster (ServiceAuthClientOptions + token acquirer).
+      Subscription__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Subscription__ServiceAuth__ClientId: ${SUBSCRIPTION_GROWTH_CLIENT_ID:-subscription-growth}
+      Subscription__ServiceAuth__ClientSecret: ${SUBSCRIPTION_GROWTH_CLIENT_SECRET:-}
+      Subscription__Growth__BaseUrl: http://growth-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

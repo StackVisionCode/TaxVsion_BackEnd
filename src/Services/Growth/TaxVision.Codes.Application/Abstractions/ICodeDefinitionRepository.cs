@@ -30,5 +30,12 @@ public interface ICodeDefinitionRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Finds the tenant's own active BenefitGift code (e.g. a referral welcome discount) without
+    /// requiring its plaintext token — for trusted, system-initiated redemption flows only
+    /// (an M2M caller acting on the tenant's behalf, not a user-entered secret code).
+    /// </summary>
+    Task<CodeDefinition?> GetActiveBenefitGiftByTenantScopeAsync(Guid tenantScopeId, CancellationToken ct = default);
+
     Task AddAsync(CodeDefinition definition, CancellationToken ct = default);
 }

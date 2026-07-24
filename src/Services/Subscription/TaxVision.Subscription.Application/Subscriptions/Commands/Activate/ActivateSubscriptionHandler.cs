@@ -29,6 +29,7 @@ public static class ActivateSubscriptionHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ISubscriptionAuditLogWriter audit,
+        IReferralBenefitReserver referralBenefits,
         ILogger<TenantSubscription> logger,
         CancellationToken ct
     )
@@ -112,6 +113,19 @@ public static class ActivateSubscriptionHandler
             ct
         );
 
+        // Fase 4 Referidos (2026-07-21) — si este tenant tiene un descuento de bienvenida de
+        // referido activo en Growth, se reserva y se resta acá, antes de publicar el intent de
+        // cobro. Best-effort: un fallo de red/Growth no debe bloquear la activación, que ya se
+        // guardó arriba — el tenant simplemente paga el precio completo esta vez.
+        var benefit = await referralBenefits.TryReserveAsync(
+            command.TenantId,
+            subscription.PlanCode,
+            price.Value.AmountCents,
+            price.Value.Currency,
+            idempotencyKey,
+            ct
+        );
+
         await bus.PublishAsync(
             new SubscriptionRenewalDueIntegrationEvent
             {
@@ -121,15 +135,20 @@ public static class ActivateSubscriptionHandler
                 PeriodStartUtc = subscription.CurrentPeriodStartUtc,
                 PeriodEndUtc = subscription.CurrentPeriodEndUtc,
                 IdempotencyKey = idempotencyKey,
-                AmountCents = price.Value.AmountCents,
+                AmountCents = benefit?.NetAmountCents ?? price.Value.AmountCents,
                 Currency = price.Value.Currency,
+                CodeReservationId = benefit?.CodeReservationId,
+                CodeReservationPaymentId = benefit?.PaymentId,
+                DiscountAmountCents = benefit?.DiscountAmountCents,
+                PromotionSnapshotHash = benefit?.SnapshotHash,
             }
         );
 
         logger.LogInformation(
-            "Tenant {TenantId} activated its subscription early from trial (requested by {UserId}); charge intent published.",
+            "Tenant {TenantId} activated its subscription early from trial (requested by {UserId}); charge intent published{DiscountNote}.",
             command.TenantId,
-            command.ActorUserId
+            command.ActorUserId,
+            benefit is null ? string.Empty : " with a referral welcome discount applied"
         );
 
         return Result.Success();

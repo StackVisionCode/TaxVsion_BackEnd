@@ -64,6 +64,11 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
         builder.Property(payment => payment.FailureCode).HasMaxLength(100);
         builder.Property(payment => payment.FailureReason).HasMaxLength(1000);
 
+        builder.Property(payment => payment.CodeReservationId);
+        builder.Property(payment => payment.CodeReservationPaymentId);
+        builder.Property(payment => payment.DiscountAmountCents);
+        builder.Property(payment => payment.PromotionSnapshotHash).HasMaxLength(64);
+
         builder.Property(payment => payment.RowVersion).IsRowVersion();
 
         builder

@@ -56,6 +56,27 @@ public sealed class CodeDefinitionRepository(GrowthDbContext dbContext, ITenantC
             .FirstOrDefaultAsync(definition => definition.Id == codeDefinitionId, ct);
     }
 
+    public Task<CodeDefinition?> GetActiveBenefitGiftByTenantScopeAsync(
+        Guid tenantScopeId,
+        CancellationToken ct = default
+    )
+    {
+        if (tenantScopeId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, tenantScopeId))
+            return Task.FromResult<CodeDefinition?>(null);
+
+        return dbContext
+            .CodeDefinitions.IgnoreQueryFilters()
+            .Include(definition => definition.RuleVersions)
+            .Include(definition => definition.Scopes)
+            .Where(definition =>
+                definition.TenantScopeId == tenantScopeId
+                && definition.Kind == CodeKind.BenefitGift
+                && definition.Status == CodeDefinitionStatus.Active
+            )
+            .OrderByDescending(definition => definition.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task AddAsync(CodeDefinition definition, CancellationToken ct = default)
     {
         TenantRepositoryGuard.EnsureMatches(tenantContext, definition.TenantId);

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.PaymentApp.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.PaymentApp.Infrastructure.Persistence;
 namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(PaymentAppDbContext))]
-    partial class PaymentAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260721151659_AddSaaSPaymentReferralBenefitFields")]
+    partial class AddSaaSPaymentReferralBenefitFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -78,82 +81,6 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_PaymentAuditEntries_TenantId_Aggregate");
 
                     b.ToTable("PaymentAuditEntries", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.PaymentApp.Domain.Permissions.RolePermissionsProjection", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("PermissionCodesJson")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.Property<int>("PermissionsVersion")
-                        .HasColumnType("int");
-
-                    b.Property<string>("RoleName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId");
-
-                    b.ToTable("RolePermissionsProjections", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.PaymentApp.Domain.Permissions.UserPermissionsProjection", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("PermissionCodesJson")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.Property<int>("PermissionsVersion")
-                        .HasColumnType("int");
-
-                    b.Property<string>("RoleIdsJson")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "IsActive");
-
-                    b.HasIndex("TenantId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("UserPermissionsProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.ProviderCustomers.TenantProviderCustomer", b =>

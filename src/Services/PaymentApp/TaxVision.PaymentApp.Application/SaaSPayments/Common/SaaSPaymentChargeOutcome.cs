@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Messaging.PaymentIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
@@ -178,25 +179,15 @@ public static class SaaSPaymentChargeOutcome
         };
     }
 
-    private static ValueTask PublishSubscriptionRenewalResultAsync(
+    private static async ValueTask PublishSubscriptionRenewalResultAsync(
         SaaSPayment payment,
         IMessageBus bus,
         ICorrelationContext correlation
-    ) =>
-        payment.Status == PaymentStatus.Succeeded
-            ? bus.PublishAsync(
-                new SubscriptionRenewalPaymentSucceededIntegrationEvent
-                {
-                    TenantId = payment.TenantId,
-                    TenantSubscriptionId = payment.TargetAggregateId,
-                    SaaSPaymentId = payment.Id,
-                    IdempotencyKey = payment.IdempotencyKey.Value,
-                    ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
-                    PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
-                    CorrelationId = correlation.CorrelationId,
-                }
-            )
-            : bus.PublishAsync(
+    )
+    {
+        if (payment.Status != PaymentStatus.Succeeded)
+        {
+            await bus.PublishAsync(
                 new SubscriptionRenewalPaymentFailedIntegrationEvent
                 {
                     TenantId = payment.TenantId,
@@ -210,6 +201,50 @@ public static class SaaSPaymentChargeOutcome
                     CorrelationId = correlation.CorrelationId,
                 }
             );
+            return;
+        }
+
+        await bus.PublishAsync(
+            new SubscriptionRenewalPaymentSucceededIntegrationEvent
+            {
+                TenantId = payment.TenantId,
+                TenantSubscriptionId = payment.TargetAggregateId,
+                SaaSPaymentId = payment.Id,
+                IdempotencyKey = payment.IdempotencyKey.Value,
+                ExternalPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
+                PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
+        // Fase 4 Referidos (2026-07-21) — este cobro reservó un descuento de bienvenida del
+        // referido en Growth/Codes (ver ActivateSubscriptionHandler + IReferralBenefitReserver).
+        // El envelope financiero genérico es el mismo que PaymentSucceededConsumer de Growth ya
+        // consume sin cambios (ver PaymentLifecycleConsumers.cs) — PaymentApp solo necesitaba
+        // empezar a publicarlo para este flujo, que hasta ahora nunca lo hacía.
+        if (payment.CodeReservationId is { } reservationId && payment.CodeReservationPaymentId is { } paymentId)
+        {
+            await bus.PublishAsync(
+                new PaymentSucceededIntegrationEvent
+                {
+                    TenantId = payment.TenantId,
+                    AggregateId = payment.TargetAggregateId,
+                    AggregateVersion = 1,
+                    PaymentSource = "PaymentApp",
+                    PaymentId = paymentId,
+                    GrossAmountCents = payment.Amount.AmountCents + (payment.DiscountAmountCents ?? 0),
+                    DiscountAmountCents = payment.DiscountAmountCents ?? 0,
+                    NetAmountCents = payment.Amount.AmountCents,
+                    Currency = payment.Amount.Currency,
+                    CodeReservationId = reservationId,
+                    PromotionSnapshotHash = payment.PromotionSnapshotHash,
+                    IsFirstSuccessfulPayment = true,
+                    PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
+        }
+    }
 
     private static ValueTask PublishSeatRenewalResultAsync(
         SaaSPayment payment,

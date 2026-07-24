@@ -17,5 +17,9 @@ public sealed record ChargeSaaSPaymentCommand(
     PaymentProviderCode Provider,
     string PayerEmail,
     string? PayerName,
-    Guid RequestedByUserId
+    Guid RequestedByUserId,
+    Guid? CodeReservationId = null,
+    Guid? CodeReservationPaymentId = null,
+    long? DiscountAmountCents = null,
+    string? PromotionSnapshotHash = null
 );
