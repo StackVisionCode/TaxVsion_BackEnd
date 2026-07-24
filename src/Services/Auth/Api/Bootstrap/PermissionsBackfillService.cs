@@ -9,14 +9,20 @@ using Wolverine;
 namespace TaxVision.Auth.Api.Bootstrap;
 
 /// <summary>
-/// Backfill de arranque (Fase 3 del plan de notificaciones dinámicas): re-publica
-/// <see cref="UserRolesChangedIntegrationEvent"/> (ya con el contrato arreglado de la Fase 1,
-/// <c>PermissionCodes</c>/<c>RoleIds</c> incluidos) para cada usuario activo que ya tuvo al
-/// menos un cambio de rol alguna vez (<c>PermissionsVersion &gt; 0</c>) pero todavía no fue
-/// reparado. Sin esto, los datos que quedaron mal por el bug de mapeo de campos (Fase 1) antes
-/// de este fix — la proyección <c>UserPermissionsProjection</c> de Communication con
-/// <c>Permissions = []</c> — quedan mal para siempre, porque nadie los va a volver a tocar
-/// naturalmente si ese usuario no recibe otro cambio de rol.
+/// Backfill de arranque: re-publica <see cref="UserRolesChangedIntegrationEvent"/> (contrato con
+/// <c>PermissionCodes</c>/<c>RoleIds</c> incluidos) para cada usuario activo que todavía no fue
+/// reparado (<c>PermissionsBackfilledAt == null</c>).
+///
+/// <para>
+/// Se agregó originalmente para el bug de mapeo de campos de la Fase 1 (proyección de
+/// Communication con <c>Permissions = []</c>) y por eso filtraba también por
+/// <c>PermissionsVersion &gt; 0</c> — pero ese filtro dejaba afuera a cualquier usuario dado de
+/// alta por invitación, porque <c>AcceptInvitationHandler</c> nunca bumpeaba esa versión (bug
+/// aparte, corregido ahí mismo). Con RBAC Fase 7/7.5 este job pasó a ser crítico para
+/// autorización — <c>ProjectionPermissionsSource</c> rechaza en frío cualquier request sin fila de
+/// proyección — así que el filtro de versión ya no tiene sentido: hay que reparar a TODO usuario
+/// activo sin reparar, tenga o no un cambio de rol explícito en su historial.
+/// </para>
 ///
 /// <para>
 /// Mismo patrón que <see cref="TenantDomainBackfillService"/>: nada de HTTP M2M — reproduce el
@@ -54,7 +60,7 @@ public sealed class PermissionsBackfillService(
             // que el job existe para hacer, no un descuido.
             var pending = await db
                 .Users.IgnoreQueryFilters()
-                .Where(user => user.IsActive && user.PermissionsVersion > 0 && user.PermissionsBackfilledAt == null)
+                .Where(user => user.IsActive && user.PermissionsBackfilledAt == null)
                 .OrderBy(user => user.Id)
                 .Take(BatchSize)
                 .ToListAsync(cancellationToken);

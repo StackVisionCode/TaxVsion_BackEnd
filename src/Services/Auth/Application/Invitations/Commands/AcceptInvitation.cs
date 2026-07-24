@@ -126,7 +126,37 @@ public static class AcceptInvitationHandler
         }
 
         if (roleIds.Count > 0)
+        {
             await roles.ReplaceUserRolesAsync(user.Id, roleIds, invitation.InvitedByUserId, ct);
+            user.BumpPermissionsVersion();
+
+            // RBAC Fase 7/7.5: sin esto, un usuario dado de alta por invitación nunca tenía fila
+            // en UserPermissionsProjection de ningún servicio (ni tampoco PermissionsVersion > 0,
+            // que es justo lo que PermissionsBackfillService exige para repararlo después) —
+            // ProjectionPermissionsSource lo rechaza en frío en TODO endpoint [HasPermission],
+            // para siempre, porque nada vuelve a tocar su versión salvo una reasignación manual
+            // de roles. Publicar el mismo evento que AssignUserRolesHandler ya usa lo deja bien
+            // desde el alta, sin depender del backfill de arranque de Auth.
+            var tenantRoles = await roles.GetByIdsAsync(invitation.TenantId, roleIds, ct);
+            var catalog = await roles.GetPermissionsCatalogAsync(ct);
+
+            await bus.PublishAsync(
+                new UserRolesChangedIntegrationEvent
+                {
+                    TenantId = user.TenantId,
+                    UserId = user.Id,
+                    PermissionsVersion = user.PermissionsVersion,
+                    RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
+                    RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
+                    PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
+
+            // Ya quedó reparado acá mismo — que PermissionsBackfillService no lo vuelva a
+            // reprocesar (y republicar) en cada arranque de Auth de ahí en adelante.
+            user.MarkPermissionsBackfilled(now);
+        }
 
         // Publicar ANTES de SaveChangesAsync: Wolverine + UseEntityFrameworkCoreTransactions()
         // agrupa el outbox del mensaje con el commit del UnitOfWork cuando PublishAsync
@@ -180,6 +210,23 @@ public static class AcceptInvitationHandler
         {
             return [];
         }
+    }
+
+    // Mismo cálculo que UserManagementCommands.ResolveEffectivePermissionCodes — duplicado a
+    // propósito (helper privado de 6 líneas, no amerita una abstracción compartida nueva).
+    private static string[] ResolveEffectivePermissionCodes(
+        IReadOnlyList<Role> tenantRoles,
+        IReadOnlyList<Permission> catalog
+    )
+    {
+        var codeByPermissionId = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
+        return tenantRoles
+            .SelectMany(role => role.Permissions)
+            .Select(rolePermission => rolePermission.PermissionId)
+            .Distinct()
+            .Where(codeByPermissionId.ContainsKey)
+            .Select(permissionId => codeByPermissionId[permissionId])
+            .ToArray();
     }
 
     private static UserResponse ToResponse(User user) =>
