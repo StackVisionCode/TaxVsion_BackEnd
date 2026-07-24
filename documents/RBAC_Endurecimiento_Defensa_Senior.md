@@ -202,19 +202,96 @@ public async Task<IActionResult> AssignPreparer(Guid id, ...)
    if (!authz.Succeeded) return Result.Failure(new Error("ShareLink.NotOwner", "..."));
    ```
 
-### 6.4 ¿Cómo agrego un nuevo servicio al mecanismo completo?
+### 6.4 ¿Cuándo es OBLIGATORIO montar la `UserPermissionsProjection` en un microservicio nuevo?
 
-Checklist mínimo (copiar de CloudStorage como referencia limpia):
+**Regla simple: si tu servicio usa `[HasPermission(...)]` en algún endpoint que puede llamar un actor humano (`TenantAdmin`, `TenantEmployee`, `PlatformAdmin`, `CustomerPortal`), la proyección es obligatoria. No es opcional, y no es "configurable según gusto".**
+
+**Por qué es obligatorio y no una opción entre dos igual de válidas:**
+
+Desde Fase 7.5.10, el JWT humano **ya no lleva el claim `perm`** (ver §"Fase 7.5" arriba). Existen dos implementaciones de `IUserPermissionsSource`:
+
+| Implementación | Qué hace | Funciona para actor humano hoy |
+|---|---|---|
+| `JwtEmbeddedPermissionsSource` | `user.HasPermission(permission)` → lee el claim `perm` directo del JWT | ❌ **NO** — el claim no existe, siempre devuelve `false` → 403 en TODO endpoint `[HasPermission]`, para TODO usuario |
+| `ProjectionPermissionsSource` | Consulta la tabla local `UserPermissionsProjection`, compara `perm_v` | ✅ Sí — es la única fuente viable para actores humanos |
+
+Confirmé esto en el código — `JwtEmbeddedPermissionsSource.cs:11`:
+```csharp
+public Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permission, CancellationToken ct = default) =>
+    Task.FromResult(user.HasPermission(permission)); // lee claim "perm" — ya no existe en el JWT humano
+```
+
+**Confirmación empírica**: hoy los **14 servicios** tienen `"Authorization:PermissionsSource": "Projection"` en su `appsettings.json` — ninguno quedó en `"Jwt"` (el default del código si el key falta). No es que el equipo haya elegido `"Projection"` en los 14 por preferencia — es que `"Jwt"` dejó de ser una opción viable para humanos el día que se sacó el claim.
+
+**Trampa silenciosa para un dev nuevo**: si armás un microservicio nuevo, le agregás `[HasPermission("mi.permiso")]` a un controller, y **te olvidás** de poner `"Authorization:PermissionsSource": "Projection"` en el `appsettings.json` (o de construir la proyección), el código **compila perfecto** y arranca sin errores. El bug aparece recién cuando un usuario real pega contra el endpoint: 403 para todos, siempre, sin excepción — porque cae al default `"Jwt"`, que ya no tiene nada que leer. Esto no lo agarra ningún test si tus tests usan tokens de servicio M2M (esos sí siguen llevando `perm`, ver tabla de abajo) — solo lo agarra un test con un JWT humano real o una prueba manual con login real.
+
+**Excepción real** — la única: un servicio cuyos endpoints `[HasPermission]` son **exclusivamente** `[AllowActorTypes(ActorType.Service)]` (M2M puro, sin actor humano nunca). Ahí `JwtEmbeddedPermissionsSource` funciona porque `GenerateScopedServiceToken` (tokens M2M) **nunca perdió** el claim `perm` — ver §3 arriba, `ProjectionPermissionsSource` incluso tiene un bypass explícito: si `actor_type == Service`, lee `perm` directo sin ir a la proyección. Pero en la práctica, si tu servicio tiene aunque sea un solo endpoint `[HasPermission]` alcanzable por un humano, ya necesitás la proyección completa.
+
+### 6.5 ¿Cómo construyo la `UserPermissionsProjection` en un microservicio nuevo?
+
+Mini-guía paso a paso — **copiar CloudStorage como plantilla de referencia** (es el ejemplo más limpio del monorepo):
+
+**Paso 1 — Domain: 2 entidades.**
+Copiar el shape de `src/Services/Customer/TaxVision.Customer.Domain/Permissions/UserPermissionsProjection.cs`:
+```csharp
+public sealed class UserPermissionsProjection
+{
+    public Guid TenantId { get; }
+    public Guid UserId { get; }
+    public int PermissionsVersion { get; private set; }
+    public string PermissionCodesJson { get; private set; }  // el array COMPLETO, sin filtrar
+    public string RoleIdsJson { get; private set; }
+    public bool IsActive { get; private set; }
+    // ApplyIfNewer(version, codes, roleIds) — no-op si version <= actual (idempotente)
+}
+```
+Más su hermana `RolePermissionsProjection` (mismo patrón, pero por `RoleId`, para recomponer la unión cuando cambia un rol con múltiples usuarios).
+
+**Paso 2 — Infrastructure: repositorio con doble interfaz.**
+Una sola clase que implementa **dos** puertos desde la misma instancia scoped:
+- `IUserPermissionsProjectionRepository` (puerto local, rico, lo usan los consumers para `GetAsync`/`AddAsync`).
+- `IUserPermissionsProjectionReader` (puerto compartido y angosto de `BuildingBlocks.Permissions`, el único método que necesita `ProjectionPermissionsSource`: `GetSnapshotAsync`).
+
+Esto evita 2 lecturas separadas del mismo dato — mismo patrón que `AccessTokenDenylist`.
+
+**Paso 3 — Application: 2 consumers Wolverine.**
+Copiar **literal** `src/Services/CloudStorage/TaxVision.CloudStorage.Application/Permissions/Consumers/PermissionsProjectionConsumers.cs`:
+- `UserRolesChangedPermissionsProjectionConsumer` — consume `UserRolesChangedIntegrationEvent`, hace upsert idempotente por `PermissionsVersion`.
+- `RolePermissionsChangedPermissionsProjectionConsumer` — consume `RolePermissionsChangedIntegrationEvent`, recompone la **unión** de permisos para cada usuario afectado que tenga ese rol (necesario porque un usuario con 2+ roles no puede sobrescribirse solo con los códigos del rol que cambió, o pierde los permisos heredados del otro rol).
+
+**Importante — no filtres `PermissionCodes` por "los que me importan a mí".** El evento ya trae el set **completo cross-servicio** (`ResolveEffectivePermissionCodes` en Auth usa el catálogo entero, no uno por servicio — ver pregunta anterior de esta conversación). Guardalo tal cual llega. Filtrar agregaría una lista de prefijos que mantener sincronizada para siempre, para ahorrar unos pocos cientos de bytes por fila — no vale la complejidad.
+
+**Paso 4 — Migración EF.**
+2 tablas nuevas: `UserPermissionsProjections` (índice único `(TenantId, UserId)`) + `RolePermissionsProjections`. Additive-only, no toca nada existente.
+
+**Paso 5 — `Program.cs`.**
+```csharp
+builder.Services.AddMemoryCache();
+if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
+    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
+else
+    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+```
+
+**Paso 6 — `appsettings.json` — el paso que es fácil olvidar.**
+```json
+"Authorization": {
+    "PermissionsSource": "Projection"
+}
+```
+**No confíes en ningún default.** Ponelo explícito, y agregalo también a `appsettings.Development.json` y a las variables de entorno de `docker-compose.yml` si tu servicio corre ahí. Si tu servicio usa `[HasPermission]` para actores humanos y este valor queda ausente o en `"Jwt"`, el servicio arranca sin error y falla en producción con 403 universal (ver trampa en §6.4).
+
+**Paso 7 — Verificación real, no solo build verde.**
+Login real con un usuario de prueba → pegarle a un endpoint `[HasPermission]` real → confirmar 200 (no 403). Un `dotnet build` exitoso **no prueba nada acá** — el bug de la trampa silenciosa compila perfecto.
+
+### 6.6 ¿Cómo agrego un nuevo servicio al mecanismo completo (checklist general)?
+
+Además de la proyección (§6.4/6.5 si tu servicio la necesita):
 
 1. `Program.cs`:
    ```csharp
    services.AddActorTypeAuthorization();
    services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
-   services.AddMemoryCache();
-   services.AddScoped<IUserPermissionsSource>(sp =>
-       config["Authorization:PermissionsSource"] == "Projection"
-           ? new ProjectionPermissionsSource(...)
-           : new JwtEmbeddedPermissionsSource());
    app.UseMiddleware<JwtTenantContextMiddleware>();     // Capa 4a — DEBE ir antes de UseAuthorization
    app.UseAuthentication();
    app.UseMiddleware<SessionDenylistMiddleware>();       // Capa 5 — entre AuthN y AuthZ
@@ -222,13 +299,12 @@ Checklist mínimo (copiar de CloudStorage como referencia limpia):
    ```
 2. `DbContext.OnModelCreating`: registrar `HasQueryFilter` global sobre `ITenantOwned` (copiar de CloudStorage).
 3. NetArchTest en el proyecto `.Tests`: la regla `Controller_actions_should_declare_AllowActorTypes` falla si te olvidás.
-4. Wolverine: consumers de `UserRolesChangedIntegrationEvent` y `RolePermissionsChangedIntegrationEvent` para mantener la proyección local sincronizada.
 
-### 6.5 ¿Cómo revoco una sesión?
+### 6.7 ¿Cómo revoco una sesión?
 
 `POST /auth/sessions/{sid}/revoke` en Auth. El middleware `SessionDenylistMiddleware` en los 14 servicios rechaza cualquier request con ese `sid` en el JWT (401 `Auth.SessionRevoked`) hasta que expira el TTL de Redis.
 
-### 6.6 ¿Cómo hago "cambio de rol se refleja YA"?
+### 6.8 ¿Cómo hago "cambio de rol se refleja YA"?
 
 Con `PermissionsSource = "Projection"` (default post-Fase 7.5):
 1. Handler cambia el rol → publica `RolePermissionsChangedIntegrationEvent` con `PermissionsVersion++`.
