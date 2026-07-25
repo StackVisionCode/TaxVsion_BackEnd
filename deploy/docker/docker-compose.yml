@@ -1102,6 +1102,38 @@ services:
     networks:
       - taxvision-network
 
+  billing-api:
+    image: taxvision/billing-api:dev
+    container_name: taxvision-billing-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Billing/TaxVision.Billing.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${BILLING_DB_CONNECTION:?Set BILLING_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Jwt__ValidAudiences__0: TaxVision.Services
+      Jwt__ValidAudiences__1: taxvision-billing
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   communication-api:
     image: taxvision/communication-api:dev
     container_name: taxvision-communication-api
@@ -1341,6 +1373,7 @@ services:
       ReverseProxy__Clusters__paymentapp__Destinations__paymentapp1__Address: http://payment-app-api:8080/
       ReverseProxy__Clusters__paymentclient__Destinations__paymentclient1__Address: http://payment-client-api:8080/
       ReverseProxy__Clusters__growth__Destinations__growth1__Address: http://growth-api:8080/
+      ReverseProxy__Clusters__billing__Destinations__billing1__Address: http://billing-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1360,6 +1393,7 @@ services:
       - payment-app-api
       - payment-client-api
       - growth-api
+      - billing-api
       - otel-collector
     networks:
       - taxvision-network
