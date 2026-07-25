@@ -76,6 +76,7 @@ public static class CreateCodeDefinitionHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.OwnerTenantId,
             "Codes.CreateCodeDefinition.v1",
             command.OwnerTenantId,
             keyResult.Value,

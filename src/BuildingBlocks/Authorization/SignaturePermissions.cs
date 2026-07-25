@@ -18,6 +18,13 @@ public static class SignaturePermissions
     public const string RequestResend = "signature.request.resend";
     public const string RequestExpire = "signature.request.expire";
 
+    // RBAC Fase 4 (RBAC_Hardening_Plan.md) — override de resource ownership: permite
+    // enviar/cancelar/extender la expiración de una solicitud de OTRO usuario (por default, solo
+    // su creador puede hacerlo, ver IsOwnerOrHasManageHandler). No confundir con RequestCancel
+    // (capacidad general de cancelar, capa 1) ni con AllowActorTypes (capa 2) — este permiso es
+    // la capa 3b, resource-based.
+    public const string RequestManage = "signature.request.manage";
+
     // Documentos y firma
     public const string DocumentPrepare = "signature.document.prepare";
     public const string DocumentSign = "signature.document.sign";

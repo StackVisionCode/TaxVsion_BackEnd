@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Scribe.Api.Authorization;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Domain;
 using Wolverine;
@@ -20,6 +20,7 @@ namespace TaxVision.Scribe.Api.Controllers;
 [ApiController]
 [Route("scribe/render")]
 [Authorize]
+[AllowActorTypes(ActorType.Service)]
 public sealed class RenderController(IMessageBus bus) : ControllerBase
 {
     public sealed record RenderHttpRequest(

@@ -30,6 +30,7 @@ public static class ActivateCodeHandler
             command.ActorUserId
         );
         return await idempotency.ExecuteAsync(
+            command.OwnerTenantId,
             "Codes.ActivateCode.v1",
             command.CodeDefinitionId,
             keyResult.Value,

@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -90,6 +91,12 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
 
     [HttpPost("revoke")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Revoke(RevokeRefreshTokenCommand command, CancellationToken ct)
     {
@@ -100,6 +107,12 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
     /// <summary>Cierra la sesión actual (revoca la familia de refresh tokens y denylista el sid).</summary>
     [HttpPost("logout")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
@@ -112,6 +125,12 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
 
     [HttpGet("me")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType<MeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Me(CancellationToken ct)
     {

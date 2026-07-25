@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Wolverine;
@@ -23,8 +24,19 @@ public sealed class AuthDbContextFactory : IDesignTimeDbContextFactory<AuthDbCon
         var options = new DbContextOptionsBuilder<AuthDbContext>().UseSqlServer(connectionString).Options;
 
         // dotnet-ef solo inspecciona el modelo (OnModelCreating) — nunca llama
-        // SaveChangesAsync, así que el bus real de Wolverine nunca hace falta aquí.
-        return new AuthDbContext(options, new DesignTimeOnlyMessageBus());
+        // SaveChangesAsync ni ejecuta una query real, así que ni el bus real de Wolverine
+        // ni un ITenantContext funcional hacen falta aquí (HasQueryFilter solo arma la
+        // expression tree en tiempo de modelado; nunca se evalúa HasTenant/TenantId).
+        return new AuthDbContext(options, new DesignTimeOnlyMessageBus(), new DesignTimeOnlyTenantContext());
+    }
+
+    /// <summary>No-op: dotnet-ef nunca ejecuta una query, así que el filtro nunca evalúa estas propiedades.</summary>
+    private sealed class DesignTimeOnlyTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 
     /// <summary>No-op: dotnet-ef nunca ejecuta SaveChangesAsync, así que ningún método debería dispararse en la práctica.</summary>

@@ -70,7 +70,7 @@ OpenTelemetry.
 36. Scribe Service (templating centralizado de email)
 37. Connectors Service (integraciones Gmail/Graph/IMAP)
 38. Correspondence Service (inbox del cliente final + compose/send)
-39. Soporte de logo para Tenant
+39. Soporte de logo y colores de marca para Tenant
 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
 
 ## 1. Introduccion y objetivo
@@ -2376,6 +2376,18 @@ Abstractions`, e implementaciones EF en `Infrastructure`.
 - El JWT ahora incluye los claims `perm` (permisos efectivos) y `perm_v`
   (version de permisos para invalidacion). La autorizacion por permiso se aplica
   con el atributo `[HasPermission("...")]` y un `PermissionPolicyProvider`.
+- **RBAC Fase 3 (`RBAC_Hardening_Plan.md`)** — `POST /auth/roles` acepta un
+  campo opcional `targetActorType` (`TenantEmployee` | `TenantAdmin` |
+  `CustomerPortal` | `PlatformAdmin` | `null`): declara para que actor type es
+  el rol custom que se esta creando. `ActorTypeRoleGuard.ValidatePermissionsForActorType`
+  rechaza la creacion (o el reemplazo de permisos via
+  `PUT /auth/roles/{id}/permissions`, que siempre valida contra "staff" por no
+  conocer el destino) si alguno de los `permissionIds` no es asignable a ese
+  actor type (ej. un permiso `portal.*` en un rol pensado para empleados).
+  Corre ANTES de persistir el rol — cierra el hueco donde un rol mal formado
+  solo fallaba al intentar asignarlo a un usuario
+  (`ActorTypeRoleGuard.ValidateRolesForActorType`, que sigue validando roles ya
+  persistidos en el momento de asignacion).
 
 ### 26.2.4 Credenciales, verificacion y anti-fuerza bruta
 
@@ -6323,7 +6335,7 @@ la única ubicación consistente con las fronteras de 38.6.
   `IDraftRepository.ListAbandonedAsync`/`ICustomerEmailReconciliationService`, que sí
   están testeados.
 
-# 39. Soporte de logo por tenant (Tenant, CloudStorage, Auth)
+# 39. Soporte de logo y colores de marca por tenant (Tenant, CloudStorage, Auth)
 
 Implementa `Tenant_Service_LogoSupport_Plan.md`: cada tenant puede subir un logo propio,
 embebido por Postmaster como inline attachment CID en cada correo saliente (Scribe
@@ -6443,6 +6455,90 @@ de 39.1). `dotnet test deploy/tests/TaxVision.Tenant.Tests/` — full monorepo (
   download-url es presignado a MinIO/S3, nunca servido desde un dominio de TaxVision, así
   que el riesgo de XSS persistente contra la propia app es bajo, pero si el frontend llega a
   renderizar el SVG inline (no solo como `<img src>`) debe sanitizarlo del lado cliente antes.
+
+## 39.8 Colores de marca por tenant (`Tenant_Branding_Colors_Plan.md`)
+
+4 campos fijos, no un editor de CSS libre (ver el plan, §3.2, sobre por qué): `primaryColor`,
+`accentColor`, `backgroundColor`, `textColor`. A diferencia del logo, es sincrónico — no hay
+escaneo antivirus de por medio, así que no necesita el patrón `SetXPending`/`ConfirmX` de
+39.1, un único `SetBrandingColors` alcanza.
+
+**Value Object `HexColor`** (`Domain/ValueObjects/HexColor.cs`) — a diferencia del logo (campos
+escalares planos, sin VO, ver 39.1), acá sí se introdujo un VO: los 4 campos comparten
+exactamente la misma regla de formato (`^#[0-9A-Fa-f]{6}$`), y repetir esa validación 4 veces
+como `string?` sueltos es el olor de código que motivó la guía de VOs del proyecto (primitivo +
+validación repetida = candidato a VO). Mapeado a `nvarchar(7)` vía `.HasConversion(...)`, mismo
+patrón que `StatementDescriptor`/`EncryptedSecret` en PaymentClient/Postmaster — no un owned
+type de EF.
+
+`TenantBranding.cs` (partial de `Tenant`, mismo archivo-por-concern que `TenantLogo.cs`):
+
+- `SetBrandingColors(primaryHex, accentHex, backgroundHex, textHex)` — atómico: valida los 4
+  campos no-nulos antes de aplicar ninguno (si uno solo es inválido, no se pisa nada de la
+  paleta anterior). Un campo en `null` = "volver al default de la empresa para ese campo",
+  no "error".
+- `ResetBrandingColors()` — idempotente, mismo criterio que `RemoveLogo`.
+- `ResolveBrandingPalette()` — única forma soportada de leer los 4 colores: siempre devuelve
+  un `BrandingPalette` con los 4 campos completos (`PrimaryColor ?? SystemBrandingDefaults.PrimaryColor`,
+  etc.) más `IsCustomized`. La resolución vive en el dominio (no en el query handler) para que
+  la regla "nunca hay campo vacío" tenga una sola implementación.
+
+`SystemBrandingDefaults` — clase estática con los 4 valores de fallback de la empresa (Bold
+Blue `#1E466B`, Light Blue `#67BAF4`, Soft White `#FAFAFA`, Jet Black `#0D0D0D`), único lugar
+del backend donde viven — el frontend debe declarar los mismos 4 hex como fallback estático en
+`styles.scss` (ver el plan, §6.1) para evitar el flash de color equivocado antes de que
+responda la API.
+
+## 39.9 Endpoints HTTP + caché (`TenantBrandingController`, mismo controller que el logo)
+
+| Método | Ruta | Permiso | Notas |
+| --- | --- | --- | --- |
+| `GET` | `/tenants/{tenantId}/branding/colors` | solo autenticación | Mismo `AllowActorTypes` que `GetTenantLogo` (incluye `CustomerPortal`) — el portal del cliente necesita los colores para pintar su pantalla. Cacheado 5 min en Redis (`ICacheService`, key `tenant:branding:colors:{tenantId}`) |
+| `PUT` | `/tenants/{tenantId}/branding/colors` | `branding.manage` | Body JSON `{primaryColor, accentColor, backgroundColor, textColor}`, cualquier campo en `null` vuelve al default. Invalida la caché tras `SaveChanges` |
+| `DELETE` | `/tenants/{tenantId}/branding/colors` | `branding.manage` | Reset total (atajo de PUT con los 4 en `null`), idempotente. Invalida la caché |
+
+Reutiliza el mismo `TryResolveTenantId` privado del controller (39.3) — ningún mecanismo nuevo
+de aislamiento tenant-ruta-vs-JWT. Cada acción declara su propio `[AllowActorTypes(...)]`
+explícito (la clase no tiene uno a nivel de clase), verificado automáticamente por
+`TenantActorTypeArchitectureTests.Controller_actions_should_declare_AllowActorTypes`
+(Capa 4 del mecanismo, ver 41.1) — si faltara, el build de tests falla.
+
+Caché: mismo patrón que `EntitlementCacheKeys`/`GetTenantEntitlementSummaryHandler` en
+Subscription — `ICacheService.GetOrCreateAsync` con TTL de 5 minutos en el query handler,
+`RemoveAsync` explícito en los dos comandos de escritura tras `SaveChangesAsync`. `AddRedisCache`
+ya estaba registrado en `Tenant.Api/Program.cs` (lo usa `GetTenants`/`CreateTenant` para la
+lista paginada) — no hizo falta wiring nuevo.
+
+## 39.10 Configuración nueva
+
+- Columnas `PrimaryColorHex`/`AccentColorHex`/`BackgroundColorHex`/`TextColorHex`
+  (`nvarchar(7)`, todas nullable) en `Tenants` — migración `AddTenantBrandingColors`, con el
+  mismo `UpdateData` sobre la fila sembrada de `PlatformTenant.Id` que `AddTenantLogoFields`
+  necesitó (EF exige explicitar las columnas nuevas en filas ya sembradas por `HasData`).
+- Ningún permiso nuevo — reutiliza `branding.manage` (ya sembrado desde 39.5, su
+  `AllowedActorTypes` inferido ya resuelve a `[TenantEmployee, TenantAdmin, PlatformAdmin]`,
+  exactamente lo que el `PUT`/`DELETE` de colores necesita).
+
+## 39.11 Pruebas y pendientes documentados
+
+`deploy/tests/TaxVision.Tenant.Tests/Domain/{HexColorTests,TenantBrandingTests}.cs` — 29 tests
+de dominio (formato válido/inválido, normalización a mayúsculas, atomicidad del patch,
+resolución mixta custom+default, idempotencia del reset). Verificado en verde junto con el
+resto de `TaxVision.Tenant.Tests` (incluida la fitness function de 39.9) y el monorepo completo
+(1781 tests .NET, 0 fallos).
+
+**Sin tests de aislamiento cross-tenant a nivel HTTP para este endpoint** — a diferencia de
+Auth/Communication, `TaxVision.Tenant.Tests` no tiene infraestructura de integración
+(`WebApplicationFactory`) para ningún endpoint del servicio, ni siquiera para el logo (39.6 solo
+cubre dominio). El aislamiento real lo garantiza `TryResolveTenantId`, ya cubierto por el mismo
+código que usa el logo desde que se implementó — no se inventó infraestructura de test nueva
+para no romper la consistencia con el resto del servicio; si se agrega en el futuro, debería
+cubrir logo y colores a la vez, no solo uno.
+
+**Frontend (Fases 5-6 del plan) fuera de este alcance** — este README documenta el backend
+(Fases 0-4 y 7). El plan también describe `BrandingService`/`tailwind.config.js`/panel admin en
+Angular para dos frontends (staff + portal cliente) que viven en repos separados fuera de este
+monorepo — no tocados en esta iteración.
 
 # 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
 
@@ -6587,3 +6683,621 @@ aggregate pero nunca copiado al evento. Estado final de cierre:
   de diseño preexistente de Signature.
 - **Correspondence: empleado-asignado-a-cliente** — decisión de producto pendiente (§4B del
   plan), requiere modelar una relación nueva en el dominio de Customer, no un fix de bug.
+
+# 41. Autorización por Actor Type (los 14 microservicios .NET + Communication/Node)
+
+Plan completo en `BrandCoolors/Actor_Type_Authorization_Layers_Plan.md` (0 diseño, 1
+`BuildingBlocks` compartido, 2 catálogo+guard simétrico en Auth, 3 migración de los 11 servicios
+"estándar", 4 los 3 casos especiales, 5 Communication fail-closed, 6 fitness functions
+NetArchTest, 7 este cierre). El sistema de permisos existente (`[HasPermission]`) ya bloqueaba un
+sentido — un `CustomerPortal` nunca podía terminar con un permiso interno — pero no el otro: nada
+impedía que un `TenantAdmin` le colara, por error de configuración, un permiso pensado solo para
+clientes a un rol de empleado. Este trabajo cierra ese hueco de raíz, con un mecanismo de 4 capas
+que se aplica solo — sin que cada desarrollador tenga que acordarse de escribir un chequeo a mano
+en cada endpoint nuevo. Categoría OWASP API Security Top 10 #5 — Broken Function Level
+Authorization.
+
+## 41.1 Las 4 capas (ver §41.13 para el diagrama completo con 3b + denylist)
+
+| Capa | Qué hace | Dónde vive | Cuándo corre |
+|---|---|---|---|
+| **1 — `[HasPermission]`** | Exige un permiso concreto del catálogo (`users.view`, `cloudstorage.file.upload`, ...) | `PermissionPolicyProvider` (`BuildingBlocks.Web`), copiada a los 11 servicios "Variante A"; forks propios en Growth/CloudStorage/Subscription | `AddAuthorization()` — política ASP.NET Core estándar |
+| **2 — `[AllowActorTypes(...)]`** | Exige que el claim `actor_type` del JWT esté en el set declarado por la acción (o el controller, como fallback) | `ActorTypeAuthorizationFilter` (`BuildingBlocks.Web.Security`), registrado como filtro global MVC en los 14 servicios .NET | Etapa de autorización del pipeline MVC, en cada request |
+| **3 — `ActorTypeRoleGuard`** | Al asignar roles a un usuario (`AssignUserRolesHandler`/`CreateInvitation`), rechaza si alguno de los permisos que esos roles otorgan queda fuera de `Permission.AllowedActorTypes` para el actor type del usuario | Solo Auth (`TaxVision.Auth.Application.Common`) | Al invitar/reasignar roles — tiempo de escritura, no de request |
+| **4 — Fitness function NetArchTest** | Falla el build si un controller/acción nueva queda sin `[AllowActorTypes]` | `{Servicio}ActorTypeArchitectureTests.cs`/`{Servicio}ArchitectureTests.cs` en los 14 `*.Tests`, corren en CI (`deploy.yml`, gate antes de build+deploy) | `dotnet test`, en cada push a `main` |
+
+Decisión de arquitectura deliberada: la Capa 2 **no** le pregunta a Auth por HTTP en cada
+request — el claim `actor_type` ya viene en el JWT, y cada endpoint declara su propio set de
+forma estática (compilada). Evita acoplamiento síncrono entre los 14 servicios y un nuevo punto
+único de fallo.
+
+`ActorType` (`TenantEmployee`, `TenantAdmin`, `CustomerPortal`, `PlatformAdmin`, `Service`) vive
+en `BuildingBlocks.ActorTypeAuthorization` — no en el bounded context de Auth, porque los otros
+13 servicios no deben referenciarlo. `PlatformAdmin` siempre pasa la Capa 2 aunque no esté en el
+set declarado (mismo bypass documentado que ya existía en `[HasPermission]`); `Service` (M2M,
+`client_credentials`) **no** tiene bypass — un endpoint M2M tiene que declarar
+`[AllowActorTypes(ActorType.Service)]` explícito, igual que cualquier otro actor type.
+`[AllowAnonymous]` y `[AuthorizedByCapabilityToken]` (ticket firmado, ej. registro de tenant)
+eximen a una acción de la Capa 2 completa — no relajan la Capa 3, que corre aparte.
+
+## 41.2 Catálogo — `Permission.AllowedActorTypes` (Fase 7.1)
+
+Cada permiso sembrado declara, en `Permission.AllowedActorTypes`, qué actor types pueden llegar a
+tenerlo vía un rol. Por defecto se infiere de dos flags ya existentes
+(`Permission.InferAllowedActorTypes`):
+
+```csharp
+platformOnly ? [PlatformAdmin]
+: isCustomerPortal ? [CustomerPortal]
+: [TenantEmployee, TenantAdmin, PlatformAdmin]   // staff, sin distinción
+```
+
+Esta inferencia de 3 salidas no puede expresar "compartido entre staff y cliente" — y **eso
+causó dos bugs reales**, encontrados auditando el catálogo contra `PermissionCatalog.
+SystemRoleDefaults` (qué recibe cada rol de sistema por defecto), no adivinando:
+
+- **`cloudstorage.file.{view,upload,download}`** (Fase 4): inferidos staff-only porque
+  `IsCustomerPortal=false`, pero `SystemRoleDefaults(SystemCustomerPortal)` ya se los otorgaba a
+  todo cliente real — un customer genuino sube/ve/descarga sus propios archivos hoy. Sin el fix,
+  la intención del catálogo contradecía el uso real (aunque el bug no llegó a bloquear nada en
+  producción porque el guard de la Capa 3 nunca se ejerció sobre ese caso).
+- **6 permisos de Communication** (Fase 7.1 — `communication.chat.start/reply`,
+  `support.open`, `meeting.join`, `screenshot.create`, `notification.read`): `SystemEmployee`
+  **y** `SystemCustomerPortal` otorgan estos permisos por defecto (confirmado en
+  `PermissionCatalog.SystemRoleDefaults`), pero 5 tenían `IsCustomerPortal=true` (inferían
+  `CustomerPortal`-only) y uno (`support.open`) tenía `IsCustomerPortal=false` (infería
+  staff-only). Este sí era un bug activo: `ActorTypeRoleGuard.ValidateRolesForActorType`
+  corre en **cada** `AssignUserRolesHandler`/`CreateInvitation`, así que asignar el propio rol de
+  sistema "Employee" a un `TenantEmployee` real habría sido rechazado por el guard — encontrado
+  y corregido antes de que llegara a producción, con un test de regresión que instancia el
+  catálogo real (`ActorTypeRoleGuardTests.Real_system_role_defaults_are_assignable_to_their_own_actor_type`)
+  para que no vuelva a pasar desapercibido.
+
+Fix en ambos casos: `AllowedActorTypes` explícito (`[TenantEmployee, TenantAdmin, PlatformAdmin,
+CustomerPortal]`, refleja el uso real dual) + migración EF de datos
+(`FixCloudStorageFilePermissionsAllowCustomerPortal`,
+`FixCommunicationPermissionsAllowedActorTypes`). El resto de los ~140 permisos del catálogo se
+deja en inferencia — no hace falta anotar cada uno explícito, solo los que la auditoría contra
+`SystemRoleDefaults` demuestra que la inferencia contradice.
+
+## 41.3 Tests de aislamiento cross-actor (Fase 7.2)
+
+- **`ActorTypeAuthorizationFilterTests.cs`** (`TaxVision.BuildingBlocks.Tests`) — cubre la Capa 2
+  de forma exhaustiva y simétrica: cada actor type bloqueado tanto en un controller `StaffOnly`
+  como en uno `CustomerOnly`, más el caso `Service` (sin bypass, a diferencia de `PlatformAdmin`)
+  bloqueado de un endpoint que no lo declara y aceptado en uno que sí.
+- **`ActorTypeRoleGuardTests.cs`** (`TaxVision.Auth.Tests`) — cubre la Capa 3 con el catálogo real
+  (no permisos sintéticos): los 3 roles de sistema (`Tenant Admin`/`Employee`/`Customer Portal`)
+  deben poder asignarse a su propio actor type sin que el guard los rechace — el test que habría
+  atrapado el bug de §41.2 antes de que se escribiera el fix.
+- **Communication (Node)**: `hasPermission()` (`domain/shared/permissions.ts`) nunca había tenido
+  test propio pese a ser el único punto de enforcement de actor-type ahí — no hay un
+  `[AllowActorTypes]` declarativo en Node, cada handler llama `hasPermission(caller.actorType,
+  caller.permissions, required)` a mano. `tests/unit/actor-type-isolation.test.ts` prueba las 12
+  permisos staff-only (`ChatModerate`, `SettingsManage`, ...) rechazadas para `CustomerPortal` y
+  aceptadas para `TenantEmployee`, los 6 permisos compartidos (post-fix §41.2) aceptados para
+  ambos, y el bypass de `PlatformAdmin` documentado (no una regresión fail-open). Helper hermano
+  de `expectRejectedCrossTenant`: `tests/helpers/actor-type-isolation.ts`.
+
+## 41.4 Postman — casos negativos (Fase 7.3)
+
+Cada una de las 15 colecciones (`Postman_Collection/TaxVision_*.postman_collection.json`) tiene
+un folder nuevo **"Negative Cases — Actor Type"** con un request real: el mismo endpoint
+staff-only que ya documentaba el flujo correcto, llamado con `{{customerPortalAccessToken}}`
+(variable de environment ya existente, poblada por `Customer > Portal Access >
+LoginCustomerPortal`) y un test script que confirma `403`. No es exhaustivo endpoint por
+endpoint — eso ya lo cubre la fitness function de la Capa 4 a nivel de todo el catálogo de
+acciones — este caso documenta y ejercita el mecanismo real sobre HTTP, un ejemplo runnable por
+servicio.
+
+## 41.5 CI
+
+`deploy.yml` corre `dotnet test TaxVision.slnx` (con `actions/setup-dotnet@v4` leyendo la versión
+de `global.json`) como los primeros dos steps del job, antes de escribir `.env`/tocar
+Docker/producción — si algo rompe la fitness function de la Capa 4 (o cualquier otro test), el
+deploy se corta ahí. Decisión tomada con aprobación explícita del usuario en la Fase 6 del plan
+(antes de esto, `dotnet test` no corría en ningún paso de CI).
+
+## 41.6 Pendientes documentados
+
+- **Communication — camino de invitados** (`join-ticket.ts`, tokens cortos para gente sin cuenta
+  que entra a un meeting) no pasa por `verifyAccessToken` — queda auditado y documentado como gap
+  separado desde la Fase 5, no arreglado sin analizarlo primero.
+- **`StorageIdentity.cs`** (CloudStorage) y cualquier otro chequeo de autorización a nivel de
+  objeto/fila (qué archivo/registro puntual ve un actor) es un problema distinto — este mecanismo
+  resuelve "quién puede llamar a esta acción", no "qué fila puede ver dentro de esa acción".
+- **`Subscription`** migró sus 17 `[Authorize(Roles=...)]` a `[HasPermission]` en RBAC Fase 8 (ver
+  §41.12) — este bullet queda como registro histórico de por qué la Capa 2 (`[AllowActorTypes]`)
+  se había agregado ahí desde la Fase 4 conviviendo con los roles legacy, antes de que existiera
+  la Capa 3a (`[HasPermission]`) para ese servicio.
+
+## 41.7 `IsDangerous` — SystemTenantAdmin deja de ser un god-role (RBAC Fase 2)
+
+`SystemRoleDefaults(SystemTenantAdmin)` era dinámico: cualquier permiso nuevo del catálogo con
+`IsCustomerPortal: false` y `PlatformOnly: false` entraba automáticamente al bundle del rol
+"Tenant Admin" de cada tenant, sin importar su riesgo real. `Permission.IsDangerous` (bool,
+`PermissionCatalog.PermissionDefinition`) cierra ese hueco: un permiso marcado `IsDangerous: true`
+**nunca** entra al bundle automático de TenantAdmin, sin importar que tenga un caso de uso
+legítimo para un tenant — tiene que asignarse explícito. Distinto de `PlatformOnly` (permisos sin
+ningún caso de uso tenant-propio) y de `IsAssignableByTenant` (si el propio TenantAdmin puede
+delegarlo a un empleado, no si el TenantAdmin lo tiene).
+
+```csharp
+Role.SystemTenantAdmin => All.Where(d => !d.IsCustomerPortal && !d.PlatformOnly && !d.IsDangerous)
+    .Select(d => d.Code).ToArray(),
+```
+
+**7 permisos marcados `IsDangerous: true`:**
+
+| Permiso | Razón |
+|---|---|
+| `roles.manage` | Auto-escalada — puede darse a sí mismo cualquier permiso restante del catálogo |
+| `billing.view` / `billing.manage` | Financiero — hoy sin efecto funcional (`Subscription` todavía usa `[Authorize(Roles=...)]`, no `[HasPermission]`, ver §41.6) |
+| `subscription.manage` | Cambiar de plan / asientos — mismo caso sin efecto funcional hoy |
+| `tenant.domains.manage` | Cambiar el subdominio impacta el login de todos los usuarios del tenant a la vez |
+| `signature.constraints.manage` | Ya excluido por `PlatformOnly` — se marca igual por consistencia documental |
+| `cloudstorage.legal.manage` | Bug real: sin este flag, cualquier TenantAdmin podía registrar un legal hold sobre archivos de SU PROPIO tenant vía `LegalController.RegisterTakedown` |
+
+**2 desviaciones deliberadas del set original de la fase** (no marcados `IsDangerous` pese a
+"sonar" peligrosos — ver comentarios en `PermissionCatalog.cs`):
+
+- **`cloudstorage.dmca.counternotice`**: es la respuesta legal del propio tenant a un takedown
+  recibido sobre su archivo (17 U.S.C. §512(g), plazos reales) — quitarlo del default dejaría a
+  la oficina sin poder auto-defenderse sin depender de PlatformAdmin.
+- **`users.disable`**: no existe como permiso separado en el catálogo real — deactivate/reactivate
+  de usuarios y revocar sesiones ajenas viven en `users.manage`, que también cubre edición diaria
+  de usuarios. Marcarlo `IsDangerous` habría roto una operación cotidiana de TenantAdmin.
+
+**Backfill**: no se creó un servicio nuevo — `SystemRolePermissionsSyncService` (existente desde
+antes, corre en cada arranque de Auth, idempotente) ya recomputaba `SystemRoleDefaults` para los 3
+roles de sistema de cada tenant; solo le faltaba publicar `RolePermissionsChangedIntegrationEvent`
+por cada rol que efectivamente cambió — eso se agregó acá en vez de duplicar la lógica en un
+`TenantAdminPermissionsBackfillService` separado.
+
+## 41.8 Layer 3b: Resource-based authorization (RBAC Fase 4)
+
+Las 4 capas de §41.1 (permiso, actor type, aislamiento por tenant, catálogo) verifican **qué puede
+hacer un rol**, pero ninguna verificaba **si el usuario concreto es el dueño del recurso concreto**
+que está tocando. Antes de esta fase, cualquier miembro del tenant con el permiso operativo
+correspondiente podía revocar el `ShareLink` de un colega, reenviar/cancelar/extender la
+`SignatureRequest` de otro empleado, o autoguardar el `Draft` de correspondencia de otro usuario —
+el permiso de nivel-recurso (`cloudstorage.share.revoke`, `signature.request.create`,
+`correspondence.compose`) alcanzaba, sin ningún chequeo de propiedad. Esta fase agrega esa Capa 3b.
+
+**Mecanismo** (patrón nativo de ASP.NET Core, `IAuthorizationService.AuthorizeAsync(user, resource,
+requirement)`):
+
+- `IHasOwner` (`BuildingBlocks/Domain/IHasOwner.cs`, en el proyecto Domain base — no
+  `BuildingBlocks.Web`, porque Domain nunca referencia ese proyecto) — contrato mínimo
+  `Guid CreatedByUserId { get; }`.
+- `Operations` (`BuildingBlocks.ResourceAuthorization`) — `OperationAuthorizationRequirement`
+  reusables: `Read`, `Update`, `Delete`, `Manage`, `Send`, `Cancel`, `Revoke`.
+- `IsOwnerOrHasManageHandler<TResource>` — orden de evaluación: (1) `PlatformAdmin` siempre pasa,
+  (2) actor con el permiso "manage" configurado pasa, (3) `resource.CreatedByUserId` == `sub` del
+  JWT pasa, (4) si no, falla (fail-closed — no hace falta `context.Fail()` explícito, no tener
+  éxito ya es denegar). El permiso "manage" solo permite operar dentro del **propio tenant** del
+  actor: el handler mismo no valida tenant — esa garantía la da el controller, que resuelve el
+  recurso con `repo.GetAsync(tenantId, resourceId, ct)` usando el `tenant_id` del JWT del actor
+  ANTES de invocar `AuthorizeAsync`, así que un recurso de otro tenant nunca llega al handler
+  (404 primero).
+- Feature flag por servicio, `Authorization:ResourceOwnership:Enabled` (default `false`), leído vía
+  `IOptionsMonitor<ResourceOwnershipOptions>` — se puede prender/apagar por config sin redeploy
+  (rollback = apagar el flag).
+
+**3 recursos endurecidos:**
+
+| Recurso | Servicio | Operaciones cubiertas | Permiso "manage" override |
+|---|---|---|---|
+| `ShareLink` | CloudStorage | `Revoke`, `UpdateExpiration` | `cloudstorage.share.manage` (ya existía en el catálogo, reusado) |
+| `SignatureRequest` | Signature | `Send`, `Cancel`, `ExtendExpiration` | `signature.request.manage` (nuevo, `IsAssignableByTenant: false`) |
+| `Draft` | Correspondence | `AutoSave`, `Discard`, `AttachFile`, `RemoveAttachment`, `Send` | ninguno — solo el creador o PlatformAdmin (ver desviación abajo) |
+
+**Desviaciones deliberadas:**
+
+- **Draft no tiene override "manage"**: a diferencia de ShareLink/SignatureRequest (donde un
+  supervisor legítimamente necesita poder actuar sobre el recurso de un colega), no hay un caso de
+  uso real hoy para que alguien más edite el borrador de correo de otro usuario — se deja sin
+  permiso de escape para no inventar una superficie de ataque que nadie pidió.
+- **`Draft.CreatedByUserId` es requerido pero con default `Guid.Empty`** (migración additive,
+  `AddColumn` con `defaultValue`): los drafts creados antes de esta fase nunca calzan con ningún
+  `sub` real, así que fallan el chequeo de ownership automáticamente una vez que se prenda el flag
+  — no hace falta backfill ni un tipo nullable.
+- **`MessagesController.StartReplyDraft` (get-or-create) queda fuera del chequeo**: no se puede
+  saber si la llamada va a reusar un draft existente o crear uno nuevo hasta después de que el
+  handler corre, así que no hay un "dueño esperado" contra el cual comparar antes de ejecutar.
+  Exclusión de alcance documentada, no un descuido.
+- **`CustomerImportAttempt`** (mencionado en el plan original) quedó fuera de esta fase — no tiene
+  hoy ningún endpoint de escritura post-creación que otro usuario del tenant pudiera abusar
+  (solo se lee o se cancela por el propio flujo del creador).
+
+**Tests**: 4 tests del handler genérico (`IsOwnerOrHasManageHandlerTests`, sin DI/TestServer — misma
+convención del repo de instanciar el handler directo) + 4 tests por cada uno de los 3 controllers
+afectados (bypass con flag OFF, dueño autorizado, no-dueño rechazado con 403, PlatformAdmin siempre
+pasa) — primer precedente en el repo de testear un controller instanciándolo directo con
+`ControllerContext`/`ClaimsPrincipal` armados a mano, sin `WebApplicationFactory` (no hay ningún
+precedente de TestServer en el repo, confirmado antes de elegir el patrón).
+
+## 41.9 Layer 3a: `HasQueryFilter` global — tenant boundary como safety net de EF Core (RBAC Fase 5)
+
+Antes de esta fase, el aislamiento por tenant dependía 100% de que cada repositorio recordara
+filtrar manualmente por `tenantId` en cada query (`GetByIdAsync(tenantId, id)`, `Where(x =>
+x.TenantId == tenantId)`, etc.) — un solo método nuevo que se olvidara de ese filtro era un IDOR
+cross-tenant silencioso. Esta fase agrega una segunda capa independiente, a nivel de EF Core: un
+`HasQueryFilter` global fail-closed que se aplica automáticamente a **toda** entidad tenant-scoped en
+**los 13 servicios .NET** (los otros ya lo tenían, ver §26 y `SignatureDbContext`), sin que el
+código del repositorio tenga que acordarse de nada — defensa en profundidad, no un reemplazo del
+filtrado explícito.
+
+**Mecanismo** (ver el WHY-comment completo en `SignatureDbContext.cs`, la referencia original):
+
+- `ITenantOwned` (`BuildingBlocks.Domain`) — `Guid TenantId { get; } void SetTenant(Guid);`. Toda
+  entidad tenant-scoped "normal" (sin fila cross-tenant legítima) lo implementa.
+- En `OnModelCreating`, un loop reflexivo sobre `modelBuilder.Model.GetEntityTypes()` construye el
+  filtro `e => e.TenantId == EffectiveTenantId` para cada tipo `ITenantOwned`, donde
+  `EffectiveTenantId` es una **propiedad de instancia del propio DbContext**
+  (`tenantContext.HasTenant ? tenantContext.TenantId : Guid.Empty`) — nunca un valor cerrado
+  directo sobre el `ITenantContext` inyectado. Esto es intencional: EF Core cachea el modelo
+  compilado por **tipo** de DbContext, pero reconoce especialmente las expresiones que cierran
+  sobre `this` (la instancia de DbContext usada para construir el filtro) y las reevalúa contra la
+  instancia que efectivamente ejecuta cada query — cerrar sobre el servicio inyectado en cambio
+  freezaría el filtro con el valor de la primera instancia construida en el proceso, para siempre.
+- Fail-closed: sin tenant en el `ITenantContext` (requests M2M sin claim `tenant_id`, o contextos de
+  diseño de `dotnet-ef`), `EffectiveTenantId` es `Guid.Empty` — 0 filas, nunca "todo visible".
+- `JwtTenantContextMiddleware` (`BuildingBlocks.Tenancy`, nuevo — reemplaza al viejo
+  `TenantResolutionMiddleware` de `BuildingBlocks.Middleware` en los 3 servicios que todavía lo
+  usaban, Postmaster/Subscription/Tenant) puebla el `ITenantContext` **solo** desde el claim
+  `tenant_id` de un JWT verificado — nunca desde un header crudo como hacía el middleware viejo
+  (`X-Tenant-Id` sin validar, un vector de tenant-spoofing real, no solo cosmético). Pasa sin tocar
+  el contexto para requests sin ese claim (tokens M2M `ActorType.Service`).
+- `LocalCommandTenantMiddleware`/`IntegrationEventTenantMiddleware` (política de Wolverine) restauran
+  el `TenantContext` dentro del scope de DI nuevo que Wolverine crea para cada `bus.InvokeAsync`
+  local o cada consumer de integration event — sin esto, el filtro vería `Guid.Empty` en cualquier
+  handler async, incluso dentro de la misma request HTTP que sí tenía el tenant correcto.
+- `IgnoreQueryFilters()` explícito, con comentario obligatorio del porqué, en los 2 casos legítimos
+  de acceso cross-tenant: jobs de background que iteran todos los tenants (ej.
+  `DraftRepository.ListAbandonedAsync`, `TenantBackfillStateRepository.ListAllTenantIdsAsync`) y
+  listados admin-only ya protegidos por `[AllowActorTypes(PlatformAdmin)]`.
+
+**Variante nullable-aware (Scribe, primer caso real de este patrón):** `EmailTemplate`/
+`EmailLayout`/`EventTemplateMapping` son System-**o**-Tenant scoped (`Guid? TenantId` — null =
+default de plataforma, visible para cualquier tenant; no-null = override de un tenant concreto). La
+igualdad estricta de `ITenantOwned` los dejaría invisibles para cualquier tenant salvo Guid.Empty.
+En su lugar, `INullableTenantOwned` (`BuildingBlocks.Domain`, nuevo) + un segundo filtro `e =>
+e.TenantId == null || e.TenantId == EffectiveTenantId`: las filas System-scope siempre quedan
+visibles, las Tenant-scope se aíslan igual que con la variante estricta.
+
+**13 servicios cubiertos** — Auth, Customer, CloudStorage, Connectors, Notification, PaymentApp,
+PaymentClient, Postmaster, Subscription, Tenant (no-op: sin entidades `ITenantOwned`, el servicio de
+tenants no tiene "otro tenant" del cual aislarse), Correspondence, Scribe, y Growth/CloudStorage ya
+lo tenían de una fase anterior.
+
+**Desviación real encontrada en Scribe** (no solo `EmailTemplate`/`EmailLayout`): el pipeline de
+render M2M (`RenderController`, `[AllowActorTypes(ActorType.Service)]` — sin claim `tenant_id`, así
+que `EffectiveTenantId` siempre es `Guid.Empty` ahí) resuelve templates/layouts/logos de un tenant
+concreto pasado como **parámetro explícito** de la query, no del `ITenantContext` ambiente. Aplicar
+el filtro global sin excepción ahí habría roto el render cross-tenant que es la razón de ser de ese
+endpoint — cada uno de esos métodos de repositorio (`EmailTemplateRepository.GetByKeyAsync`,
+`EventTemplateMappingRepository.GetEnabledForEventAsync`, `TenantLogoRefRepository`/
+`TenantLogoMissingNotificationRepository.GetByTenantIdAsync`) usa `IgnoreQueryFilters()` con
+comentario explicando que el aislamiento real ahí lo da el parámetro `tenantId` explícito de la
+query (verificado leyendo cada call site antes de aplicar el bypass, no asumido).
+
+**Correspondence** — sus 7 entidades tenant-scoped eran clases planas con un campo `TenantId` crudo
+(a diferencia de los otros 12 servicios, donde las entidades elegibles ya extendían `TenantEntity`)
+— retrofit real a `ITenantOwned` para las 7 (`Draft`, `EmailThread`, `TenantBackfillState`,
+`IncomingEmail`, `CustomerEmailAddress`, `UnmatchedIncomingEmail`, `CorrespondenceAuditLog`);
+`IncomingEmailRecipient`/`IncomingEmailAttachment`/`DraftRecipient` (hijos sin columna `TenantId`
+propia, siempre cargados vía `Include` desde su padre) deliberadamente no la implementan.
+
+**Riesgo real confirmado, no solo teórico**: Postmaster, Subscription y Tenant seguían con el
+`TenantResolutionMiddleware` viejo (header `X-Tenant-Id` sin validar) — se reemplazó en los 3 como
+parte de esta misma fase, no como limpieza aparte.
+
+**Tests**: `TenantIsolationTests.cs` nuevo en cada uno de los 13 servicios (aísla tenant A de
+tenant B, fail-closed sin `ITenantContext`, `IgnoreQueryFilters` devuelve todo) + los 2 tests extra
+de Scribe para la variante nullable-aware (System-scope siempre visible, incluso sin tenant en
+contexto). 1887 tests .NET pasando en el monorepo completo tras la fase, 0 regresiones.
+
+## 41.10 Session Denylist en los 14 servicios (RBAC Fase 6)
+
+Antes de esta fase, revocar una sesión (logout forzado, desactivar un usuario, suspender un tenant)
+solo se respetaba de inmediato en Auth, PaymentApp y PaymentClient — los otros 11 servicios seguían
+aceptando el mismo access token hasta que expiraba por sí solo (hasta 15 min). Auth ya escribía la
+denylist en Redis al revocar (`auth:denylist:sid:{sessionId:N}` → `true`, TTL = vida restante del
+token) — el gap era que nadie más la leía.
+
+**Consolidación, no solo extensión** — Auth, PaymentApp y PaymentClient tenían 3 copias
+independientes del mismo mecanismo de lectura (`ISessionDenylistReader` local + middleware local
+casi idéntico en cada uno). Se promovió a `BuildingBlocks`:
+- `BuildingBlocks.Sessions.ISessionDenylistReader` (proyecto raíz, sin dependencia de ASP.NET
+  Core) — puerto mínimo de solo lectura, consumible desde la capa Infrastructure de cualquier
+  servicio.
+- `BuildingBlocks.Sessions.SessionDenylistReader` (`BuildingBlocks.Infrastructure`) — implementación
+  Redis vía `ICacheService`, **fail-open**: si Redis no responde, registra un `LogWarning` y trata
+  la sesión como no-denegada — un Redis caído nunca debe tumbar el tráfico normal. Este
+  comportamiento no existía antes en ninguna de las 3 copias originales (ni la de Auth ni las de
+  PaymentApp/PaymentClient tenían try/catch); se añadió como parte de esta fase, no solo se movió.
+- `BuildingBlocks.Web.Session.SessionDenylistMiddleware` + `SessionDenylistOptions`
+  (`SessionDenylist:Enabled`, default `true` — permite apagar el chequeo sin redeploy si Redis tiene
+  un incidente prolongado) + `AddSessionDenylist(configuration)` (registra ambos, requiere que el
+  servicio ya tenga `ICacheService` vía `AddRedisCache`).
+
+Auth es la única excepción: su `AccessTokenDenylist` (Infrastructure) implementa **ambas**
+interfaces desde una sola clase — la propia (`IAccessTokenDenylist`, con `DenySessionAsync` de
+escritura) y la nueva compartida (`ISessionDenylistReader`) — para no tener dos lecturas Redis
+independientes del mismo dato en el mismo servicio.
+
+**7 de 14 servicios no tenían Redis en absoluto** (Customer, CloudStorage, Notification, Postmaster,
+Correspondence, Scribe, Growth) — se les agregó `ConnectionStrings__Redis: redis:6379` +
+`depends_on: redis` en `deploy/docker/docker-compose.yml`, más `AddRedisCache(configuration)` en su
+`Program.cs`. Connectors y Signature ya tenían Redis en el compose pero solo para
+`IConnectionMultiplexer` crudo (lock distribuido) — se les agregó `AddRedisCache` aparte para tener
+`ICacheService` también.
+
+**Middleware posicionado entre `UseAuthentication()` y `UseAuthorization()`** en los 14 servicios
+(en Auth queda después de `UseRateLimiter()`/`JwtTenantContextMiddleware`, posición que ya tenía
+antes de esta fase). Tokens M2M (sin claim `sid`) pasan sin chequear — la denylist es un concepto de
+sesión de usuario, no de actor de servicio.
+
+**Tests**: `TaxVision.BuildingBlocks.Tests/Session/` — `SessionDenylistMiddlewareTests` (401 si la
+sesión está en la denylist, pasa si no lo está, ignora tokens de servicio sin `sid`) +
+`SessionDenylistReaderTests` (fail-open + `LogWarning` real cuando el `ICacheService` lanza,
+confirma denegación cuando el cache dice `true`). 1892 tests .NET pasando en el monorepo completo
+tras la fase, 0 regresiones.
+
+## 41.11 Enforce `perm_v` + proyección de permisos (RBAC Fase 7)
+
+**El gap que cierra esta fase**: Auth ya emite un claim `perm_v` en el JWT
+(`user.PermissionsVersion`, incrementado cada vez que cambian los roles o permisos de un usuario),
+pero hasta esta fase ningún servicio .NET lo comparaba contra nada — solo el frontend Communication
+(Node) lo leía. Si un admin le quitaba un permiso a un usuario, ese usuario seguía teniendo acceso
+con el JWT viejo hasta que expiraba por sí solo (`Jwt:AccessMinutes`, hasta 15 min). Esta fase agrega
+un mecanismo **opcional y apagado por default** para cerrar esa ventana, sin tocar el comportamiento
+actual de nadie que no lo active.
+
+**`IUserPermissionsSource`** (`BuildingBlocks.Web.ActorTypeAuthorization`) — nueva abstracción detrás
+de la cual `PermissionPolicyProvider` resuelve cada policy `perm:*`, en vez de llamar directo a
+`ClaimsPrincipalExtensions.HasPermission()` como antes. Dos implementaciones:
+- `JwtEmbeddedPermissionsSource` (**default en los 14 servicios**) — wrapper trivial de
+  `user.HasPermission(permission)`. Comportamiento 100% idéntico al de antes de esta fase.
+- `ProjectionPermissionsSource` — consulta una proyección local (`UserPermissionsProjection`),
+  cacheada 30s en `IMemoryCache` (`perm-proj:{tenantId:N}:{userId:N}`). Si `perm_v` del JWT quedó
+  atrás de la versión de la proyección, lanza `UnauthorizedAccessException("Auth.TokenStale")` —
+  mapeado a 401 por `ExceptionHandlingMiddleware` — para que el frontend refresque el token y
+  reintente. Si no hay proyección para ese usuario todavía (nunca sincronizado, o el consumer no
+  procesó aún su primer evento), **falla cerrado** (`false` + `LogWarning`), nunca "todo permitido".
+  Bypass de `PlatformAdmin` antes de tocar la proyección, igual que el resto del catálogo.
+
+**Flag por servicio**: `Authorization:PermissionsSource` = `"Jwt"` (default, en todos los
+`appsettings.json`) | `"Projection"`. Se lee una sola vez en `Program.cs` al arrancar — no es
+per-request — para decidir qué única implementación registrar como `IUserPermissionsSource`.
+Activarlo requiere que el frontend ya sepa reaccionar a `Auth.TokenStale` refrescando el token
+(coordinación explícita antes de activar en producción, ver `CAMBIOS PROHIBIDOS` en el plan).
+
+**Proyección `UserPermissionsProjection` + `RolePermissionsProjection`** replicada al mismo patrón
+que ya existía en Notification/Signature (Fase 4 del plan de notificaciones dinámicas) en los
+**9 servicios que todavía no la tenían**: CloudStorage, Connectors, Correspondence, Customer,
+PaymentApp, PaymentClient, Postmaster, Scribe, Tenant. Cada uno recibió:
+- `Domain/Permissions/{UserPermissionsProjection,RolePermissionsProjection}.cs` — mismos campos
+  (`PermissionsVersion`, `PermissionCodesJson`, `RoleIdsJson`, `IsActive`), idempotentes por versión
+  monotónica.
+- `UserRolesChangedPermissionsProjectionConsumer` / `RolePermissionsChangedPermissionsProjectionConsumer`
+  (`Application/Permissions/Consumers/`) — consumen `UserRolesChangedIntegrationEvent` /
+  `RolePermissionsChangedIntegrationEvent` (ambos ya existían, sin cambios). El segundo recompone la
+  **unión** de permisos de un usuario multi-rol cuando cambia solo uno de sus roles, contra un cache
+  local de `RolePermissionsProjection` — sin esto un usuario con 2 roles perdería los permisos
+  heredados del rol que no cambió.
+- `UserPermissionsProjectionRepository` (Infrastructure) — implementa **dos interfaces desde la
+  misma instancia scoped**: el puerto local rico (`Application.Abstractions.IUserPermissionsProjectionRepository`,
+  usado por los consumers) y el puerto compartido y angosto de `BuildingBlocks.Permissions`
+  (`IUserPermissionsProjectionReader.GetSnapshotAsync`, el único método que necesita
+  `ProjectionPermissionsSource`) — mismo patrón dual-interfaz que `AccessTokenDenylist` en Fase 6,
+  evita dos lecturas separadas del mismo dato.
+- Migración EF `RbacFase7UserPermissionsProjection` (2 tablas nuevas por servicio,
+  `UserPermissionsProjections` + `RolePermissionsProjections`, índice único `(TenantId, UserId)` en
+  la primera).
+
+**Auth es la única excepción** entre los 14 — no recibe proyección (sería circular: ya es la fuente
+de verdad de User/Role). En su lugar, `AuthUserPermissionsProjectionReader` (Infrastructure) implementa
+`IUserPermissionsProjectionReader` con una consulta **en vivo** contra `IUserRepository`/`IRoleRepository`,
+reusando el mismo `UserAccessResolver.ResolveAsync` que ya arma el JWT en el login — cero staleness
+posible más allá de la del propio JWT.
+
+**Subscription recibió solo la proyección** (Domain + consumers + repositorio + migración), **sin**
+`IUserPermissionsSource`/`PermissionPolicyProvider` en su `Program.cs` — hoy no usa
+`[HasPermission]` en absoluto (sigue con `[Authorize(Roles=...)]`, migrarlo es una fase futura fuera
+de este plan). Construir su proyección ahora significa que ya estará al día el día que ese futuro
+trabajo active el mecanismo, en vez de arrancar con un backlog de eventos sin consumir.
+
+**Growth queda fuera** — usa su propio `GrowthAuthorizationPolicyProvider`, nunca pasó por
+`PermissionPolicyProvider` de `BuildingBlocks.Web` (confirmado en Fase 3/4 del plan de ActorType).
+
+**Servicios con Fase 7 completa (proyección + flag + enforcement)**: Auth, CloudStorage, Connectors,
+Correspondence, Customer, PaymentApp, PaymentClient, Postmaster, Scribe, Tenant (10 de 14).
+**Solo proyección**: Subscription. **Fuera de alcance**: Growth.
+
+**Tests**: `TaxVision.BuildingBlocks.Tests/ActorTypeAuthorization/PermissionsSourceTests.cs` —
+`JwtEmbeddedPermissionsSourceTests` (delega al claim `perm`) + `ProjectionPermissionsSourceTests`
+(permiso presente con `perm_v` al día, `Auth.TokenStale` cuando el JWT quedó atrás, fail-closed sin
+proyección, fail-closed sin claims de tenant/usuario, bypass de `PlatformAdmin` sin tocar la
+proyección, y una prueba de que un burst de 5 llamadas solo golpea el reader una vez gracias al
+cache de 30s). 1899 tests .NET pasando en el monorepo completo tras la fase, 0 regresiones.
+
+**Explícitamente fuera de esta fase (Fase 7.5 futura, no iniciada)**: simplificar el JWT para que
+solo lleve `perm_v` (sin la lista completa de ~130 permisos embebidos) una vez que Fase 7 esté
+validada en producción con el flag en `"Projection"` en al menos un servicio — cambiar el esquema del
+JWT ahora, antes de esa validación, rompería `JwtEmbeddedPermissionsSource` en los servicios que
+todavía no migraron.
+
+**Rollback**: volver `Authorization:PermissionsSource` a `"Jwt"` (o quitar la clave) en el
+`appsettings.json`/user-secret del servicio afectado y reiniciar — no requiere migración inversa, las
+tablas de proyección quedan simplemente sin consultarse.
+
+## 41.12 Migración de `[Authorize(Roles=...)]` a `[HasPermission]` en Subscription/Auth/Tenant (RBAC Fase 8)
+
+**El gap que cierra esta fase**: 22 endpoints (no 43 — ver "conteo real" abajo) todavía usaban el
+anti-patrón role-string-as-authorization en vez de `[HasPermission]`, quedando fuera de la Capa 3a
+(catálogo, `perm_v`, proyección) descrita en §41.2/§41.11. `CustomerController` (Customer), citado en
+el plan original como "25 métodos con Roles=", resultó estar **ya 100% migrado desde RBAC Fase 1** —
+verificado por grep antes de tocar código, cero trabajo ahí.
+
+**Conteo real — 22 endpoints, no 43:**
+- **Subscription — 17** (confirmado exacto): `SubscriptionsController` (7: change-plan, activate,
+  plan-change/cancel, cancel, suspend, reactivate, renew), `SeatsController` (5: purchase, assign,
+  release, reassign, renew), `AddOnsController` (3: purchase, cancel, renew), `AuditController` (1,
+  a nivel de clase), `Admin/AdminController` (1, a nivel de clase, cubre 4 acciones).
+- **Auth Invitations — 3** (confirmado exacto): Create, Resend, Cancel.
+- **Tenant `TenantController` — 2** (confirmado exacto): Get (listado), ChangeStatus. `Create` no se
+  tocó — usa `[Authorize(Policy = "TenantRegistration")]` + `[AuthorizedByCapabilityToken]`, un
+  mecanismo de Capa 3 distinto y deliberado (ticket firmado de un solo uso, ver comentario en el
+  propio controller).
+- **Customer — 0** (el plan decía 25): ya migrado en RBAC Fase 1, verificado por grep, ninguna fila
+  nueva en el catálogo ni cambio de código.
+
+**7 permisos nuevos en el catálogo** (`PermissionCatalog.cs` + `BuildingBlocks.Authorization.{Subscription,Tenant}Permissions`):
+
+| Código | Módulo | `PlatformOnly` | Reemplaza |
+|---|---|---|---|
+| `subscription.plan.change` | subscription | No | `Roles="TenantAdmin"` en change-plan/activate/cancel/plan-change-cancel |
+| `subscription.suspend` | subscription | Sí | `Roles="PlatformAdmin"` en suspend |
+| `subscription.reactivate` | subscription | Sí | `Roles="PlatformAdmin"` en reactivate |
+| `subscription.renew` | subscription | Sí | `Roles="PlatformAdmin"` en renew (Subscriptions) |
+| `subscription.admin.cross_tenant` | subscription | Sí | `Roles="PlatformAdmin"` en `Admin/AdminController` (4 acciones) |
+| `seats.manage` | seats | No | `Roles="TenantAdmin"` en las 5 acciones de `SeatsController` |
+| `addons.manage` | addons | No | `Roles="TenantAdmin"` en las 3 acciones de `AddOnsController` |
+
+Más 2 en el módulo `tenant` (`tenant.status.change`, `tenant.list.view`, ambos `PlatformOnly: true`,
+reemplazan `Roles="PlatformAdmin"` en `TenantController.ChangeStatus`/`Get`). `AuditController`
+reusa el `audit.view` genérico ya sembrado (vía una constante local `SubscriptionPermissions.AuditView`
+con el mismo string — Subscription no referencia `TaxVision.Auth.Domain`, otro microservicio, así
+que no puede importar `PermissionCatalog` directo). Invitations reusa `PermissionCatalog.UsersInvite`
+(ya usado por `GetInvitations`, unifica todo el recurso bajo un solo permiso).
+
+**Decisión de diseño que evita una regresión real**: el catálogo ya tenía un permiso reservado
+`subscription.manage` (`SubscriptionManage`, "Cambiar plan y gestionar suscripción") marcado
+`IsDangerous: true` desde RBAC Fase 2 — pensado para cuando Subscription migrara. Reusarlo tal cual
+habría sido un bug: `IsDangerous` excluye el permiso del bundle automático de `SystemTenantAdmin`
+(§41.7), así que todo TenantAdmin que hoy puede cambiar su propio plan vía `Roles="TenantAdmin"`
+habría perdido ese acceso el día del deploy, violando la propia evaluación de riesgo del plan ("más
+permisivo, no bloquea injustamente"). Los 7 permisos nuevos de Subscription usan
+`IsAssignableByTenant: false` (mismo criterio "billing-adjacent" que `SubscriptionManage`/`BillingView`)
+pero deliberadamente **no** `IsDangerous` — TenantAdmin los recibe por el bundle automático exactamente
+como antes. `subscription.manage`/`billing.*` quedan sin usar, como estaban.
+
+**Wiring nuevo en Subscription** — el servicio nunca había usado `[HasPermission]` (RBAC Fase 7 solo
+le dio la tabla `UserPermissionsProjection` + consumers, "sin wiring de enforcement", ver §41.11).
+`Program.cs` ganó el mismo bloque de 5 líneas que los otros 13 servicios
+(`AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>()` + `AddMemoryCache()` +
+branch `IUserPermissionsSource` por `Authorization:PermissionsSource`), con `appsettings.json` en
+`"Projection"` desde el día uno (consistente con el resto del monorepo desde Fase 7.5.7, nunca pasó
+por `"Jwt"`). El repositorio/consumers de la proyección ya existían — sin backlog de eventos sin
+consumir.
+
+**Migración EF**: `RbacFase8SubscriptionAndTenantPermissions` — `InsertData` puro (9 filas nuevas en
+`Permissions`, GUIDs `...143` a `...151`), sin `DROP`/`UPDATE`/`DELETE`. `SystemRolePermissionsSyncService`
+(existente, corre en cada arranque de Auth) recomputa `RolePermissions` de cada tenant contra el
+catálogo actualizado — no hace falta backfill manual.
+
+**Tests**: `PermissionCatalogTests.cs` — 2 `Theory` nuevas (los 3 permisos tenant-scoped SÍ llegan al
+bundle de TenantAdmin por default / los 6 `PlatformOnly` NUNCA llegan) + 1 `Fact` de unicidad de
+código/GUID. Los tests de aislamiento cross-actor existentes (`SubscriptionActorTypeArchitectureTests`,
+`TenantActorTypeArchitectureTests`, `AuthActorTypeArchitectureTests`, Fase 7.2) siguen pasando sin
+cambios — son reflection-based sobre `[AllowActorTypes]`, que ya estaba correctamente declarado en
+todos los endpoints tocados. 1950 tests .NET en el monorepo completo (1940 + 10 nuevos), 0 regresiones.
+
+**Rollback**: revertir el commit + `dotnet ef database update <migración anterior>` en Auth (borra
+las 9 filas nuevas de `Permissions`; `SystemRolePermissionsSyncService` las retira de cada
+`RolePermissions` en el siguiente arranque).
+
+## 41.13 Hardening final: observabilidad, audit trail y diagrama completo (RBAC Fase 10)
+
+Última fase del plan de 10. Objetivo: cerrar la iteración con métricas de autorización, confirmar
+que la auditoría existente cubre las operaciones sensibles y consolidar la documentación de las
+capas que las Fases 1-9 fueron agregando por separado.
+
+**Diagrama completo — todas las capas del pipeline de autorización:**
+
+| Capa | Qué hace | Dónde vive | Fase que la introdujo |
+|---|---|---|---|
+| **1 — `[HasPermission]`** | Exige un permiso del catálogo; resuelve contra JWT embebido o proyección local según `Authorization:PermissionsSource` | `PermissionPolicyProvider` | Preexistente; `perm_v`/proyección en Fase 7 |
+| **2 — `[AllowActorTypes(...)]`** | Exige que `actor_type` del JWT esté en el set declarado | `ActorTypeAuthorizationFilter` | Preexistente |
+| **3a — `HasQueryFilter` global (tenant boundary)** | Safety net EF Core: sin `TenantContext` seteado, filtra por `Guid.Empty` (0 resultados) | `OnModelCreating` de los 14 `DbContext` | Fase 5 (§41.9) |
+| **3b — Resource ownership** | Solo el creador del recurso (o quien tenga el permiso `*.manage` override, o PlatformAdmin) puede operar sobre él | `IsOwnerOrHasManageHandler<TResource>` | Fase 4 (§41.8) |
+| **Guard — `ActorTypeRoleGuard`** | Al crear/asignar roles, rechaza si algún permiso queda fuera del `AllowedActorTypes` del actor type destino | `TaxVision.Auth.Application.Common` | Fase 3 |
+| **Guard — Session Denylist** | Revoca sesiones activas por `sid` en Redis, con lectura fail-open en los 14 servicios | `SessionDenylistMiddleware` | Fase 6 (§41.10) |
+| **Fitness function — NetArchTest** | Falla el build si una acción nueva queda sin `[AllowActorTypes]` | `*ArchitectureTests.cs`, CI | Preexistente |
+| **Observabilidad — `authz.decision`** | Counter OTel por capa (`1`/`2`/`3b`) y resultado (`allow`/`deny`) | `AuthorizationMetrics` (`BuildingBlocks.Web`) | Fase 10 (esta) |
+
+**Audit trail — verificado, no faltaba nada.** Los 7 handlers que el plan pedía revisar
+(`CreateRoleHandler`, `UpdateRoleHandler`, `SetRolePermissionsHandler`, `DeactivateRoleHandler`,
+`AssignUserRolesHandler`, `CreateInvitationHandler`, `AcceptInvitationHandler`) ya escriben a
+`AuthAuditLog` desde que se implementaron — confirmado leyendo el código real de
+`RoleCommands.cs`/`UserManagementCommands.cs`/`CreateInvitation.cs`/`AcceptInvitation.cs`, no
+asumido. `DeactivateUserHandler` (el "DisableUserHandler" del plan) también audita. `AuthAuditLog`
+es una tabla propia de Auth (`TenantEntity`, append-only) — las operaciones cross-tenant de
+PlatformAdmin en OTROS servicios (Subscription Suspend/Reactivate/Renew, Postmaster
+`UpsertSystemProvider`) no escriben ahí porque son bounded contexts separados con su propia DB;
+quedan cubiertas por la Capa 2 (`[AllowActorTypes(PlatformAdmin)]`) + el nuevo counter
+`authz.decision` (deny visible si algo intenta saltárselas).
+
+**Observabilidad — `AuthorizationMetrics` (`BuildingBlocks.Web.ActorTypeAuthorization`).** Meter
+`TaxVision.Authorization` con un único `Counter<int> authz.decision`, tags `result`
+(`allow`/`deny`) y `layer` (`"1"`, `"2"`, `"3b"`) — sin tag `service`: ya lo aporta el resource
+attribute `service.name` que cada servicio setea en `ConfigureResource(...)`, así que un `by
+(service, layer)` en Grafana/Prometheus funciona sin agregar cardinalidad extra a la métrica.
+Registrado como singleton dentro de `AddActorTypeAuthorization()` (ya la llaman los 14 servicios,
+cero wiring nuevo por servicio) y exportado incondicionalmente en `AddTaxVisionOpenTelemetry`
+(Layer 1/2 corren siempre, a diferencia de un `ConnectorsMetrics`/`GrowthMetrics` opt-in). Se
+instrumentó `PermissionPolicyProvider` (layer 1, dentro del `RequireAssertion`), 
+`ActorTypeAuthorizationFilter` (layer 2, en ambos branches del `OnAuthorization`) e
+`IsOwnerOrHasManageHandler<TResource>` (layer 3b, las 3 rutas de éxito + el fallo implícito). No
+se instrumentó la Capa 3a (`HasQueryFilter`) — un filtro EF Core que devuelve 0 rows no tiene un
+punto de decisión "allow/deny" explícito que interceptar sin reescribir el propio filtro.
+
+**Limpieza de chequeos defensivos `IsPlatformAdmin()` inline** — grep completo de
+`User.IsPlatformAdmin()`/`User.IsInRole("PlatformAdmin")` en los 14 servicios:
+- Los 2 que el plan citaba explícito (`SignatureAdminController.UpdateConstraints`,
+  `Postmaster.ProvidersController.UpsertSystemProvider`) **ya estaban eliminados desde RBAC Fase
+  2** — confirmado, cero trabajo ahí.
+- Encontrado y corregido un comentario **desactualizado** en `PermissionCatalog.cs` (línea ~128)
+  que seguía describiendo el chequeo inline de `ProvidersController` como si existiera — lo
+  eliminó Fase 2 pero el comentario no se había actualizado hasta ahora.
+- Quedan 19 usos en 6 controllers (Scribe `EmailTemplatesController`/`EmailLayoutsController`/
+  `EventTemplateMappingsController`, Notification `EmailTemplatesController`/
+  `EmailLayoutsController`/`EmailConfigurationsController`) — **todos legítimos, no son el atajo
+  que el plan audita**: `User.IsPlatformAdmin()` se pasa como dato al command/query para que el
+  handler de Application resuelva si el actor puede escribir en `Scope.System` (ej.
+  `CreateEmailTemplateHandler`: `if (scope == System && !isPlatformAdmin) return Forbid`) — nunca
+  es un `if (!User.IsPlatformAdmin()) return Forbid()` inline en el controller. Se documentó con
+  un comentario de clase en cada uno de los 6 archivos explicando por qué se mantienen (regla §5
+  del plan: "todo chequeo defensivo que se mantenga debe tener comentario").
+
+**Postman** — verificado, no se tocó nada: los tests negativos por actor type que pedía esta fase
+ya los agregó Fase 7.3 del plan ActorType (§41.4), antes de que empezara este plan RBAC.
+
+**MEMORY.md** — actualizado con una entrada por fase completada (ya venía así desde Fase 1, este
+cierre solo agrega la entrada de Fase 10).
+
+**Tests nuevos**: `AuthorizationMetricsTests` (el counter suma en `allow`/`deny` con los tags
+correctos para los 3 layers) + extensión de `IsOwnerOrHasManageHandlerTests`/
+`PermissionsSourceTests` existentes para no duplicar fixture de autorización.
+
+**Riesgo**: 🟢 Bajo — observabilidad pura (no cambia ningún resultado de autorización) + comentarios
++ un fix de comentario stale. Cero cambios de comportamiento, cero migraciones.
+
+**Rollback**: revertir el commit. Sin impacto en DB ni en JWT ni en el resultado de ninguna
+decisión de autorización — el counter es un side-effect observacional.
+
+---
+
+**Cierre del plan RBAC_Hardening_Plan.md (10 fases).** Las 10 fases quedan completas: Fase 1 (bug
+crítico Customer), Fase 2 (`IsDangerous`/god-role), Fase 3 (`ActorTypeRoleGuard` en Create/Set
+Role), Fase 4 (resource ownership, §41.8), Fase 5 (tenant boundary EF, §41.9), Fase 6 (session
+denylist, §41.10), Fase 7 (`perm_v`/proyección, §41.11), Fase 8 (migración `Roles=`→`HasPermission`
+en Subscription/Auth/Tenant, §41.12), Fase 9 (consolidación de 14 helpers duplicados en
+`ControllerIdentityExtensions`, sin sección propia — cambio interno sin superficie visible), Fase
+10 (esta — observabilidad + audit trail + docs). El mecanismo de autorización de TaxVision queda
+con 4 capas independientes (permiso, actor type, tenant boundary, resource ownership) + 2 guards
+(role-assignment, session revoke) + fitness functions de CI + observabilidad — sin ningún rediseño
+del modelo `ActorType + Role + Permission + AllowedActorTypes` original (regla de oro #1 del plan,
+respetada en las 10 fases).

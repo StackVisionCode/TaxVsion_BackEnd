@@ -1,5 +1,6 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,6 +11,8 @@ using TaxVision.Referrals.Application.Rewards.ConfirmReferralRewardClawback;
 using TaxVision.Referrals.Application.Rewards.ConfirmReferralRewardGrant;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
+using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
+using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 
@@ -20,6 +23,7 @@ namespace TaxVision.Growth.Api.Controllers;
 [ApiController]
 [Route("internal/referrals")]
 [Authorize]
+[AllowActorTypes(ActorType.Service)]
 public sealed class InternalReferralsController(IMessageBus bus) : ControllerBase
 {
     public sealed record QualifyReferralRequest(
@@ -46,7 +50,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetServiceActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<QualifyReferralResult>>(
@@ -79,7 +83,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetServiceActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -107,7 +111,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         CancellationToken ct
     )
     {
-        if (!TryGetServiceActor(out var tenantId, out var actorId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -123,12 +127,6 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         );
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
-
-    private bool TryGetServiceActor(out Guid tenantId, out Guid actorId)
-    {
-        actorId = Guid.Empty;
-        return User.TryGetTenantId(out tenantId) && User.TryGetUserId(out actorId);
     }
 
     private IActionResult ToActionResult<T>(Result<T> result) =>

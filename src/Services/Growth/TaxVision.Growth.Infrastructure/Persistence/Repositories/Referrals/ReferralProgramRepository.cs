@@ -15,10 +15,9 @@ public sealed class ReferralProgramRepository(GrowthDbContext dbContext, ITenant
     ) =>
         programId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
             ? Task.FromResult<ReferralProgram?>(null)
-            : dbContext.ReferralPrograms.FirstOrDefaultAsync(
-                program => program.Id == programId && program.TenantId == ownerTenantId,
-                ct
-            );
+            : dbContext
+                .ReferralPrograms.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(program => program.Id == programId && program.TenantId == ownerTenantId, ct);
 
     public Task<ReferralProgram?> GetForEvaluationAsync(Guid programId, CancellationToken ct = default)
     {

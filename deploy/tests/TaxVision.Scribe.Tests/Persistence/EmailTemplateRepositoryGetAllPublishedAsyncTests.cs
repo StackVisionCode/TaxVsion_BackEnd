@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.Templates;
@@ -14,8 +15,21 @@ namespace TaxVision.Scribe.Tests.Persistence;
 /// </summary>
 public sealed class EmailTemplateRepositoryGetAllPublishedAsyncTests
 {
+    // NoTenantContext: el único método bajo prueba acá, GetAllPublishedAsync, usa
+    // IgnoreQueryFilters() (job cross-tenant, RBAC Fase 5) — el filtro global nunca entra en juego.
+    private sealed class NoTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
+    }
+
     private static ScribeDbContext BuildContext() =>
-        new(new DbContextOptionsBuilder<ScribeDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        new(
+            new DbContextOptionsBuilder<ScribeDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            new NoTenantContext()
+        );
 
     private static EmailTemplate BuildTemplateWithVersions(string keyValue, params EmailVersionStatus[] statuses)
     {

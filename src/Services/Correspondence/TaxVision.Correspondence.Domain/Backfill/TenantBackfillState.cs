@@ -1,3 +1,5 @@
+using BuildingBlocks.Domain;
+
 namespace TaxVision.Correspondence.Domain.Backfill;
 
 /// <summary>
@@ -7,12 +9,15 @@ namespace TaxVision.Correspondence.Domain.Backfill;
 /// CustomerEvents/). La presencia de esta fila para un TenantId es la señal de "no volver a
 /// pedirle a Customer.Api la lista completa de clientes de este tenant".
 /// </summary>
-public sealed class TenantBackfillState
+public sealed class TenantBackfillState : ITenantOwned
 {
     private TenantBackfillState() { }
 
     public Guid TenantId { get; private set; }
     public DateTime CompletedAtUtc { get; private set; }
+
+    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public static TenantBackfillState Create(Guid tenantId)
     {

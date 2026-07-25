@@ -40,7 +40,9 @@ public sealed class ListThreadMessagesHandlerTests
     private static Draft NewSentReplyDraft(Guid tenantId, Guid customerId, Guid emailThreadId, string toAddress)
     {
         var replyContext = ReplyContext.Create(Guid.NewGuid(), emailThreadId, null, null, null).Value;
-        var draft = Draft.CreateReply(tenantId, customerId, Guid.NewGuid(), replyContext, "Original subject").Value;
+        var draft = Draft
+            .CreateReply(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid(), replyContext, "Original subject")
+            .Value;
         draft.AutoSave(
             "Re: Original subject",
             "<p>Reply body</p>",
@@ -222,11 +224,15 @@ public sealed class ListThreadMessagesHandlerTests
         var drafts = new FakeDraftRepository();
 
         var replyContext = ReplyContext.Create(Guid.NewGuid(), thread.Id, null, null, null).Value;
-        var openDraft = Draft.CreateReply(tenantId, customerId, Guid.NewGuid(), replyContext, "Subject").Value;
+        var openDraft = Draft
+            .CreateReply(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid(), replyContext, "Subject")
+            .Value;
         await drafts.AddAsync(openDraft);
 
         var failedReplyContext = ReplyContext.Create(Guid.NewGuid(), thread.Id, null, null, null).Value;
-        var failedDraft = Draft.CreateReply(tenantId, customerId, Guid.NewGuid(), failedReplyContext, "Subject").Value;
+        var failedDraft = Draft
+            .CreateReply(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid(), failedReplyContext, "Subject")
+            .Value;
         failedDraft.MarkSending();
         failedDraft.MarkFailed("Postmaster timeout");
         await drafts.AddAsync(failedDraft);

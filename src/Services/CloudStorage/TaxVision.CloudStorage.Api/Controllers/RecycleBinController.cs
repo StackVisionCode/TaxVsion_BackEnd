@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
@@ -19,7 +20,8 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("storage/recycle-bin")]
-[Authorize(Policy = CloudStoragePermissions.RecycleBinManage)]
+[HasPermission(CloudStoragePermissions.RecycleBinManage)]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
 {
     [HttpGet]

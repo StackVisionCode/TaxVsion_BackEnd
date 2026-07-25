@@ -11,7 +11,7 @@ namespace TaxVision.Scribe.Domain.EventMappings;
 /// significa borrar y recrear el mapping, no editarlo. Solo el contenido (a qué TemplateKey apunta,
 /// prioridad, habilitado) es mutable vía <see cref="Rebind"/>.
 /// </summary>
-public sealed class EventTemplateMapping : BaseEntity
+public sealed class EventTemplateMapping : BaseEntity, INullableTenantOwned
 {
     private EventTemplateMapping() { }
 

@@ -30,6 +30,7 @@ public static class ExpireReservationHandler
 
         var fingerprint = OperationFingerprint.Create(command.TenantId, command.ReservationId);
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             "Codes.ExpireReservation.v1",
             command.ReservationId,
             keyResult.Value,

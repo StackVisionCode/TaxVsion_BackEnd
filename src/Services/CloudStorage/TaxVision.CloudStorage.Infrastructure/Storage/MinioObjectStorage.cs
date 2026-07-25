@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Minio;
@@ -10,7 +11,8 @@ using TaxVision.CloudStorage.Application.Configuration;
 
 namespace TaxVision.CloudStorage.Infrastructure.Storage;
 
-public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
+public sealed class MinioObjectStorage(IMinioClient client, [FromKeyedServices("public")] IMinioClient publicClient)
+    : IObjectStorage
 {
     public async Task<PresignedUpload> CreateUploadPolicyAsync(
         string bucket,
@@ -34,7 +36,9 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
         const long multipartOverheadBytes = 64 * 1024;
         policy.SetContentRange(exactSizeBytes, checked(exactSizeBytes + multipartOverheadBytes));
 
-        var (url, formData) = await client.PresignedPostPolicyAsync(policy);
+        // URL presignada -> debe apuntar al dominio publico que el navegador puede
+        // alcanzar directo, no a la red interna de Docker.
+        var (url, formData) = await publicClient.PresignedPostPolicyAsync(policy);
 
         // El SDK de MinIO agrega la condicion Content-Type al policy firmado (SetContentType
         // arriba) pero NO devuelve ese campo en formData — solo los campos de firma
@@ -51,7 +55,7 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
     public async Task<Uri> PresignGetAsync(string bucket, string objectKey, TimeSpan lifetime, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var url = await client.PresignedGetObjectAsync(
+        var url = await publicClient.PresignedGetObjectAsync(
             new PresignedGetObjectArgs().WithBucket(bucket).WithObject(objectKey).WithExpiry((int)lifetime.TotalSeconds)
         );
         return new Uri(url);
@@ -66,7 +70,7 @@ public sealed class MinioObjectStorage(IMinioClient client) : IObjectStorage
     )
     {
         ct.ThrowIfCancellationRequested();
-        var url = await client.PresignedGetObjectAsync(
+        var url = await publicClient.PresignedGetObjectAsync(
             new PresignedGetObjectArgs()
                 .WithBucket(bucket)
                 .WithObject(objectKey)

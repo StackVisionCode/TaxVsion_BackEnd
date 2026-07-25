@@ -50,6 +50,7 @@ public static class CompensateRedemptionHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             "Codes.CompensateRedemption.v1",
             command.RedemptionId,
             keyResult.Value,

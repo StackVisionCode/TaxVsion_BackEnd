@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -12,7 +13,6 @@ using TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 using TaxVision.PaymentClient.Infrastructure.Providers;
 using TaxVision.PaymentClient.Infrastructure.Providers.Stripe;
 using TaxVision.PaymentClient.Infrastructure.Scheduling;
-using TaxVision.PaymentClient.Infrastructure.Security;
 
 namespace TaxVision.PaymentClient.Infrastructure;
 
@@ -35,7 +35,8 @@ public static class DependencyInjection
         services.AddScoped<ITenantRegistry, TenantRegistry>();
         services.AddScoped<IPaymentAuditLogWriter, PaymentAuditLogWriter>();
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
-        services.AddScoped<ISessionDenylistReader, SessionDenylistReader>();
+        // RBAC Fase 6 — ISessionDenylistReader se registra en Program.cs (AddSessionDenylist vive en
+        // BuildingBlocks.Web, capa que Infrastructure no debe referenciar).
         services.AddScoped<IPaymentLinkRepository, PaymentLinkRepository>();
         services.AddScoped<ITenantConnectAccountRepository, TenantConnectAccountRepository>();
         services.AddScoped<IPayoutScheduleRepository, PayoutScheduleRepository>();
@@ -54,6 +55,19 @@ public static class DependencyInjection
 
         services.AddSingleton<IPaymentClientMetrics, PaymentClientMetrics>();
 
+        // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
+        // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
+        // instancia scoped satisface el puerto local rico (para los consumers) y el puerto
+        // compartido y angosto de BuildingBlocks (para la autorizacion), evitando dos lecturas
+        // separadas del mismo dato.
+        services.AddScoped<UserPermissionsProjectionRepository>();
+        services.AddScoped<IUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
         return services;
     }
 }

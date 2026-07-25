@@ -57,6 +57,21 @@ public static class CustomerUpdatedConsumer
         var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
         if (existing is null)
         {
+            // Mismo riesgo de colisión que CustomerCreatedConsumer: IX_CustomerEmailAddresses_TenantId_EmailAddress_Active
+            // es única por email activo dentro del tenant.
+            var emailOwner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
+            if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
+            {
+                logger.LogWarning(
+                    "CustomerUpdated event {EventId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping back-create.",
+                    evt.EventId,
+                    email.NormalizedValue,
+                    evt.CustomerId,
+                    emailOwner.CustomerId
+                );
+                return;
+            }
+
             var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email);
             await repository.AddAsync(projection, ct);
             logger.LogInformation(
@@ -64,6 +79,22 @@ public static class CustomerUpdatedConsumer
                 evt.CustomerId
             );
             return;
+        }
+
+        if (existing.EmailAddress != email.NormalizedValue)
+        {
+            var emailOwner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
+            if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
+            {
+                logger.LogWarning(
+                    "CustomerUpdated event {EventId}: new email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping email sync.",
+                    evt.EventId,
+                    email.NormalizedValue,
+                    evt.CustomerId,
+                    emailOwner.CustomerId
+                );
+                return;
+            }
         }
 
         existing.UpdateEmail(email);

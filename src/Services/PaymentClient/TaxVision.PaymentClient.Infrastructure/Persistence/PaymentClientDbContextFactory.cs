@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -17,6 +18,15 @@ public sealed class PaymentClientDbContextFactory : IDesignTimeDbContextFactory<
 
         var options = new DbContextOptionsBuilder<PaymentClientDbContext>().UseSqlServer(connectionString).Options;
 
-        return new PaymentClientDbContext(options);
+        // dotnet-ef solo inspecciona el modelo, nunca ejecuta una query real.
+        return new PaymentClientDbContext(options, new DesignTimeOnlyTenantContext());
+    }
+
+    private sealed class DesignTimeOnlyTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

@@ -6,9 +6,13 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Repositories;
 
 public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatureRequestRepository
 {
+    // Bug real de producción (RBAC/Wolverine scope, ver LocalCommandTenantMiddleware.cs): tenantId
+    // ya viene explícito y validado desde el caller — IgnoreQueryFilters() porque el filtro
+    // ambiental global puede no estar poblado en el scope de DI del handler de Wolverine.
     public Task<SignatureRequest?> GetByIdAsync(Guid tenantId, Guid requestId, CancellationToken ct = default) =>
         db
-            .SignatureRequests.Include(request => request.Signers)
+            .SignatureRequests.IgnoreQueryFilters()
+            .Include(request => request.Signers)
                 .ThenInclude(signer => signer.Fields)
             .Include(request => request.Signers)
                 .ThenInclude(signer => signer.Challenges)
@@ -20,7 +24,8 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         CancellationToken ct = default
     ) =>
         await db
-            .SignatureRequests.Where(r =>
+            .SignatureRequests.IgnoreQueryFilters()
+            .Where(r =>
                 r.TenantId == tenantId && r.OriginalFileId == fileId && r.Status == SignatureRequestStatus.Draft
             )
             .ToListAsync(ct);

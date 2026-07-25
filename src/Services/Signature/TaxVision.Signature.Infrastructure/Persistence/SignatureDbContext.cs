@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Signature.Domain.Analytics;
 using TaxVision.Signature.Domain.Audit;
 using TaxVision.Signature.Domain.Consents;
+using TaxVision.Signature.Domain.Permissions;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Settings;
@@ -51,12 +52,32 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
 
+    // RBAC Fase 7 — proyección de AUTORIZACIÓN (perm_v enforcement), distinta de
+    // UserPermissionsProjection de arriba (esa es de auditoría, ver docblock de
+    // AuthzUserPermissionsProjection).
+    public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections =>
+        Set<AuthzUserPermissionsProjection>();
+
+    public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
+        Set<AuthzRolePermissionsProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         ApplyGlobalTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }
+
+    // RBAC Fase 5 fix (RBAC_Hardening_Plan.md) — bug real descubierto al escribir el mismo
+    // mecanismo para Auth: EF Core cachea el modelo compilado POR TIPO de DbContext, no por
+    // instancia. El filtro original cerraba sobre `tenantContext` (el servicio inyectado vía
+    // constructor) con Expression.Constant — eso queda CONGELADO con el valor del PRIMER
+    // SignatureDbContext jamás construido en el proceso; toda request siguiente (con su propio
+    // ITenantContext scoped-per-request) seguiría leyendo ESE tenant viejo para siempre. Cerrar
+    // sobre `this` (la propia instancia de DbContext) sí se reevalúa por-instancia — EF Core
+    // reconoce ese patrón como parámetro, no como constante congelada.
+    private bool HasTenant => tenantContext.HasTenant;
+    private Guid CurrentTenantId => tenantContext.TenantId;
 
     // ------------------------------------------------------------------
     // Multi-tenant safety net: HasQueryFilter en TODAS las entidades que heredan
@@ -71,6 +92,11 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     // ------------------------------------------------------------------
     private void ApplyGlobalTenantFilter(ModelBuilder modelBuilder)
     {
+        var contextConstant = Expression.Constant(this);
+        var currentTenantAccess = Expression.Property(contextConstant, nameof(CurrentTenantId));
+        var hasTenantAccess = Expression.Property(contextConstant, nameof(HasTenant));
+        var noTenantSet = Expression.Not(hasTenantAccess);
+
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {
             if (!typeof(ITenantOwned).IsAssignableFrom(entity.ClrType))
@@ -79,20 +105,8 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
             var parameter = Expression.Parameter(entity.ClrType, "e");
             var tenantProperty = Expression.Property(parameter, nameof(ITenantOwned.TenantId));
 
-            // e.TenantId == tenantContext.TenantId
-            var currentTenantAccess = Expression.Property(
-                Expression.Constant(tenantContext),
-                nameof(ITenantContext.TenantId)
-            );
+            // !HasTenant || e.TenantId == CurrentTenantId
             var equalsCurrent = Expression.Equal(tenantProperty, currentTenantAccess);
-
-            // !tenantContext.HasTenant
-            var hasTenantAccess = Expression.Property(
-                Expression.Constant(tenantContext),
-                nameof(ITenantContext.HasTenant)
-            );
-            var noTenantSet = Expression.Not(hasTenantAccess);
-
             var body = Expression.OrElse(noTenantSet, equalsCurrent);
             var lambda = Expression.Lambda(body, parameter);
 

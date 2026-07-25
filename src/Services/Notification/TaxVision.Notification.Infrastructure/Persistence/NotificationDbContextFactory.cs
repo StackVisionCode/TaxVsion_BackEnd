@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -19,6 +20,15 @@ public sealed class NotificationDbContextFactory : IDesignTimeDbContextFactory<N
 
         var options = new DbContextOptionsBuilder<NotificationDbContext>().UseSqlServer(connectionString).Options;
 
-        return new NotificationDbContext(options);
+        // dotnet-ef solo inspecciona el modelo, nunca ejecuta una query real.
+        return new NotificationDbContext(options, new DesignTimeOnlyTenantContext());
+    }
+
+    private sealed class DesignTimeOnlyTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

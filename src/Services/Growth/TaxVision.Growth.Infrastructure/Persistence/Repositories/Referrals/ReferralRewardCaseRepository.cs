@@ -67,6 +67,7 @@ public sealed class ReferralRewardCaseRepository(GrowthDbContext dbContext, ITen
         requiredId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
             ? Task.FromResult<ReferralRewardCase?>(null)
             : dbContext
-                .ReferralRewardCases.Where(rewardCase => rewardCase.TenantId == ownerTenantId)
+                .ReferralRewardCases.IgnoreQueryFilters()
+                .Where(rewardCase => rewardCase.TenantId == ownerTenantId)
                 .FirstOrDefaultAsync(predicate, ct);
 }

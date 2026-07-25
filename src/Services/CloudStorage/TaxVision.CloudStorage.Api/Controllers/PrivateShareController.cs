@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.CloudStorage.Api.Common;
@@ -10,10 +11,13 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 /// Fase C3 — endpoint PRIVADO de resolucion de token: requiere [Authorize] y el
 /// token no alcanza por si solo. Fail-closed: tenant del JWT debe coincidir con
 /// el tenant del link (ver ResolvePrivateShareHandler) aunque el token sea valido.
+/// Cualquier actor autenticado (staff o CustomerPortal) puede resolver un link que
+/// le compartieron — el scope real lo acota ResolvePrivateShareHandler, no esta capa.
 /// </summary>
 [ApiController]
 [Route("storage")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.CustomerPortal)]
 public sealed class PrivateShareController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Fase C4 — fileId es obligatorio cuando el token es de un link de tipo Folder (ver FolderShareCoverage).</summary>

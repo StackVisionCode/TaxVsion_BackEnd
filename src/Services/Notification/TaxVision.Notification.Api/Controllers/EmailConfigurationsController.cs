@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Notification.Api.Authorization;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Application.Email.Configurations;
 using TaxVision.Notification.Application.Email.Configurations.Commands;
@@ -17,21 +17,23 @@ namespace TaxVision.Notification.Api.Controllers;
 /// Gestión de configuraciones de proveedor de correo (SMTP/API), globales (System) o por tenant.
 /// El <c>tenant_id</c> se toma del JWT; el scope System solo lo gestiona PlatformAdmin.
 /// Los secretos nunca se devuelven (solo flags Has*).
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización que salte validaciones).
 /// </summary>
 /// <remarks>
-/// NO retirado en la Fase 21 del plan de hardening (Notification, 2026-07-18), que flippeó
-/// <c>Notification:UsePostmasterDispatch</c> a <c>true</c> por default: con el flag en rollback
-/// (<c>false</c>) esto sigue siendo la única fuente real de configuración SMTP que
-/// <c>EmailDeliveryService</c> resuelve para enviar. Con el default (<c>true</c>), Postmaster resuelve su
-/// propio <c>TenantEmailProvider</c>/<c>SystemEmailProvider</c> en vez de esto — la migración de datos de
-/// las filas existentes hacia ese lado sigue siendo un prerrequisito operacional pendiente (ver Fase 21
-/// del plan, nota sobre verificación en producción). <c>POST .../{id}/test</c> además no pasa nunca por
-/// <c>EmailDeliveryService</c> (invoca <c>ISmtpSendClient</c> directo desde el command), así que seguirá
-/// siendo necesario mientras exista un botón de "probar SMTP" en este controller, con o sin flag.
+/// No se retira aunque <c>Notification:UsePostmasterDispatch</c> tenga default <c>true</c>: con el
+/// flag en rollback (<c>false</c>) esto sigue siendo la única fuente real de configuración SMTP que
+/// <c>EmailDeliveryService</c> resuelve para enviar. Con el default, Postmaster resuelve su propio
+/// <c>TenantEmailProvider</c>/<c>SystemEmailProvider</c> en vez de esto — la migración de datos de las
+/// filas existentes hacia ese lado sigue siendo un prerrequisito operacional pendiente.
+/// <c>POST .../{id}/test</c> además no pasa nunca por <c>EmailDeliveryService</c> (invoca
+/// <c>ISmtpSendClient</c> directo desde el command), así que seguirá siendo necesario mientras exista
+/// un botón de "probar SMTP" en este controller, con o sin flag.
 /// </remarks>
 [ApiController]
 [Route("notifications/email/configurations")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEmailConfigurationRequest(

@@ -12,8 +12,8 @@ using Wolverine;
 namespace TaxVision.CloudStorage.Application.Folders;
 
 /// <summary>
-/// Fase C2 — crea una carpeta navegable (arbol logico, no toca MinIO). Category (2026-07-20,
-/// ver FolderCategory.cs) es opcional: cuando viene informado, esta misma llamada tiene
+/// Fase C2 — crea una carpeta navegable (arbol logico, no toca MinIO). Category (ver
+/// FolderCategory.cs) es opcional: cuando viene informado, esta misma llamada tiene
 /// semantica get-or-create — dos interfaces distintas pidiendo la carpeta ancla de un mismo
 /// dueno con la misma Category siempre convergen al mismo Folder, nunca duplican.
 /// </summary>
@@ -107,7 +107,7 @@ public static class CreateFolderHandler
     }
 
     /// <summary>
-    /// 2026-07-20 — cuando command.Category viene informado, el indice unico filtrado
+    /// Cuando command.Category viene informado, el indice unico filtrado
     /// IX_Folders_Owner_Category (FolderConfiguration) respalda una carrera real: si dos
     /// requests concurrentes (dos interfaces distintas pidiendo la carpeta ancla del mismo
     /// dueno) pasan el pre-check de arriba y ambas intentan insertar, la segunda choca con
@@ -497,7 +497,7 @@ public static class MoveFileToFolderHandler
 }
 
 /// <summary>
-/// 2026-07-20 — borra una carpeta navegable. Decision explicita del usuario (no cascada,
+/// Borra una carpeta navegable. Decision explicita del usuario (no cascada,
 /// no mover a la raiz): rechaza con FolderErrors.NotEmpty si tiene subfolders o archivos
 /// directos — el llamador debe vaciarla primero. Mas simple y seguro que una cascada
 /// oculta de un solo click; los archivos ya tienen su propia papelera (Fase C1,

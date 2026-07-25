@@ -1,4 +1,5 @@
 using System.Text;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -8,6 +9,8 @@ using TaxVision.Growth.Infrastructure.Idempotency;
 using TaxVision.Growth.Infrastructure.Observability;
 using TaxVision.Growth.Infrastructure.Payments;
 using TaxVision.Growth.Infrastructure.Persistence;
+using TaxVision.Growth.Infrastructure.Persistence.Permissions.Abstractions;
+using TaxVision.Growth.Infrastructure.Persistence.Permissions.Repositories;
 using TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 using TaxVision.Growth.Infrastructure.Persistence.Repositories.Referrals;
 using TaxVision.Growth.Infrastructure.Security;
@@ -52,6 +55,20 @@ public static class DependencyInjection
         services.AddScoped<IReferralRewardQuota, SqlReferralRewardQuota>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<GrowthMetrics>();
+
+        // RBAC Fase 7/8 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
+        // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
+        // instancia scoped satisface el puerto local rico (para los consumers) y el puerto
+        // compartido y angosto de BuildingBlocks (para la autorizacion), evitando dos lecturas
+        // separadas del mismo dato. Mismo patron que CloudStorage.
+        services.AddScoped<UserPermissionsProjectionRepository>();
+        services.AddScoped<IUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
         services
             .AddOptions<CodeTokenHashingOptions>()

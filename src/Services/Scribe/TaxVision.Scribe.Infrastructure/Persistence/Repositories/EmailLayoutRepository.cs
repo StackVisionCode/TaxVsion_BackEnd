@@ -7,10 +7,16 @@ namespace TaxVision.Scribe.Infrastructure.Persistence.Repositories;
 
 public sealed class EmailLayoutRepository(ScribeDbContext dbContext) : IEmailLayoutRepository
 {
+    // IgnoreQueryFilters: mismo patrón que EmailTemplateRepository.GetByIdAsync — llamado desde
+    // handlers de Wolverine (bus.InvokeAsync) donde el ITenantContext ambiente puede llegar
+    // vacío, y EmailLayout es INullableTenantOwned (System-or-Tenant). Todos los llamadores
+    // (Add/Publish EmailLayoutVersion) validan post-fetch vía AuthorizeWrite(layout.TenantId,
+    // command.TenantId, ...) — el filtro ambiental era redundante con esa guarda.
     public async Task<Result<EmailLayout>> GetByIdAsync(Guid layoutId, CancellationToken ct = default)
     {
         var layout = await dbContext
-            .EmailLayouts.Include(l => l.Versions)
+            .EmailLayouts.IgnoreQueryFilters()
+            .Include(l => l.Versions)
             .FirstOrDefaultAsync(l => l.Id == layoutId, ct);
 
         return layout is null

@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -59,6 +60,12 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("password/change")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken ct)
     {
@@ -77,6 +84,12 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("me/email/change-request")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> RequestEmailChange(RequestEmailChangeRequest request, CancellationToken ct)
     {
@@ -102,6 +115,12 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("me/phone/change-request")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> RequestPhoneVerification(
         RequestPhoneVerificationRequest request,
@@ -123,6 +142,12 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("me/phone/confirm")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ConfirmPhoneVerification(ConfirmPhoneRequest request, CancellationToken ct)
     {

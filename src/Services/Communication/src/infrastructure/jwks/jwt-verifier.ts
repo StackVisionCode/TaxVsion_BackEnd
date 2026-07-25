@@ -58,7 +58,7 @@ export async function verifyAccessToken(token: string): Promise<AuthenticatedPri
 
   const userId = extractString(payload, 'sub');
   const tenantId = extractString(payload, 'tenant_id');
-  const actorType = extractString(payload, 'actor_type', 'TenantEmployee');
+  const actorType = extractString(payload, 'actor_type');
   const permissions = extractStringArray(payload, 'perm');
   const permissionVersion = extractNumber(payload, 'perm_v', 1);
 

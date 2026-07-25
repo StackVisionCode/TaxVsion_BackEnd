@@ -1,3 +1,4 @@
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -42,6 +43,19 @@ public static class DependencyInjection
             ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
         );
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
+
+        // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- Subscription solo recibe la proyeccion de
+        // sincronizacion (sin wiring de enforcement: no usa [HasPermission]/PermissionPolicyProvider
+        // todavia, eso es Fase 8). Se construye ahora para que ya este al dia cuando esa fase active
+        // el mecanismo.
+        services.AddScoped<UserPermissionsProjectionRepository>();
+        services.AddScoped<IUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
         // Fase 4 Referidos (2026-07-21) — M2M contra Growth para reservar el descuento de
         // bienvenida del referido antes de la primera activación. Mismo patrón que

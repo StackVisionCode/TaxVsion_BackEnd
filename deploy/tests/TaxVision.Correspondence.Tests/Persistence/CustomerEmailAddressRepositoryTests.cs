@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;
@@ -8,18 +9,35 @@ namespace TaxVision.Correspondence.Tests.Persistence;
 
 public sealed class CustomerEmailAddressRepositoryTests
 {
-    private static CorrespondenceDbContext CreateContext() =>
+    // RBAC Fase 5 — CustomerEmailAddress ahora es ITenantOwned, así que el HasQueryFilter global
+    // entra en juego para estos repos (a diferencia de DraftRepositoryTests/
+    // TenantBackfillStateRepositoryTests, que solo ejercitan rutas IgnoreQueryFilters). Se setea
+    // al tenant "propio" de cada test antes de consultar, igual que haría
+    // JwtTenantContextMiddleware en producción.
+    private sealed class FakeTenantContext : ITenantContext
+    {
+        private Guid? _tenantId;
+        public Guid TenantId => _tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+        public bool HasTenant => _tenantId.HasValue;
+
+        public void SetTenant(Guid tenantId) => _tenantId = tenantId;
+    }
+
+    private static CorrespondenceDbContext CreateContext(ITenantContext tenantContext) =>
         new(
             new DbContextOptionsBuilder<CorrespondenceDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .Options
+                .Options,
+            tenantContext
         );
 
     [Fact]
     public async Task FindActiveByAddressAsync_ignores_soft_deleted_rows()
     {
-        await using var db = CreateContext();
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
         var repository = new CustomerEmailAddressRepository(db);
 
         var deleted = CustomerEmailAddress.Create(
@@ -39,9 +57,11 @@ public sealed class CustomerEmailAddressRepositoryTests
     [Fact]
     public async Task FindActiveByAddressAsync_returns_the_active_row_scoped_by_tenant()
     {
-        await using var db = CreateContext();
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
         var repository = new CustomerEmailAddressRepository(db);
 
         await repository.AddAsync(
@@ -61,7 +81,7 @@ public sealed class CustomerEmailAddressRepositoryTests
     [Fact]
     public async Task GetByCustomerIdAsync_returns_null_when_not_found()
     {
-        await using var db = CreateContext();
+        await using var db = CreateContext(new FakeTenantContext());
         var repository = new CustomerEmailAddressRepository(db);
 
         var found = await repository.GetByCustomerIdAsync(Guid.NewGuid(), Guid.NewGuid());

@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -11,6 +12,15 @@ public sealed class CloudStorageDbContextFactory : IDesignTimeDbContextFactory<C
             Environment.GetEnvironmentVariable("CLOUDSTORAGE_DB_CONNECTION")
             ?? "Server=localhost;Database=TaxVision_CloudStorage;Trusted_Connection=True;TrustServerCertificate=True";
         var options = new DbContextOptionsBuilder<CloudStorageDbContext>().UseSqlServer(connectionString).Options;
-        return new CloudStorageDbContext(options);
+        // dotnet-ef solo inspecciona el modelo, nunca ejecuta una query real.
+        return new CloudStorageDbContext(options, new DesignTimeOnlyTenantContext());
+    }
+
+    private sealed class DesignTimeOnlyTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

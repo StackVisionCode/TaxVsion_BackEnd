@@ -1,9 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Connectors.Api.Authorization;
-using TaxVision.Connectors.Api.Common;
 using TaxVision.Connectors.Api.Requests;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Watch;
@@ -21,6 +20,7 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpPost("accounts")]
     [HasPermission(ConnectorsPermissions.AccountsWrite)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     public async Task<IActionResult> Initiate([FromBody] InitiateOAuthConnectRequest body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
@@ -40,6 +40,7 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpPost("accounts/manual")]
     [HasPermission(ConnectorsPermissions.AccountsWrite)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     public async Task<IActionResult> ConnectManual([FromBody] ConnectManualAccountRequest body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
@@ -69,6 +70,7 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
 
     [HttpGet("accounts")]
     [HasPermission(ConnectorsPermissions.AccountsRead)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -83,6 +85,7 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
 
     [HttpGet("accounts/{id:guid}")]
     [HasPermission(ConnectorsPermissions.AccountsRead)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -102,6 +105,7 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpDelete("accounts/{id:guid}")]
     [HasPermission(ConnectorsPermissions.AccountsWrite)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     public async Task<IActionResult> Disconnect(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -118,6 +122,7 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpGet("accounts/admin-consent-url")]
     [HasPermission(ConnectorsPermissions.AccountsWrite)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     public async Task<IActionResult> AdminConsentUrl(CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
@@ -138,6 +143,7 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpPost("accounts/{id:guid}/reauth")]
     [HasPermission(ConnectorsPermissions.AccountsWrite)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     public async Task<IActionResult> Reauth(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))

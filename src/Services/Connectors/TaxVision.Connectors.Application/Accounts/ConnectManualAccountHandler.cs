@@ -12,10 +12,14 @@ namespace TaxVision.Connectors.Application.Accounts;
 
 /// <summary>
 /// Orquesta el flujo de conectar una cuenta manual (D3 Compose §8/§11.1) — la contraparte sin OAuth de
-/// <see cref="CompleteOAuthConnectHandler"/>. Reusa <c>SetupWatchCommand</c> para la transición
-/// Draft→Connected→Active: ese handler ya sabe que <c>ProviderCode.Imap</c> no tiene watch/subscription
-/// y activa la cuenta directo (ver <c>SetupWatchHandler</c>), así que no hace falta duplicar esa lógica
-/// acá — mismo camino que usa Gmail/Graph tras el callback de OAuth.
+/// <see cref="CompleteOAuthConnectHandler"/>. Reusa <see cref="WatchActivationService"/> para la
+/// transición Draft→Connected→Active: esa lógica ya sabe que <c>ProviderCode.Imap</c> no tiene
+/// watch/subscription y activa la cuenta directo, así que no hace falta duplicarla acá — mismo camino
+/// que usa Gmail/Graph tras el callback de OAuth.
+///
+/// Se llama en proceso (no vía <c>bus.InvokeAsync(new SetupWatchCommand(...))</c>) para compartir la
+/// MISMA transacción/DbContext que <see cref="PersistAsync"/> — ver el docblock de
+/// <see cref="WatchActivationService"/> para el bug real que este approach evita.
 /// </summary>
 public static class ConnectManualAccountHandler
 {
@@ -27,6 +31,8 @@ public static class ConnectManualAccountHandler
         IManualAccountConnectivityValidator connectivityValidator,
         IEncryptedSecretProtector protector,
         IProviderConnectionAuditLogRepository auditLogRepository,
+        IProviderWatchSubscriptionRepository watchSubscriptionRepository,
+        IWatchProviderClientFactory watchClientFactory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         CancellationToken ct
@@ -56,7 +62,15 @@ public static class ConnectManualAccountHandler
             ct
         );
 
-        var activateResult = await bus.InvokeAsync<Result>(new SetupWatchCommand(cmd.TenantId, account.Id), ct);
+        var activateResult = await WatchActivationService.ActivateAsync(
+            cmd.TenantId,
+            account.Id,
+            accountRepository,
+            watchSubscriptionRepository,
+            watchClientFactory,
+            unitOfWork,
+            ct
+        );
         if (activateResult.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(activateResult.Error);
 

@@ -16,7 +16,6 @@ public interface IAuthSessionIssuer
         User user,
         string effectiveTimeZoneId,
         IReadOnlyCollection<string> roles,
-        IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
         CancellationToken ct = default
@@ -29,7 +28,6 @@ public interface IAuthSessionIssuer
         User user,
         string effectiveTimeZoneId,
         IReadOnlyCollection<string> roles,
-        IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
         CancellationToken ct = default
     );

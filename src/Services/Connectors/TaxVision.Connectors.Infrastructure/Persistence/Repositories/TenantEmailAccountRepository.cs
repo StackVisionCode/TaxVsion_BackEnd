@@ -10,9 +10,15 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
     public async Task AddAsync(TenantEmailAccount account, CancellationToken ct = default) =>
         await dbContext.TenantEmailAccounts.AddAsync(account, ct);
 
+    // RBAC Fase 5 — deliberadamente cross-tenant (ver doc de la interfaz): background
+    // jobs/webhooks system-level no tienen tenant en contexto. IgnoreQueryFilters() explícito;
+    // los 2 call sites autenticados (GetTenantEmailAccountHandler/DisconnectAccountHandler) ya
+    // hacen su propio chequeo explícito account.TenantId == caller's tenantId después de esto.
     public async Task<Result<TenantEmailAccount>> GetByIdAsync(Guid accountId, CancellationToken ct = default)
     {
-        var account = await dbContext.TenantEmailAccounts.FirstOrDefaultAsync(a => a.Id == accountId, ct);
+        var account = await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.Id == accountId, ct);
         return account is null
             ? Result.Failure<TenantEmailAccount>(
                 new Error("TenantEmailAccount.NotFound", $"TenantEmailAccount {accountId} not found.")
@@ -26,7 +32,9 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
     )
     {
         var normalized = emailAddress.Trim().ToLowerInvariant();
-        var account = await dbContext.TenantEmailAccounts.FirstOrDefaultAsync(a => a.EmailAddress == normalized, ct);
+        var account = await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.EmailAddress == normalized, ct);
         return account is null
             ? Result.Failure<TenantEmailAccount>(
                 new Error("TenantEmailAccount.NotFound", $"TenantEmailAccount with email '{emailAddress}' not found.")
@@ -39,13 +47,15 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
         CancellationToken ct = default
     ) =>
         await dbContext
-            .TenantEmailAccounts.Where(a => a.TenantId == tenantId)
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId)
             .OrderBy(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<TenantEmailAccount>> ListActiveAsync(CancellationToken ct = default) =>
         await dbContext
-            .TenantEmailAccounts.Where(a => a.Status == TenantEmailAccountStatus.Active)
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .Where(a => a.Status == TenantEmailAccountStatus.Active)
             .OrderBy(a => a.Id)
             .ToListAsync(ct);
 }

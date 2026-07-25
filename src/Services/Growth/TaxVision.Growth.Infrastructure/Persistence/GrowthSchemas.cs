@@ -10,4 +10,8 @@ public static class GrowthSchemas
     public const string Referrals = "referrals";
     public const string Integration = "integration";
     public const string Audit = "audit";
+
+    /// <summary>RBAC Fase 7/8 — proyección local de permisos (UserPermissionsProjection /
+    /// RolePermissionsProjection), transversal a Codes y Referrals igual que Audit.</summary>
+    public const string Permissions = "permissions";
 }

@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry.Metrics;
@@ -43,7 +44,10 @@ public static class OpenTelemetryRegistration
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddMeter(serviceName);
+                    .AddMeter(serviceName)
+                    // RBAC Fase 10 — Layer 1/2/3b corren en los 14 servicios, así que este Meter
+                    // compartido de BuildingBlocks se exporta siempre (no opt-in vía additionalMeterNames).
+                    .AddMeter(AuthorizationMetrics.MeterName);
 
                 foreach (var meterName in additionalMeterNames)
                     metrics.AddMeter(meterName);

@@ -1,10 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Scribe.Api.Authorization;
-using TaxVision.Scribe.Api.Common;
 using TaxVision.Scribe.Application.EventMappings;
 using TaxVision.Scribe.Application.EventMappings.Commands;
 using TaxVision.Scribe.Application.EventMappings.Queries;
@@ -17,10 +16,13 @@ namespace TaxVision.Scribe.Api.Controllers;
 /// Reglas de resolución evento→template (ej. "auth.password_reset_requested.v1" → "auth.password_reset").
 /// EventKey/Scope/TenantId/Locale son la identidad de la regla; editar solo cambia a qué TemplateKey
 /// apunta, su prioridad o si está habilitada — no la identidad (borrar y recrear para eso).
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización) — ver nota en EmailTemplatesController.
 /// </summary>
 [ApiController]
 [Route("scribe/event-mappings")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EventTemplateMappingsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEventTemplateMappingRequest(

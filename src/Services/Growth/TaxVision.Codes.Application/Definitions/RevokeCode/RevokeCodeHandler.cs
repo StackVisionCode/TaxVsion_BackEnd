@@ -30,6 +30,7 @@ public static class RevokeCodeHandler
             command.ActorUserId
         );
         return await idempotency.ExecuteAsync(
+            command.OwnerTenantId,
             "Codes.RevokeCode.v1",
             command.CodeDefinitionId,
             keyResult.Value,

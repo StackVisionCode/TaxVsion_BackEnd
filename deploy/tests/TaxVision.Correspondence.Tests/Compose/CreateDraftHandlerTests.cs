@@ -16,7 +16,7 @@ public sealed class CreateDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await CreateDraftHandler.Handle(
-            new CreateDraftCommand(tenantId, customerId, accountId),
+            new CreateDraftCommand(tenantId, customerId, accountId, Guid.NewGuid()),
             drafts,
             unitOfWork,
             CancellationToken.None
@@ -42,7 +42,7 @@ public sealed class CreateDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await CreateDraftHandler.Handle(
-            new CreateDraftCommand(Guid.NewGuid(), Guid.Empty, Guid.NewGuid()),
+            new CreateDraftCommand(Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Guid.NewGuid()),
             drafts,
             unitOfWork,
             CancellationToken.None

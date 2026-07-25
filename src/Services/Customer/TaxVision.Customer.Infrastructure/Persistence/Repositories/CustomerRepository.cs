@@ -6,9 +6,15 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Repositories;
 
 public sealed class CustomerRepository(CustomerDbContext db) : ICustomerRepository
 {
+    // IgnoreQueryFilters(): mismo bug que UserRepository.GetByIdAsync (Auth) — corre en handlers
+    // de Wolverine (bus.InvokeAsync) donde el ITenantContext ambiente puede llegar vacío al scope
+    // de DI del handler, y este método toma solo Id puro (sin tenantId explícito). Es seguro:
+    // todos los ~24 llamadores validan post-fetch (customer.TenantId != cmd.TenantId) —
+    // Update/Deactivate/Archive/AssignPreparer/AddAddress/AddRelation/etc.
     public Task<DomainCustomer?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         db
-            .Customers.Include(c => c.Addresses)
+            .Customers.IgnoreQueryFilters()
+            .Include(c => c.Addresses)
             .Include(c => c.ContactPoints)
             .Include(c => c.Relations)
             .Include(c => c.FiscalProfile)
@@ -24,7 +30,10 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
         if (ids.Count == 0)
             return [];
 
-        return await db.Customers.Where(c => c.TenantId == tenantId && ids.Contains(c.Id)).ToListAsync(ct);
+        return await db
+            .Customers.IgnoreQueryFilters()
+            .Where(c => c.TenantId == tenantId && ids.Contains(c.Id))
+            .ToListAsync(ct);
     }
 
     public async Task<Guid?> FindCustomerIdByFiscalBlindIndexAsync(
@@ -35,7 +44,8 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
     )
     {
         var query = db
-            .CustomerFiscalProfiles.AsNoTracking()
+            .CustomerFiscalProfiles.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex);
 
         if (excludeCustomerId.HasValue)
@@ -52,7 +62,8 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
     )
     {
         var query = db
-            .CustomerRelationFiscalProfiles.AsNoTracking()
+            .CustomerRelationFiscalProfiles.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex);
 
         if (excludeRelationId.HasValue)

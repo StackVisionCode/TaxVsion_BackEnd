@@ -15,8 +15,12 @@ public sealed class ConsentEventRepository(SignatureDbContext db) : IConsentEven
         Guid signerId,
         CancellationToken ct = default
     ) =>
+        // Mismo bug de scope de Wolverine (ver LocalCommandTenantMiddleware.cs): tenantId ya viene
+        // explícito y validado — IgnoreQueryFilters() porque el filtro ambiental global puede no
+        // estar poblado en este scope de DI.
         db
             .ConsentEvents.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(c => c.TenantId == tenantId && c.SignatureRequestId == signatureRequestId && c.SignerId == signerId)
             .OrderByDescending(c => c.AcceptedAtUtc)
             .FirstOrDefaultAsync(ct);

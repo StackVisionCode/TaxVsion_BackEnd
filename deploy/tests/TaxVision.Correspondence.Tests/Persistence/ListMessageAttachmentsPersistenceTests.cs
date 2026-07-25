@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Application.Messages;
 using TaxVision.Correspondence.Domain.Inbox;
@@ -18,8 +19,22 @@ namespace TaxVision.Correspondence.Tests.Persistence;
 /// </summary>
 public sealed class ListMessageAttachmentsPersistenceTests
 {
-    private static CorrespondenceDbContext CreateContext(string databaseName) =>
-        new(new DbContextOptionsBuilder<CorrespondenceDbContext>().UseInMemoryDatabase(databaseName).Options);
+    // RBAC Fase 5 — EmailThread/IncomingEmail ahora son ITenantOwned; se setea el tenant "propio"
+    // del test antes de consultar, igual que haría JwtTenantContextMiddleware en producción.
+    private sealed class FakeTenantContext : ITenantContext
+    {
+        private Guid? _tenantId;
+        public Guid TenantId => _tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+        public bool HasTenant => _tenantId.HasValue;
+
+        public void SetTenant(Guid tenantId) => _tenantId = tenantId;
+    }
+
+    private static CorrespondenceDbContext CreateContext(string databaseName, ITenantContext tenantContext) =>
+        new(
+            new DbContextOptionsBuilder<CorrespondenceDbContext>().UseInMemoryDatabase(databaseName).Options,
+            tenantContext
+        );
 
     private static IncomingEmail NewIncomingEmailWithAttachments(Guid tenantId, Guid customerId, Guid emailThreadId) =>
         IncomingEmail
@@ -60,8 +75,10 @@ public sealed class ListMessageAttachmentsPersistenceTests
         var customerId = Guid.NewGuid();
         var emailId = Guid.Empty;
         var cloudStorageFileId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
 
-        await using (var db = CreateContext(databaseName))
+        await using (var db = CreateContext(databaseName, tenantContext))
         {
             var thread = EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, DateTime.UtcNow).Value;
             var email = NewIncomingEmailWithAttachments(tenantId, customerId, thread.Id);
@@ -86,7 +103,7 @@ public sealed class ListMessageAttachmentsPersistenceTests
             await db.SaveChangesAsync();
         }
 
-        await using var reloadDb = CreateContext(databaseName);
+        await using var reloadDb = CreateContext(databaseName, tenantContext);
         var repository = new IncomingEmailRepository(reloadDb);
 
         var result = await ListMessageAttachmentsHandler.Handle(

@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
@@ -21,13 +22,19 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 public sealed class FoldersController(IMessageBus bus) : ControllerBase
 {
     /// <summary>
-    /// parentFolderId null = raiz. ownerType/ownerId (2026-07-20) son opcionales — solo
+    /// parentFolderId null = raiz. ownerType/ownerId son opcionales — solo
     /// tienen efecto para staff interno navegando la raiz de un tenant con varios duenos
     /// mezclados (ej. filtrar "solo lo del cliente X"); el portal de cliente ya estaba y
     /// sigue acotado por su propio scope, sin importar lo que se mande aca.
     /// </summary>
     [HttpGet]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<FolderContentsResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Contents(
         [FromQuery] Guid? parentFolderId,
@@ -47,12 +54,18 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     }
 
     /// <summary>
-    /// 2026-07-20 — arbol COMPLETO en una sola llamada (sidebar expandible), a diferencia
+    /// Arbol COMPLETO en una sola llamada (sidebar expandible), a diferencia
     /// de Contents que trae un nivel por vez. ownerType/ownerId opcionales, mismo criterio
     /// que Contents; sin ninguno de los dos, staff ve el arbol completo del tenant.
     /// </summary>
     [HttpGet("tree")]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<IReadOnlyList<FolderTreeNode>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Tree(
         [FromQuery] OwnerType? ownerType,
@@ -79,7 +92,8 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     );
 
     [HttpPost]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateFolderRequest request, CancellationToken ct)
     {
@@ -107,7 +121,8 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     public sealed record RenameFolderRequest(string? NewName);
 
     [HttpPut("{folderId:guid}/rename")]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Rename(Guid folderId, RenameFolderRequest request, CancellationToken ct)
     {
@@ -124,7 +139,8 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     public sealed record MoveFolderRequest(Guid? NewParentFolderId);
 
     [HttpPut("{folderId:guid}/move")]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Move(Guid folderId, MoveFolderRequest request, CancellationToken ct)
     {
@@ -138,9 +154,10 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>2026-07-20 — rechaza con 409 (Folder.NotEmpty) si tiene subfolders o archivos directos. Ver DeleteFolderHandler.</summary>
+    /// <summary>Rechaza con 409 (Folder.NotEmpty) si tiene subfolders o archivos directos. Ver DeleteFolderHandler.</summary>
     [HttpDelete("{folderId:guid}")]
-    [Authorize(Policy = CloudStoragePermissions.FolderManage)]
+    [HasPermission(CloudStoragePermissions.FolderManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid folderId, CancellationToken ct)
     {

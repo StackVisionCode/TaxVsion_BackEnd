@@ -1,4 +1,5 @@
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -39,10 +40,15 @@ public sealed class RecycleBinPurgeService(IServiceScopeFactory scopeFactory, IL
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
             var clock = scope.ServiceProvider.GetRequiredService<ISystemClock>();
             var options = scope.ServiceProvider.GetRequiredService<IOptions<CloudStorageOptions>>().Value;
+            var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
 
             var expired = await files.ListPurgeablePastRetentionAsync(clock.UtcNow, 100, ct);
             foreach (var file in expired)
             {
+                // RBAC Fase 5 — RecycleBinPurger.PurgeAsync llama a limits.GetAsync(file.TenantId),
+                // que ahora pasa por el HasQueryFilter fail-closed; sin sellar el tenant efectivo
+                // por-item, la cuota real del tenant quedaría invisible para ese lookup.
+                tenantContext.SetTenant(file.TenantId);
                 await RecycleBinPurger.PurgeAsync(
                     file,
                     "retention-expired",

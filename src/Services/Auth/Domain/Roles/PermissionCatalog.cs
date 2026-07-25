@@ -57,6 +57,7 @@ public static class PermissionCatalog
     public const string SignatureRequestCancel = SignaturePermissions.RequestCancel;
     public const string SignatureRequestResend = SignaturePermissions.RequestResend;
     public const string SignatureRequestExpire = SignaturePermissions.RequestExpire;
+    public const string SignatureRequestManage = SignaturePermissions.RequestManage;
     public const string SignatureDocumentPrepare = SignaturePermissions.DocumentPrepare;
     public const string SignatureDocumentSign = SignaturePermissions.DocumentSign;
     public const string SignatureDocumentView = SignaturePermissions.DocumentView;
@@ -117,15 +118,11 @@ public static class PermissionCatalog
     public const string ScribeRender = ScribePermissions.Render;
 
     // Postmaster — envío/entrega de correo, proveedores por tenant y suppression list (bounded
-    // context propio, ver microservicio Postmaster). Encontrado durante la auditoría de
-    // aislamiento por tenant_id (2026-07-18): estos 5 permisos ya los exigían los 3 controllers
-    // de Postmaster vía [HasPermission(...)] desde que se construyeron, pero nunca se habían
-    // sembrado en este catálogo — mismo gap exacto que Connectors (Fase 6.5) y Scribe (Fase
-    // 10.5), esta vez descubierto porque el TenantAdmin de una oficina real recibió 403 en
-    // ProvidersController tras retirarse el bypass de rol (sin fila real, "perm" nunca se poblaba
-    // salvo por el bypass). ProvidersWrite cubre también PUT /postmaster/system/provider/{code}
-    // (el proveedor default de plataforma), pero ese endpoint ya trae su propio chequeo inline
-    // `User.IsInRole("PlatformAdmin")` — no hace falta PlatformOnly aquí.
+    // context propio, ver microservicio Postmaster). Estos 5 permisos ya los exigían los 3
+    // controllers de Postmaster vía [HasPermission(...)], pero nunca se habían sembrado en este
+    // catálogo. ProvidersWrite cubre también PUT /postmaster/system/provider/{code} (el proveedor
+    // default de plataforma); ese endpoint ya trae su propio
+    // [AllowActorTypes(ActorType.PlatformAdmin)] — no hace falta PlatformOnly aquí.
     public const string PostmasterMessagesRead = PostmasterPermissions.MessagesRead;
     public const string PostmasterSuppressionRead = PostmasterPermissions.SuppressionRead;
     public const string PostmasterSuppressionWrite = PostmasterPermissions.SuppressionWrite;
@@ -152,13 +149,11 @@ public static class PermissionCatalog
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
     public const string PortalFoldersView = "portal.folders.view";
-    public const string PortalSignaturesSign = "portal.signatures.sign";
 
     // Communication — chat, llamadas, meetings (bounded context propio, ver microservicio
     // Communication). Los 18 GUID/Code de abajo YA existen como filas reales en la tabla
-    // Permissions (sembradas por SQL directo en la migración AddCommunicationPermissions,
-    // 2026-07-10) — nunca habían pasado por este catálogo (desfase documentado desde
-    // entonces). Se reconcilian aquí con los MISMOS GUID exactos; la migración que agrega
+    // Permissions (sembradas por SQL directo en la migración AddCommunicationPermissions) —
+    // se reconcilian aquí con los MISMOS GUID exactos; la migración que agrega
     // MinPlanTier/IsAssignableByTenant debe usar UpdateData (no InsertData) para estas 18 filas.
     public const string CommunicationChatStart = CommunicationPermissions.ChatStart;
     public const string CommunicationChatReply = CommunicationPermissions.ChatReply;
@@ -181,14 +176,10 @@ public static class PermissionCatalog
 
     // PaymentApp / PaymentClient — pagos SaaS de plataforma y pagos que un tenant cobra a sus
     // propios clientes (bounded contexts propios, ver microservicios PaymentApp/PaymentClient).
-    // Sembrados junto con el merge que trajo ambos servicios (2026-07-18): sus
-    // ClaimsPrincipalExtensions.HasPermission ya traían el mismo bypass de rol
-    // ("TenantAdmin" pasa siempre) que se retiró de los otros 9 servicios en esta misma
-    // auditoría — se corrige acá antes de que llegue a producción, no después. AdminCrossTenant
-    // (ambos) es PlatformOnly: true — su propio controller (PaymentAppAdminController /
-    // PaymentClientAdminController) documenta que el tenant es un filtro OPCIONAL, no una
-    // restricción, así que sin PlatformOnly cualquier TenantAdmin vería pagos de cualquier
-    // otro tenant por defecto.
+    // AdminCrossTenant (ambos) es PlatformOnly: true — su propio controller
+    // (PaymentAppAdminController / PaymentClientAdminController) documenta que el tenant es un
+    // filtro OPCIONAL, no una restricción, así que sin PlatformOnly cualquier TenantAdmin vería
+    // pagos de cualquier otro tenant por defecto.
     public const string PaymentAppSaaSPaymentRead = PaymentAppPermissions.SaaSPaymentRead;
     public const string PaymentAppSaaSPaymentRefund = PaymentAppPermissions.SaaSPaymentRefund;
     public const string PaymentAppProviderCustomerRead = PaymentAppPermissions.ProviderCustomerRead;
@@ -209,6 +200,38 @@ public static class PermissionCatalog
     public const string PaymentClientRecurringRead = PaymentClientPermissions.RecurringRead;
     public const string PaymentClientRecurringManage = PaymentClientPermissions.RecurringManage;
     public const string PaymentClientAdminCrossTenant = PaymentClientPermissions.AdminCrossTenant;
+
+    // Subscription — RBAC Fase 8 (RBAC_Hardening_Plan.md): migración de [Authorize(Roles=...)] a
+    // [HasPermission]. PlanChange cubre el ciclo de vida TenantAdmin-only de la suscripción base
+    // del propio tenant (change-plan/activate/cancel/cancel-pending-plan-change en
+    // SubscriptionsController) — IsAssignableByTenant:false (billing-adjacent, mismo criterio que
+    // SubscriptionManage/BillingView) pero deliberadamente NO IsDangerous: el rol de sistema
+    // TenantAdmin ya lo tenía sin restricción vía Roles="TenantAdmin", migrarlo a IsDangerous lo
+    // sacaría del bundle automático y sería una regresión real (el plan exige "más permisivo, no
+    // bloquea injustamente"). Suspend/Reactivate/Renew son operaciones administrativas de
+    // plataforma sobre CUALQUIER tenant (antes Roles="PlatformAdmin") — PlatformOnly:true, el
+    // propio bypass de PlatformAdmin en ProjectionPermissionsSource las cubre sin necesidad de
+    // que entren al bundle de nadie. AdminCrossTenant cubre las 4 consultas cross-tenant de
+    // Admin/AdminController (antes Roles="PlatformAdmin" a nivel de clase), mismo criterio que
+    // GrowthAdminCrossTenant/PaymentAppAdminCrossTenant. SeatsManage/AddOnsManage cubren
+    // SeatsController y AddOnsController completos (antes Roles="TenantAdmin" en ambos) — mismo
+    // criterio IsAssignableByTenant:false/no-IsDangerous que PlanChange. AuditController reusa el
+    // audit.view genérico ya existente (antes Roles="TenantAdmin,PlatformAdmin"), no necesita
+    // permiso nuevo.
+    public const string SubscriptionPlanChange = SubscriptionPermissions.PlanChange;
+    public const string SubscriptionSuspend = SubscriptionPermissions.Suspend;
+    public const string SubscriptionReactivate = SubscriptionPermissions.Reactivate;
+    public const string SubscriptionRenew = SubscriptionPermissions.Renew;
+    public const string SubscriptionAdminCrossTenant = SubscriptionPermissions.AdminCrossTenant;
+    public const string SeatsManage = SubscriptionPermissions.SeatsManage;
+    public const string AddOnsManage = SubscriptionPermissions.AddOnsManage;
+
+    // Tenant — RBAC Fase 8: TenantController.Get (listado cross-tenant) y ChangeStatus (antes
+    // ambos Roles="PlatformAdmin") — PlatformOnly:true, mismo criterio que Subscription arriba.
+    // Create no se toca (ya usa [Authorize(Policy = "TenantRegistration")] +
+    // [AuthorizedByCapabilityToken], un mecanismo de Capa 3 distinto y deliberado).
+    public const string TenantStatusChange = TenantPermissions.StatusChange;
+    public const string TenantListView = TenantPermissions.ListView;
 
     // Growth — Codes y Referrals comparten deployment, pero conservan permisos de dominio
     // separados. AdminCrossTenant nunca se asigna a roles de tenant.
@@ -239,7 +262,18 @@ public static class PermissionCatalog
         bool IsCustomerPortal,
         int MinPlanTier = (int)PlanTier.Starter,
         bool IsAssignableByTenant = true,
-        bool PlatformOnly = false
+        bool PlatformOnly = false,
+        // Explícito solo cuando la inferencia por defecto (ver Permission.InferAllowedActorTypes)
+        // no alcanza — Fase 7 del plan anota permiso por permiso, no hace falta tocar los ~140 ya
+        // sembrados de una sola vez.
+        UserActorType[]? AllowedActorTypes = null,
+        // RBAC Fase 2 (RBAC_Hardening_Plan.md): si es true, el rol de sistema "Tenant Admin"
+        // NUNCA lo incluye por defecto, sin importar que IsCustomerPortal/PlatformOnly sean
+        // false — distinto de PlatformOnly (que ya lo excluye) porque estos SÍ tienen un caso de
+        // uso legítimo para un tenant, pero son de riesgo alto (auto-escalada, financiero, legal,
+        // lock-out) y deben entrar por asignación explícita, no por el bundle automático. Ver
+        // SystemRoleDefaults(SystemTenantAdmin) más abajo.
+        bool IsDangerous = false
     );
 
     public static readonly IReadOnlyList<PermissionDefinition> All =
@@ -257,13 +291,15 @@ public static class PermissionCatalog
             // Reservado: quien controla roles.manage puede asignar CUALQUIER rol (incluido
             // Tenant Admin) a cualquier usuario — es el vector de escalada de privilegios más
             // directo. Nunca asignable a un rol custom, solo lo tienen los roles de sistema.
+            // RBAC Fase 2: IsDangerous — auto-escalada, no debe venir por default en TenantAdmin.
             new Guid("a1000000-0000-0000-0000-000000000004"),
             RolesManage,
             "users",
             "Gestionar roles y permisos",
             false,
             MinPlanTier: (int)PlanTier.Starter,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsDangerous: true
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000005"), AuditView, "audit", "Consultar auditoría", false),
         new(
@@ -276,32 +312,42 @@ public static class PermissionCatalog
         new(
             // Reservado: facturación/billing es responsabilidad exclusiva del Tenant Admin —
             // ver Subscription (fuera de alcance de este cambio, solo se marca el guardarraíl).
+            // RBAC Fase 2: IsDangerous — financiero, no debe venir por default en TenantAdmin.
+            // Sin efecto funcional hoy: Subscription (único consumidor conceptual de billing.*)
+            // todavía usa 100% [Authorize(Roles="TenantAdmin")], no [HasPermission] — ver README
+            // §41. El día que migre, este permiso ya exige asignación explícita, no automática.
             new Guid("a1000000-0000-0000-0000-000000000007"),
             BillingView,
             "billing",
             "Ver facturación y suscripción",
             false,
             MinPlanTier: (int)PlanTier.Starter,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsDangerous: true
         ),
         new(
+            // RBAC Fase 2: IsDangerous — ver nota de BillingView (mismo caso).
             new Guid("a1000000-0000-0000-0000-000000000008"),
             BillingManage,
             "billing",
             "Gestionar métodos de pago y facturación",
             false,
             MinPlanTier: (int)PlanTier.Starter,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsDangerous: true
         ),
         new(
             // Reservado: incluye compra/baja de asientos — impacta directamente la facturación.
+            // RBAC Fase 2: IsDangerous — ver nota de BillingView (mismo caso, mismo consumidor
+            // conceptual sin migrar a [HasPermission] todavía).
             new Guid("a1000000-0000-0000-0000-000000000009"),
             SubscriptionManage,
             "billing",
             "Cambiar plan y gestionar suscripción",
             false,
             MinPlanTier: (int)PlanTier.Starter,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsDangerous: true
         ),
         new(new Guid("a1000000-0000-0000-0000-000000000010"), CustomersView, "customers", "Ver clientes", false),
         new(
@@ -384,32 +430,55 @@ public static class PermissionCatalog
             true
         ),
         new(
-            new Guid("a1000000-0000-0000-0000-000000000022"),
-            PortalSignaturesSign,
-            "portal",
-            "El cliente puede firmar documentos",
-            true
-        ),
-        new(
+            // Explícito (no inferido): SystemRoleDefaults(SystemCustomerPortal) ya le otorga
+            // este permiso al rol Customer Portal sembrado en cada tenant — un cliente real
+            // sube/ve/descarga sus propios archivos hoy. IsCustomerPortal queda en false porque
+            // el permiso NO es exclusivo de cliente (staff también lo usa) — InferAllowedActorTypes
+            // no modela "compartido", así que hace falta declarar el AllowedActorTypes real acá.
+            // El scope por customer_id (quién ve QUÉ archivo) lo resuelve StorageIdentity.cs, no
+            // esta capa (ver Actor_Type_Authorization_Layers_Plan.md §4.1).
             new Guid("a1000000-0000-0000-0000-000000000023"),
             CloudStorageFileView,
             "cloudstorage",
             "Ver metadatos de archivos",
-            false
+            false,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
+            // Ver nota de CloudStorageFileView — mismo caso: rol Customer Portal ya lo tiene.
             new Guid("a1000000-0000-0000-0000-000000000024"),
             CloudStorageFileUpload,
             "cloudstorage",
             "Subir archivos mediante el gateway seguro",
-            false
+            false,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
+            // Ver nota de CloudStorageFileView — mismo caso: rol Customer Portal ya lo tiene.
             new Guid("a1000000-0000-0000-0000-000000000025"),
             CloudStorageFileDownload,
             "cloudstorage",
             "Descargar archivos disponibles",
-            false
+            false,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000026"),
@@ -474,17 +543,31 @@ public static class PermissionCatalog
         new(
             // Reservado: legal hold + DMCA (takedown/reinstate) es
             // exclusivo del equipo legal de la plataforma, nunca de un tenant.
+            // RBAC Fase 2: IsDangerous — este es el bug real que motivó la fase.
+            // LegalController.RegisterTakedown solo exige [HasPermission(LegalManage)] (el
+            // AllowActorTypes de clase incluye TenantEmployee/TenantAdmin, no solo
+            // PlatformAdmin), así que sin IsDangerous cualquier TenantAdmin podía registrar un
+            // legal hold sobre archivos de SU PROPIO tenant pese a que el comentario de arriba
+            // ya decía "nunca de un tenant" — la intención nunca se aplicó en runtime.
             new Guid("a1000000-0000-0000-0000-000000000070"),
             CloudStorageLegalManage,
             "cloudstorage",
             "Gestionar legal hold y takedowns DMCA",
             false,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsDangerous: true
         ),
         new(
             // A diferencia de LegalManage, esto lo ejerce el propio tenant sobre
             // sus archivos (responder a un takedown recibido) — mismo nivel de
             // TenantAdmin-only que CloudStorageFileDelete, no de plataforma.
+            // RBAC Fase 2: deliberadamente NO marcado IsDangerous, a diferencia de lo que sugería
+            // el plan original — ver LegalController.SubmitCounterNotice: es la respuesta legal
+            // propia del tenant a un takedown recibido sobre SU archivo, con plazos legales reales
+            // (17 U.S.C. §512(g), ventana de 10-14 días hábiles). Quitarlo del default de
+            // TenantAdmin dejaría a la oficina sin forma de auto-defenderse ante un DMCA sin
+            // depender de PlatformAdmin — justo lo opuesto de lo que dice este mismo comentario
+            // ("lo ejerce el propio tenant").
             new Guid("a1000000-0000-0000-0000-000000000071"),
             CloudStorageDmcaCounterNotice,
             "cloudstorage",
@@ -620,19 +703,13 @@ public static class PermissionCatalog
             // solo lo llama Notification vía token de servicio M2M (ScribeRenderClient). Se
             // siembra como fila real únicamente para que ServiceAuth:Clients (Auth) pueda listarlo
             // en el Permissions de un cliente de servicio y que IssueServiceTokenHandler lo emita
-            // como claim "perm" en el token. Marcado PlatformOnly (auditoría de aislamiento por
-            // tenant_id, 2026-07-18): el comentario original decía que el bundle automático de
-            // SystemTenantAdmin era "inofensivo" porque TenantAdmin pasaba HasPermission por rol
-            // sin depender de este claim — eso era cierto bajo el bypass de rol que ya se retiró
-            // (ver ClaimsPrincipalExtensions). Sin el bypass, un TenantAdmin real SÍ recibe este
-            // claim "perm" en su JWT (PermissionCatalog.SystemRoleDefaults) y RenderController
-            // toma el TenantId del BODY, no del token (lo necesita así para el caso M2M legítimo:
-            // Notification renderiza a nombre de tenants arbitrarios) — sin PlatformOnly, cualquier
-            // TenantAdmin podía llamar POST /scribe/render con el TenantId de otro tenant y leer su
-            // contenido de template renderizado. PlatformOnly no afecta al caller M2M real: los
-            // permisos de un client de servicio vienen de ServiceAuth:Clients (config), no de
-            // SystemRoleDefaults — ver Service_token_with_perm_claim_ScribeRender_is_authorized_for_
-            // Render en HasPermissionPolicyTests.
+            // como claim "perm" en el token. Marcado PlatformOnly: un TenantAdmin real recibe este
+            // claim vía SystemRoleDefaults, y RenderController toma el TenantId del BODY (no del
+            // token, para soportar el caso M2M legítimo de renderizar a nombre de tenants
+            // arbitrarios) — sin PlatformOnly, cualquier TenantAdmin podía llamar POST
+            // /scribe/render con el TenantId de otro tenant y leer su contenido renderizado.
+            // PlatformOnly no afecta al caller M2M real: los permisos de un client de servicio
+            // vienen de ServiceAuth:Clients (config), no de SystemRoleDefaults.
             new Guid("a1000000-0000-0000-0000-000000000087"),
             ScribeRender,
             "scribe",
@@ -675,6 +752,19 @@ public static class PermissionCatalog
             "signature",
             "Extender el vencimiento de solicitudes",
             false
+        ),
+        new(
+            // RBAC Fase 4 — override de ownership: enviar/cancelar/extender solicitudes creadas
+            // por OTRO usuario del tenant (por default, IsOwnerOrHasManageHandler solo deja
+            // operar al creador). Mismo criterio que CloudStorageShareManage (...0069):
+            // IsAssignableByTenant: false, un TenantAdmin no puede otorgárselo a un rol custom
+            // libremente — solo llega vía SystemRoleDefaults.
+            new Guid("a1000000-0000-0000-0000-000000000142"),
+            SignatureRequestManage,
+            "signature",
+            "Gestionar solicitudes de firma creadas por otros usuarios del tenant",
+            false,
+            IsAssignableByTenant: false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000034"),
@@ -757,13 +847,17 @@ public static class PermissionCatalog
             // Nunca asignable a un rol custom (escalada de billing/límites) NI al rol de sistema
             // Tenant Admin (PlatformOnly): sin caso de uso tenant-propio, es 100% exclusivo de
             // PlatformAdmin (ver SignatureAdminController.UpdateConstraints).
+            // RBAC Fase 2: IsDangerous acá es redundante (PlatformOnly ya lo excluye de
+            // SystemRoleDefaults(SystemTenantAdmin)) — se marca igual por consistencia
+            // documental con el resto de la lista IsDangerous del plan.
             new Guid("a1000000-0000-0000-0000-000000000088"),
             SignaturePlanConstraintsManage,
             "signature",
             "Gestionar los techos de plan de Signature de un tenant (uso exclusivo de plataforma)",
             false,
             IsAssignableByTenant: false,
-            PlatformOnly: true
+            PlatformOnly: true,
+            IsDangerous: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000063"),
@@ -783,30 +877,56 @@ public static class PermissionCatalog
             // Reservado: quien agrega/deshabilita dominios controla qué Host puede
             // autenticar como este tenant (Fase A5) — riesgo equivalente a
             // RolesManage/BillingManage. Nunca asignable a un rol custom.
+            // RBAC Fase 2: IsDangerous — cambiar el subdominio impacta el login de TODOS los
+            // usuarios del tenant de una sola vez, no es una acción operativa diaria.
             new Guid("a1000000-0000-0000-0000-000000000064"),
             TenantDomainsManage,
             "domains",
             "Gestionar dominios propios del tenant (custom hostnames)",
             false,
             MinPlanTier: (int)PlanTier.Starter,
-            IsAssignableByTenant: false
+            IsAssignableByTenant: false,
+            IsDangerous: true
         ),
         // --- Communication (reconciliado, ver comentario arriba) ---
         new(
+            // Explícito (no inferido): SystemRoleDefaults(SystemEmployee) Y
+            // SystemRoleDefaults(SystemCustomerPortal) otorgan este permiso por defecto —
+            // staff Y cliente lo usan hoy (mismo hallazgo que CloudStorageFileView/Upload/
+            // Download en Fase 4: IsCustomerPortal=true infería CustomerPortal-only, pero un
+            // TenantEmployee real también lo tiene vía el rol de sistema "Employee". Sin este
+            // fix, ActorTypeRoleGuard rechaza la propia asignación del rol "Employee" a
+            // cualquier TenantEmployee — encontrado en Fase 7 (catalogación explícita), antes
+            // de que llegara a producción).
             new Guid("a1000000-0000-0000-0000-000000000045"),
             CommunicationChatStart,
             "communication",
             "Iniciar conversaciones de chat",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso.
             new Guid("a1000000-0000-0000-0000-000000000046"),
             CommunicationChatReply,
             "communication",
             "Responder en conversaciones de chat",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000047"),
@@ -817,12 +937,24 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Explícito (no inferido): a diferencia de ChatStart/ChatReply arriba, este tiene
+            // IsCustomerPortal=false (infiere staff-only), pero SystemRoleDefaults
+            // (SystemCustomerPortal) también lo otorga — el cliente abre su propio chat de
+            // soporte hacia el PlatformTenant. Mismo bug, sentido inverso (mismo hallazgo de
+            // Fase 7 que ChatStart/ChatReply arriba).
             new Guid("a1000000-0000-0000-0000-000000000048"),
             CommunicationSupportOpen,
             "communication",
             "Abrir chat de soporte hacia el PlatformTenant",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000049"),
@@ -865,12 +997,20 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
             new Guid("a1000000-0000-0000-0000-000000000054"),
             CommunicationMeetingJoin,
             "communication",
             "Unirse a reuniones (previa invitación válida)",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000055"),
@@ -889,12 +1029,20 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
             new Guid("a1000000-0000-0000-0000-000000000057"),
             CommunicationScreenshotCreate,
             "communication",
             "Adjuntar screenshots/voice/video en chat",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000058"),
@@ -913,12 +1061,20 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
             new Guid("a1000000-0000-0000-0000-000000000060"),
             CommunicationNotificationRead,
             "communication",
             "Consultar notificaciones in-app propias",
             true,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000061"),
@@ -936,8 +1092,7 @@ public static class PermissionCatalog
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
-        // Postmaster (auditoría de aislamiento por tenant_id, 2026-07-18 — ver comentario junto a
-        // los const de arriba).
+        // Postmaster (ver comentario junto a los const de arriba).
         new(
             new Guid("a1000000-0000-0000-0000-000000000089"),
             PostmasterMessagesRead,
@@ -1302,6 +1457,86 @@ public static class PermissionCatalog
             IsAssignableByTenant: false,
             PlatformOnly: true
         ),
+        // --- Subscription (RBAC Fase 8, ver comentario junto a los const de arriba) ---
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000143"),
+            SubscriptionPlanChange,
+            "subscription",
+            "Cambiar plan, activar, cancelar y gestionar el ciclo de vida de la suscripción del propio tenant",
+            false,
+            IsAssignableByTenant: false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000144"),
+            SubscriptionSuspend,
+            "subscription",
+            "Suspender la suscripción de cualquier tenant (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000145"),
+            SubscriptionReactivate,
+            "subscription",
+            "Reactivar la suscripción de cualquier tenant (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000146"),
+            SubscriptionRenew,
+            "subscription",
+            "Renovación manual de la suscripción de cualquier tenant, mientras no exista Billing (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000147"),
+            SubscriptionAdminCrossTenant,
+            "subscription",
+            "Consultar renovaciones próximas, seats vencidos y suscripciones en mora de CUALQUIER tenant, y forzar el recálculo de entitlements (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000148"),
+            SeatsManage,
+            "seats",
+            "Comprar, asignar, liberar, reasignar y renovar seats del propio tenant",
+            false,
+            IsAssignableByTenant: false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000149"),
+            AddOnsManage,
+            "addons",
+            "Comprar, cancelar y renovar add-ons del propio tenant",
+            false,
+            IsAssignableByTenant: false
+        ),
+        // --- Tenant (RBAC Fase 8, ver comentario junto a los const de arriba) ---
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000150"),
+            TenantStatusChange,
+            "tenant",
+            "Cambiar el estado de cualquier tenant (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000151"),
+            TenantListView,
+            "tenant",
+            "Listar todos los tenants de la plataforma (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -1317,7 +1552,15 @@ public static class PermissionCatalog
         {
             // PlatformOnly se excluye acá — el TenantAdmin nunca lo recibe por defecto, sin
             // importar qué se agregue al catálogo en el futuro (ver Permission.PlatformOnly).
-            Role.SystemTenantAdmin => All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly)
+            // RBAC Fase 2: IsDangerous también se excluye — a diferencia de PlatformOnly (sin
+            // caso de uso tenant-propio), estos SÍ tienen un caso de uso legítimo para un
+            // TenantAdmin, pero de riesgo alto (auto-escalada/financiero/legal/lock-out) y deben
+            // entrar por asignación explícita, no por el bundle automático. Antes de esta fase,
+            // un permiso nuevo con IsCustomerPortal:false/PlatformOnly:false entraba
+            // automáticamente al set del TenantAdmin sin importar su riesgo real.
+            Role.SystemTenantAdmin => All.Where(definition =>
+                    !definition.IsCustomerPortal && !definition.PlatformOnly && !definition.IsDangerous
+                )
                 .Select(definition => definition.Code)
                 .ToArray(),
             Role.SystemEmployee =>
@@ -1420,7 +1663,6 @@ public static class PermissionCatalog
             Role.SystemCustomerPortal =>
             [
                 PortalFoldersView,
-                PortalSignaturesSign,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,

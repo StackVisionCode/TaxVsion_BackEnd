@@ -10,7 +10,7 @@ public sealed class RemoveDraftAttachmentHandlerTests
     public async Task Handle_RemovingOneOfThreeAttachments_LeavesTheOtherTwo()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var fileIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
         foreach (var fileId in fileIds)
             draft.AttachFile(DraftAttachmentRef.Create(fileId, "file.pdf", "application/pdf", 1024).Value);
@@ -36,7 +36,7 @@ public sealed class RemoveDraftAttachmentHandlerTests
     public async Task Handle_RemovingAFileIdThatWasNeverAttached_SucceedsAsANoOp()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         draft.AttachFile(DraftAttachmentRef.Create(Guid.NewGuid(), "file.pdf", "application/pdf", 1024).Value);
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
@@ -59,7 +59,7 @@ public sealed class RemoveDraftAttachmentHandlerTests
     public async Task Handle_OnADraftNotInDraftStatus_ReturnsInvalidTransition(DraftStatus status)
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var fileId = Guid.NewGuid();
         draft.AttachFile(DraftAttachmentRef.Create(fileId, "file.pdf", "application/pdf", 1024).Value);
         draft.MarkSending();

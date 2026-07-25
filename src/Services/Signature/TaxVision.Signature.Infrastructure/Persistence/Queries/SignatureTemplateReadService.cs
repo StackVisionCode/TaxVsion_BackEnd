@@ -14,7 +14,14 @@ internal sealed class SignatureTemplateReadService(SignatureDbContext db) : ISig
         var page = query.Page < 1 ? 1 : query.Page;
         var pageSize = ClampPageSize(query.PageSize);
 
-        var baseQuery = db.SignatureTemplates.AsNoTracking().Where(t => t.TenantId == query.TenantId);
+        // Mismo bug de scope de Wolverine que SignatureRequestReadService.ListAsync (ver comentario
+        // ahí y en LocalCommandTenantMiddleware.cs): query.TenantId ya viene explícito y validado
+        // desde el controller — IgnoreQueryFilters() explícito porque el filtro ambiental global
+        // puede no estar poblado en este scope de DI.
+        var baseQuery = db
+            .SignatureTemplates.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(t => t.TenantId == query.TenantId);
         if (query.Status.HasValue)
             baseQuery = baseQuery.Where(t => t.Status == query.Status.Value);
         if (query.Category.HasValue)

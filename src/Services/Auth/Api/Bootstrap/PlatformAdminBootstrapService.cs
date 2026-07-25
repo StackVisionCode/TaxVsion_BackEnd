@@ -62,6 +62,11 @@ public sealed class PlatformAdminBootstrapService(
         var invitations = scope.ServiceProvider.GetRequiredService<IInvitationRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
+        // RBAC Fase 5 — este job opera enteramente dentro del tenant de plataforma (invita a un
+        // PlatformAdmin ahí); setearlo acá evita que el filtro fail-closed devuelva 0 filas en
+        // Users/Invitations (ambos ITenantOwned) durante este job de background sin tenant HTTP.
+        scope.ServiceProvider.GetRequiredService<TenantContext>().SetTenant(PlatformTenant.Id);
+
         var platformTenantExists = await db.Tenants.AnyAsync(
             tenant => tenant.Id == PlatformTenant.Id && tenant.Kind == TenantKind.Platform && tenant.IsActive,
             cancellationToken

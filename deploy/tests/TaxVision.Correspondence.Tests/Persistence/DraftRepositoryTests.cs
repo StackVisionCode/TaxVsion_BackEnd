@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Infrastructure.Persistence;
@@ -14,11 +15,23 @@ namespace TaxVision.Correspondence.Tests.Persistence;
 /// </summary>
 public sealed class DraftRepositoryTests
 {
+    // NoTenantContext: los 4 tests de esta clase ejercitan exclusivamente
+    // DraftRepository.ListAbandonedAsync, que usa IgnoreQueryFilters() (job cross-tenant, RBAC
+    // Fase 5) — el filtro global fail-closed nunca entra en juego acá.
+    private sealed class NoTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
+    }
+
     private static CorrespondenceDbContext CreateContext() =>
         new(
             new DbContextOptionsBuilder<CorrespondenceDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .Options
+                .Options,
+            new NoTenantContext()
         );
 
     [Fact]
@@ -28,7 +41,7 @@ public sealed class DraftRepositoryTests
         var tenantId = Guid.NewGuid();
         var repository = new DraftRepository(db);
 
-        var openDraft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var openDraft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         await repository.AddAsync(openDraft);
         await db.SaveChangesAsync();
 
@@ -46,7 +59,7 @@ public sealed class DraftRepositoryTests
         var tenantId = Guid.NewGuid();
         var repository = new DraftRepository(db);
 
-        var openDraft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var openDraft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         await repository.AddAsync(openDraft);
         await db.SaveChangesAsync();
 
@@ -63,7 +76,7 @@ public sealed class DraftRepositoryTests
         var tenantId = Guid.NewGuid();
         var repository = new DraftRepository(db);
 
-        var sentDraft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var sentDraft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         sentDraft.MarkSending();
         sentDraft.MarkSent(Guid.NewGuid());
         await repository.AddAsync(sentDraft);
@@ -82,8 +95,8 @@ public sealed class DraftRepositoryTests
         var tenantId = Guid.NewGuid();
         var repository = new DraftRepository(db);
 
-        await repository.AddAsync(Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value);
-        await repository.AddAsync(Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value);
+        await repository.AddAsync(Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value);
+        await repository.AddAsync(Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value);
         await db.SaveChangesAsync();
 
         var futureCutoff = DateTime.UtcNow.AddDays(1);

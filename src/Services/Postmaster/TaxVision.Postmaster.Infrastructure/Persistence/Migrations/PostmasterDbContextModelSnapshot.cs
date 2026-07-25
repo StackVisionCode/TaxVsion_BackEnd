@@ -50,10 +50,85 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.ToTable("EmailIdempotency", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Postmaster.Domain.Projections.TenantOAuthAccount", b =>
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("RolePermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Permissions.UserPermissionsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleIdsJson")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserPermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.Projections.TenantOAuthAccount", b =>
+                {
+                    b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("AccountId")
@@ -97,7 +172,6 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Providers.ProviderHealthStatus", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("CircuitBreakerOpenedAtUtc")
@@ -153,7 +227,6 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Providers.SystemEmailProvider", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -220,7 +293,6 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Providers.TenantEmailProvider", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -293,7 +365,6 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.SentMessage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("CorrelationId")
@@ -419,7 +490,6 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.SentMessageEvent", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("EventAtUtc")
@@ -457,7 +527,6 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.SentMessageRecipient", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Address")

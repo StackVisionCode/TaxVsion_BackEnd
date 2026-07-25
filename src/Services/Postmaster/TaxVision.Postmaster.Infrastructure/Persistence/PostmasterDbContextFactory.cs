@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -19,6 +20,15 @@ public sealed class PostmasterDbContextFactory : IDesignTimeDbContextFactory<Pos
 
         var options = new DbContextOptionsBuilder<PostmasterDbContext>().UseSqlServer(connectionString).Options;
 
-        return new PostmasterDbContext(options);
+        // dotnet-ef solo inspecciona el modelo, nunca ejecuta una query real.
+        return new PostmasterDbContext(options, new DesignTimeOnlyTenantContext());
+    }
+
+    private sealed class DesignTimeOnlyTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

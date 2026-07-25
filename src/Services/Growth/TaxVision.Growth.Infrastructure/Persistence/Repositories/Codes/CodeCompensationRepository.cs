@@ -18,13 +18,15 @@ public sealed class CodeCompensationRepository(GrowthDbContext dbContext, ITenan
         || redemptionId == Guid.Empty
         || sourceEventId == Guid.Empty
             ? Task.FromResult<CodeCompensation?>(null)
-            : dbContext.CodeCompensations.FirstOrDefaultAsync(
-                compensation =>
-                    compensation.TenantId == tenantId
-                    && compensation.RedemptionId == redemptionId
-                    && compensation.SourceEventId == sourceEventId,
-                ct
-            );
+            : dbContext
+                .CodeCompensations.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(
+                    compensation =>
+                        compensation.TenantId == tenantId
+                        && compensation.RedemptionId == redemptionId
+                        && compensation.SourceEventId == sourceEventId,
+                    ct
+                );
 
     public async Task<long> GetCumulativeAdjustmentAmountCentsAsync(
         Guid tenantId,
@@ -36,9 +38,8 @@ public sealed class CodeCompensationRepository(GrowthDbContext dbContext, ITenan
             return 0;
 
         return await dbContext
-                .CodeCompensations.Where(compensation =>
-                    compensation.TenantId == tenantId && compensation.RedemptionId == redemptionId
-                )
+                .CodeCompensations.IgnoreQueryFilters()
+                .Where(compensation => compensation.TenantId == tenantId && compensation.RedemptionId == redemptionId)
                 .MaxAsync(compensation => (long?)compensation.CumulativeAdjustmentAmountCents, ct)
             ?? 0;
     }

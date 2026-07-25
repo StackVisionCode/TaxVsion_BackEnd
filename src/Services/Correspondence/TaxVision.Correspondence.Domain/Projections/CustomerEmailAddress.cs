@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using TaxVision.Correspondence.Domain.ValueObjects;
 
 namespace TaxVision.Correspondence.Domain.Projections;
@@ -18,7 +19,7 @@ namespace TaxVision.Correspondence.Domain.Projections;
 /// publique emails secundarios o de contacto.
 /// </para>
 /// </summary>
-public sealed class CustomerEmailAddress
+public sealed class CustomerEmailAddress : ITenantOwned
 {
     private CustomerEmailAddress() { }
 
@@ -33,6 +34,9 @@ public sealed class CustomerEmailAddress
     public DateTime? DeletedAtUtc { get; private set; }
 
     public bool IsActive => DeletedAtUtc is null;
+
+    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public static CustomerEmailAddress Create(Guid tenantId, Guid customerId, ValueObjects.EmailAddress emailAddress)
     {

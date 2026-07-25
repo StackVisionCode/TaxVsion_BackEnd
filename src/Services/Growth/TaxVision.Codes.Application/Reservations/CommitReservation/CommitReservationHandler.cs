@@ -51,6 +51,7 @@ public static class CommitReservationHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             "Codes.CommitReservation.v1",
             command.ReservationId,
             keyResult.Value,

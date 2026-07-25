@@ -20,7 +20,7 @@ public static class CreateDraftHandler
         CancellationToken ct
     )
     {
-        var draftResult = Draft.CreateNew(command.TenantId, command.CustomerId, command.AccountId);
+        var draftResult = Draft.CreateNew(command.TenantId, command.CustomerId, command.AccountId, command.ActorId);
         if (draftResult.IsFailure)
             return Result.Failure<Guid>(draftResult.Error);
 

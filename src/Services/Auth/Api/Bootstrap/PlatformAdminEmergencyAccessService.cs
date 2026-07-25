@@ -66,6 +66,11 @@ public sealed class PlatformAdminEmergencyAccessService(
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
+        // RBAC Fase 5 — este job opera enteramente dentro del tenant de plataforma (crea un
+        // PlatformAdmin ahí, nunca en otro tenant); setearlo acá evita que el filtro fail-closed
+        // (sin tenant en un job de background) devuelva 0 filas en la consulta de "ya existe".
+        scope.ServiceProvider.GetRequiredService<TenantContext>().SetTenant(PlatformTenant.Id);
+
         var platformTenantExists = await db.Tenants.AnyAsync(
             tenant => tenant.Id == PlatformTenant.Id && tenant.Kind == TenantKind.Platform && tenant.IsActive,
             cancellationToken

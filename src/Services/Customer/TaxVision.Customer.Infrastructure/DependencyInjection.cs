@@ -1,3 +1,4 @@
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -80,6 +81,19 @@ public static class InfrastructureRegistration
         // TODO: cuando exista RealTime Service, agregar SignalR push para notificar completado.
         services.AddHostedService<CustomerImportCleanupHostedService>();
 
+        // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
+        // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
+        // instancia scoped satisface el puerto local rico (para los consumers) y el puerto
+        // compartido y angosto de BuildingBlocks (para la autorizacion), evitando dos lecturas
+        // separadas del mismo dato.
+        services.AddScoped<UserPermissionsProjectionRepository>();
+        services.AddScoped<IUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
         return services;
     }
 

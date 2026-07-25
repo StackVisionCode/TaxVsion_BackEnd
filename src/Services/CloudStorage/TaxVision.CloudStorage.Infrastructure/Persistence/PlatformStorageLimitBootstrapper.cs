@@ -29,6 +29,11 @@ public sealed class PlatformStorageLimitBootstrapper(
         await using var scope = scopeFactory.CreateAsyncScope();
         var repository = scope.ServiceProvider.GetRequiredService<IStorageLimitRepository>();
 
+        // RBAC Fase 5 — este hosted service corre sin HTTP request (arranque del host), así que
+        // TenantContext nunca se pobló; hay que sellarlo manualmente para que el HasQueryFilter
+        // fail-closed no oculte la fila existente del tenant plataforma.
+        scope.ServiceProvider.GetRequiredService<ITenantContext>().SetTenant(PlatformTenant.Id);
+
         if (await repository.GetAsync(PlatformTenant.Id, cancellationToken) is not null)
             return;
 

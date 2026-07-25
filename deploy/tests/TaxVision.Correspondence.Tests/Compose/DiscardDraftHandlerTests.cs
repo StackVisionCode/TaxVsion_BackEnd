@@ -10,7 +10,7 @@ public sealed class DiscardDraftHandlerTests
     public async Task Handle_WithAnActiveDraft_DiscardsItAndPersists()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
         var unitOfWork = new FakeUnitOfWork();
@@ -36,7 +36,7 @@ public sealed class DiscardDraftHandlerTests
     public async Task Handle_CalledTwice_OnTheSameDraft_IsIdempotentAndDoesNotSaveAgain()
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
         var unitOfWork = new FakeUnitOfWork();
@@ -63,7 +63,7 @@ public sealed class DiscardDraftHandlerTests
     public async Task Handle_OnADraftThatWasNeverValidToDiscard_PropagatesTheConflict(DraftStatus status)
     {
         var tenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         draft.MarkSending();
         if (status == DraftStatus.Sent)
             draft.MarkSent(Guid.NewGuid());
@@ -108,7 +108,7 @@ public sealed class DiscardDraftHandlerTests
     {
         var owningTenantId = Guid.NewGuid();
         var callerTenantId = Guid.NewGuid();
-        var draft = Draft.CreateNew(owningTenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(owningTenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var drafts = new FakeDraftRepository();
         await drafts.AddAsync(draft);
         var unitOfWork = new FakeUnitOfWork();

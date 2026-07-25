@@ -1,9 +1,12 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
+using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Api.Common;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Sharing;
@@ -16,12 +19,53 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 /// Fase C3 — nucleo autenticado de compartir archivos. La resolucion del token en
 /// si (publico/privado) vive en PublicShareController/PrivateShareController —
 /// esta clase solo gestiona el ciclo de vida (crear/listar/revocar/expiracion).
+/// RBAC Fase 7.5: el chequeo de ShareManage pasa por <see cref="IUserPermissionsSource"/> en vez
+/// de <c>User.HasClaim("perm", ...)</c> crudo — antes quedaba fuera del mecanismo compartido y
+/// hubiera dejado de funcionar en silencio el día que el claim se sacara del JWT humano.
 /// </summary>
 [ApiController]
 [Route("storage")]
 [Authorize]
-public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
+public sealed class ShareLinksController(
+    IMessageBus bus,
+    ICorrelationContext correlation,
+    IShareLinkRepository shareLinks,
+    IAuthorizationService authorizationService,
+    IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions,
+    IUserPermissionsSource permissionsSource
+) : ControllerBase
 {
+    /// <summary>
+    /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — chequeo de ownership tras flag, compartido por
+    /// Revoke/UpdateExpiration. Si el flag está apagado (default) o el link ya no existe, no
+    /// bloquea nada acá — el 404 real lo sigue devolviendo el handler de siempre.
+    /// </summary>
+    private async Task<IActionResult?> CheckOwnershipAsync(
+        Guid tenantId,
+        Guid shareLinkId,
+        Microsoft.AspNetCore.Authorization.Infrastructure.OperationAuthorizationRequirement operation,
+        CancellationToken ct
+    )
+    {
+        if (!ownershipOptions.CurrentValue.Enabled)
+            return null;
+
+        var existing = await shareLinks.GetAsync(tenantId, shareLinkId, ct);
+        if (existing is null)
+            return null;
+
+        var authorized = await authorizationService.AuthorizeAsync(User, existing, operation);
+        return authorized.Succeeded
+            ? null
+            : StatusCode(
+                StatusCodes.Status403Forbidden,
+                new Error(
+                    "ShareLink.NotOwner",
+                    "Only the link's creator or a user with share-management permission can perform this action."
+                )
+            );
+    }
+
     public sealed record CreateShareLinkRequest(
         ShareVisibility Visibility,
         SharePermission Permission,
@@ -34,7 +78,8 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     );
 
     [HttpPost("files/{fileId:guid}/shares")]
-    [Authorize(Policy = CloudStoragePermissions.ShareCreate)]
+    [HasPermission(CloudStoragePermissions.ShareCreate)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CreatedShareLinkResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(Guid fileId, CreateShareLinkRequest request, CancellationToken ct)
     {
@@ -46,7 +91,7 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
                 tenantId,
                 actorId,
                 scope,
-                User.HasClaim("perm", CloudStoragePermissions.ShareManage),
+                await permissionsSource.HasPermissionAsync(User, CloudStoragePermissions.ShareManage, ct),
                 fileId,
                 request.Visibility,
                 request.Permission,
@@ -66,7 +111,13 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     }
 
     [HttpGet("files/{fileId:guid}/shares")]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListForFile(Guid fileId, CancellationToken ct)
     {
@@ -95,7 +146,8 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     );
 
     [HttpPost("folders/{folderId:guid}/shares")]
-    [Authorize(Policy = CloudStoragePermissions.ShareCreate)]
+    [HasPermission(CloudStoragePermissions.ShareCreate)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<CreatedShareLinkResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateForFolder(
         Guid folderId,
@@ -111,7 +163,7 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
                 tenantId,
                 actorId,
                 scope,
-                User.HasClaim("perm", CloudStoragePermissions.ShareManage),
+                await permissionsSource.HasPermissionAsync(User, CloudStoragePermissions.ShareManage, ct),
                 folderId,
                 request.Visibility,
                 request.Permission,
@@ -133,7 +185,13 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     }
 
     [HttpGet("folders/{folderId:guid}/shares")]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListForFolder(Guid folderId, CancellationToken ct)
     {
@@ -148,7 +206,13 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     }
 
     [HttpGet("shares/shared-with-me")]
-    [Authorize(Policy = CloudStoragePermissions.FileView)]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.PlatformAdmin,
+        ActorType.CustomerPortal
+    )]
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SharedWithMe(
         [FromQuery] int skip = 0,
@@ -167,12 +231,17 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     }
 
     [HttpDelete("shares/{shareLinkId:guid}")]
-    [Authorize(Policy = CloudStoragePermissions.ShareRevoke)]
+    [HasPermission(CloudStoragePermissions.ShareRevoke)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Revoke(Guid shareLinkId, CancellationToken ct)
     {
         if (!User.TryGet(out var tenantId, out var actorId, out _))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, shareLinkId, Operations.Revoke, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var result = await bus.InvokeAsync<Result>(
             new RevokeShareLinkCommand(tenantId, actorId, shareLinkId, AuditContext()),
@@ -184,7 +253,8 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     public sealed record UpdateExpirationRequest(DateTime NewExpiresAtUtc);
 
     [HttpPut("shares/{shareLinkId:guid}/expiration")]
-    [Authorize(Policy = CloudStoragePermissions.ShareManage)]
+    [HasPermission(CloudStoragePermissions.ShareManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<ShareLinkResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateExpiration(
         Guid shareLinkId,
@@ -194,6 +264,10 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     {
         if (!User.TryGet(out var tenantId, out _, out _))
             return Unauthorized();
+
+        var forbidden = await CheckOwnershipAsync(tenantId, shareLinkId, Operations.Update, ct);
+        if (forbidden is not null)
+            return forbidden;
 
         var result = await bus.InvokeAsync<Result<ShareLinkResponse>>(
             new UpdateShareExpirationCommand(tenantId, shareLinkId, request.NewExpiresAtUtc),
@@ -212,7 +286,8 @@ public sealed class ShareLinksController(IMessageBus bus, ICorrelationContext co
     /// el permiso mas bajo ShareCreate y valida la elevacion aparte).
     /// </summary>
     [HttpPut("shares/{shareLinkId:guid}/permission")]
-    [Authorize(Policy = CloudStoragePermissions.ShareManage)]
+    [HasPermission(CloudStoragePermissions.ShareManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<ShareLinkResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ChangePermission(
         Guid shareLinkId,

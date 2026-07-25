@@ -12,7 +12,7 @@ namespace TaxVision.CloudStorage.Domain.Folders;
 ///
 /// Junto con el indice unico filtrado (TenantId, OwnerType, OwnerId, Category) WHERE
 /// Category IS NOT NULL (ver FolderConfiguration), esto resuelve dos gaps reales
-/// auditados el 2026-07-20: (1) dos interfaces creando folders para el mismo dueno ya no
+/// auditados: (1) dos interfaces creando folders para el mismo dueno ya no
 /// terminan con folders raiz duplicados y huerfanos entre si — get-or-create real via
 /// CreateFolderHandler; (2) dos duenos distintos ya no chocan entre si al intentar
 /// nombrar su folder raiz igual (ver el ensanche de NameExistsUnderParentAsync a

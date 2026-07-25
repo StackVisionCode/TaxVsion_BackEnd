@@ -1,8 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Auth.Api.Authorization;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Mfa.Commands;
 using TaxVision.Auth.Application.Mfa.Queries;
@@ -30,6 +30,12 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpPost("totp/setup")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType<SetupTotpResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SetupTotp(CancellationToken ct)
     {
@@ -45,6 +51,12 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpPost("totp/confirm")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType<ConfirmTotpResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ConfirmTotp(ConfirmTotpRequest request, CancellationToken ct)
     {
@@ -63,6 +75,12 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpPost("disable")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Disable(DisableMfaRequest request, CancellationToken ct)
     {
@@ -78,6 +96,12 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpPost("recovery-codes/regenerate")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType<RegenerateRecoveryCodesResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> RegenerateRecoveryCodes(
         RegenerateRecoveryCodesRequest request,
@@ -97,6 +121,12 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpDelete("trusted-devices/{deviceId:guid}")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RevokeTrustedDevice(Guid deviceId, CancellationToken ct)
     {
@@ -110,6 +140,12 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpGet("status")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType<MfaStatusResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Status(CancellationToken ct)
     {
@@ -123,6 +159,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpGet("policy")]
     [HasPermission(PermissionCatalog.SettingsManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<TenantMfaPolicyResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPolicy(CancellationToken ct)
     {
@@ -142,6 +179,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
 
     [HttpPut("policy")]
     [HasPermission(PermissionCatalog.SettingsManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> UpdatePolicy(UpdateMfaPolicyRequest request, CancellationToken ct)
     {

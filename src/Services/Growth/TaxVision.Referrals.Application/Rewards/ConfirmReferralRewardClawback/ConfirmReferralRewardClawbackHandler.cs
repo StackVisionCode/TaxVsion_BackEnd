@@ -27,6 +27,7 @@ public static class ConfirmReferralRewardClawbackHandler
             command.ReversalReference
         );
         var executed = await idempotency.ExecuteAsync(
+            command.TenantId,
             Operation,
             command.GrantId,
             command.IdempotencyKey,

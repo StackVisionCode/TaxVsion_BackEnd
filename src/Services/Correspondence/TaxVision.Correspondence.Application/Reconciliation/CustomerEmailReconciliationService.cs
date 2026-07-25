@@ -99,6 +99,26 @@ public sealed class CustomerEmailReconciliationService(
         var existing = await emailRepository.GetByCustomerIdAsync(tenantId, customer.Id, ct);
         if (existing is null)
         {
+            // Mismo riesgo de colisión que CustomerCreatedConsumer: IX_CustomerEmailAddresses_TenantId_EmailAddress_Active
+            // es única por email activo dentro del tenant — dos customers distintos con el mismo email
+            // tirarían este job entero (ReconcileTenantAsync corta en el primer fallo de SaveChanges).
+            var emailOwner = await emailRepository.FindActiveByAddressAsync(
+                tenantId,
+                emailResult.Value.NormalizedValue,
+                ct
+            );
+            if (emailOwner is not null && emailOwner.CustomerId != customer.Id)
+            {
+                logger.LogWarning(
+                    "Reconciliation for tenant {TenantId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipped.",
+                    tenantId,
+                    emailResult.Value.NormalizedValue,
+                    customer.Id,
+                    emailOwner.CustomerId
+                );
+                return ReconciliationOutcome.NoChange;
+            }
+
             var projection = CustomerEmailAddress.Create(tenantId, customer.Id, emailResult.Value);
             await emailRepository.AddAsync(projection, ct);
             return ReconciliationOutcome.Created;
@@ -112,6 +132,23 @@ public sealed class CustomerEmailReconciliationService(
 
         if (existing.EmailAddress != emailResult.Value.NormalizedValue)
         {
+            var emailOwner = await emailRepository.FindActiveByAddressAsync(
+                tenantId,
+                emailResult.Value.NormalizedValue,
+                ct
+            );
+            if (emailOwner is not null && emailOwner.CustomerId != customer.Id)
+            {
+                logger.LogWarning(
+                    "Reconciliation for tenant {TenantId}: new email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipped.",
+                    tenantId,
+                    emailResult.Value.NormalizedValue,
+                    customer.Id,
+                    emailOwner.CustomerId
+                );
+                return ReconciliationOutcome.NoChange;
+            }
+
             existing.UpdateEmail(emailResult.Value);
             return ReconciliationOutcome.Updated;
         }

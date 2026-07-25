@@ -19,7 +19,8 @@ public sealed class CodeDefinitionRepository(GrowthDbContext dbContext, ITenantC
             return Task.FromResult<CodeDefinition?>(null);
 
         return dbContext
-            .CodeDefinitions.Include(definition => definition.RuleVersions)
+            .CodeDefinitions.IgnoreQueryFilters()
+            .Include(definition => definition.RuleVersions)
             .Include(definition => definition.Scopes)
             .FirstOrDefaultAsync(
                 definition => definition.Id == codeDefinitionId && definition.TenantId == ownerTenantId,

@@ -123,4 +123,106 @@ public sealed class PermissionCatalogTests
     {
         Assert.Equal(expected, PlanTierResolver.FromPlanCode(planCode));
     }
+
+    // RBAC Fase 2 (RBAC_Hardening_Plan.md) — SystemTenantAdmin deja de ser un god-role dinámico.
+
+    [Theory]
+    [InlineData(PermissionCatalog.RolesManage)]
+    [InlineData(PermissionCatalog.BillingView)]
+    [InlineData(PermissionCatalog.BillingManage)]
+    [InlineData(PermissionCatalog.SubscriptionManage)]
+    [InlineData(PermissionCatalog.TenantDomainsManage)]
+    [InlineData(PermissionCatalog.SignaturePlanConstraintsManage)]
+    [InlineData(PermissionCatalog.CloudStorageLegalManage)]
+    public void SystemTenantAdmin_does_not_include_dangerous_permissions(string dangerousCode)
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == dangerousCode);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.True(definition.IsDangerous);
+        Assert.DoesNotContain(dangerousCode, tenantAdminDefaults);
+    }
+
+    [Fact]
+    public void SystemTenantAdmin_still_includes_a_baseline_non_dangerous_permission()
+    {
+        // Guardarraíl del guardarraíl: confirma que el filtro !IsDangerous no vació el set entero
+        // por error — un permiso operativo normal debe seguir llegando por el bundle automático.
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.Contains(PermissionCatalog.CustomersView, tenantAdminDefaults);
+        Assert.Contains(PermissionCatalog.CustomersManage, tenantAdminDefaults);
+    }
+
+    [Fact]
+    public void DmcaCounterNotice_is_deliberately_not_dangerous_despite_looking_like_a_legal_permission()
+    {
+        // Desviación deliberada del plan original (ver comentario junto a la definición en
+        // PermissionCatalog): a diferencia de CloudStorageLegalManage (equipo legal de
+        // plataforma), este permiso es la respuesta legal del propio tenant a un takedown
+        // recibido sobre SU archivo — con plazos reales de 17 U.S.C. §512(g). Marcarlo
+        // IsDangerous dejaría a cualquier oficina sin poder auto-defenderse sin depender de
+        // PlatformAdmin.
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.CloudStorageDmcaCounterNotice);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.False(definition.IsDangerous);
+        Assert.Contains(PermissionCatalog.CloudStorageDmcaCounterNotice, tenantAdminDefaults);
+    }
+
+    // RBAC Fase 8 (RBAC_Hardening_Plan.md) — migración de [Authorize(Roles=...)] a
+    // [HasPermission] en Subscription/Auth-Invitations/Tenant. Los TenantAdmin-only de antes
+    // (subscription.plan.change, seats.manage, addons.manage) deben seguir llegando por el
+    // bundle automático — la migración exige "más permisivo, no bloquea injustamente", así que
+    // el caso positivo (siguen en el default) es tan importante como el negativo (PlatformOnly
+    // queda afuera).
+
+    [Theory]
+    [InlineData(PermissionCatalog.SubscriptionPlanChange)]
+    [InlineData(PermissionCatalog.SeatsManage)]
+    [InlineData(PermissionCatalog.AddOnsManage)]
+    public void Subscription_tenant_scoped_permissions_reach_tenant_admin_by_default(string code)
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.False(definition.PlatformOnly);
+        Assert.False(definition.IsDangerous);
+        Assert.Contains(code, tenantAdminDefaults);
+    }
+
+    [Theory]
+    [InlineData(PermissionCatalog.SubscriptionSuspend)]
+    [InlineData(PermissionCatalog.SubscriptionReactivate)]
+    [InlineData(PermissionCatalog.SubscriptionRenew)]
+    [InlineData(PermissionCatalog.SubscriptionAdminCrossTenant)]
+    [InlineData(PermissionCatalog.TenantStatusChange)]
+    [InlineData(PermissionCatalog.TenantListView)]
+    public void Subscription_and_tenant_platform_only_permissions_never_reach_tenant_admin_defaults(string code)
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.DoesNotContain(code, tenantAdminDefaults);
+    }
+
+    [Fact]
+    public void Fase8_permissions_have_unique_codes_and_ids()
+    {
+        var fase8 = PermissionCatalog
+            .All.Where(definition => definition.Module is "subscription" or "seats" or "addons")
+            .ToArray();
+
+        // 7 nuevas de Subscription (5 "subscription" + seats + addons) — audit.view se reusa,
+        // no agrega fila nueva.
+        Assert.Equal(7, fase8.Length);
+        Assert.Equal(fase8.Length, fase8.Select(definition => definition.Code).Distinct().Count());
+        Assert.Equal(fase8.Length, fase8.Select(definition => definition.Id).Distinct().Count());
+
+        var tenantModule = PermissionCatalog.All.Where(definition => definition.Module == "tenant").ToArray();
+        Assert.Equal(2, tenantModule.Length);
+        Assert.Equal(tenantModule.Length, tenantModule.Select(definition => definition.Code).Distinct().Count());
+    }
 }

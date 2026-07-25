@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Infrastructure.Persistence;
@@ -12,19 +13,33 @@ namespace TaxVision.Correspondence.Tests.Persistence;
 /// </summary>
 public sealed class EmailThreadRepositoryTests
 {
-    private static CorrespondenceDbContext CreateContext() =>
+    // RBAC Fase 5 — EmailThread ahora es ITenantOwned; se setea el tenant "propio" de cada test
+    // antes de consultar, igual que haría JwtTenantContextMiddleware en producción.
+    private sealed class FakeTenantContext : ITenantContext
+    {
+        private Guid? _tenantId;
+        public Guid TenantId => _tenantId ?? throw new InvalidOperationException("TenantId is not set.");
+        public bool HasTenant => _tenantId.HasValue;
+
+        public void SetTenant(Guid tenantId) => _tenantId = tenantId;
+    }
+
+    private static CorrespondenceDbContext CreateContext(ITenantContext tenantContext) =>
         new(
             new DbContextOptionsBuilder<CorrespondenceDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .Options
+                .Options,
+            tenantContext
         );
 
     [Fact]
     public async Task ListByCustomerAsync_WithFiveThreads_PaginatesInLastMessageAtUtcDescendingOrder()
     {
-        await using var db = CreateContext();
-        var repository = new EmailThreadRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new EmailThreadRepository(db);
         var customerId = Guid.NewGuid();
         var now = DateTime.UtcNow;
 
@@ -52,9 +67,11 @@ public sealed class EmailThreadRepositoryTests
     [Fact]
     public async Task ListByCustomerAsync_WithZeroOrNegativePageAndSize_ClampsToDefaults()
     {
-        await using var db = CreateContext();
-        var repository = new EmailThreadRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new EmailThreadRepository(db);
         var customerId = Guid.NewGuid();
         var thread = EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, DateTime.UtcNow).Value;
         await repository.AddAsync(thread);
@@ -70,9 +87,11 @@ public sealed class EmailThreadRepositoryTests
     [Fact]
     public async Task ListByCustomerAsync_WithSizeAboveMax_ClampsToMaxPageSize()
     {
-        await using var db = CreateContext();
-        var repository = new EmailThreadRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new EmailThreadRepository(db);
         var customerId = Guid.NewGuid();
 
         var result = await repository.ListByCustomerAsync(tenantId, customerId, page: 1, size: 500);
@@ -83,9 +102,11 @@ public sealed class EmailThreadRepositoryTests
     [Fact]
     public async Task ListByCustomerAsync_WithThreadFromAnotherCustomer_NeverReturnsIt()
     {
-        await using var db = CreateContext();
-        var repository = new EmailThreadRepository(db);
         var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new EmailThreadRepository(db);
         var customerId = Guid.NewGuid();
         var ownThread = EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, DateTime.UtcNow).Value;
         var otherCustomerThread = EmailThread

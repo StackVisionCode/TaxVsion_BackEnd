@@ -5,9 +5,8 @@ using TaxVision.Notification.Domain.Notifications;
 namespace TaxVision.Notification.Domain.Preferences;
 
 /// <summary>
-/// Interruptor por categoría+canal. Fase 5 del plan de notificaciones dinámicas — la versión
-/// anterior de esta tabla se borró (ver Hardening Fase 20, 2026-07-18) porque ningún consumer
-/// la consultaba; esta vez <see cref="TaxVision.Notification.Application.Common.NotificationDispatcher"/>
+/// Interruptor por categoría+canal. La versión anterior de esta tabla se borró porque ningún
+/// consumer la consultaba; esta vez <see cref="TaxVision.Notification.Application.Common.NotificationDispatcher"/>
 /// la consulta siempre (parámetro obligatorio, no opcional) en vez de depender de que cada
 /// consumer se acuerde de llamarla.
 /// </summary>

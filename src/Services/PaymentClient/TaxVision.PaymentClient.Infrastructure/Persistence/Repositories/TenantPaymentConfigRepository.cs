@@ -34,6 +34,11 @@ public sealed class TenantPaymentConfigRepository(PaymentClientDbContext db) : I
     public async Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
         await db.TenantPaymentConfigs.AddAsync(config, ct);
 
+    // IgnoreQueryFilters: los 3 métodos de arriba corren dentro de un handler de Wolverine
+    // (bus.InvokeAsync), en un scope de DI distinto al de la request HTTP que pobló
+    // ITenantContext vía JwtTenantContextMiddleware; el HasQueryFilter ambiental de
+    // PaymentClientDbContext ve Guid.Empty ahí. tenantId ya viene explícito y validado en
+    // cada uno de esos métodos, así que ignorar el filtro ambiental roto es seguro acá.
     private static IQueryable<TenantPaymentConfig> WithEndpoints(IQueryable<TenantPaymentConfig> query) =>
-        query.Include(config => config.WebhookEndpoints);
+        query.IgnoreQueryFilters().Include(config => config.WebhookEndpoints);
 }

@@ -21,7 +21,6 @@ public sealed class ReserveSubdomainHandlerTests
             string effectiveTimeZoneId,
             Guid sessionId,
             IReadOnlyCollection<string> roles,
-            IReadOnlyCollection<string> permissions,
             IReadOnlyCollection<string> authMethods
         ) => new("fake-access-token", 900);
 

@@ -14,6 +14,7 @@ using TaxVision.Codes.Domain.Reservations;
 using TaxVision.Codes.Domain.Usage;
 using TaxVision.Growth.Infrastructure.Persistence.Audit;
 using TaxVision.Growth.Infrastructure.Persistence.Idempotency;
+using TaxVision.Growth.Infrastructure.Persistence.Permissions;
 using TaxVision.Growth.Infrastructure.Persistence.Referrals;
 using TaxVision.Referrals.Domain.Attributions;
 using TaxVision.Referrals.Domain.Codes;
@@ -53,6 +54,11 @@ public sealed class GrowthDbContext(
 
     public DbSet<ProcessedBusinessMessage> ProcessedBusinessMessages => Set<ProcessedBusinessMessage>();
     public DbSet<GrowthAuditEntry> AuditEntries => Set<GrowthAuditEntry>();
+
+    // RBAC Fase 7/8 — proyección local de permisos consultada por ProjectionPermissionsSource
+    // cuando Authorization:PermissionsSource="Projection" (ver Program.cs).
+    public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
+    public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

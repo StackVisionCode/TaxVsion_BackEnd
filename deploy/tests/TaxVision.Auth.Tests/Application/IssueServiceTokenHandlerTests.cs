@@ -55,7 +55,6 @@ public sealed class IssueServiceTokenHandlerTests
             string effectiveTimeZoneId,
             Guid sessionId,
             IReadOnlyCollection<string> roles,
-            IReadOnlyCollection<string> permissions,
             IReadOnlyCollection<string> authMethods
         ) => throw new NotSupportedException();
 

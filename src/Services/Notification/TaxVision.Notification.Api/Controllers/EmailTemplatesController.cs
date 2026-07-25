@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Notification.Api.Authorization;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Application.Email.Templates;
 using TaxVision.Notification.Application.Email.Templates.Commands;
@@ -16,6 +16,8 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Gestión de plantillas de correo (System/Tenant). La BD guarda metadata + storage keys; el HTML,
 /// design JSON y preview se guardan en CloudStorage. Cada edición crea una versión; publicar activa una.
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización que salte validaciones).
 ///
 /// NO retirado en la Fase 18 del plan de hardening (Notification), a pesar de que el frontend no
 /// llama a este controller (confirmado por el usuario) y de que Scribe existe para reemplazarlo:
@@ -33,6 +35,7 @@ namespace TaxVision.Notification.Api.Controllers;
 [ApiController]
 [Route("notifications/email/templates")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEmailTemplateRequest(

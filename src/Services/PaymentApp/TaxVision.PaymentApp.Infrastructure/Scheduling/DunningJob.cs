@@ -36,6 +36,10 @@ public sealed class DunningJob(
 
         foreach (var payment in due)
         {
+            // RBAC Fase 5 — bus.InvokeAsync crea un scope Wolverine nuevo; sin este stamp
+            // LocalCommandTenantMiddleware no tiene tenant que restaurar y el filtro
+            // fail-closed de PaymentAppDbContext bloquearía el handler.
+            bus.TenantId = payment.TenantId.ToString();
             var result = await bus.InvokeAsync<Result>(
                 new RetrySaaSPaymentCommand(payment.TenantId, payment.Id, Guid.Empty),
                 ct

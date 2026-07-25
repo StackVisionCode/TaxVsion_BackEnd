@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -19,6 +20,15 @@ public sealed class SubscriptionDbContextFactory : IDesignTimeDbContextFactory<S
 
         var options = new DbContextOptionsBuilder<SubscriptionDbContext>().UseSqlServer(connectionString).Options;
 
-        return new SubscriptionDbContext(options);
+        // dotnet-ef solo inspecciona el modelo, nunca ejecuta una query real.
+        return new SubscriptionDbContext(options, new DesignTimeOnlyTenantContext());
+    }
+
+    private sealed class DesignTimeOnlyTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

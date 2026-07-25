@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Domain.ValueObjects;
 
@@ -17,7 +18,7 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 /// el motivo en vez de un valor fijo de 24h para toda la tabla.
 /// </para>
 /// </summary>
-public sealed class UnmatchedIncomingEmail
+public sealed class UnmatchedIncomingEmail : ITenantOwned
 {
     public const int SubjectMaxLength = 1000;
     public const int ProviderMessageIdMaxLength = 200;
@@ -44,6 +45,9 @@ public sealed class UnmatchedIncomingEmail
     public UnmatchedReason Reason { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
+
+    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     public static Result<UnmatchedIncomingEmail> Create(
         Guid tenantId,

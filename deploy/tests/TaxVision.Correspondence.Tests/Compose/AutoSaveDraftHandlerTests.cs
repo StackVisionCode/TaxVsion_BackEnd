@@ -8,7 +8,7 @@ public sealed class AutoSaveDraftHandlerTests
 {
     private static async Task<Draft> SeedDraftAsync(FakeDraftRepository drafts, Guid tenantId)
     {
-        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(tenantId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         await drafts.AddAsync(draft);
         return draft;
     }

@@ -13,6 +13,7 @@ public sealed class SqlReferralIdempotencyExecutor(SqlBusinessIdempotencyExecuto
     : IReferralIdempotencyExecutor
 {
     public Task<Result<TResponse>> ExecuteAsync<TResponse>(
+        Guid tenantId,
         string operation,
         Guid scopeId,
         string idempotencyKey,
@@ -47,6 +48,6 @@ public sealed class SqlReferralIdempotencyExecutor(SqlBusinessIdempotencyExecuto
             );
         }
 
-        return executor.ExecuteAsync(operation, scopeId, key.Value, fingerprint.Value, operationBody, ct);
+        return executor.ExecuteAsync(tenantId, operation, scopeId, key.Value, fingerprint.Value, operationBody, ct);
     }
 }

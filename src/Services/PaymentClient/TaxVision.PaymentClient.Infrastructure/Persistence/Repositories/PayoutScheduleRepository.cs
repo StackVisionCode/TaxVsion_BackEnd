@@ -6,17 +6,27 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 
 public sealed class PayoutScheduleRepository(PaymentClientDbContext db) : IPayoutScheduleRepository
 {
+    // IgnoreQueryFilters: este repo corre dentro de un handler de Wolverine (bus.InvokeAsync),
+    // en un scope de DI distinto al de la request HTTP que pobló ITenantContext vía
+    // JwtTenantContextMiddleware; el HasQueryFilter ambiental de PaymentClientDbContext ve
+    // Guid.Empty ahí. tenantId ya viene explícito y validado desde el controller/evento.
     public Task<PayoutSchedule?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
         db
-            .PayoutSchedules.Include(schedule => schedule.Items)
+            .PayoutSchedules.IgnoreQueryFilters()
+            .Include(schedule => schedule.Items)
             .FirstOrDefaultAsync(schedule => schedule.TenantId == tenantId, ct);
 
+    // IgnoreQueryFilters: reverse lookup por FK a un TenantConnectAccount ya resuelto en el
+    // mismo scope (Upsert/ProcessConnectWebhook handlers) — cuyo tenant ya fue validado por la
+    // resolución previa del account. Sin esto, tanto Upsert como el webhook creaban schedules
+    // duplicados porque el fetch para "existe ya uno?" siempre devolvía null.
     public Task<PayoutSchedule?> GetByTenantConnectAccountIdAsync(
         Guid tenantConnectAccountId,
         CancellationToken ct = default
     ) =>
         db
-            .PayoutSchedules.Include(schedule => schedule.Items)
+            .PayoutSchedules.IgnoreQueryFilters()
+            .Include(schedule => schedule.Items)
             .FirstOrDefaultAsync(schedule => schedule.TenantConnectAccountId == tenantConnectAccountId, ct);
 
     public async Task AddAsync(PayoutSchedule schedule, CancellationToken ct = default) =>

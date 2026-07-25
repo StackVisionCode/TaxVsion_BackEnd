@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Auth.Api.Authorization;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Tenants.Queries;
 using TaxVision.Auth.Application.Users.Commands;
@@ -19,6 +19,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
     [HasPermission(PermissionCatalog.UsersView)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<PagedResult<UserSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUsers(
         [FromQuery] int page = 1,
@@ -41,6 +42,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 
     [HttpGet("{userId:guid}")]
     [HasPermission(PermissionCatalog.UsersView)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<UserSummaryResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUserById(Guid userId, CancellationToken ct)
     {
@@ -54,6 +56,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 
     [HttpPatch("{userId:guid}/deactivate")]
     [HasPermission(PermissionCatalog.UsersManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Deactivate(Guid userId, CancellationToken ct)
     {
@@ -67,6 +70,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 
     [HttpPatch("{userId:guid}/reactivate")]
     [HasPermission(PermissionCatalog.UsersManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reactivate(Guid userId, CancellationToken ct)
     {
@@ -82,6 +86,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 
     [HttpPut("{userId:guid}/roles")]
     [HasPermission(PermissionCatalog.RolesManage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> AssignRoles(Guid userId, AssignRolesRequest request, CancellationToken ct)
     {
@@ -100,6 +105,12 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
 
     [HttpPut("me/profile")]
     [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> UpdateMyProfile(UpdateMyProfileRequest request, CancellationToken ct)
     {
@@ -117,6 +128,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
     /// <summary>Plan, asientos usados/disponibles e invitaciones restantes del tenant.</summary>
     [HttpGet("/auth/tenants/limits")]
     [HasPermission(PermissionCatalog.UsersView)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [ProducesResponseType<TenantLimitsResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTenantLimits(CancellationToken ct)
     {

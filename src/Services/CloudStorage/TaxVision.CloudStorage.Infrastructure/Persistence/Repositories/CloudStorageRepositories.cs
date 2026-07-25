@@ -15,8 +15,16 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
 
     public void Remove(FileObject file) => db.Files.Remove(file);
 
+    // tenantId ya viene explicito y validado por el caller — sin IgnoreQueryFilters() esta lectura
+    // igual queda sujeta al HasQueryFilter fail-closed de EF, que lee TenantContext del scope de DI
+    // actual. Para comandos locales despachados por Wolverine (p.ej. ScanFileCommand via
+    // bus.PublishAsync), el middleware que popula TenantContext y el handler que resuelve este
+    // repositorio pueden correr en scopes de DI distintos, asi que el filtro veria HasTenant=false
+    // pese a que el tenant real ya esta disponible como parametro. Mismo patron que
+    // ListExpiredUploadsAsync/GetByTokenHashAsync: el parametro explicito ES el limite de
+    // autorizacion real, el filtro global es solo defensa en profundidad.
     public Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
-        db.Files.SingleOrDefaultAsync(file => file.TenantId == tenantId && file.Id == fileId, ct);
+        db.Files.IgnoreQueryFilters().SingleOrDefaultAsync(file => file.TenantId == tenantId && file.Id == fileId, ct);
 
     public async Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
@@ -26,7 +34,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         CancellationToken ct
     ) =>
         await db
-            .Files.AsNoTracking()
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(file =>
                 file.TenantId == tenantId
                 && file.Status != FileStatus.SoftDeleted
@@ -40,13 +49,16 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Take(take)
             .ToListAsync(ct);
 
+    // RBAC Fase 5 — cross-tenant por diseño (ExpiredUploadCleanupService recorre TODOS los
+    // tenants en cada corrida), único consumidor de este método. IgnoreQueryFilters() explícito.
     public async Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(
         DateTime nowUtc,
         int take,
         CancellationToken ct
     ) =>
         await db
-            .Files.Where(file => file.Status == FileStatus.PendingUpload && file.UploadExpiresAtUtc <= nowUtc)
+            .Files.IgnoreQueryFilters()
+            .Where(file => file.Status == FileStatus.PendingUpload && file.UploadExpiresAtUtc <= nowUtc)
             .OrderBy(file => file.UploadExpiresAtUtc)
             .Take(take)
             .ToListAsync(ct);
@@ -58,20 +70,24 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         CancellationToken ct
     ) =>
         await db
-            .Files.AsNoTracking()
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(file => file.TenantId == tenantId && file.Status == FileStatus.SoftDeleted)
             .OrderByDescending(file => file.SoftDeletedAtUtc)
             .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
 
+    // RBAC Fase 5 — cross-tenant por diseño (RecycleBinPurgeService recorre TODOS los tenants
+    // en cada corrida diaria), único consumidor de este método. IgnoreQueryFilters() explícito.
     public async Task<IReadOnlyList<FileObject>> ListPurgeablePastRetentionAsync(
         DateTime nowUtc,
         int take,
         CancellationToken ct
     ) =>
         await db
-            .Files.Where(file => file.Status == FileStatus.SoftDeleted && file.SoftDeleteExpiresAtUtc <= nowUtc)
+            .Files.IgnoreQueryFilters()
+            .Where(file => file.Status == FileStatus.SoftDeleted && file.SoftDeleteExpiresAtUtc <= nowUtc)
             .OrderBy(file => file.SoftDeleteExpiresAtUtc)
             .Take(take)
             .ToListAsync(ct);
@@ -85,7 +101,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         CancellationToken ct
     ) =>
         await db
-            .Files.AsNoTracking()
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(file =>
                 file.TenantId == tenantId
                 && file.FolderId == folderId
@@ -109,7 +126,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         CancellationToken ct
     ) =>
         await db
-            .Files.AsNoTracking()
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(file =>
                 file.TenantId == tenantId
                 && file.FolderId != null
@@ -130,7 +148,9 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
     public void Remove(Folder folder) => db.Folders.Remove(folder);
 
     public Task<Folder?> GetAsync(Guid tenantId, Guid folderId, CancellationToken ct) =>
-        db.Folders.SingleOrDefaultAsync(folder => folder.TenantId == tenantId && folder.Id == folderId, ct);
+        db
+            .Folders.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(folder => folder.TenantId == tenantId && folder.Id == folderId, ct);
 
     public async Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
         Guid tenantId,
@@ -141,7 +161,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         CancellationToken ct
     ) =>
         await db
-            .Folders.AsNoTracking()
+            .Folders.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(folder =>
                 folder.TenantId == tenantId
                 && folder.ParentFolderId == parentFolderId
@@ -163,7 +184,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
     {
         var prefix = relativePathPrefix + "/";
         return await db
-            .Folders.Where(folder => folder.TenantId == tenantId && folder.RelativePath.StartsWith(prefix))
+            .Folders.IgnoreQueryFilters()
+            .Where(folder => folder.TenantId == tenantId && folder.RelativePath.StartsWith(prefix))
             .ToListAsync(ct);
     }
 
@@ -176,16 +198,18 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         Guid? excludeFolderId,
         CancellationToken ct
     ) =>
-        db.Folders.AnyAsync(
-            folder =>
-                folder.TenantId == tenantId
-                && folder.ParentFolderId == parentFolderId
-                && folder.Name == name
-                && folder.OwnerType == ownerType
-                && folder.OwnerId == ownerId
-                && folder.Id != (excludeFolderId ?? Guid.Empty),
-            ct
-        );
+        db
+            .Folders.IgnoreQueryFilters()
+            .AnyAsync(
+                folder =>
+                    folder.TenantId == tenantId
+                    && folder.ParentFolderId == parentFolderId
+                    && folder.Name == name
+                    && folder.OwnerType == ownerType
+                    && folder.OwnerId == ownerId
+                    && folder.Id != (excludeFolderId ?? Guid.Empty),
+                ct
+            );
 
     public Task<Folder?> GetByOwnerAndCategoryAsync(
         Guid tenantId,
@@ -194,15 +218,20 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         string category,
         CancellationToken ct
     ) =>
-        db.Folders.SingleOrDefaultAsync(
-            folder =>
-                folder.TenantId == tenantId
-                && folder.OwnerType == ownerType
-                && folder.OwnerId == ownerId
-                && folder.Category == category,
-            ct
-        );
+        db
+            .Folders.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(
+                folder =>
+                    folder.TenantId == tenantId
+                    && folder.OwnerType == ownerType
+                    && folder.OwnerId == ownerId
+                    && folder.Category == category,
+                ct
+            );
 
+    // Mismo patron que FileObjectRepository.GetAsync: GetFolderTreeQuery se despacha via
+    // bus.InvokeAsync y el handler puede correr en un scope de DI distinto al que populo
+    // TenantContext. tenantId ya viene explicito y validado desde el JWT del controller.
     public async Task<IReadOnlyList<Folder>> ListAllForOwnerScopeAsync(
         Guid tenantId,
         OwnerType? ownerType,
@@ -210,7 +239,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         CancellationToken ct
     ) =>
         await db
-            .Folders.AsNoTracking()
+            .Folders.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(folder =>
                 folder.TenantId == tenantId
                 && (ownerType == null || folder.OwnerType == ownerType)
@@ -224,7 +254,7 @@ public sealed class StorageLimitRepository(CloudStorageDbContext db) : IStorageL
     public void Add(TenantStorageLimit limit) => db.StorageLimits.Add(limit);
 
     public Task<TenantStorageLimit?> GetAsync(Guid tenantId, CancellationToken ct) =>
-        db.StorageLimits.SingleOrDefaultAsync(limit => limit.TenantId == tenantId, ct);
+        db.StorageLimits.IgnoreQueryFilters().SingleOrDefaultAsync(limit => limit.TenantId == tenantId, ct);
 }
 
 /// <summary>Fase C3 — links de compartir. GetByTokenHashAsync siempre trae los Recipients: la resolucion de acceso los necesita.</summary>
@@ -233,10 +263,15 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
     public void Add(ShareLink link) => db.ShareLinks.Add(link);
 
     public Task<ShareLink?> GetAsync(Guid tenantId, Guid id, CancellationToken ct) =>
-        db.ShareLinks.SingleOrDefaultAsync(link => link.TenantId == tenantId && link.Id == id, ct);
+        db.ShareLinks.IgnoreQueryFilters().SingleOrDefaultAsync(link => link.TenantId == tenantId && link.Id == id, ct);
 
+    // RBAC Fase 5 — resolución pública del token (PublicShareController), sin tenant en contexto
+    // por diseño (el token en sí es la autorización); IgnoreQueryFilters() explícito.
     public Task<ShareLink?> GetByTokenHashAsync(byte[] tokenHash, CancellationToken ct) =>
-        db.ShareLinks.Include(link => link.Recipients).SingleOrDefaultAsync(link => link.TokenHash == tokenHash, ct);
+        db
+            .ShareLinks.IgnoreQueryFilters()
+            .Include(link => link.Recipients)
+            .SingleOrDefaultAsync(link => link.TokenHash == tokenHash, ct);
 
     public async Task<IReadOnlyList<ShareLink>> ListForResourceAsync(
         Guid tenantId,
@@ -245,7 +280,8 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
         CancellationToken ct
     ) =>
         await db
-            .ShareLinks.AsNoTracking()
+            .ShareLinks.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(link =>
                 link.TenantId == tenantId && link.ResourceId == resourceId && link.ResourceType == resourceType
             )
@@ -260,7 +296,8 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
         CancellationToken ct
     ) =>
         await db
-            .ShareLinks.AsNoTracking()
+            .ShareLinks.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(link =>
                 link.TenantId == tenantId
                 && link.Status == ShareStatus.Active
@@ -285,7 +322,8 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
         CancellationToken ct
     ) =>
         await db
-            .ShareLinks.AsNoTracking()
+            .ShareLinks.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(link =>
                 link.TenantId == tenantId
                 && link.Status == ShareStatus.Active
@@ -308,7 +346,8 @@ public sealed class ShareLinkRepository(CloudStorageDbContext db) : IShareLinkRe
         CancellationToken ct
     ) =>
         await db
-            .ShareLinks.AsNoTracking()
+            .ShareLinks.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(link =>
                 link.TenantId == tenantId
                 && link.Status == ShareStatus.Active
@@ -330,7 +369,8 @@ public sealed class StorageAuditRepository(CloudStorageDbContext db) : IStorageA
         CancellationToken ct
     ) =>
         await db
-            .AccessLogs.AsNoTracking()
+            .AccessLogs.IgnoreQueryFilters()
+            .AsNoTracking()
             .Where(log => log.TenantId == tenantId)
             .OrderByDescending(log => log.OccurredAtUtc)
             .Skip(skip)
@@ -350,11 +390,16 @@ public sealed class DmcaNoticeRepository(CloudStorageDbContext db) : IDmcaNotice
     public void Add(DmcaNotice notice) => db.DmcaNotices.Add(notice);
 
     public Task<DmcaNotice?> GetAsync(Guid tenantId, Guid id, CancellationToken ct) =>
-        db.DmcaNotices.SingleOrDefaultAsync(notice => notice.TenantId == tenantId && notice.Id == id, ct);
+        db
+            .DmcaNotices.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(notice => notice.TenantId == tenantId && notice.Id == id, ct);
 
     public Task<bool> HasActiveNoticeForFileAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
-        db.DmcaNotices.AnyAsync(
-            notice => notice.TenantId == tenantId && notice.FileId == fileId && ActiveStatuses.Contains(notice.Status),
-            ct
-        );
+        db
+            .DmcaNotices.IgnoreQueryFilters()
+            .AnyAsync(
+                notice =>
+                    notice.TenantId == tenantId && notice.FileId == fileId && ActiveStatuses.Contains(notice.Status),
+                ct
+            );
 }

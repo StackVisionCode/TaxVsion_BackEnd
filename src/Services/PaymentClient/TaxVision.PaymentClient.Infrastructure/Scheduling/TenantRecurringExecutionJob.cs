@@ -42,6 +42,10 @@ public sealed class TenantRecurringExecutionJob(
                 )
             )
             {
+                // RBAC Fase 5 — bus.InvokeAsync crea un scope Wolverine nuevo; sin este stamp
+                // LocalCommandTenantMiddleware no tiene tenant que restaurar y el filtro
+                // fail-closed de PaymentClientDbContext bloquearía el handler.
+                bus.TenantId = plan.TenantId.ToString();
                 var result = await bus.InvokeAsync<Result>(
                     new ExecuteRecurringScheduleCommand(plan.TenantId, plan.Id, schedule.Id),
                     ct

@@ -1,7 +1,7 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Auth.Api.Authorization;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.TenantDomains.Commands;
@@ -20,6 +20,7 @@ namespace TaxVision.Auth.Api.Controllers;
 [ApiController]
 [Route("auth/tenant-domains")]
 [HasPermission(PermissionCatalog.TenantDomainsManage)]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class TenantDomainsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]

@@ -6,11 +6,17 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Repositories;
 
 public sealed class RolePermissionsProjectionRepository(NotificationDbContext db) : IRolePermissionsProjectionRepository
 {
+    // Consumer Wolverine sin TenantContext ambiente (no hay HTTP request) — el filtro global de
+    // tenant de NotificationDbContext tiraría antes de llegar acá. tenantId ya viene explícito y
+    // confiable desde el evento — IgnoreQueryFilters() explícito.
     public async Task<RolePermissionsProjection?> GetAsync(
         Guid tenantId,
         Guid roleId,
         CancellationToken ct = default
-    ) => await db.RolePermissionsProjections.FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == roleId, ct);
+    ) =>
+        await db
+            .RolePermissionsProjections.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == roleId, ct);
 
     public async Task AddAsync(RolePermissionsProjection projection, CancellationToken ct = default) =>
         await db.RolePermissionsProjections.AddAsync(projection, ct);
@@ -21,6 +27,7 @@ public sealed class RolePermissionsProjectionRepository(NotificationDbContext db
         CancellationToken ct = default
     ) =>
         await db
-            .RolePermissionsProjections.Where(p => p.TenantId == tenantId && roleIds.Contains(p.Id))
+            .RolePermissionsProjections.IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && roleIds.Contains(p.Id))
             .ToListAsync(ct);
 }

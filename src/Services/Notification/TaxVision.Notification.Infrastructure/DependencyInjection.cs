@@ -1,9 +1,11 @@
 using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Authorization.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Email.Sending;
 using TaxVision.Notification.Infrastructure.Email;
@@ -43,6 +45,21 @@ public static class DependencyInjection
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
         services.AddScoped<IRecipientResolver, RecipientResolver>();
 
+        // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para AUTORIZACION,
+        // consultada por ProjectionPermissionsSource cuando Authorization:PermissionsSource=
+        // "Projection". Distinta de la proyeccion de arriba (Fase 4, fan-out de notificaciones) —
+        // ver el comentario XML de AuthzUserPermissionsProjection. La misma instancia scoped
+        // satisface el puerto local rico (para los consumers) y el puerto compartido y angosto
+        // de BuildingBlocks (para la autorizacion), evitando dos lecturas separadas del mismo dato.
+        services.AddScoped<AuthzUserPermissionsProjectionRepository>();
+        services.AddScoped<IAuthzUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
+
         // Fase 5 — el interruptor que consulta NotificationDispatcher antes de cada envío.
         services.AddScoped<IUserNotificationPreferenceRepository, UserNotificationPreferenceRepository>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
@@ -69,21 +86,15 @@ public static class DependencyInjection
         services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
         services.AddScoped<NotificationDispatcher>();
 
-        // Notifications Fase 3+4, flippeado a default-true en Hardening Fase 21 (2026-07-18).
+        // Notification:UsePostmasterDispatch selecciona el gateway de envío:
+        // - true (default): publica notifications.email_send_requested.v1 hacia Postmaster; los
+        //   callbacks PostmasterEmailDelivery* actualizan el NotificationDispatchAttempt.
+        // - false (rollback explícito): gateway in-process, envío via SmtpEmailSender directo —
+        //   InProcessEmailDispatchGateway se mantiene como fallback, no se elimina.
         //
-        // - Notification:UsePostmasterDispatch = true (DEFAULT desde Fase 21): publica
-        //   notifications.email_send_requested.v1 hacia Postmaster; los callbacks
-        //   PostmasterEmailDelivery* actualizan el estado del NotificationDispatchAttempt.
-        // - Notification:UsePostmasterDispatch = false (rollback explícito, ver README §28/§35):
-        //   gateway in-process, envío via SmtpEmailSender directo. Comportamiento pre-Fase 3
-        //   preservado como fallback — InProcessEmailDispatchGateway NO se elimina en esta fase
-        //   (retiro real es trabajo futuro fuera de este plan, condicionado a confianza
-        //   operacional en un despliegue real).
-        //
-        // GetValue<bool> con la clave ausente resuelve a default(bool) = false — por eso el
-        // default real está fijado explícitamente en appsettings.json ("Notification:
-        // UsePostmasterDispatch": true) y en el fallback de docker-compose.yml
-        // (${NOTIFICATION_USE_POSTMASTER_DISPATCH:-true}), no solo acá.
+        // GetValue<bool> con la clave ausente resuelve a false — por eso el default real está
+        // fijado explícitamente en appsettings.json y en el fallback de docker-compose.yml, no
+        // solo acá.
         var usePostmasterDispatch = configuration.GetValue<bool>("Notification:UsePostmasterDispatch");
         if (usePostmasterDispatch)
         {
@@ -94,24 +105,19 @@ public static class DependencyInjection
             services.AddScoped<IEmailDispatchGateway, InProcessEmailDispatchGateway>();
         }
 
-        // Hardening Fase 19 (2026-07-18) — mismo flag, segundo punto de invocación: EmailDeliveryService
-        // es el transporte real detrás de POST /notifications/email/send y de EmailCampaigns (que crea
-        // OutboundEmailMessage + publica EmailSendRequestedIntegrationEvent exactamente igual que el
-        // envío individual — investigado, ver el comentario de clase de PostmasterEmailDeliveryService
-        // para el porqué es seguro alcanzarlo con este cambio). Se reusa Notification:UsePostmasterDispatch
-        // en vez de un flag propio porque ambos interruptores responden la MISMA pregunta operacional
-        // ("¿Postmaster ya es el único transporte de salida de Notification?"), no dos preguntas
-        // independientes — tenerlos separados solo crearía combinaciones a medio migrar sin ningún
-        // beneficio real (nadie querría el gateway de Auth/Signature/Communication en Postmaster con
-        // EmailDeliveryService todavía en SMTP directo, o viceversa).
+        // Mismo flag, segundo punto de invocación: EmailDeliveryService es el transporte real
+        // detrás de POST /notifications/email/send y de EmailCampaigns. Se reusa
+        // Notification:UsePostmasterDispatch en vez de un flag propio porque ambos interruptores
+        // responden la misma pregunta operacional ("¿Postmaster ya es el único transporte de
+        // salida de Notification?") — tenerlos separados solo crearía combinaciones a medio
+        // migrar sin ningún beneficio real.
         //
-        // - true (DEFAULT desde Fase 21): PostmasterEmailDeliveryService — publica
+        // - true (default): PostmasterEmailDeliveryService — publica
         //   notifications.email_send_requested.v1; los callbacks los resuelve
-        //   PostmasterOutboundEmailCallbackConsumers (Consumers/Postmaster/), NO el mismo
-        //   PostmasterCallbackConsumers.cs del gateway de arriba (ese resuelve contra
-        //   NotificationLog; este resuelve contra OutboundEmailMessage — ver comentario de clase).
-        // - false (rollback explícito): EmailDeliveryService (esta clase, sin cambios) — resuelve
-        //   EmailProviderConfiguration propia y envía via ISmtpSendClient/SystemNetSmtpSendClient.
+        //   PostmasterOutboundEmailCallbackConsumers (resuelve contra OutboundEmailMessage, no
+        //   contra NotificationLog como el gateway de arriba).
+        // - false (rollback explícito): EmailDeliveryService — resuelve EmailProviderConfiguration
+        //   propia y envía via ISmtpSendClient/SystemNetSmtpSendClient.
         if (usePostmasterDispatch)
         {
             services.AddScoped<IEmailDeliveryService, PostmasterEmailDeliveryService>();
@@ -126,20 +132,17 @@ public static class DependencyInjection
         // Cifrado compartido de secretos (Encryption:MasterKey) para configuraciones y tokens.
         services.AddSecretProtection();
 
-        // Módulo de configuración SMTP/API (proveedores de envío). NO retirado en la Fase 21 del plan
-        // de hardening (Notification, 2026-07-18) aunque el default ya es Postmaster: mientras el flag
-        // siga existiendo como rollback (setear Notification:UsePostmasterDispatch=false vuelve a este
-        // path), EmailProviderConfigurationRepository/EmailConfigurationResolver/SystemNetSmtpSendClient
-        // tienen que seguir registrados y funcionales. También los sigue usando TestEmailConfiguration
-        // (POST /notifications/email/configurations/{id}/test), que no pasa por EmailDeliveryService en
-        // absoluto ni por el flag. Retiro completo condicionado a una fase futura fuera de este plan,
+        // Módulo de configuración SMTP/API (proveedores de envío). No se retira aunque el default
+        // ya sea Postmaster: mientras el flag siga existiendo como rollback,
+        // EmailProviderConfigurationRepository/EmailConfigurationResolver/SystemNetSmtpSendClient
+        // tienen que seguir registrados y funcionales. También los sigue usando
+        // TestEmailConfiguration (POST /notifications/email/configurations/{id}/test), que no pasa
+        // por EmailDeliveryService ni por el flag. Retiro completo condicionado a una fase futura,
         // cuando haya confianza operacional real para eliminar InProcessEmailDispatchGateway/
-        // EmailDeliveryService y el flag mismo (ver plan, sección Fase 21, "Qué hacer").
-        // SmtpEmailSender (IEmailSender, distinto de ISmtpSendClient) NO es parte de esta cadena — lo
-        // usa InProcessEmailDispatchGateway (el OTRO path, Auth/Signature/Communication) vía SmtpOptions
-        // global, nada que ver con EmailProviderConfiguration por tenant; el texto original de la Fase 19
-        // lo listaba junto a SystemNetSmtpSendClient para retirar, pero son dos implementaciones de dos
-        // interfaces distintas para dos paths distintos — corregido tras verificar el código real.
+        // EmailDeliveryService y el flag mismo.
+        // SmtpEmailSender (IEmailSender, distinto de ISmtpSendClient) no es parte de esta cadena —
+        // lo usa InProcessEmailDispatchGateway (el otro path) vía SmtpOptions global, nada que ver
+        // con EmailProviderConfiguration por tenant.
         services.AddScoped<IEmailProviderConfigurationRepository, EmailProviderConfigurationRepository>();
         services.AddScoped<IEmailConfigurationResolver, EmailConfigurationResolver>();
         services.AddScoped<ISmtpSendClient, SystemNetSmtpSendClient>();

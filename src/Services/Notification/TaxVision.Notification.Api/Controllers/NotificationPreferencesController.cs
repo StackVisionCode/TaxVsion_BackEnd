@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -19,6 +20,7 @@ namespace TaxVision.Notification.Api.Controllers;
 [ApiController]
 [Route("notifications/preferences")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.CustomerPortal, ActorType.PlatformAdmin)]
 public sealed class NotificationPreferencesController(IMessageBus bus) : ControllerBase
 {
     public sealed record PreferenceResponse(string Category, string Channel, bool Enabled, bool Locked);

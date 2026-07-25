@@ -12,8 +12,12 @@ public sealed class SignatureAuditRepository(SignatureDbContext db) : ISignature
         CancellationToken ct = default
     )
     {
+        // Mismo bug de scope de Wolverine (ver LocalCommandTenantMiddleware.cs): tenantId ya viene
+        // explícito y validado — IgnoreQueryFilters() porque el filtro ambiental global puede no
+        // estar poblado en este scope de DI.
         var tail = await db
             .SignatureAuditEvents.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(e => e.TenantId == tenantId && e.SignatureRequestId == signatureRequestId)
             .OrderByDescending(e => e.Sequence)
             .Select(e => new { e.Sequence, e.ChainHash })
@@ -29,8 +33,12 @@ public sealed class SignatureAuditRepository(SignatureDbContext db) : ISignature
         Guid signatureRequestId,
         CancellationToken ct = default
     ) =>
+        // Mismo bug de scope de Wolverine (ver LocalCommandTenantMiddleware.cs): tenantId ya viene
+        // explícito y validado — IgnoreQueryFilters() porque el filtro ambiental global puede no
+        // estar poblado en este scope de DI.
         await db
             .SignatureAuditEvents.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(e => e.TenantId == tenantId && e.SignatureRequestId == signatureRequestId)
             .OrderBy(e => e.Sequence)
             .ToListAsync(ct);

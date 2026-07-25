@@ -1,10 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Scribe.Api.Authorization;
-using TaxVision.Scribe.Api.Common;
 using TaxVision.Scribe.Application.Layouts;
 using TaxVision.Scribe.Application.Layouts.Commands;
 using TaxVision.Scribe.Domain;
@@ -12,10 +11,15 @@ using Wolverine;
 
 namespace TaxVision.Scribe.Api.Controllers;
 
-/// <summary>CRUD de EmailLayout/EmailLayoutVersion (Fase 5).</summary>
+/// <summary>
+/// CRUD de EmailLayout/EmailLayoutVersion (Fase 5).
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización) — ver nota en EmailTemplatesController.
+/// </summary>
 [ApiController]
 [Route("scribe/layouts")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEmailLayoutRequest(

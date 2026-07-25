@@ -16,7 +16,7 @@ public sealed class JwtTenantContextMiddlewareTests
         var tenantContext = new TenantContext();
         var bus = new FakeMessageBus();
         var nextCalled = false;
-        var middleware = new JwtTenantContextMiddleware(_ =>
+        var middleware = new TaxVision.Growth.Api.Common.JwtTenantContextMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -37,7 +37,7 @@ public sealed class JwtTenantContextMiddlewareTests
         var tenantContext = new TenantContext();
         var bus = new FakeMessageBus();
         var nextCalled = false;
-        var middleware = new JwtTenantContextMiddleware(_ =>
+        var middleware = new TaxVision.Growth.Api.Common.JwtTenantContextMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;

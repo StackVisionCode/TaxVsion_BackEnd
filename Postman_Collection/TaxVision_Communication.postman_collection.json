@@ -1796,6 +1796,66 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "Negative Cases — Actor Type",
+			"item": [
+				{
+					"name": "CustomerPortal token rejected — Resumen de analytics (summary)",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{UrlBase}}/communication/analytics/summary?from=2026-06-10&to=2026-07-10",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"analytics",
+								"summary"
+							],
+							"query": [
+								{
+									"key": "from",
+									"value": "2026-06-10",
+									"description": "YYYY-MM-DD, opcional"
+								},
+								{
+									"key": "to",
+									"value": "2026-07-10",
+									"description": "YYYY-MM-DD, opcional"
+								}
+							]
+						},
+						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"Resumen de analytics (summary)\" (requiere communication.analytics.read, actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP.\n\n---\nDescripción original: Requiere communication.analytics.read. Sin from/to, agrega los ultimos 30 dias.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{customerPortalAccessToken}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			],
+			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
 		}
 	]
 }

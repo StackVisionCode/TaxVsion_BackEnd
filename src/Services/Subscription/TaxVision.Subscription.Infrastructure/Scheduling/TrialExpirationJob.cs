@@ -47,6 +47,11 @@ public sealed class TrialExpirationJob(
             }
 
             await unitOfWork.SaveChangesAsync(ct);
+
+            // RBAC Fase 5 — RecalculateEntitlementsSafelyAsync despacha vía bus.InvokeAsync a un
+            // scope Wolverine nuevo; sin este stamp LocalCommandTenantMiddleware no tiene tenant
+            // que restaurar y el filtro fail-closed de SubscriptionDbContext bloquearía el handler.
+            bus.TenantId = subscription.TenantId.ToString();
             await bus.RecalculateEntitlementsSafelyAsync(subscription.TenantId, logger, ct);
         }
 

@@ -45,6 +45,7 @@ public static class CreateReferralAttributionHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             Operation,
             command.TenantId,
             command.IdempotencyKey,

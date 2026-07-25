@@ -8,7 +8,7 @@ public sealed class SubscriptionTenantSettingsRepository(SubscriptionDbContext d
     : ISubscriptionTenantSettingsRepository
 {
     public Task<SubscriptionTenantSettings?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.TenantSettings.FirstOrDefaultAsync(settings => settings.TenantId == tenantId, ct);
+        db.TenantSettings.IgnoreQueryFilters().FirstOrDefaultAsync(settings => settings.TenantId == tenantId, ct);
 
     public async Task AddAsync(SubscriptionTenantSettings settings, CancellationToken ct = default) =>
         await db.TenantSettings.AddAsync(settings, ct);

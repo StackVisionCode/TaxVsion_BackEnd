@@ -22,8 +22,13 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         if (size < 1)
             size = 20;
 
-        // Aislamiento multi-tenant: siempre se filtra por el tenant del solicitante.
-        var query = db.Customers.AsNoTracking().Where(c => c.TenantId == tenantId);
+        // Aislamiento multi-tenant: filtro explícito por el tenant del solicitante.
+        // IgnoreQueryFilters() — este query corre dentro de un handler de Wolverine
+        // (bus.InvokeAsync), en un scope de DI distinto al de la request HTTP que pobló
+        // ITenantContext vía JwtTenantContextMiddleware; el HasQueryFilter ambiental de
+        // CustomerDbContext ve Guid.Empty ahí y, ANDed con el filtro explícito de abajo,
+        // garantiza 0 resultados siempre. Mismo bug/fix que project_scribe_cloudstorage_tenant_bug.
+        var query = db.Customers.AsNoTracking().IgnoreQueryFilters().Where(c => c.TenantId == tenantId);
 
         query = status switch
         {
@@ -71,7 +76,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
     public async Task<CustomerResponse?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
         var data = await (
-            from c in db.Customers.AsNoTracking()
+            from c in db.Customers.AsNoTracking().IgnoreQueryFilters()
             where c.Id == customerId && c.TenantId == tenantId
             from o in db.Occupations.Where(x => x.Id == c.OccupationId).DefaultIfEmpty()
             from naics in db
@@ -137,6 +142,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             var normalized = email.Trim().ToLowerInvariant();
             var hit = await db
                 .Customers.AsNoTracking()
+                .IgnoreQueryFilters()
                 .Where(c => c.TenantId == tenantId && c.PrimaryEmail.NormalizedValue == normalized)
                 .Select(c => (Guid?)c.Id)
                 .FirstOrDefaultAsync(ct);
@@ -152,6 +158,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 var blindIndex = protector.ComputeBlindIndex(normalizedDigits, tenantId);
                 var hit = await db
                     .CustomerFiscalProfiles.AsNoTracking()
+                    .IgnoreQueryFilters()
                     .Where(fp => fp.TenantId == tenantId && fp.TaxIdentifierBlindIndex == blindIndex)
                     .Select(fp => (Guid?)fp.CustomerId)
                     .FirstOrDefaultAsync(ct);

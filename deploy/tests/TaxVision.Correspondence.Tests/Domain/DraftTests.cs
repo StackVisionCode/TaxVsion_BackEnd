@@ -25,7 +25,7 @@ public sealed class DraftTests
     [Fact]
     public void CreateNew_fails_when_customerId_is_empty()
     {
-        var result = Draft.CreateNew(Guid.NewGuid(), Guid.Empty, Guid.NewGuid());
+        var result = Draft.CreateNew(Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Guid.NewGuid());
 
         Assert.True(result.IsFailure);
         Assert.Equal("Draft.CustomerIdRequired", result.Error.Code);
@@ -34,16 +34,26 @@ public sealed class DraftTests
     [Fact]
     public void CreateNew_fails_when_accountId_is_empty()
     {
-        var result = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.Empty);
+        var result = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.Empty, Guid.NewGuid());
 
         Assert.True(result.IsFailure);
         Assert.Equal("Draft.AccountIdRequired", result.Error.Code);
     }
 
+    /// <summary>RBAC Fase 4 (RBAC_Hardening_Plan.md) — el creador es obligatorio desde que existe este campo (ver IHasOwner).</summary>
+    [Fact]
+    public void CreateNew_fails_when_createdByUserId_is_empty()
+    {
+        var result = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.Empty);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Draft.CreatedByUserIdRequired", result.Error.Code);
+    }
+
     [Fact]
     public void CreateNew_succeeds_with_empty_subject_and_body_and_no_reply_context()
     {
-        var result = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var result = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
 
         Assert.True(result.IsSuccess);
         var draft = result.Value;
@@ -62,7 +72,14 @@ public sealed class DraftTests
     {
         var replyContext = ValidReplyContext();
 
-        var result = Draft.CreateReply(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), replyContext, "Tax question");
+        var result = Draft.CreateReply(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            replyContext,
+            "Tax question"
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Re: Tax question", result.Value.Subject);
@@ -83,6 +100,7 @@ public sealed class DraftTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),
+            Guid.NewGuid(),
             ValidReplyContext(),
             originalSubject
         );
@@ -94,7 +112,14 @@ public sealed class DraftTests
     [Fact]
     public void CreateReply_fails_when_originalSubject_is_blank()
     {
-        var result = Draft.CreateReply(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), ValidReplyContext(), "   ");
+        var result = Draft.CreateReply(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            ValidReplyContext(),
+            "   "
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Draft.OriginalSubjectRequired", result.Error.Code);
@@ -103,7 +128,7 @@ public sealed class DraftTests
     [Fact]
     public void AutoSave_updates_only_the_non_null_fields_and_bumps_timestamps()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         var result = draft.AutoSave("New subject", "<p>Hello</p>", null, null);
 
@@ -118,7 +143,7 @@ public sealed class DraftTests
     [Fact]
     public void AutoSave_replaces_the_recipients_collection_when_provided()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         draft.AutoSave(
             null,
@@ -143,7 +168,7 @@ public sealed class DraftTests
     [Fact]
     public void AutoSave_fails_when_subject_exceeds_the_max_length()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         var result = draft.AutoSave(new string('x', Draft.SubjectMaxLength + 1), null, null, null);
 
@@ -169,7 +194,7 @@ public sealed class DraftTests
     [Fact]
     public void AttachFile_appends_the_attachment_when_status_is_Draft()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var attachment = Attachment();
 
         var result = draft.AttachFile(attachment);
@@ -181,7 +206,7 @@ public sealed class DraftTests
     [Fact]
     public void AttachFile_attaching_the_same_fileId_twice_is_a_no_op()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var fileId = Guid.NewGuid();
         var first = DraftAttachmentRef.Create(fileId, "a.pdf", "application/pdf", 100).Value;
         var duplicate = DraftAttachmentRef.Create(fileId, "a-renamed.pdf", "application/pdf", 999).Value;
@@ -208,7 +233,7 @@ public sealed class DraftTests
     [Fact]
     public void RemoveAttachment_removes_an_existing_attachment()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
         var attachment = Attachment();
         draft.AttachFile(attachment);
 
@@ -221,7 +246,7 @@ public sealed class DraftTests
     [Fact]
     public void RemoveAttachment_is_a_tolerant_no_op_when_the_file_is_not_attached()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         var result = draft.RemoveAttachment(Guid.NewGuid());
 
@@ -242,7 +267,7 @@ public sealed class DraftTests
     [Fact]
     public void Discard_transitions_from_Draft_to_Discarded()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         var result = draft.Discard();
 
@@ -269,7 +294,7 @@ public sealed class DraftTests
     [Fact]
     public void MarkSending_transitions_from_Draft_to_Sending()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         var result = draft.MarkSending();
 
@@ -304,7 +329,7 @@ public sealed class DraftTests
     [Fact]
     public void MarkSent_fails_when_status_is_not_Sending()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         var result = draft.MarkSent(Guid.NewGuid());
 
@@ -327,7 +352,7 @@ public sealed class DraftTests
     [Fact]
     public void MarkFailed_fails_when_status_is_not_Sending()
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         var result = draft.MarkFailed("provider timeout");
 
@@ -337,7 +362,7 @@ public sealed class DraftTests
 
     private static Draft DraftInStatus(DraftStatus status)
     {
-        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
+        var draft = Draft.CreateNew(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()).Value;
 
         if (status == DraftStatus.Draft)
             return draft;

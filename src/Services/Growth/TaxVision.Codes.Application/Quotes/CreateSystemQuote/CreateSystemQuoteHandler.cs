@@ -43,6 +43,7 @@ public static class CreateSystemQuoteHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             "Codes.CreateSystemQuote.v1",
             command.TenantId,
             keyResult.Value,

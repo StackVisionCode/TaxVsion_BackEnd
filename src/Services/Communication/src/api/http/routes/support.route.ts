@@ -1,6 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import {
+  checkPermission,
+  permissionCheckHttpStatus,
+  CommunicationPermissions,
+  isPlatformAdmin as isPlatformAdminActorType,
+} from '../../../domain/shared/permissions.js';
 import { openSupportTicket } from '../../../application/use-cases/open-support-ticket.js';
 import {
   claimSupportTicket,
@@ -41,8 +46,11 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
   // POST /communication/support — el customer (o TenantEmployee) abre un ticket.
   app.post('/communication/support', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.SupportOpen)) {
-      return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.support.open.' });
+    const openPermCheck = await checkPermission(principal, CommunicationPermissions.SupportOpen, container.userPermissions);
+    if (!openPermCheck.allowed) {
+      return reply
+        .code(permissionCheckHttpStatus(openPermCheck))
+        .send({ code: openPermCheck.code, message: openPermCheck.message });
     }
     if (principal.tenantId === container.platform.getPlatformTenantId()) {
       return reply
@@ -73,16 +81,14 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
     const principal = request.principal!;
     const query = ListQuery.parse(request.query);
     const isPlatformTenant = principal.tenantId === container.platform.getPlatformTenantId();
-    const hasAgentPerm = hasPermission(
-      principal.actorType,
-      principal.permissions,
-      CommunicationPermissions.SupportAgent,
-    );
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
     const view =
-      query.view ?? (isPlatformTenant && (hasAgentPerm || principal.actorType === 'PlatformAdmin') ? 'agent' : 'customer');
+      query.view ?? (isPlatformTenant && (hasAgentPerm || isPlatformAdminActorType(principal.actorType)) ? 'agent' : 'customer');
 
     if (view === 'agent') {
-      if (!isPlatformTenant || (!hasAgentPerm && principal.actorType !== 'PlatformAdmin')) {
+      if (!isPlatformTenant || (!hasAgentPerm && !isPlatformAdminActorType(principal.actorType))) {
         return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.support.agent.' });
       }
       const result = await listSupportTicketsForAgent(
@@ -121,12 +127,10 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
   app.post('/communication/support/:id/claim', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
     const params = IdParams.parse(request.params);
-    const hasAgentPerm = hasPermission(
-      principal.actorType,
-      principal.permissions,
-      CommunicationPermissions.SupportAgent,
-    );
-    const isPlatformAdmin = principal.actorType === 'PlatformAdmin';
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
     const result = await claimSupportTicket(
       {
         correlationId: request.id,
@@ -153,6 +157,9 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
   app.post('/communication/support/:id/resolve', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
     const params = IdParams.parse(request.params);
+    const hasAgentPermResolve = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
     const result = await resolveSupportTicket(
       {
         correlationId: request.id,
@@ -160,12 +167,8 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
         actor: {
           userId: principal.userId,
           tenantId: principal.tenantId,
-          hasAgentPermission: hasPermission(
-            principal.actorType,
-            principal.permissions,
-            CommunicationPermissions.SupportAgent,
-          ),
-          isPlatformAdmin: principal.actorType === 'PlatformAdmin',
+          hasAgentPermission: hasAgentPermResolve,
+          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
         },
       },
       container,
@@ -184,12 +187,10 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
     const principal = request.principal!;
     const params = IdParams.parse(request.params);
     const body = ReassignBody.parse(request.body);
-    const hasAgentPerm = hasPermission(
-      principal.actorType,
-      principal.permissions,
-      CommunicationPermissions.SupportAgent,
-    );
-    const isPlatformAdmin = principal.actorType === 'PlatformAdmin';
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
     const result = await reassignSupportTicket(
       {
         correlationId: request.id,
@@ -218,12 +219,10 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
     const principal = request.principal!;
     const params = IdParams.parse(request.params);
     const body = EscalateBody.parse(request.body);
-    const hasAgentPerm = hasPermission(
-      principal.actorType,
-      principal.permissions,
-      CommunicationPermissions.SupportAgent,
-    );
-    const isPlatformAdmin = principal.actorType === 'PlatformAdmin';
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
     const result = await escalateSupportTicket(
       {
         correlationId: request.id,
@@ -259,7 +258,7 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
         actor: {
           userId: principal.userId,
           tenantId: principal.tenantId,
-          isPlatformAdmin: principal.actorType === 'PlatformAdmin',
+          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
         },
         reason: body.success ? body.data.reason ?? null : null,
       },
@@ -278,6 +277,9 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
   app.post('/communication/support/:id/close', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
     const params = IdParams.parse(request.params);
+    const hasAgentPermClose = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
     const result = await closeSupportTicket(
       {
         correlationId: request.id,
@@ -285,12 +287,8 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
         actor: {
           userId: principal.userId,
           tenantId: principal.tenantId,
-          hasAgentPermission: hasPermission(
-            principal.actorType,
-            principal.permissions,
-            CommunicationPermissions.SupportAgent,
-          ),
-          isPlatformAdmin: principal.actorType === 'PlatformAdmin',
+          hasAgentPermission: hasAgentPermClose,
+          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
         },
       },
       container,

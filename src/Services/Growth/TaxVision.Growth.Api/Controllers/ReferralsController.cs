@@ -9,7 +9,6 @@ using TaxVision.Codes.Application.Definitions.ActivateCode;
 using TaxVision.Codes.Application.Definitions.Common;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
 using TaxVision.Codes.Domain.Definitions;
-using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
 using TaxVision.Growth.Api.RateLimiting;
 using TaxVision.Referrals.Application.Abstractions;
@@ -18,17 +17,22 @@ using TaxVision.Referrals.Application.Codes.IssueTenantReferralCode;
 using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
+using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
+using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
+// Alias puntual — ver mismo comentario en CodesController.cs.
+using HasPermissionAttribute = BuildingBlocks.ActorTypeAuthorization.HasPermissionAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 
 /// <summary>
 /// Self-service tenant-to-tenant referral entry point. The referee identity always
 /// comes from the validated JWT and cannot be supplied or overridden by the payload.
-/// Taxpayer-to-taxpayer remains intentionally unavailable.
+/// Taxpayer-to-taxpayer remains intentionally unavailable — staff only, never CustomerPortal.
 /// </summary>
 [ApiController]
 [Route("growth/referrals")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class ReferralsController(
     IMessageBus bus,
     IReferralCodeTokenGenerator tokenGenerator,

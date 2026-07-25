@@ -70,6 +70,24 @@ public static class CustomerCreatedConsumer
             return;
         }
 
+        // IX_CustomerEmailAddresses_TenantId_EmailAddress_Active es única por email activo dentro
+        // del tenant — dos customers distintos con el mismo email (p.ej. re-alta con un email ya
+        // usado por otro cliente) violarían el índice y tirarían el evento entero a la DLQ. Resolver
+        // a qué customer pertenece un email compartido es una decisión de negocio pendiente; por
+        // ahora se registra y se omite la proyección en vez de crashear el consumer.
+        var emailOwner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
+        if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
+        {
+            logger.LogWarning(
+                "CustomerCreated event {EventId}: email {Email} for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping projection.",
+                evt.EventId,
+                email.NormalizedValue,
+                evt.CustomerId,
+                emailOwner.CustomerId
+            );
+            return;
+        }
+
         var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email);
         await repository.AddAsync(projection, ct);
         logger.LogInformation("CustomerEmailAddress created for {CustomerId}.", evt.CustomerId);

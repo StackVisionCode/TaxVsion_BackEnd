@@ -18,8 +18,7 @@ public static class ClaimsPrincipalExtensions
     public static bool TryGetTenantId(this ClaimsPrincipal principal, out Guid tenantId) =>
         Guid.TryParse(principal.FindFirst("tenant_id")?.Value, out tenantId);
 
-    public static bool HasPermission(this ClaimsPrincipal principal, string permission) =>
-        principal.HasClaim("perm", permission);
+    public static bool IsPlatformAdmin(this ClaimsPrincipal principal) => principal.IsInRole("PlatformAdmin");
 
     public static bool HasScope(this ClaimsPrincipal principal, string requiredScope) =>
         principal

@@ -8,7 +8,7 @@ using TaxVision.Notification.Domain.Emailing.Sending;
 namespace TaxVision.Notification.Application.Email.Sending;
 
 /// <summary>
-/// Implementación event-based de <see cref="IEmailDeliveryService"/> — Hardening Fase 19 (2026-07-18).
+/// Implementación event-based de <see cref="IEmailDeliveryService"/>.
 /// En vez de resolver una <see cref="Domain.Emailing.Configurations.EmailProviderConfiguration"/> y
 /// llamar <c>ISmtpSendClient</c> directo (lo que hace <see cref="EmailDeliveryService"/>, la
 /// implementación que esta reemplaza bajo el feature flag), publica

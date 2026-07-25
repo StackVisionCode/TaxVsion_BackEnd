@@ -1,3 +1,4 @@
+using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Correspondence.Domain.ValueObjects;
 
@@ -16,7 +17,7 @@ namespace TaxVision.Correspondence.Domain.Inbox;
 /// crudo a estos primitivos es responsabilidad del consumer de Fase 4.
 /// </para>
 /// </summary>
-public sealed class IncomingEmail
+public sealed class IncomingEmail : ITenantOwned
 {
     public const int ProviderCodeMaxLength = 20;
     public const int ProviderMessageIdMaxLength = 200;
@@ -36,6 +37,9 @@ public sealed class IncomingEmail
     public Guid TenantId { get; private set; }
     public Guid CustomerId { get; private set; }
     public Guid EmailThreadId { get; private set; }
+
+    /// <summary>RBAC Fase 5 (RBAC_Hardening_Plan.md) — ver <see cref="Compose.Draft.SetTenant"/>.</summary>
+    public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
     /// <summary>
     /// Referencia opaca al <c>TenantEmailAccount</c> de Connectors. Sin FK ni navegación a

@@ -27,5 +27,7 @@ public sealed class SignatureDbContextFactory : IDesignTimeDbContextFactory<Sign
     {
         public Guid TenantId => throw new InvalidOperationException("No tenant set in design-time context.");
         public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

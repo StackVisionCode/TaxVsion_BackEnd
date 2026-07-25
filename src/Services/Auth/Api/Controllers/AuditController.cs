@@ -1,8 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Auth.Api.Authorization;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Audit.Queries;
 using TaxVision.Auth.Domain.Roles;
@@ -17,6 +17,7 @@ namespace TaxVision.Auth.Api.Controllers;
 [ApiController]
 [Route("auth/audit")]
 [HasPermission(PermissionCatalog.AuditView)]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class AuditController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Devuelve los eventos de auditoría paginados, con filtros opcionales por usuario, acción y rango de fechas.</summary>

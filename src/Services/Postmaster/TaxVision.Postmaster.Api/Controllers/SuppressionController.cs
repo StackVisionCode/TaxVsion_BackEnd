@@ -1,9 +1,8 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Postmaster.Api.Authorization;
-using TaxVision.Postmaster.Api.Common;
 using TaxVision.Postmaster.Api.Requests;
 using TaxVision.Postmaster.Application.Suppression.Commands.AddSuppressionEntry;
 using TaxVision.Postmaster.Application.Suppression.Commands.RemoveSuppressionEntry;
@@ -15,6 +14,7 @@ namespace TaxVision.Postmaster.Api.Controllers;
 
 [ApiController]
 [Route("postmaster/suppression")]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SuppressionController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]

@@ -51,7 +51,7 @@ public sealed class StartReplyHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await StartReplyHandler.Handle(
-            new StartReplyCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new StartReplyCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
             incomingEmails,
             drafts,
             unitOfWork,
@@ -75,7 +75,7 @@ public sealed class StartReplyHandlerTests
         var accountId = Guid.NewGuid();
 
         var result = await StartReplyHandler.Handle(
-            new StartReplyCommand(tenantId, email.Id, accountId),
+            new StartReplyCommand(tenantId, email.Id, accountId, Guid.NewGuid()),
             incomingEmails,
             drafts,
             unitOfWork,
@@ -116,7 +116,7 @@ public sealed class StartReplyHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await StartReplyHandler.Handle(
-            new StartReplyCommand(tenantId, email.Id, Guid.NewGuid()),
+            new StartReplyCommand(tenantId, email.Id, Guid.NewGuid(), Guid.NewGuid()),
             incomingEmails,
             drafts,
             unitOfWork,
@@ -147,7 +147,7 @@ public sealed class StartReplyHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await StartReplyHandler.Handle(
-            new StartReplyCommand(tenantId, messageB.Id, Guid.NewGuid()),
+            new StartReplyCommand(tenantId, messageB.Id, Guid.NewGuid(), Guid.NewGuid()),
             incomingEmails,
             drafts,
             unitOfWork,
@@ -178,7 +178,7 @@ public sealed class StartReplyHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await StartReplyHandler.Handle(
-            new StartReplyCommand(tenantId, email.Id, Guid.NewGuid()),
+            new StartReplyCommand(tenantId, email.Id, Guid.NewGuid(), Guid.NewGuid()),
             incomingEmails,
             drafts,
             unitOfWork,
@@ -198,7 +198,7 @@ public sealed class StartReplyHandlerTests
         var email = await SeedIncomingEmailAsync(incomingEmails, tenantId, customerId);
         var drafts = new FakeDraftRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var command = new StartReplyCommand(tenantId, email.Id, Guid.NewGuid());
+        var command = new StartReplyCommand(tenantId, email.Id, Guid.NewGuid(), Guid.NewGuid());
 
         var firstResult = await StartReplyHandler.Handle(
             command,
@@ -231,7 +231,7 @@ public sealed class StartReplyHandlerTests
         var email = await SeedIncomingEmailAsync(incomingEmails, tenantId, customerId);
         var drafts = new FakeDraftRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var command = new StartReplyCommand(tenantId, email.Id, Guid.NewGuid());
+        var command = new StartReplyCommand(tenantId, email.Id, Guid.NewGuid(), Guid.NewGuid());
 
         var firstResult = await StartReplyHandler.Handle(
             command,

@@ -28,15 +28,17 @@ export function bindAuthConsumers(
   register('auth.user.roles_changed.v1', async (env) => {
     const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
     if (!userId) return;
-    // Nombres de campo EXACTOS de UserRolesChangedIntegrationEvent.cs — antes se leia
-    // 'permissions'/'Permissions' (campo que Auth nunca envio) y 'permissionVersion'
-    // (el real es 'PermissionsVersion', con "s") por lo que esta proyeccion quedaba
-    // siempre vacia en silencio. Fase 1 del plan de notificaciones dinamicas.
-    const permissions = getStringArray(env.payload, 'PermissionCodes');
-    const permVersion = getNumber(env.payload, 'PermissionsVersion') ?? 1;
+    // Nombres de campo de UserRolesChangedIntegrationEvent.cs — Wolverine serializa el
+    // envelope en camelCase sobre RabbitMQ (no PascalCase como el nombre del campo C#), asi
+    // que hay que aceptar ambas formas. Antes se leia solo 'PermissionCodes'/'PermissionsVersion'/
+    // 'RoleIds' (PascalCase), que nunca matcheaban contra el payload real ('permissionCodes'/
+    // 'permissionsVersion'/'roleIds') — esta proyeccion quedaba siempre vacia en silencio.
+    // Gap real encontrado en produccion post-Fase 7.5.9, no solo el de Fase 1 original.
+    const permissions = getStringArray(env.payload, 'permissionCodes', 'PermissionCodes');
+    const permVersion = getNumber(env.payload, 'permissionsVersion', 'PermissionsVersion') ?? 1;
     // Fase 2 del plan de notificaciones dinamicas — RoleIds, para poder correlacionar
     // "a este usuario le pega este cambio" cuando llegue RolePermissionsChangedIntegrationEvent.
-    const roleIds = getStringArray(env.payload, 'RoleIds');
+    const roleIds = getStringArray(env.payload, 'roleIds', 'RoleIds');
     const actorType =
       getString(env.payload, 'actorType') ?? getString(env.payload, 'ActorType') ?? 'TenantEmployee';
     await deps.userPermissions.upsert({
@@ -134,8 +136,8 @@ export function bindAuthConsumers(
     const roleId = getString(env.payload, 'roleId') ?? getString(env.payload, 'RoleId');
     const roleName = getString(env.payload, 'roleName') ?? getString(env.payload, 'RoleName');
     if (!roleId || !roleName) return;
-    const permissionCodes = getStringArray(env.payload, 'PermissionCodes');
-    const permissionsVersion = getNumber(env.payload, 'PermissionsVersion') ?? 1;
+    const permissionCodes = getStringArray(env.payload, 'permissionCodes', 'PermissionCodes');
+    const permissionsVersion = getNumber(env.payload, 'permissionsVersion', 'PermissionsVersion') ?? 1;
 
     await deps.rolePermissions.upsert({
       roleId,
@@ -181,12 +183,14 @@ function getString(source: Record<string, unknown>, key: string): string | undef
   return typeof value === 'string' ? value : undefined;
 }
 
-function getNumber(source: Record<string, unknown>, key: string): number | undefined {
-  const value = source[key];
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed)) return parsed;
+function getNumber(source: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isFinite(parsed)) return parsed;
+    }
   }
   return undefined;
 }

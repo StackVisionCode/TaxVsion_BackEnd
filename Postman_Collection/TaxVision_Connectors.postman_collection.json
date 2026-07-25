@@ -1,534 +1,578 @@
 {
-  "info": {
-    "_postman_id": "6f2a9d4c-7b3e-4a1f-9c6d-2e5b8f0a1c4d",
-    "name": "TaxVision - Connectors",
-    "description": "Coleccion del microservicio Connectors de TaxVision (OAuth Gmail/Graph, IMAP, Watch API, push webhooks, body/attachment fetch M2M). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, p. ej. http://localhost:5047). Los endpoints de Messages son M2M puro (policy ServiceOnly, claim actor_type=Service) — el {{accessToken}} debe venir de POST /auth/service-token (ver coleccion Auth), no de un login de usuario.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "item": [
-    {
-      "name": "Accounts",
-      "item": [
-        {
-          "name": "Initiate",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"providerCode\": \"Gmail\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts"
-              ]
-            },
-            "description": "Arranca el flujo de conectar cuenta (D3 §12.4). `providerCode` es `Gmail` o `Graph` (para IMAP usar `POST /connectors/accounts/manual`, este endpoint no aplica). Genera un `state` CSRF de un solo uso y devuelve `{ authorizationUrl }` — el frontend redirige el navegador ahi (no es un fetch normal, el consentimiento vive en Google/Microsoft). Requiere connectors.accounts.write."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200 with authorizationUrl, or documented error\", () => {",
-                  "  if (pm.response.code === 200) {",
-                  "    pm.expect(pm.response.json()).to.have.property(\"authorizationUrl\");",
-                  "  } else {",
-                  "    pm.expect([400, 403]).to.include(pm.response.code);",
-                  "  }",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "ConnectManual",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"emailAddress\": \"contacto@miempresa.com\",\n  \"displayName\": \"Contacto MiEmpresa\",\n  \"imapHost\": \"imap.miempresa.com\",\n  \"imapPort\": 993,\n  \"imapUseSsl\": true,\n  \"imapUsername\": \"contacto@miempresa.com\",\n  \"imapPassword\": \"{{connectorsManualImapPassword}}\",\n  \"smtpHost\": \"smtp.miempresa.com\",\n  \"smtpPort\": 587,\n  \"smtpUseStartTls\": true,\n  \"smtpUsername\": \"contacto@miempresa.com\",\n  \"smtpPassword\": \"{{connectorsManualSmtpPassword}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts/manual",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts",
-                "manual"
-              ]
-            },
-            "description": "Conecta una cuenta manual IMAP+SMTP (D3 Compose §8) — sin redireccion, valida conectividad real contra ambos servidores (`IManualAccountConnectivityValidator`) antes de persistir nada. Si `emailAddress` ya esta conectado bajo otro tenant o el mismo tenant, falla limpio sin tocar la DB (desconectar primero). Requiere connectors.accounts.write."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200 with accountId, or documented error\", () => {",
-                  "  if (pm.response.code === 200) {",
-                  "    pm.expect(pm.response.json()).to.have.property(\"accountId\");",
-                  "    pm.expect(pm.response.json()).to.have.property(\"emailAddress\");",
-                  "  } else {",
-                  "    pm.expect([400, 403]).to.include(pm.response.code);",
-                  "  }",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "List",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts"
-              ]
-            },
-            "description": "Lista las cuentas de correo conectadas del tenant (`TenantEmailAccountDto[]` — nunca incluye el token/credenciales). Requiere connectors.accounts.read."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200 with array, or documented error\", () => {",
-                  "  if (pm.response.code === 200) {",
-                  "    pm.expect(pm.response.json()).to.be.an(\"array\");",
-                  "  } else {",
-                  "    pm.expect([403]).to.include(pm.response.code);",
-                  "  }",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GetById",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts",
-                "{{connectorsAccountId}}"
-              ]
-            },
-            "description": "Detalle de una cuenta conectada (`TenantEmailAccountDto` — nunca incluye el token). Requiere connectors.accounts.read."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200 with id, or documented error\", () => {",
-                  "  if (pm.response.code === 200) {",
-                  "    pm.expect(pm.response.json()).to.have.property(\"id\");",
-                  "  } else {",
-                  "    pm.expect([403, 404]).to.include(pm.response.code);",
-                  "  }",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Disconnect",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts",
-                "{{connectorsAccountId}}"
-              ]
-            },
-            "description": "Desconecta la cuenta: revoca la OAuthConnection y, para Gmail, intenta ademas revocar el refresh token del lado de Google (best-effort, POST oauth2.googleapis.com/revoke) — Graph no tiene API equivalente, el usuario debe revocar el consentimiento el mismo desde myaccount.microsoft.com/consents. Requiere connectors.accounts.write."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 204 or documented error\", () => [204, 403, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "AdminConsentUrl",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts/admin-consent-url",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts",
-                "admin-consent-url"
-              ]
-            },
-            "description": "Fallback de admin-consent para Graph (D3 §12.6) — solo util cuando el connect normal (Initiate) fallo con AADSTS90094/consent_required. Devuelve `{ url }`: un admin del tenant de Microsoft lo visita para otorgar consentimiento a nivel organizacion. La mayoria de los tenants nunca lo necesita. Requiere connectors.accounts.write."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200 with url, or documented error\", () => {",
-                  "  if (pm.response.code === 200) {",
-                  "    pm.expect(pm.response.json()).to.have.property(\"url\");",
-                  "  } else {",
-                  "    pm.expect([403]).to.include(pm.response.code);",
-                  "  }",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Reauth",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}/reauth",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts",
-                "{{connectorsAccountId}}",
-                "reauth"
-              ]
-            },
-            "description": "Reintenta el setup de watch/subscription de una cuenta tras TenantEmailAccount.Status == Error (renewal agoto reintentos, o el OAuth grant se revalido fuera de banda). Requiere connectors.accounts.write."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 204 or documented error\", () => [204, 400, 403, 404, 409, 502].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Webhooks",
-      "item": [
-        {
-          "name": "GmailPush",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{connectorsGmailPushJwt}}",
-                "type": "text",
-                "description": "JWT real emitido por Google Pub/Sub (Google.Apis.Auth valida la firma) — no hay forma de simular esto sin un push real de Gmail."
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"message\": {\n    \"data\": \"eyJlbWFpbEFkZHJlc3MiOiJvZmZpY2VAZ21haWwuY29tIiwiaGlzdG9yeUlkIjoxMjM0NX0=\",\n    \"messageId\": \"1234567890\"\n  },\n  \"subscription\": \"projects/x/subscriptions/y\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/connectors/webhooks/gmail-push",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "webhooks",
-                "gmail-push"
-              ]
-            },
-            "description": "Publico — Pub/Sub push de Google. Decodifica el envelope base64 ({emailAddress, historyId}), resuelve TenantEmailAccount por email, fetch history y publica connectors.raw_message_received.v1 por cada mensaje nuevo (solo metadata, nunca body). Rate limit 100 req/min por IP. Devuelve 200 incluso si la cuenta no existe (no-retryable); 500 en otros fallos para que Pub/Sub reintente."
-          },
-          "response": []
-        },
-        {
-          "name": "GraphNotification",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"value\": [\n    {\n      \"subscriptionId\": \"sub-id\",\n      \"clientState\": \"{{connectorsGraphClientState}}\",\n      \"resource\": \"me/mailFolders('inbox')/messages\"\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/connectors/webhooks/graph-notification",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "webhooks",
-                "graph-notification"
-              ]
-            },
-            "description": "Publico — Microsoft Graph subscription notification. Con ?validationToken=xxx en el query string responde el eco text/plain (handshake de creacion de subscription). Sin eso, valida clientState en tiempo constante contra Connectors:Watch:Graph:ClientState (rechaza 401 si el secreto no esta configurado o no matchea) y procesa el delta. Rate limit 100 req/min por IP."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Messages (M2M)",
-      "item": [
-        {
-          "name": "GetBody",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"accountId\": \"{{connectorsAccountId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/connectors/messages/{{connectorsProviderMessageId}}/body",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "messages",
-                "{{connectorsProviderMessageId}}",
-                "body"
-              ]
-            },
-            "description": "M2M — solo Correspondence (u otro microservicio backend), nunca frontend ni usuario final. Fetch bajo demanda del body completo del mensaje (html/text/headers/attachments metadata, sin bytes de attachments). Timeout 30s, rate limit 10 req/min por (tenant, accountId). Requiere policy ServiceOnly (claim actor_type=Service)."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200 or documented error\", () => [200, 403, 404, 429, 502, 504].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GetAttachment",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"accountId\": \"{{connectorsAccountId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/connectors/messages/{{connectorsProviderMessageId}}/attachments/{{connectorsAttachmentId}}",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "messages",
-                "{{connectorsProviderMessageId}}",
-                "attachments",
-                "{{connectorsAttachmentId}}"
-              ]
-            },
-            "description": "M2M — solo Correspondence. Fetch bajo demanda del binario del attachment (streaming, Content-Type + filename resueltos via GetMessageAsync, nunca confia en metadata del caller). Rate limit 5 req/min por tenant. Requiere policy ServiceOnly (claim actor_type=Service)."
-          },
-          "response": []
-        },
-        {
-          "name": "Send",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"subject\": \"Re: Documentacion fiscal 2025\",\n  \"html\": \"<p>Hola, adjunto la documentacion solicitada.</p>\",\n  \"text\": \"Hola, adjunto la documentacion solicitada.\",\n  \"to\": [\"cliente@ejemplo.com\"],\n  \"cc\": [],\n  \"bcc\": [],\n  \"replyToDisplayAddress\": \"Contador TaxVision <contacto@miempresa.com>\",\n  \"inReplyToInternetMessageId\": null,\n  \"references\": null,\n  \"replyToProviderMessageId\": null,\n  \"attachments\": [\n    {\n      \"filename\": \"factura.pdf\",\n      \"contentType\": \"application/pdf\",\n      \"contentBase64\": \"JVBERi0xLjQKJcOkw7zDtsO...\"\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}/send",
-              "host": [
-                "{{UrlBase}}"
-              ],
-              "path": [
-                "connectors",
-                "accounts",
-                "{{connectorsAccountId}}",
-                "send"
-              ]
-            },
-            "description": "M2M (D3 §3.7, unico consumidor hoy: ConnectorsSendClient en Postmaster, README 35.8) — envio saliente via la cuenta OAuth/IMAP+SMTP conectada. El token del proveedor nunca sale de Connectors: recibe un OutboundMessage normalizado (nunca MIME crudo, Graph no lo acepta para crear un envio nuevo) y lo traduce a la forma nativa (GmailApiClient/GraphApiClient/SmtpManualClient). `attachments[].contentBase64` es el contenido en base64 (D3 Compose §16 Fase 1). Sin threading real en v1: `inReplyToInternetMessageId`/`references`/`replyToProviderMessageId` son opcionales. Timeout 30s en el HttpClient del proveedor, rate limit 20 req/min por (tenant, cuenta) via ISendRateLimiter. Requiere policy ServiceOnly (claim actor_type=Service)."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200 with providerMessageId, or documented error\", () => {",
-                  "  if (pm.response.code === 200) {",
-                  "    pm.expect(pm.response.json()).to.have.property(\"sentAtUtc\");",
-                  "  } else {",
-                  "    pm.expect([400, 401, 403, 404, 429, 504]).to.include(pm.response.code);",
-                  "  }",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    }
-  ]
+	"info": {
+		"_postman_id": "6f2a9d4c-7b3e-4a1f-9c6d-2e5b8f0a1c4d",
+		"name": "TaxVision - Connectors",
+		"description": "Coleccion del microservicio Connectors de TaxVision (OAuth Gmail/Graph, IMAP, Watch API, push webhooks, body/attachment fetch M2M). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, p. ej. http://localhost:5047). Los endpoints de Messages son M2M puro (policy ServiceOnly, claim actor_type=Service) — el {{accessToken}} debe venir de POST /auth/service-token (ver coleccion Auth), no de un login de usuario.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Accounts",
+			"item": [
+				{
+					"name": "Initiate",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"providerCode\": \"Gmail\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts"
+							]
+						},
+						"description": "Arranca el flujo de conectar cuenta (D3 §12.4). `providerCode` es `Gmail` o `Graph` (para IMAP usar `POST /connectors/accounts/manual`, este endpoint no aplica). Genera un `state` CSRF de un solo uso y devuelve `{ authorizationUrl }` — el frontend redirige el navegador ahi (no es un fetch normal, el consentimiento vive en Google/Microsoft). Requiere connectors.accounts.write."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with authorizationUrl, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    pm.expect(pm.response.json()).to.have.property(\"authorizationUrl\");",
+									"  } else {",
+									"    pm.expect([400, 403]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ConnectManual",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"emailAddress\": \"contacto@miempresa.com\",\n  \"displayName\": \"Contacto MiEmpresa\",\n  \"imapHost\": \"imap.miempresa.com\",\n  \"imapPort\": 993,\n  \"imapUseSsl\": true,\n  \"imapUsername\": \"contacto@miempresa.com\",\n  \"imapPassword\": \"{{connectorsManualImapPassword}}\",\n  \"smtpHost\": \"smtp.miempresa.com\",\n  \"smtpPort\": 587,\n  \"smtpUseStartTls\": true,\n  \"smtpUsername\": \"contacto@miempresa.com\",\n  \"smtpPassword\": \"{{connectorsManualSmtpPassword}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts/manual",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts",
+								"manual"
+							]
+						},
+						"description": "Conecta una cuenta manual IMAP+SMTP (D3 Compose §8) — sin redireccion, valida conectividad real contra ambos servidores (`IManualAccountConnectivityValidator`) antes de persistir nada. Si `emailAddress` ya esta conectado bajo otro tenant o el mismo tenant, falla limpio sin tocar la DB (desconectar primero). Requiere connectors.accounts.write."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with accountId, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    pm.expect(pm.response.json()).to.have.property(\"accountId\");",
+									"    pm.expect(pm.response.json()).to.have.property(\"emailAddress\");",
+									"  } else {",
+									"    pm.expect([400, 403]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "List",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts"
+							]
+						},
+						"description": "Lista las cuentas de correo conectadas del tenant (`TenantEmailAccountDto[]` — nunca incluye el token/credenciales). Requiere connectors.accounts.read."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with array, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    pm.expect(pm.response.json()).to.be.an(\"array\");",
+									"  } else {",
+									"    pm.expect([403]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetById",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts",
+								"{{connectorsAccountId}}"
+							]
+						},
+						"description": "Detalle de una cuenta conectada (`TenantEmailAccountDto` — nunca incluye el token). Requiere connectors.accounts.read."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with id, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    pm.expect(pm.response.json()).to.have.property(\"id\");",
+									"  } else {",
+									"    pm.expect([403, 404]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Disconnect",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts",
+								"{{connectorsAccountId}}"
+							]
+						},
+						"description": "Desconecta la cuenta: revoca la OAuthConnection y, para Gmail, intenta ademas revocar el refresh token del lado de Google (best-effort, POST oauth2.googleapis.com/revoke) — Graph no tiene API equivalente, el usuario debe revocar el consentimiento el mismo desde myaccount.microsoft.com/consents. Requiere connectors.accounts.write."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204 or documented error\", () => [204, 403, 404].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "AdminConsentUrl",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts/admin-consent-url",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts",
+								"admin-consent-url"
+							]
+						},
+						"description": "Fallback de admin-consent para Graph (D3 §12.6) — solo util cuando el connect normal (Initiate) fallo con AADSTS90094/consent_required. Devuelve `{ url }`: un admin del tenant de Microsoft lo visita para otorgar consentimiento a nivel organizacion. La mayoria de los tenants nunca lo necesita. Requiere connectors.accounts.write."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with url, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    pm.expect(pm.response.json()).to.have.property(\"url\");",
+									"  } else {",
+									"    pm.expect([403]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Reauth",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}/reauth",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts",
+								"{{connectorsAccountId}}",
+								"reauth"
+							]
+						},
+						"description": "Reintenta el setup de watch/subscription de una cuenta tras TenantEmailAccount.Status == Error (renewal agoto reintentos, o el OAuth grant se revalido fuera de banda). Requiere connectors.accounts.write."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204 or documented error\", () => [204, 400, 403, 404, 409, 502].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Webhooks",
+			"item": [
+				{
+					"name": "GmailPush",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{connectorsGmailPushJwt}}",
+								"type": "text",
+								"description": "JWT real emitido por Google Pub/Sub (Google.Apis.Auth valida la firma) — no hay forma de simular esto sin un push real de Gmail."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"message\": {\n    \"data\": \"eyJlbWFpbEFkZHJlc3MiOiJvZmZpY2VAZ21haWwuY29tIiwiaGlzdG9yeUlkIjoxMjM0NX0=\",\n    \"messageId\": \"1234567890\"\n  },\n  \"subscription\": \"projects/x/subscriptions/y\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/webhooks/gmail-push",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"webhooks",
+								"gmail-push"
+							]
+						},
+						"description": "Publico — Pub/Sub push de Google. Decodifica el envelope base64 ({emailAddress, historyId}), resuelve TenantEmailAccount por email, fetch history y publica connectors.raw_message_received.v1 por cada mensaje nuevo (solo metadata, nunca body). Rate limit 100 req/min por IP. Devuelve 200 incluso si la cuenta no existe (no-retryable); 500 en otros fallos para que Pub/Sub reintente."
+					},
+					"response": []
+				},
+				{
+					"name": "GraphNotification",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"value\": [\n    {\n      \"subscriptionId\": \"sub-id\",\n      \"clientState\": \"{{connectorsGraphClientState}}\",\n      \"resource\": \"me/mailFolders('inbox')/messages\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/webhooks/graph-notification",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"webhooks",
+								"graph-notification"
+							]
+						},
+						"description": "Publico — Microsoft Graph subscription notification. Con ?validationToken=xxx en el query string responde el eco text/plain (handshake de creacion de subscription). Sin eso, valida clientState en tiempo constante contra Connectors:Watch:Graph:ClientState (rechaza 401 si el secreto no esta configurado o no matchea) y procesa el delta. Rate limit 100 req/min por IP."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Messages (M2M)",
+			"item": [
+				{
+					"name": "GetBody",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"accountId\": \"{{connectorsAccountId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/messages/{{connectorsProviderMessageId}}/body",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"messages",
+								"{{connectorsProviderMessageId}}",
+								"body"
+							]
+						},
+						"description": "M2M — solo Correspondence (u otro microservicio backend), nunca frontend ni usuario final. Fetch bajo demanda del body completo del mensaje (html/text/headers/attachments metadata, sin bytes de attachments). Timeout 30s, rate limit 10 req/min por (tenant, accountId). Requiere policy ServiceOnly (claim actor_type=Service)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 or documented error\", () => [200, 403, 404, 429, 502, 504].includes(pm.response.code) || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetAttachment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"accountId\": \"{{connectorsAccountId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/messages/{{connectorsProviderMessageId}}/attachments/{{connectorsAttachmentId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"messages",
+								"{{connectorsProviderMessageId}}",
+								"attachments",
+								"{{connectorsAttachmentId}}"
+							]
+						},
+						"description": "M2M — solo Correspondence. Fetch bajo demanda del binario del attachment (streaming, Content-Type + filename resueltos via GetMessageAsync, nunca confia en metadata del caller). Rate limit 5 req/min por tenant. Requiere policy ServiceOnly (claim actor_type=Service)."
+					},
+					"response": []
+				},
+				{
+					"name": "Send",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"subject\": \"Re: Documentacion fiscal 2025\",\n  \"html\": \"<p>Hola, adjunto la documentacion solicitada.</p>\",\n  \"text\": \"Hola, adjunto la documentacion solicitada.\",\n  \"to\": [\"cliente@ejemplo.com\"],\n  \"cc\": [],\n  \"bcc\": [],\n  \"replyToDisplayAddress\": \"Contador TaxVision <contacto@miempresa.com>\",\n  \"inReplyToInternetMessageId\": null,\n  \"references\": null,\n  \"replyToProviderMessageId\": null,\n  \"attachments\": [\n    {\n      \"filename\": \"factura.pdf\",\n      \"contentType\": \"application/pdf\",\n      \"contentBase64\": \"JVBERi0xLjQKJcOkw7zDtsO...\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts/{{connectorsAccountId}}/send",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts",
+								"{{connectorsAccountId}}",
+								"send"
+							]
+						},
+						"description": "M2M (D3 §3.7, unico consumidor hoy: ConnectorsSendClient en Postmaster, README 35.8) — envio saliente via la cuenta OAuth/IMAP+SMTP conectada. El token del proveedor nunca sale de Connectors: recibe un OutboundMessage normalizado (nunca MIME crudo, Graph no lo acepta para crear un envio nuevo) y lo traduce a la forma nativa (GmailApiClient/GraphApiClient/SmtpManualClient). `attachments[].contentBase64` es el contenido en base64 (D3 Compose §16 Fase 1). Sin threading real en v1: `inReplyToInternetMessageId`/`references`/`replyToProviderMessageId` son opcionales. Timeout 30s en el HttpClient del proveedor, rate limit 20 req/min por (tenant, cuenta) via ISendRateLimiter. Requiere policy ServiceOnly (claim actor_type=Service)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 with providerMessageId, or documented error\", () => {",
+									"  if (pm.response.code === 200) {",
+									"    pm.expect(pm.response.json()).to.have.property(\"sentAtUtc\");",
+									"  } else {",
+									"    pm.expect([400, 401, 403, 404, 429, 504]).to.include(pm.response.code);",
+									"  }",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Negative Cases — Actor Type",
+			"item": [
+				{
+					"name": "CustomerPortal token rejected — List",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{customerPortalAccessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/connectors/accounts",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"connectors",
+								"accounts"
+							]
+						},
+						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"List\" (requiere connectors.accounts.read, actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP.\n\n---\nDescripción original: Lista las cuentas de correo conectadas del tenant (`TenantEmailAccountDto[]` — nunca incluye el token/credenciales). Requiere connectors.accounts.read."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			],
+			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
+		}
+	]
 }

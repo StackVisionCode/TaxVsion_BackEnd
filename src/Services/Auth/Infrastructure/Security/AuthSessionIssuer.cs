@@ -31,7 +31,6 @@ public sealed class AuthSessionIssuer(
         User user,
         string effectiveTimeZoneId,
         IReadOnlyCollection<string> roles,
-        IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
         string? deviceName,
         CancellationToken ct = default
@@ -50,7 +49,7 @@ public sealed class AuthSessionIssuer(
         );
         await sessions.AddTokenAsync(refreshToken, ct);
 
-        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, permissions, authMethods);
+        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods);
 
         return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
     }
@@ -61,7 +60,6 @@ public sealed class AuthSessionIssuer(
         User user,
         string effectiveTimeZoneId,
         IReadOnlyCollection<string> roles,
-        IReadOnlyCollection<string> permissions,
         IReadOnlyCollection<string> authMethods,
         CancellationToken ct = default
     )
@@ -78,7 +76,7 @@ public sealed class AuthSessionIssuer(
         currentToken.Rotate(replacement.Id);
         await sessions.AddTokenAsync(replacement, ct);
 
-        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, permissions, authMethods);
+        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods);
 
         return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
     }

@@ -55,6 +55,7 @@ public static class CreateTenantReferralProgramHandler
         );
 
         return await idempotency.ExecuteAsync(
+            PlatformTenant.Id,
             Operation,
             PlatformTenant.Id,
             command.IdempotencyKey,

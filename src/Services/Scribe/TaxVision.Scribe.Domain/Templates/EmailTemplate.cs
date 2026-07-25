@@ -9,7 +9,7 @@ namespace TaxVision.Scribe.Domain.Templates;
 /// <see cref="EmailTemplateVersion"/> y es dueña del invariante "solo una version Published a la vez"
 /// (<see cref="PublishVersion"/> supersede automáticamente la Published anterior).
 /// </summary>
-public sealed class EmailTemplate : BaseEntity
+public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
 {
     private readonly List<EmailTemplateVersion> _versions = [];
 

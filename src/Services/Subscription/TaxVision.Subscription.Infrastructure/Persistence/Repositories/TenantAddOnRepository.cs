@@ -8,20 +8,28 @@ public sealed class TenantAddOnRepository(SubscriptionDbContext db) : ITenantAdd
 {
     public Task<TenantAddOn?> GetByIdAsync(Guid tenantAddOnId, Guid tenantId, CancellationToken ct = default) =>
         WithRenewals(db.TenantAddOns)
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(addOn => addOn.Id == tenantAddOnId && addOn.TenantId == tenantId, ct);
 
     public async Task<IReadOnlyList<TenantAddOn>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-        await db.TenantAddOns.AsNoTracking().Where(addOn => addOn.TenantId == tenantId).ToListAsync(ct);
+        await db
+            .TenantAddOns.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(addOn => addOn.TenantId == tenantId)
+            .ToListAsync(ct);
 
     public async Task AddAsync(TenantAddOn addOn, CancellationToken ct = default) =>
         await db.TenantAddOns.AddAsync(addOn, ct);
 
+    // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — recorren add-ons de todos los tenants
+    // buscando renovaciones/expiraciones vencidas, nunca sirven una request autenticada.
     public async Task<IReadOnlyList<TenantAddOn>> GetDueForRenewalAsync(
         DateTime nowUtc,
         int batchSize,
         CancellationToken ct = default
     ) =>
         await WithRenewals(db.TenantAddOns)
+            .IgnoreQueryFilters()
             .Where(addOn =>
                 addOn.Status == AddOnStatus.Active
                 && addOn.AutoRenew
@@ -38,7 +46,8 @@ public sealed class TenantAddOnRepository(SubscriptionDbContext db) : ITenantAdd
         CancellationToken ct = default
     ) =>
         await db
-            .TenantAddOns.Where(addOn =>
+            .TenantAddOns.IgnoreQueryFilters()
+            .Where(addOn =>
                 addOn.Status == AddOnStatus.GracePeriod
                 && addOn.GracePeriodEndsAtUtc != null
                 && addOn.GracePeriodEndsAtUtc <= nowUtc
@@ -53,7 +62,8 @@ public sealed class TenantAddOnRepository(SubscriptionDbContext db) : ITenantAdd
         CancellationToken ct = default
     ) =>
         await db
-            .TenantAddOns.Where(addOn =>
+            .TenantAddOns.IgnoreQueryFilters()
+            .Where(addOn =>
                 addOn.Status == AddOnStatus.Suspended
                 && addOn.SuspendedAtUtc != null
                 && addOn.SuspendedAtUtc <= cutoffUtc
@@ -68,7 +78,8 @@ public sealed class TenantAddOnRepository(SubscriptionDbContext db) : ITenantAdd
         CancellationToken ct = default
     ) =>
         await db
-            .TenantAddOns.Where(addOn => addOn.Status == AddOnStatus.Cancelled && addOn.CurrentPeriodEndUtc <= nowUtc)
+            .TenantAddOns.IgnoreQueryFilters()
+            .Where(addOn => addOn.Status == AddOnStatus.Cancelled && addOn.CurrentPeriodEndUtc <= nowUtc)
             .OrderBy(addOn => addOn.CurrentPeriodEndUtc)
             .Take(batchSize)
             .ToListAsync(ct);

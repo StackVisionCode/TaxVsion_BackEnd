@@ -21,6 +21,7 @@ internal sealed class FakeReferralIdempotencyExecutor(params IFakeReferralTransa
     internal Error? FailNextCommit { get; set; }
 
     public async Task<Result<TResponse>> ExecuteAsync<TResponse>(
+        Guid tenantId,
         string operation,
         Guid scopeId,
         string idempotencyKey,
@@ -29,6 +30,7 @@ internal sealed class FakeReferralIdempotencyExecutor(params IFakeReferralTransa
         CancellationToken ct = default
     )
     {
+        _ = tenantId; // el fake ignora el tenant — el key ya es único por scopeId+operation+idempotencyKey
         var storageKey = (operation, scopeId, idempotencyKey);
         if (_responses.TryGetValue(storageKey, out var stored))
         {

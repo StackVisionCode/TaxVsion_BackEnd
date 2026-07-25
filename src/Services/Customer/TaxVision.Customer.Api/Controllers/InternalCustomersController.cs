@@ -1,7 +1,7 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Customer.Api.Common;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Customers.Queries.Search;
 using Wolverine;
@@ -24,6 +24,7 @@ namespace TaxVision.Customer.Api.Controllers;
 /// </summary>
 [ApiController]
 [Authorize(Policy = "ServiceOnly")]
+[AllowActorTypes(ActorType.Service)]
 [Route("customers/internal")]
 public sealed class InternalCustomersController(IMessageBus bus) : ControllerBase
 {

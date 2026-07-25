@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +18,7 @@ namespace TaxVision.Connectors.Api.Controllers;
 /// </summary>
 [ApiController]
 [Authorize(Policy = "ServiceOnly")]
+[AllowActorTypes(ActorType.Service)]
 [Route("connectors/messages")]
 public sealed class MessagesController(IMessageBus bus) : ControllerBase
 {

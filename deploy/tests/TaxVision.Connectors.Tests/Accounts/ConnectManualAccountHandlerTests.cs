@@ -5,6 +5,7 @@ using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Tests.OAuth;
 using TaxVision.Connectors.Tests.Providers;
+using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
 
@@ -19,6 +20,8 @@ public class ConnectManualAccountHandlerTests
         FakeManualAccountConnectivityValidator ConnectivityValidator,
         FakeEncryptedSecretProtector Protector,
         FakeProviderConnectionAuditLogRepository AuditLogRepository,
+        FakeProviderWatchSubscriptionRepository WatchSubscriptionRepository,
+        FakeWatchProviderClientFactory WatchClientFactory,
         FakeUnitOfWork UnitOfWork,
         FakeMessageBus Bus
     );
@@ -31,6 +34,10 @@ public class ConnectManualAccountHandlerTests
             new FakeManualAccountConnectivityValidator(),
             new FakeEncryptedSecretProtector(),
             new FakeProviderConnectionAuditLogRepository(),
+            new FakeProviderWatchSubscriptionRepository(),
+            // ProviderCode.Imap nunca llega a resolver un watch client (ver WatchActivationService),
+            // así que client: null es correcto acá — nunca se invoca.
+            new FakeWatchProviderClientFactory(client: null),
             new FakeUnitOfWork(),
             new FakeMessageBus()
         );
@@ -65,6 +72,8 @@ public class ConnectManualAccountHandlerTests
             fixture.ConnectivityValidator,
             fixture.Protector,
             fixture.AuditLogRepository,
+            fixture.WatchSubscriptionRepository,
+            fixture.WatchClientFactory,
             fixture.UnitOfWork,
             fixture.Bus,
             CancellationToken.None
@@ -83,6 +92,11 @@ public class ConnectManualAccountHandlerTests
         Assert.Equal("office@example.com", result.Value.EmailAddress);
         Assert.Single(fixture.AccountRepository.Accounts);
         Assert.Equal(ProviderCode.Imap, fixture.AccountRepository.Accounts[0].ProviderCode);
+        // Regresión del bug de producción del 2026-07-24: la cuenta debe quedar Active al final del
+        // handler, en el mismo scope/transacción — antes del fix, la activación se despachaba como un
+        // SetupWatchCommand nuevo de Wolverine que corría en OTRA transacción y no veía esta cuenta
+        // recién insertada, así que el flujo entero fallaba con 404 aunque los INSERT sí committeaban.
+        Assert.Equal(TenantEmailAccountStatus.Active, fixture.AccountRepository.Accounts[0].Status);
         Assert.Single(fixture.ImapCredentialsRepository.Credentials);
         Assert.Single(fixture.SmtpCredentialsRepository.Credentials);
         Assert.Equal(
@@ -93,8 +107,8 @@ public class ConnectManualAccountHandlerTests
             fixture.AccountRepository.Accounts[0].Id,
             fixture.SmtpCredentialsRepository.Credentials[0].AccountId
         );
-        Assert.Single(fixture.Bus.Invoked);
-        Assert.IsType<TaxVision.Connectors.Application.Watch.SetupWatchCommand>(fixture.Bus.Invoked[0]);
+        // Ya no se despacha SetupWatchCommand vía bus — WatchActivationService corre en proceso.
+        Assert.Empty(fixture.Bus.Invoked);
         var published = Assert.Single(fixture.Bus.Published);
         var connectedEvent = Assert.IsType<ConnectorsTenantEmailAccountConnectedIntegrationEvent>(published);
         Assert.Equal("office@example.com", connectedEvent.EmailAddress);
@@ -131,22 +145,6 @@ public class ConnectManualAccountHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("ManualAccountConnectivityValidator.SmtpFailed", result.Error.Code);
         Assert.Empty(fixture.AccountRepository.Accounts);
-    }
-
-    [Fact]
-    public async Task Handle_WatchSetupFails_ReturnsFailureButKeepsPersistedCredentials()
-    {
-        var fixture = CreateFixture();
-        fixture.Bus.InvokeResult = Result.Failure(new Error("SetupWatchHandler.ProviderFailed", "boom"));
-
-        var result = await HandleAsync(fixture, ValidCommand(Guid.NewGuid(), Guid.NewGuid()));
-
-        Assert.True(result.IsFailure);
-        Assert.Equal("SetupWatchHandler.ProviderFailed", result.Error.Code);
-        Assert.Single(fixture.AccountRepository.Accounts);
-        Assert.Single(fixture.ImapCredentialsRepository.Credentials);
-        Assert.Single(fixture.SmtpCredentialsRepository.Credentials);
-        Assert.Empty(fixture.Bus.Published);
     }
 
     [Fact]

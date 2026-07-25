@@ -11,15 +11,27 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
 
     public async Task<EmailCampaign?> GetByIdAsync(Guid id, Guid tenantId, CancellationToken ct = default) =>
         await db
-            .EmailCampaigns.Include(c => c.Recipients)
+            .EmailCampaigns.IgnoreQueryFilters()
+            .Include(c => c.Recipients)
             .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == tenantId, ct);
 
+    // IgnoreQueryFilters(): invocado desde CampaignDeliverySucceeded/FailedConsumer (consumers de
+    // Wolverine con nuevo DI scope, ITenantContext vacío). El CampaignId viene del propio evento
+    // ya validado; los consumers mutan contadores del aggregate — sin esto, la campaña quedaba
+    // atascada porque el fetch siempre devolvía null y nadie incrementaba Sent/Failed.
     public async Task<EmailCampaign?> GetForProcessingAsync(Guid id, CancellationToken ct = default) =>
-        await db.EmailCampaigns.Include(c => c.Recipients).FirstOrDefaultAsync(c => c.Id == id, ct);
+        await db
+            .EmailCampaigns.IgnoreQueryFilters()
+            .Include(c => c.Recipients)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
 
+    // IgnoreQueryFilters(): invocado desde EmailCampaignStarted/BatchConsumer — mismo bug del scope
+    // Wolverine. Sin esto, el fan-out por lotes de la campaña nunca se disparaba (campaign is null).
     public async Task<EmailCampaign?> GetByIdNoRecipientsAsync(Guid id, CancellationToken ct = default) =>
-        await db.EmailCampaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        await db.EmailCampaigns.AsNoTracking().IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == id, ct);
 
+    // IgnoreQueryFilters(): invocado desde EmailCampaignBatchConsumer justo después de
+    // GetByIdNoRecipientsAsync ya validado. Sin esto, ningún recipient se cargaba en el lote.
     public async Task<IReadOnlyList<EmailCampaignRecipient>> GetRecipientsPageAsync(
         Guid campaignId,
         int skip,
@@ -28,19 +40,23 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
     ) =>
         await db
             .EmailCampaignRecipients.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(r => r.CampaignId == campaignId)
             .OrderBy(r => r.Id)
             .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
 
+    // RBAC Fase 5 — cross-tenant por diseño (CampaignSchedulerService recorre TODOS los tenants
+    // en cada corrida), único consumidor de este método. IgnoreQueryFilters() explícito.
     public async Task<IReadOnlyList<EmailCampaign>> GetDueAsync(
         DateTime nowUtc,
         int max,
         CancellationToken ct = default
     ) =>
         await db
-            .EmailCampaigns.Where(c => c.Status == CampaignStatus.Scheduled && c.ScheduledAtUtc <= nowUtc)
+            .EmailCampaigns.IgnoreQueryFilters()
+            .Where(c => c.Status == CampaignStatus.Scheduled && c.ScheduledAtUtc <= nowUtc)
             .OrderBy(c => c.ScheduledAtUtc)
             .Take(max)
             .ToListAsync(ct);
@@ -53,7 +69,7 @@ public sealed class EmailCampaignRepository(NotificationDbContext db) : IEmailCa
         CancellationToken ct = default
     )
     {
-        var query = db.EmailCampaigns.AsNoTracking().Where(c => c.TenantId == tenantId);
+        var query = db.EmailCampaigns.AsNoTracking().IgnoreQueryFilters().Where(c => c.TenantId == tenantId);
         if (status is not null)
             query = query.Where(c => c.Status == status);
 

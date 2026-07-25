@@ -1,11 +1,11 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Signature.Api.Authorization;
-using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Requests;
 using TaxVision.Signature.Application.Templates;
@@ -35,6 +35,7 @@ namespace TaxVision.Signature.Api.Controllers;
 [ApiController]
 [Route("signature/templates")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBase
 {
     // ---------- POST /signature/templates ----------
@@ -44,7 +45,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateTemplateBody body, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new CreateSignatureTemplateCommand(
@@ -76,7 +77,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
         CancellationToken ct = default
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<ListTemplatesResult>(
@@ -93,7 +94,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<SignatureTemplateResponse?>(new GetTemplateByIdQuery(tenantId, id), ct);
@@ -111,7 +112,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -132,7 +133,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(
@@ -160,7 +161,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<TemplateSlotCreatedResponse>>(
@@ -179,7 +180,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RemoveSlot([FromRoute] Guid id, [FromRoute] int slotOrder, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveTemplateSlotCommand(tenantId, id, slotOrder), ct);
@@ -197,7 +198,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var cmd = new PlaceTemplateFieldCommand(
@@ -226,7 +227,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RemoveField([FromRoute] Guid id, [FromRoute] Guid fieldId, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new RemoveTemplateFieldCommand(tenantId, id, fieldId), ct);
@@ -240,7 +241,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Publish([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new PublishTemplateCommand(tenantId, id), ct);
@@ -254,7 +255,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Archive([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new ArchiveTemplateCommand(tenantId, id), ct);
@@ -272,7 +273,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
         CancellationToken ct
     )
     {
-        if (!TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var cmd = new CreateSignatureRequestFromTemplateCommand(
@@ -295,14 +296,4 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
 
     private IActionResult MapResult(Result result) =>
         result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-
-    private bool TryGetTenantAndUser(out Guid tenantId, out Guid userId)
-    {
-        if (!User.TryGetTenantId(out tenantId))
-        {
-            userId = Guid.Empty;
-            return false;
-        }
-        return User.TryGetUserId(out userId);
-    }
 }

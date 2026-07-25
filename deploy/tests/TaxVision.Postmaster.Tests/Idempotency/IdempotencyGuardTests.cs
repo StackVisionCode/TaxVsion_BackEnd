@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Postmaster.Application.Common;
@@ -9,11 +10,22 @@ namespace TaxVision.Postmaster.Tests.Idempotency;
 
 public sealed class IdempotencyGuardTests
 {
+    // EmailIdempotency no implementa ITenantOwned (ver PostmasterDbContext) — el filtro
+    // global de RBAC Fase 5 no lo alcanza, así que un tenant vacío acá es inofensivo.
+    private sealed class NoTenantContext : ITenantContext
+    {
+        public Guid TenantId => Guid.Empty;
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
+    }
+
     private static PostmasterDbContext CreateContext(string? databaseName = null) =>
         new(
             new DbContextOptionsBuilder<PostmasterDbContext>()
                 .UseInMemoryDatabase(databaseName ?? Guid.NewGuid().ToString())
-                .Options
+                .Options,
+            new NoTenantContext()
         );
 
     private static SqlIdempotencyGuard CreateGuard(PostmasterDbContext dbContext) =>

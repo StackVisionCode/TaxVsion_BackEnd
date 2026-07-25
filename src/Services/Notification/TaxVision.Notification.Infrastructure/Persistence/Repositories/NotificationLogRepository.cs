@@ -17,7 +17,7 @@ public sealed class NotificationLogRepository(NotificationDbContext db) : INotif
         CancellationToken ct = default
     )
     {
-        var query = db.NotificationLogs.AsNoTracking().Where(log => log.TenantId == tenantId);
+        var query = db.NotificationLogs.AsNoTracking().IgnoreQueryFilters().Where(log => log.TenantId == tenantId);
 
         if (status is not null)
             query = query.Where(log => log.Status == status);

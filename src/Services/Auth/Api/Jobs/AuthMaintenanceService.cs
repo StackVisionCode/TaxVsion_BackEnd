@@ -52,10 +52,11 @@ public sealed class AuthMaintenanceService(
         var now = DateTime.UtcNow;
 
         // 1. Invitaciones pendientes vencidas → Expired.
+        // RBAC Fase 5 — housekeeping deliberadamente cross-tenant (limpia expirados/caducados de
+        // TODOS los tenants en cada tick); IgnoreQueryFilters() explícito en las 7 queries.
         var expiredInvitations = await db
-            .Invitations.Where(invitation =>
-                invitation.Status == InvitationStatus.Pending && invitation.ExpiresAtUtc <= now
-            )
+            .Invitations.IgnoreQueryFilters()
+            .Where(invitation => invitation.Status == InvitationStatus.Pending && invitation.ExpiresAtUtc <= now)
             .ToListAsync(ct);
         foreach (var invitation in expiredInvitations)
             invitation.MarkExpired(now);
@@ -63,26 +64,40 @@ public sealed class AuthMaintenanceService(
         // 2. Purga de artefactos caducados hace más de PurgeAge.
         var cutoff = now.Subtract(PurgeAge);
 
-        var oldRefreshTokens = await db.RefreshTokens.Where(token => token.ExpiresAtUtc < cutoff).ToListAsync(ct);
+        var oldRefreshTokens = await db
+            .RefreshTokens.IgnoreQueryFilters()
+            .Where(token => token.ExpiresAtUtc < cutoff)
+            .ToListAsync(ct);
         db.RefreshTokens.RemoveRange(oldRefreshTokens);
 
-        var oldChallenges = await db.MfaChallenges.Where(challenge => challenge.ExpiresAtUtc < cutoff).ToListAsync(ct);
+        var oldChallenges = await db
+            .MfaChallenges.IgnoreQueryFilters()
+            .Where(challenge => challenge.ExpiresAtUtc < cutoff)
+            .ToListAsync(ct);
         db.MfaChallenges.RemoveRange(oldChallenges);
 
-        var oldResetTokens = await db.PasswordResetTokens.Where(token => token.ExpiresAtUtc < cutoff).ToListAsync(ct);
+        var oldResetTokens = await db
+            .PasswordResetTokens.IgnoreQueryFilters()
+            .Where(token => token.ExpiresAtUtc < cutoff)
+            .ToListAsync(ct);
         db.PasswordResetTokens.RemoveRange(oldResetTokens);
 
         var oldEmailTokens = await db
-            .EmailVerificationTokens.Where(token => token.ExpiresAtUtc < cutoff)
+            .EmailVerificationTokens.IgnoreQueryFilters()
+            .Where(token => token.ExpiresAtUtc < cutoff)
             .ToListAsync(ct);
         db.EmailVerificationTokens.RemoveRange(oldEmailTokens);
 
         var oldPhoneTokens = await db
-            .PhoneVerificationTokens.Where(token => token.ExpiresAtUtc < cutoff)
+            .PhoneVerificationTokens.IgnoreQueryFilters()
+            .Where(token => token.ExpiresAtUtc < cutoff)
             .ToListAsync(ct);
         db.PhoneVerificationTokens.RemoveRange(oldPhoneTokens);
 
-        var oldDevices = await db.TrustedDevices.Where(device => device.ExpiresAtUtc < cutoff).ToListAsync(ct);
+        var oldDevices = await db
+            .TrustedDevices.IgnoreQueryFilters()
+            .Where(device => device.ExpiresAtUtc < cutoff)
+            .ToListAsync(ct);
         db.TrustedDevices.RemoveRange(oldDevices);
 
         var changes = await db.SaveChangesAsync(ct);

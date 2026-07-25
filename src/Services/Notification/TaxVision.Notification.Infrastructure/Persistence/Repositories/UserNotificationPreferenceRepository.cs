@@ -27,10 +27,12 @@ public sealed class UserNotificationPreferenceRepository(NotificationDbContext d
         NotificationChannel channel,
         CancellationToken ct = default
     ) =>
-        await db.UserNotificationPreferences.FirstOrDefaultAsync(
-            p => p.TenantId == tenantId && p.UserId == userId && p.Category == category && p.Channel == channel,
-            ct
-        );
+        await db
+            .UserNotificationPreferences.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                p => p.TenantId == tenantId && p.UserId == userId && p.Category == category && p.Channel == channel,
+                ct
+            );
 
     public async Task<IReadOnlyList<UserNotificationPreference>> ListForUserAsync(
         Guid tenantId,
@@ -39,6 +41,7 @@ public sealed class UserNotificationPreferenceRepository(NotificationDbContext d
     ) =>
         await db
             .UserNotificationPreferences.AsNoTracking()
+            .IgnoreQueryFilters()
             .Where(p => p.TenantId == tenantId && p.UserId == userId)
             .ToListAsync(ct);
 

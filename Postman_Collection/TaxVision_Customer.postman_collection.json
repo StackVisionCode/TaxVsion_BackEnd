@@ -1574,6 +1574,67 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "Negative Cases — Actor Type",
+			"item": [
+				{
+					"name": "CustomerPortal token rejected — SearchCustomers",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{customerPortalAccessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/customers?term=maria&page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "term",
+									"value": "maria"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"SearchCustomers\" (requiere customers.view, actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								]
+							}
+						}
+					]
+				}
+			],
+			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
 		}
 	]
 }

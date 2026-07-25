@@ -12,13 +12,13 @@ import type { NotificationActionMappingRepository } from '../../src/application/
  * naming policy configurada en Wolverine — copiados literalmente de los records en
  * BuildingBlocks/Messaging/SignatureIntegrationEvents/, no adivinados).
  *
- * Hotfix 2026-07-20: documentSignedHandler, requestCompletedHandler,
- * requestCanceledHandler y requestSealedHandler esperaban `createdByUserId` (o, en el
- * caso de documentSignedHandler, el nombre distinto `requestCreatedByUserId`) pero
- * Signature nunca publicaba ese campo — los 4 handlers descartaban el evento en
- * silencio (`if (!requestId || !createdBy) return;`) sin generar ninguna
- * notificación. Este test existe para que, si algún día el nombre del campo vuelve a
- * desalinearse entre .NET y Node, se rompa acá en CI en vez de quedar invisible.
+ * documentSignedHandler, requestCompletedHandler, requestCanceledHandler y
+ * requestSealedHandler dependen de `createdByUserId` (o, en el caso de
+ * documentSignedHandler, `requestCreatedByUserId`) — si Signature deja de publicar
+ * ese campo, los 4 handlers descartan el evento en silencio
+ * (`if (!requestId || !createdBy) return;`) sin generar ninguna notificación. Este
+ * test existe para que, si el nombre del campo vuelve a desalinearse entre .NET y
+ * Node, se rompa acá en CI en vez de quedar invisible.
  */
 function setup() {
   const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();

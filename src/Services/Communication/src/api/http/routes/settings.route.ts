@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { hasPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { checkPermission, permissionCheckHttpStatus, CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import { getOrCreateSettings, updateSettings } from '../../../application/use-cases/settings-use-cases.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
@@ -25,8 +25,9 @@ const PatchBody = z.object({
 export async function registerSettingsRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   app.get('/communication/settings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.SettingsManage)) {
-      return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.settings.manage.' });
+    const permCheck = await checkPermission(principal, CommunicationPermissions.SettingsManage, container.userPermissions);
+    if (!permCheck.allowed) {
+      return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
     }
     const [settings, limits] = await Promise.all([
       getOrCreateSettings(principal.tenantId, container),
@@ -37,8 +38,9 @@ export async function registerSettingsRoutes(app: FastifyInstance, container: Ap
 
   app.put('/communication/settings', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
-    if (!hasPermission(principal.actorType, principal.permissions, CommunicationPermissions.SettingsManage)) {
-      return reply.code(403).send({ code: 'Auth.Forbidden', message: 'Missing communication.settings.manage.' });
+    const permCheck = await checkPermission(principal, CommunicationPermissions.SettingsManage, container.userPermissions);
+    if (!permCheck.allowed) {
+      return reply.code(permissionCheckHttpStatus(permCheck)).send({ code: permCheck.code, message: permCheck.message });
     }
     const body = PatchBody.parse(request.body);
     const patch = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) as Parameters<typeof updateSettings>[0]['patch'];

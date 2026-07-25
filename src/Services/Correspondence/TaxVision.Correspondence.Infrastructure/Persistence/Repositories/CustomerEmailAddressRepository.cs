@@ -10,17 +10,22 @@ public sealed class CustomerEmailAddressRepository(CorrespondenceDbContext db) :
         Guid tenantId,
         Guid customerId,
         CancellationToken ct = default
-    ) => db.CustomerEmailAddresses.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CustomerId == customerId, ct);
+    ) =>
+        db
+            .CustomerEmailAddresses.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CustomerId == customerId, ct);
 
     public Task<CustomerEmailAddress?> FindActiveByAddressAsync(
         Guid tenantId,
         string normalizedAddress,
         CancellationToken ct = default
     ) =>
-        db.CustomerEmailAddresses.FirstOrDefaultAsync(
-            x => x.TenantId == tenantId && x.EmailAddress == normalizedAddress && x.DeletedAtUtc == null,
-            ct
-        );
+        db
+            .CustomerEmailAddresses.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.EmailAddress == normalizedAddress && x.DeletedAtUtc == null,
+                ct
+            );
 
     public async Task AddAsync(CustomerEmailAddress entity, CancellationToken ct = default)
     {

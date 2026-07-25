@@ -24,5 +24,7 @@ public sealed class GrowthDbContextFactory : IDesignTimeDbContextFactory<GrowthD
     {
         public Guid TenantId => throw new InvalidOperationException("TenantId is not set at design time.");
         public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) { }
     }
 }

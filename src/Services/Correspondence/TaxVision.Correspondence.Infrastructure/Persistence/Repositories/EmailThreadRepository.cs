@@ -14,10 +14,13 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
         Guid tenantId,
         string providerThreadId,
         CancellationToken ct = default
-    ) => db.EmailThreads.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderThreadId == providerThreadId, ct);
+    ) =>
+        db
+            .EmailThreads.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderThreadId == providerThreadId, ct);
 
     public Task<EmailThread?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
-        db.EmailThreads.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+        db.EmailThreads.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
 
     public async Task AddAsync(EmailThread entity, CancellationToken ct = default)
     {
@@ -31,7 +34,8 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
         CancellationToken ct = default
     ) =>
         await db
-            .EmailThreads.Where(x =>
+            .EmailThreads.IgnoreQueryFilters()
+            .Where(x =>
                 x.TenantId == tenantId
                 && x.CustomerId == customerId
                 && x.Status == EmailThreadStatus.Active
@@ -53,7 +57,10 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
 
         // AsNoTracking: listado de solo lectura para el cliente final, mismo criterio que
         // CustomerReadService.SearchAsync. Usa IX_EmailThreads_TenantId_CustomerId_LastMessageAtUtc.
-        var query = db.EmailThreads.AsNoTracking().Where(x => x.TenantId == tenantId && x.CustomerId == customerId);
+        var query = db
+            .EmailThreads.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId);
 
         var totalCount = await query.CountAsync(ct);
 

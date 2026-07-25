@@ -1,9 +1,9 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Notification.Api.Authorization;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Application.Email.Layouts;
 using TaxVision.Notification.Application.Email.Layouts.Commands;
@@ -16,6 +16,8 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Gestión de layouts de correo (System/Tenant). El layout envuelve el cuerpo de la plantilla
 /// (marcador {{ body }}). Un layout default por scope/tenant; fallback al global del SaaS.
+/// RBAC Fase 10: <c>User.IsPlatformAdmin()</c> se pasa como dato al command/query para resolución de
+/// scope System vs Tenant (no es un atajo de autorización que salte validaciones).
 ///
 /// NO retirado en la Fase 18 del plan de hardening (Notification) por el mismo motivo exacto que
 /// <see cref="EmailTemplatesController"/>: es el único punto de entrada para crear/marcar-default un
@@ -26,6 +28,7 @@ namespace TaxVision.Notification.Api.Controllers;
 [ApiController]
 [Route("notifications/email/layouts")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateEmailLayoutRequest(

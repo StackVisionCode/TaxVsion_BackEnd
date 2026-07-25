@@ -7,17 +7,22 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISubscriptionRepository
 {
     public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-        WithRenewals(db.Subscriptions).FirstOrDefaultAsync(subscription => subscription.TenantId == tenantId, ct);
+        WithRenewals(db.Subscriptions)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(subscription => subscription.TenantId == tenantId, ct);
 
     public async Task AddAsync(TenantSubscription subscription, CancellationToken ct = default) =>
         await db.Subscriptions.AddAsync(subscription, ct);
 
+    // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — recorren suscripciones de todos los
+    // tenants buscando renovaciones/expiraciones vencidas, nunca sirven una request autenticada.
     public async Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(
         DateTime nowUtc,
         int batchSize,
         CancellationToken ct = default
     ) =>
         await WithRenewals(db.Subscriptions)
+            .IgnoreQueryFilters()
             .Where(s =>
                 s.Status == SubscriptionStatus.Active && s.NextRenewalAtUtc != null && s.NextRenewalAtUtc <= nowUtc
             )
@@ -31,7 +36,8 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         CancellationToken ct = default
     ) =>
         await db
-            .Subscriptions.Where(s =>
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s =>
                 s.Status == SubscriptionStatus.Trialing && s.TrialEndsAtUtc != null && s.TrialEndsAtUtc <= nowUtc
             )
             .OrderBy(s => s.TrialEndsAtUtc)
@@ -44,7 +50,8 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         CancellationToken ct = default
     ) =>
         await db
-            .Subscriptions.Where(s =>
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s =>
                 s.Status == SubscriptionStatus.GracePeriod
                 && s.GracePeriodEndsAtUtc != null
                 && s.GracePeriodEndsAtUtc <= nowUtc
@@ -59,7 +66,8 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         CancellationToken ct = default
     ) =>
         await db
-            .Subscriptions.Where(s =>
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s =>
                 s.Status == SubscriptionStatus.Suspended && s.SuspendedAtUtc != null && s.SuspendedAtUtc <= cutoffUtc
             )
             .OrderBy(s => s.SuspendedAtUtc)
@@ -72,7 +80,8 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         CancellationToken ct = default
     ) =>
         await db
-            .Subscriptions.Where(s => s.Status == SubscriptionStatus.Cancelled && s.CurrentPeriodEndUtc <= nowUtc)
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s => s.Status == SubscriptionStatus.Cancelled && s.CurrentPeriodEndUtc <= nowUtc)
             .OrderBy(s => s.CurrentPeriodEndUtc)
             .Take(batchSize)
             .ToListAsync(ct);
@@ -84,7 +93,8 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         CancellationToken ct = default
     ) =>
         await db
-            .Subscriptions.Where(s =>
+            .Subscriptions.IgnoreQueryFilters()
+            .Where(s =>
                 s.Status == SubscriptionStatus.Active
                 && s.NextRenewalAtUtc != null
                 && s.NextRenewalAtUtc >= fromUtc
@@ -94,13 +104,18 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Take(batchSize)
             .ToListAsync(ct);
 
+    // IgnoreQueryFilters: query admin cross-tenant (GetPastDueSubscriptionsHandler, PlatformAdmin
+    // only) — lista morosos de todos los tenants a propósito.
     public async Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
         int page,
         int pageSize,
         CancellationToken ct = default
     )
     {
-        var query = db.Subscriptions.AsNoTracking().Where(s => s.Status == SubscriptionStatus.PastDue);
+        var query = db
+            .Subscriptions.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.Status == SubscriptionStatus.PastDue);
 
         var totalCount = await query.CountAsync(ct);
         var items = await query

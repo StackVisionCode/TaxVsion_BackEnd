@@ -55,6 +55,7 @@ public static class IssueTenantReferralCodeHandler
         );
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             Operation,
             command.ProgramId,
             command.IdempotencyKey,

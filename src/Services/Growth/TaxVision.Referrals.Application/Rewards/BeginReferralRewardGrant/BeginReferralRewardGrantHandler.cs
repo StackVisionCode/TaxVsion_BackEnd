@@ -25,6 +25,7 @@ public static class BeginReferralRewardGrantHandler
         var fingerprint = CanonicalPayloadFingerprint.Compute(command.TenantId, command.RewardCaseId);
 
         return await idempotency.ExecuteAsync(
+            command.TenantId,
             Operation,
             command.RewardCaseId,
             command.IdempotencyKey,
