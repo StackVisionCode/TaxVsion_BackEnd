@@ -17,9 +17,9 @@ namespace TaxVision.Notification.Api.Controllers;
 /// <summary>
 /// Envío de correos (individual y por plantilla) e historial de mensajes salientes. El envío es
 /// asíncrono: los endpoints devuelven 202 y el mensaje se entrega por evento durable fuera del request.
-/// El transporte real detrás de <c>POST send</c> es <c>IEmailDeliveryService</c> — Fase 19 del plan de
-/// hardening (Notification, 2026-07-18) le agregó un segundo camino (Postmaster) detrás del mismo
-/// contrato; este controller no cambió porque ya era asíncrono de punta a punta antes de esa fase.
+/// El transporte real detrás de <c>POST send</c> es <c>IEmailDeliveryService</c>, que tiene un segundo
+/// camino (Postmaster) detrás del mismo contrato; este controller no cambia según cuál esté activo
+/// porque ya es asíncrono de punta a punta.
 /// </summary>
 [ApiController]
 [Route("notifications/email")]

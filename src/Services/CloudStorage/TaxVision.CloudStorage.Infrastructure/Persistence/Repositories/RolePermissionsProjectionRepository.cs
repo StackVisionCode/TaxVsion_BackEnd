@@ -7,10 +7,8 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
 
 public sealed class RolePermissionsProjectionRepository(CloudStorageDbContext db) : IRolePermissionsProjectionRepository
 {
-    // Bug real de producción (2026-07-22, mismo patrón que Signature's UserPermissionsProjectionRepository.cs
-    // y CloudStorage's FileObjectRepository.GetAsync ese mismo día): este consumer Wolverine corre sin
-    // TenantContext ambiente (no hay HTTP request), así que el filtro global de tenant de CloudStorageDbContext
-    // tira antes de llegar acá. tenantId ya viene explícito y confiable desde el evento — IgnoreQueryFilters() explícito.
+    // Consumer Wolverine sin TenantContext ambiente (no hay HTTP request) — el filtro global de
+    // tenant tiraría antes de llegar acá. tenantId ya viene explícito y confiable desde el evento.
     public async Task<RolePermissionsProjection?> GetAsync(
         Guid tenantId,
         Guid roleId,

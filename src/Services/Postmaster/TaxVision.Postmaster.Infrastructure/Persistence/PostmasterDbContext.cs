@@ -61,14 +61,11 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
     /// el tenant del actor autenticado. Fail-closed — sin tenant en contexto, compara contra
     /// <see cref="Guid.Empty"/> (0 filas). Alcanza <c>SentMessage</c>/<c>SentMessageRecipient</c>/
     /// <c>SentMessageEvent</c>/<c>TenantEmailProvider</c> y, vía <c>TenantEntity</c>, también
-    /// <c>UserPermissionsProjection</c>/<c>RolePermissionsProjection</c> (RBAC Fase 7) — los 6
-    /// <see cref="ITenantOwned"/> reales de este contexto (nota corregida 2026-07-22: la cuenta de
-    /// "4" de esta nota era vieja, de antes de Fase 7). Todos sus repos filtran por tenant explícito;
-    /// los métodos invocados desde handlers Wolverine (sin <c>TenantContext</c> ambiente confiable,
-    /// ver <c>LocalCommandTenantMiddleware</c>) ya llevan <c>IgnoreQueryFilters()</c> explícito —
-    /// auditoría RBAC Fase 5/7 (2026-07-22) confirmó y cerró los últimos 4 gaps
-    /// (<c>SentMessageRepository.GetByIdWithEventsAsync</c>, <c>TenantEmailProviderRepository.GetByCodeAsync</c>/
-    /// <c>GetEnabledByTenantAsync</c>, <c>UserPermissionsProjectionRepository.GetSnapshotAsync</c>).
+    /// <c>UserPermissionsProjection</c>/<c>RolePermissionsProjection</c> — los 6
+    /// <see cref="ITenantOwned"/> reales de este contexto. Todos sus repos filtran por tenant
+    /// explícito; los métodos invocados desde handlers Wolverine (sin <c>TenantContext</c>
+    /// ambiente confiable, ver <c>LocalCommandTenantMiddleware</c>) llevan
+    /// <c>IgnoreQueryFilters()</c> explícito.
     /// </summary>
     private void ApplyFailClosedTenantFilter(ModelBuilder modelBuilder)
     {

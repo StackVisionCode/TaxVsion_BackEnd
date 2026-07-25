@@ -102,19 +102,24 @@ public sealed class ConnectorsSendClient(
             .Select(r => r.Address)
             .ToList();
 
-    private Task<HttpResponseMessage> PostSendAsync(
+    private async Task<HttpResponseMessage> PostSendAsync(
         Guid accountId,
         string token,
         SendMessageRequestDto request,
         CancellationToken ct
     )
     {
+        // Con `using` + return directo (sin async/await), el finally del using dispone el
+        // JsonContent de forma síncrona justo tras invocar SendAsync — antes de que la copia
+        // asíncrona real del body al stream de red termine — y HttpConnection.SendRequestContentAsync
+        // falla con ObjectDisposedException. Hace falta `await` dentro del using para que el
+        // dispose ocurra después de que el envío termine.
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"connectors/accounts/{accountId}/send")
         {
             Content = JsonContent.Create(request, options: Json),
         };
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return httpClient.SendAsync(httpRequest, ct);
+        return await httpClient.SendAsync(httpRequest, ct);
     }
 
     private async Task<SendResult> ParseResponseAsync(

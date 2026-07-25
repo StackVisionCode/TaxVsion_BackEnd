@@ -8,7 +8,7 @@ namespace TaxVision.Notification.Application.Consumers.Postmaster;
 
 /// <summary>
 /// Contraparte de <c>PostmasterCallbackConsumers.cs</c> para el path
-/// <see cref="TaxVision.Notification.Application.Email.Sending.PostmasterEmailDeliveryService"/> (Hardening Fase 19, 2026-07-18) —
+/// <see cref="TaxVision.Notification.Application.Email.Sending.PostmasterEmailDeliveryService"/> —
 /// resuelve <c>evt.NotificationLogId</c> contra <see cref="IOutboundEmailRepository"/> en vez de
 /// <c>INotificationLogQueryRepository</c>, porque este path nunca crea un <c>NotificationLog</c>: reusa
 /// el mismo campo como id opaco de <c>OutboundEmailMessage</c> (ver el comentario de clase de

@@ -145,11 +145,10 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header
-// X-Tenant-Id sin validar, confiando en el caller — inseguro) por el middleware compartido
-// que resuelve el tenant SOLO del claim tenant_id del JWT verificado. RBAC Fase 7 hotfix
-// (2026-07-22): va ANTES de UseAuthorization() — en modo Projection, [HasPermission] necesita
-// el tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
+// Middleware compartido que resuelve el tenant SOLO del claim tenant_id del JWT verificado
+// (nunca de un header sin validar). Va ANTES de UseAuthorization() — en modo Projection,
+// [HasPermission] necesita el tenant ya poblado durante su propia evaluación, que corre
+// dentro de UseAuthorization().
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();

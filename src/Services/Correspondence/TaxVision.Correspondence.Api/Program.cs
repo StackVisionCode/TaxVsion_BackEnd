@@ -3,6 +3,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
@@ -94,6 +96,11 @@ builder.Host.UseWolverine(options =>
     options
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+
+    // Sin esta regla, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
+    // silencio — ningun otro servicio llega a recibirlo.
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CorrespondenceCustomerEmailReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

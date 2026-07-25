@@ -162,12 +162,10 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header X-Tenant-Id
-// sin validar, confiando en el caller — inseguro) por el middleware compartido que resuelve el
-// tenant SOLO del claim tenant_id del JWT verificado. Los tokens M2M (RenderController,
-// ActorType.Service) no llevan ese claim y pasan sin tenant seteado — el render pipeline resuelve
-// el tenantId explícito por parámetro, ver comentarios de IgnoreQueryFilters en los repos.
-// RBAC Fase 7 hotfix (2026-07-22): va ANTES de UseAuthorization() — en modo Projection,
+// Middleware compartido que resuelve el tenant SOLO del claim tenant_id del JWT verificado. Los
+// tokens M2M (RenderController, ActorType.Service) no llevan ese claim y pasan sin tenant seteado
+// — el render pipeline resuelve el tenantId explícito por parámetro, ver comentarios de
+// IgnoreQueryFilters en los repos. Va ANTES de UseAuthorization() — en modo Projection,
 // [HasPermission] necesita el tenant ya poblado durante su propia evaluación, que corre dentro
 // de UseAuthorization().
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();

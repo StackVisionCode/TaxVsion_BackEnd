@@ -15,17 +15,14 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
 
     public void Remove(FileObject file) => db.Files.Remove(file);
 
-    // Bug real de produccion (2026-07-22): esta lectura ya trae un tenantId explicito y validado por
-    // el caller (el propio campo TenantId del command/query/event que lo invoca) — pero sin
-    // IgnoreQueryFilters() tambien queda sujeta al HasQueryFilter fail-closed de EF, que lee
-    // TenantContext del scope de DI ACTUAL. Para comandos locales encolados y despachados por
-    // Wolverine (p.ej. ScanFileCommand, publicado desde SaveFileFromSourceHandler via
-    // bus.PublishAsync), el middleware que popula TenantContext y el handler que termina resolviendo
-    // este repositorio pueden correr en dos scopes de DI distintos — confirmado con logging directo
-    // de hashes de instancia — asi que el filtro ve HasTenant=false pese a que el tenant real ya esta
-    // disponible como parametro. Mismo patron ya usado en ListExpiredUploadsAsync/GetByTokenHashAsync:
-    // el parametro explicito ES el limite de autorizacion real, el filtro global es solo defensa en
-    // profundidad para queries que no traen un tenantId propio.
+    // tenantId ya viene explicito y validado por el caller — sin IgnoreQueryFilters() esta lectura
+    // igual queda sujeta al HasQueryFilter fail-closed de EF, que lee TenantContext del scope de DI
+    // actual. Para comandos locales despachados por Wolverine (p.ej. ScanFileCommand via
+    // bus.PublishAsync), el middleware que popula TenantContext y el handler que resuelve este
+    // repositorio pueden correr en scopes de DI distintos, asi que el filtro veria HasTenant=false
+    // pese a que el tenant real ya esta disponible como parametro. Mismo patron que
+    // ListExpiredUploadsAsync/GetByTokenHashAsync: el parametro explicito ES el limite de
+    // autorizacion real, el filtro global es solo defensa en profundidad.
     public Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
         db.Files.IgnoreQueryFilters().SingleOrDefaultAsync(file => file.TenantId == tenantId && file.Id == fileId, ct);
 
@@ -232,11 +229,9 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                 ct
             );
 
-    // Bug real de produccion (2026-07-22) — GetFolderTree devolvia [] para tenants con folders
-    // reales: mismo patron que FileObjectRepository.GetAsync (ver doc-comment de
-    // LocalCommandTenantMiddleware.cs), GetFolderTreeQuery se despacha via bus.InvokeAsync y el
-    // handler corre en un scope de DI distinto al que populo TenantContext. tenantId ya viene
-    // explicito y validado desde el JWT del controller.
+    // Mismo patron que FileObjectRepository.GetAsync: GetFolderTreeQuery se despacha via
+    // bus.InvokeAsync y el handler puede correr en un scope de DI distinto al que populo
+    // TenantContext. tenantId ya viene explicito y validado desde el JWT del controller.
     public async Task<IReadOnlyList<Folder>> ListAllForOwnerScopeAsync(
         Guid tenantId,
         OwnerType? ownerType,

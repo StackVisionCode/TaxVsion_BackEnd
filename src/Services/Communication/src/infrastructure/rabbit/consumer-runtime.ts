@@ -26,13 +26,12 @@ import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/
  *      El unico lugar donde el tipo de mensaje viaja es el header AMQP
  *      `properties.type`, con el CLR type name COMPLETO (namespace + clase),
  *      ej. "BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent".
- *      Verificado empiricamente (publish de prueba + inspeccion via RabbitMQ
- *      Management API) el 2026-07-12 — antes de este fix, CADA consumer
- *      registrado para eventos .NET (auth.*, signature.*, customer.*,
- *      subscription.*) resolvia `envelope.eventType === undefined`, nunca
- *      encontraba handler, y hacia ack-and-skip silencioso en TODOS los
- *      mensajes, para siempre. `CLR_TYPE_TO_EVENT_TYPE` traduce ese header a
- *      la string dotted-lowercase que los `bindXxxConsumers` ya registran.
+ *      Sin este mapeo, CADA consumer registrado para eventos .NET (auth.*,
+ *      signature.*, customer.*, subscription.*) resolveria
+ *      `envelope.eventType === undefined`, nunca encontraria handler, y haria
+ *      ack-and-skip silencioso en TODOS los mensajes, para siempre.
+ *      `CLR_TYPE_TO_EVENT_TYPE` traduce ese header a la string
+ *      dotted-lowercase que los `bindXxxConsumers` ya registran.
  */
 const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   // Auth
@@ -89,8 +88,8 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestExpiredIntegrationEvent':
     'signature.request.expired.v1',
   // Subscription — evento unico de "algo cambio en la suscripcion" (reemplaza a los
-  // antiguos activated/plan_changed/seats_purchased/suspended, retirados en la fase de
-  // cleanup del rediseno de Subscription, 2026-07).
+  // antiguos activated/plan_changed/seats_purchased/suspended, retirados en el
+  // rediseno de Subscription).
   'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantEntitlementsChangedIntegrationEvent':
     'subscription.entitlements_changed.v1',
   // CloudStorage

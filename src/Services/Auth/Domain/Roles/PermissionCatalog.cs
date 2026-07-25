@@ -118,16 +118,11 @@ public static class PermissionCatalog
     public const string ScribeRender = ScribePermissions.Render;
 
     // Postmaster — envío/entrega de correo, proveedores por tenant y suppression list (bounded
-    // context propio, ver microservicio Postmaster). Encontrado durante la auditoría de
-    // aislamiento por tenant_id (2026-07-18): estos 5 permisos ya los exigían los 3 controllers
-    // de Postmaster vía [HasPermission(...)] desde que se construyeron, pero nunca se habían
-    // sembrado en este catálogo — mismo gap exacto que Connectors (Fase 6.5) y Scribe (Fase
-    // 10.5), esta vez descubierto porque el TenantAdmin de una oficina real recibió 403 en
-    // ProvidersController tras retirarse el bypass de rol (sin fila real, "perm" nunca se poblaba
-    // salvo por el bypass). ProvidersWrite cubre también PUT /postmaster/system/provider/{code}
-    // (el proveedor default de plataforma); ese endpoint ya trae su propio
-    // [AllowActorTypes(ActorType.PlatformAdmin)] — el chequeo inline redundante que tenía se
-    // retiró en RBAC Fase 2 (verificado en Fase 10) — no hace falta PlatformOnly aquí.
+    // context propio, ver microservicio Postmaster). Estos 5 permisos ya los exigían los 3
+    // controllers de Postmaster vía [HasPermission(...)], pero nunca se habían sembrado en este
+    // catálogo. ProvidersWrite cubre también PUT /postmaster/system/provider/{code} (el proveedor
+    // default de plataforma); ese endpoint ya trae su propio
+    // [AllowActorTypes(ActorType.PlatformAdmin)] — no hace falta PlatformOnly aquí.
     public const string PostmasterMessagesRead = PostmasterPermissions.MessagesRead;
     public const string PostmasterSuppressionRead = PostmasterPermissions.SuppressionRead;
     public const string PostmasterSuppressionWrite = PostmasterPermissions.SuppressionWrite;
@@ -157,9 +152,8 @@ public static class PermissionCatalog
 
     // Communication — chat, llamadas, meetings (bounded context propio, ver microservicio
     // Communication). Los 18 GUID/Code de abajo YA existen como filas reales en la tabla
-    // Permissions (sembradas por SQL directo en la migración AddCommunicationPermissions,
-    // 2026-07-10) — nunca habían pasado por este catálogo (desfase documentado desde
-    // entonces). Se reconcilian aquí con los MISMOS GUID exactos; la migración que agrega
+    // Permissions (sembradas por SQL directo en la migración AddCommunicationPermissions) —
+    // se reconcilian aquí con los MISMOS GUID exactos; la migración que agrega
     // MinPlanTier/IsAssignableByTenant debe usar UpdateData (no InsertData) para estas 18 filas.
     public const string CommunicationChatStart = CommunicationPermissions.ChatStart;
     public const string CommunicationChatReply = CommunicationPermissions.ChatReply;
@@ -182,14 +176,10 @@ public static class PermissionCatalog
 
     // PaymentApp / PaymentClient — pagos SaaS de plataforma y pagos que un tenant cobra a sus
     // propios clientes (bounded contexts propios, ver microservicios PaymentApp/PaymentClient).
-    // Sembrados junto con el merge que trajo ambos servicios (2026-07-18): sus
-    // ClaimsPrincipalExtensions.HasPermission ya traían el mismo bypass de rol
-    // ("TenantAdmin" pasa siempre) que se retiró de los otros 9 servicios en esta misma
-    // auditoría — se corrige acá antes de que llegue a producción, no después. AdminCrossTenant
-    // (ambos) es PlatformOnly: true — su propio controller (PaymentAppAdminController /
-    // PaymentClientAdminController) documenta que el tenant es un filtro OPCIONAL, no una
-    // restricción, así que sin PlatformOnly cualquier TenantAdmin vería pagos de cualquier
-    // otro tenant por defecto.
+    // AdminCrossTenant (ambos) es PlatformOnly: true — su propio controller
+    // (PaymentAppAdminController / PaymentClientAdminController) documenta que el tenant es un
+    // filtro OPCIONAL, no una restricción, así que sin PlatformOnly cualquier TenantAdmin vería
+    // pagos de cualquier otro tenant por defecto.
     public const string PaymentAppSaaSPaymentRead = PaymentAppPermissions.SaaSPaymentRead;
     public const string PaymentAppSaaSPaymentRefund = PaymentAppPermissions.SaaSPaymentRefund;
     public const string PaymentAppProviderCustomerRead = PaymentAppPermissions.ProviderCustomerRead;
@@ -713,19 +703,13 @@ public static class PermissionCatalog
             // solo lo llama Notification vía token de servicio M2M (ScribeRenderClient). Se
             // siembra como fila real únicamente para que ServiceAuth:Clients (Auth) pueda listarlo
             // en el Permissions de un cliente de servicio y que IssueServiceTokenHandler lo emita
-            // como claim "perm" en el token. Marcado PlatformOnly (auditoría de aislamiento por
-            // tenant_id, 2026-07-18): el comentario original decía que el bundle automático de
-            // SystemTenantAdmin era "inofensivo" porque TenantAdmin pasaba HasPermission por rol
-            // sin depender de este claim — eso era cierto bajo el bypass de rol que ya se retiró
-            // (ver ClaimsPrincipalExtensions). Sin el bypass, un TenantAdmin real SÍ recibe este
-            // claim "perm" en su JWT (PermissionCatalog.SystemRoleDefaults) y RenderController
-            // toma el TenantId del BODY, no del token (lo necesita así para el caso M2M legítimo:
-            // Notification renderiza a nombre de tenants arbitrarios) — sin PlatformOnly, cualquier
-            // TenantAdmin podía llamar POST /scribe/render con el TenantId de otro tenant y leer su
-            // contenido de template renderizado. PlatformOnly no afecta al caller M2M real: los
-            // permisos de un client de servicio vienen de ServiceAuth:Clients (config), no de
-            // SystemRoleDefaults — ver Service_token_with_perm_claim_ScribeRender_is_authorized_for_
-            // Render en HasPermissionPolicyTests.
+            // como claim "perm" en el token. Marcado PlatformOnly: un TenantAdmin real recibe este
+            // claim vía SystemRoleDefaults, y RenderController toma el TenantId del BODY (no del
+            // token, para soportar el caso M2M legítimo de renderizar a nombre de tenants
+            // arbitrarios) — sin PlatformOnly, cualquier TenantAdmin podía llamar POST
+            // /scribe/render con el TenantId de otro tenant y leer su contenido renderizado.
+            // PlatformOnly no afecta al caller M2M real: los permisos de un client de servicio
+            // vienen de ServiceAuth:Clients (config), no de SystemRoleDefaults.
             new Guid("a1000000-0000-0000-0000-000000000087"),
             ScribeRender,
             "scribe",
@@ -1108,8 +1092,7 @@ public static class PermissionCatalog
             false,
             MinPlanTier: (int)PlanTier.Pro
         ),
-        // Postmaster (auditoría de aislamiento por tenant_id, 2026-07-18 — ver comentario junto a
-        // los const de arriba).
+        // Postmaster (ver comentario junto a los const de arriba).
         new(
             new Guid("a1000000-0000-0000-0000-000000000089"),
             PostmasterMessagesRead,

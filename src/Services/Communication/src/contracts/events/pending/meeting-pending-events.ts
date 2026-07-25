@@ -10,7 +10,7 @@
  *  - Fase Backend 6: Cancelled, Rescheduled, ParticipantDenied,
  *    ParticipantRoleChanged (promote/demote cohost).
  *
- * A la fecha (2026-07-16) no queda ningun evento de meeting pendiente. Cuando
+ * A la fecha no queda ningun evento de meeting pendiente. Cuando
  * una fase futura declare uno nuevo (p.ej. `MeetingHostAudit` para exportar
  * el audit log estructurado como evento en vez de solo log), agregarlo aca
  * hasta que un use case lo publique.

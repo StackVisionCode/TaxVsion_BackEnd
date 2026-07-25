@@ -68,10 +68,22 @@ public sealed class TenantEmailAccount : TenantEntity
         return Result.Success(account);
     }
 
-    /// <summary>Draft|Error → Connected. El grant OAuth (o las credenciales IMAP) ya se validó.</summary>
+    /// <summary>
+    /// Draft|Error|Disconnected → Connected. El grant OAuth (o las credenciales IMAP) ya se validó.
+    /// Disconnected incluido porque reconectar una cuenta que el usuario desconectó (nueva grant OAuth
+    /// sobre la misma fila, ver <c>OAuthConnection.Reconnect</c>) es un flujo válido, no un error — la
+    /// cuenta reusa su <see cref="Id"/> en vez de crear una nueva.
+    /// </summary>
     public Result MarkConnected(DateTime connectedAtUtc)
     {
-        if (Status is not (TenantEmailAccountStatus.Draft or TenantEmailAccountStatus.Error))
+        if (
+            Status
+            is not (
+                TenantEmailAccountStatus.Draft
+                or TenantEmailAccountStatus.Error
+                or TenantEmailAccountStatus.Disconnected
+            )
+        )
             return Result.Failure(InvalidTransition(TenantEmailAccountStatus.Connected));
 
         Status = TenantEmailAccountStatus.Connected;

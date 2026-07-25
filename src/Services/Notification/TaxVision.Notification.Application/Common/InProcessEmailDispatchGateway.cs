@@ -15,12 +15,11 @@ namespace TaxVision.Notification.Application.Common;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Reemplazada como DEFAULT en Fase 4 por <c>EventBasedEmailDispatchGateway</c> bajo el feature flag
-/// <c>Notification:UsePostmasterDispatch</c> — desde Hardening Fase 21 (2026-07-18) ese flag es
-/// <c>true</c> por default, así que esta clase solo se registra en DI cuando el flag se overridea
-/// explícitamente a <c>false</c> (rollback operacional). Se mantiene viva a propósito como fallback;
-/// eliminarla es trabajo futuro fuera del plan de hardening, condicionado a confianza operacional real
-/// en producción (ver Fase 21 del plan).
+/// Reemplazada como DEFAULT por <c>EventBasedEmailDispatchGateway</c> bajo el feature flag
+/// <c>Notification:UsePostmasterDispatch</c>, que es <c>true</c> por default — esta clase solo se
+/// registra en DI cuando el flag se overridea explícitamente a <c>false</c> (rollback operacional).
+/// Se mantiene viva a propósito como fallback; eliminarla es trabajo futuro, condicionado a
+/// confianza operacional real en producción.
 /// </para>
 /// <para>
 /// Decisión de diseño: la creación del <c>NotificationLog</c> vive AQUÍ (no en el consumer). El plan

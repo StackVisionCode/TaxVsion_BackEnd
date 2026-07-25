@@ -6,7 +6,7 @@ namespace TaxVision.CloudStorage.Application.Folders;
 
 /// <summary>
 /// Fase C2 — subcarpetas + archivos directamente dentro de folderId (null = raiz del owner
-/// visible para el scope). OwnerType/OwnerId (2026-07-20) son un filtro opcional adicional
+/// visible para el scope). OwnerType/OwnerId son un filtro opcional adicional
 /// solo relevante para staff interno navegando la raiz de un tenant con muchos duenos
 /// mezclados (Tenant + N Customers) — cierra el gap de "dame solo el arbol de este
 /// cliente". El portal de cliente ya estaba y sigue estando acotado por

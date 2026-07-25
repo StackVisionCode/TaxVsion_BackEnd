@@ -7,11 +7,9 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Repositories;
 public sealed class AuthzRolePermissionsProjectionRepository(NotificationDbContext db)
     : IAuthzRolePermissionsProjectionRepository
 {
-    // Bug real de producción (2026-07-22, mismo patrón que UserPermissionsProjectionRepository.cs
-    // de Signature y FileObjectRepository.GetAsync de CloudStorage): este consumer Wolverine corre
-    // sin TenantContext ambiente (no hay HTTP request), así que el filtro global de tenant de
-    // NotificationDbContext tira antes de llegar acá. tenantId ya viene explícito y confiable
-    // desde el evento — IgnoreQueryFilters() explícito.
+    // Consumer Wolverine sin TenantContext ambiente (no hay HTTP request) — el filtro global de
+    // tenant de NotificationDbContext tiraría antes de llegar acá. tenantId ya viene explícito y
+    // confiable desde el evento — IgnoreQueryFilters() explícito.
     public async Task<AuthzRolePermissionsProjection?> GetAsync(
         Guid tenantId,
         Guid roleId,

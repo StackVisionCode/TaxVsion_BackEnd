@@ -2,9 +2,11 @@ using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.OAuth;
+using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Tests.OAuth;
+using TaxVision.Connectors.Tests.Watch;
 
 namespace TaxVision.Connectors.Tests.Accounts;
 
@@ -18,20 +20,27 @@ public class CompleteOAuthConnectHandlerTests
         FakeOAuthProviderClient ProviderClient,
         FakeEncryptedSecretProtector Protector,
         FakeProviderConnectionAuditLogRepository AuditLogRepository,
+        FakeProviderWatchSubscriptionRepository WatchSubscriptionRepository,
+        FakeWatchProviderClient WatchClient,
         FakeUnitOfWork UnitOfWork,
         FakeMessageBus Bus
     );
 
-    private static Fixture CreateFixture() =>
-        new(
+    private static Fixture CreateFixture()
+    {
+        var watchClient = new FakeWatchProviderClient(ProviderCode.Gmail);
+        return new(
             new FakeTenantEmailAccountRepository(),
             new FakeOAuthConnectionRepository(),
             new FakeOAuthProviderClient(ProviderCode.Gmail),
             new FakeEncryptedSecretProtector(),
             new FakeProviderConnectionAuditLogRepository(),
+            new FakeProviderWatchSubscriptionRepository(),
+            watchClient,
             new FakeUnitOfWork(),
             new FakeMessageBus()
         );
+    }
 
     private static Task<Result<CompleteOAuthConnectResult>> HandleAsync(
         Fixture fixture,
@@ -44,6 +53,8 @@ public class CompleteOAuthConnectHandlerTests
             new FakeOAuthProviderClientFactory(fixture.ProviderClient),
             fixture.Protector,
             fixture.AuditLogRepository,
+            fixture.WatchSubscriptionRepository,
+            new FakeWatchProviderClientFactory(fixture.WatchClient),
             fixture.UnitOfWork,
             fixture.Bus,
             CancellationToken.None
@@ -65,10 +76,15 @@ public class CompleteOAuthConnectHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal("newoffice@gmail.com", result.Value.EmailAddress);
         Assert.Single(fixture.AccountRepository.Accounts);
+        // Regresión del bug de producción del 2026-07-24: la cuenta debe quedar Active al final del
+        // handler, en el mismo scope/transacción — antes del fix, la activación se despachaba como un
+        // SetupWatchCommand nuevo de Wolverine que corría en OTRA transacción y no veía esta cuenta
+        // recién insertada, así que el flujo entero fallaba con 404 aunque los INSERT sí committeaban.
+        Assert.Equal(TenantEmailAccountStatus.Active, fixture.AccountRepository.Accounts[0].Status);
         Assert.Single(fixture.ConnectionRepository.Connections);
         Assert.NotNull(fixture.ConnectionRepository.Connections[0].Token);
-        Assert.Single(fixture.Bus.Invoked);
-        Assert.IsType<TaxVision.Connectors.Application.Watch.SetupWatchCommand>(fixture.Bus.Invoked[0]);
+        // Ya no se despacha SetupWatchCommand vía bus — WatchActivationService corre en proceso.
+        Assert.Empty(fixture.Bus.Invoked);
         var published = Assert.Single(fixture.Bus.Published);
         var connectedEvent = Assert.IsType<ConnectorsTenantEmailAccountConnectedIntegrationEvent>(published);
         Assert.Equal("newoffice@gmail.com", connectedEvent.EmailAddress);
@@ -80,7 +96,7 @@ public class CompleteOAuthConnectHandlerTests
     {
         var fixture = CreateFixture();
         fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "office@gmail.com";
-        fixture.Bus.InvokeResult = Result.Failure(new Error("SetupWatchHandler.ProviderFailed", "boom"));
+        fixture.WatchClient.ThrowOnSetup = new WatchProviderException("Gmail watch request returned HTTP 500.");
 
         var result = await HandleAsync(
             fixture,

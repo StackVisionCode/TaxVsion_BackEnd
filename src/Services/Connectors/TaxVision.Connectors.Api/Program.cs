@@ -4,6 +4,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
@@ -134,6 +136,19 @@ builder.Host.UseWolverine(options =>
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
 
+    // Sin estas reglas, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
+    // silencio — ningun otro servicio llega a recibirlo.
+    options
+        .PublishMessage<ConnectorsTenantEmailAccountConnectedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ConnectorsOAuthRefreshFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ConnectorsWatchExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ConnectorsRawMessageReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ConnectorsMessageBodyFetchedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
     // Cola propia desde el arranque (Fase 1) aunque todavía no haya ningún consumer — mismo
     // patrón que Postmaster/Scribe: el binding queda listo en Rabbit antes de que exista lógica.
     options
@@ -161,11 +176,9 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter
-// global de ConnectorsDbContext. Reemplaza al TenantResolutionMiddleware anterior (leía
-// X-Tenant-Id sin nunca sellar IMessageBus.TenantId). RBAC Fase 7 hotfix (2026-07-22): va ANTES
-// de UseAuthorization() — en modo Projection, [HasPermission] necesita el tenant ya poblado
-// durante su propia evaluación, que corre dentro de UseAuthorization().
+// Setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter global de
+// ConnectorsDbContext. Va ANTES de UseAuthorization() — en modo Projection, [HasPermission]
+// necesita el tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();

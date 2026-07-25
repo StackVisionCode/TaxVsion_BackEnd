@@ -6,21 +6,16 @@ using TaxVision.Correspondence.Infrastructure.Persistence;
 
 namespace TaxVision.Correspondence.Infrastructure.Persistence.Repositories;
 
-// RBAC Fase 7: esta clase implementa DOS interfaces con la misma tabla subyacente —
-// el puerto local rico (IUserPermissionsProjectionRepository, usado por los consumers
-// para escribir/leer la proyección) y el puerto compartido y angosto de BuildingBlocks
+// Implementa dos interfaces sobre la misma tabla: el puerto local rico (usado por los consumers
+// para escribir/leer la proyección) y el puerto angosto de BuildingBlocks
 // (IUserPermissionsProjectionReader.GetSnapshotAsync, el único método que necesita
-// ProjectionPermissionsSource para autorizar). Registradas como una sola instancia scoped
-// resuelta bajo ambas interfaces (mismo patrón que AccessTokenDenylist en Fase 6), evitando
-// dos lecturas separadas del mismo dato.
+// ProjectionPermissionsSource para autorizar) — una sola instancia scoped resuelve ambas.
 public sealed class UserPermissionsProjectionRepository(CorrespondenceDbContext db)
     : IUserPermissionsProjectionRepository,
         IUserPermissionsProjectionReader
 {
-    // Bug real de producción (2026-07-22, mismo patrón que Signature's UserPermissionsProjectionRepository.cs
-    // y CloudStorage's FileObjectRepository.GetAsync ese mismo día): este consumer Wolverine corre sin
-    // TenantContext ambiente (no hay HTTP request), así que el filtro global de tenant de CorrespondenceDbContext
-    // tira antes de llegar acá. tenantId ya viene explícito y confiable desde el evento — IgnoreQueryFilters() explícito.
+    // Consumer Wolverine sin TenantContext ambiente (no hay HTTP request) — el filtro global de
+    // tenant tiraría antes de llegar acá. tenantId ya viene explícito y confiable desde el evento.
     public async Task<UserPermissionsProjection?> GetAsync(
         Guid tenantId,
         Guid userId,

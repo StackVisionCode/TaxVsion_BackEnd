@@ -169,10 +169,6 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<ShareLinkAccessDeniedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkPermissionChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    // Auditoría 2026-07-21: estos 3 quedaron fuera de este whitelist explícito desde que se
-    // agregaron (Fase L1.2/L1.3 legal hold + DMCA) — bus.PublishAsync(...) los publica sin
-    // error (Wolverine no lanza si no hay ruta), pero nunca llegaban a taxvision-events, así
-    // que los consumers de Communication nunca los recibían pese a estar bien implementados.
     options.PublishMessage<LegalHoldPlacedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<LegalHoldLiftedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<DmcaCounterNoticeSubmittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -227,12 +223,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 
-// RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter
-// global de CloudStorageDbContext. Reemplaza al TenantResolutionMiddleware anterior (leía
-// X-Tenant-Id sin nunca sellar IMessageBus.TenantId, así que un handler invocado vía
-// bus.InvokeAsync nunca heredaba el tenant de la petición HTTP). RBAC Fase 7 hotfix (2026-07-22):
-// va ANTES de UseAuthorization() — en modo Authorization:PermissionsSource=Projection, [HasPermission]
-// resuelve el permiso con una consulta tenant-scoped DURANTE la evaluación de UseAuthorization();
+// Setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter global de
+// CloudStorageDbContext. Va ANTES de UseAuthorization() — en modo
+// Authorization:PermissionsSource=Projection, [HasPermission] resuelve el permiso con una
+// consulta tenant-scoped DURANTE la evaluación de UseAuthorization();
 // si el tenant se poblara después, esa consulta vería EffectiveTenantId=Guid.Empty y fallaría
 // cerrado (403) para todo el mundo.
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();

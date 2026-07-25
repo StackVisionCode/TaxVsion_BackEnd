@@ -181,10 +181,10 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter
-// global de CustomerDbContext. RBAC Fase 7 hotfix (2026-07-22): va ANTES de UseAuthorization() —
-// en modo Projection, [HasPermission] necesita el tenant ya poblado durante su propia
-// evaluación, que corre dentro de UseAuthorization().
+// Setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter global de
+// CustomerDbContext. Va ANTES de UseAuthorization() — en modo Projection, [HasPermission]
+// necesita el tenant ya poblado durante su propia evaluación, que corre dentro de
+// UseAuthorization().
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();

@@ -13,10 +13,14 @@ namespace TaxVision.Connectors.Application.Accounts;
 
 /// <summary>
 /// Orquesta el flujo de conectar cuenta (D3 §12.5) tras el callback de autorización. No hace
-/// MarkConnected/Activate acá — SetupWatchHandler ya bundlea esa transición junto con el setup del
-/// watch/subscription (compartido con el endpoint de reauth manual, <c>AccountsController.Reauth</c>),
-/// así que si el watch setup falla la cuenta queda Draft con la connection ya persistida y el usuario
-/// puede reintentar sin volver a autorizar con el proveedor.
+/// MarkConnected/Activate acá — <see cref="WatchActivationService"/> ya bundlea esa transición junto
+/// con el setup del watch/subscription (compartido con el endpoint de reauth manual,
+/// <c>AccountsController.Reauth</c>), así que si el watch setup falla la cuenta queda Draft con la
+/// connection ya persistida y el usuario puede reintentar sin volver a autorizar con el proveedor.
+///
+/// Se llama en proceso (no vía <c>bus.InvokeAsync(new SetupWatchCommand(...))</c>) para compartir la
+/// MISMA transacción/DbContext que el <c>SaveChangesAsync</c> de arriba — ver el docblock de
+/// <see cref="WatchActivationService"/> para el bug real que este approach evita.
 ///
 /// Reconectar (nueva grant sobre una cuenta con una OAuthConnection Revoked/Expired) reutiliza la
 /// misma fila de <c>OAuthConnection</c>/<c>OAuthToken</c> en vez de crear una nueva —
@@ -33,6 +37,8 @@ public static class CompleteOAuthConnectHandler
         IOAuthProviderClientFactory clientFactory,
         IEncryptedSecretProtector protector,
         IProviderConnectionAuditLogRepository auditLogRepository,
+        IProviderWatchSubscriptionRepository watchSubscriptionRepository,
+        IWatchProviderClientFactory watchClientFactory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         CancellationToken ct
@@ -157,7 +163,15 @@ public static class CompleteOAuthConnectHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        var watchResult = await bus.InvokeAsync<Result>(new SetupWatchCommand(cmd.TenantId, account.Id), ct);
+        var watchResult = await WatchActivationService.ActivateAsync(
+            cmd.TenantId,
+            account.Id,
+            accountRepository,
+            watchSubscriptionRepository,
+            watchClientFactory,
+            unitOfWork,
+            ct
+        );
         if (watchResult.IsFailure)
             return Result.Failure<CompleteOAuthConnectResult>(watchResult.Error);
 

@@ -164,13 +164,9 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantLogoUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoRemovedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
-    // Bug real de produccion (2026-07-19): Tenant nunca tuvo una cola de entrada bindeada al
-    // fanout "taxvision-events" — solo publicaba, nunca escuchaba. TenantBrandingFileScanResultConsumer
-    // (Handle de FileAvailable/FileInfectedDetected/FileBlockedByPolicy, publicados por CloudStorage
-    // tras subir el logo del tenant) nunca corrio ni una sola vez desde que se implemento: Wolverine
-    // descubre el handler en el assembly (Discovery.IncludeAssembly de arriba), pero sin un listener
-    // RabbitMQ real no hay de donde recibir el mensaje. Mismo patron que cloudstorage-events/
-    // scribe-events/subscription-events en los otros servicios.
+    // Sin una cola de entrada bindeada al fanout "taxvision-events", Wolverine descubre el
+    // handler en el assembly (Discovery.IncludeAssembly de arriba) pero no tiene de donde
+    // recibir el mensaje — TenantBrandingFileScanResultConsumer nunca correría.
     options
         .ListenToRabbitQueue(
             "tenant-events",
@@ -215,8 +211,8 @@ app.UseAuthentication();
 // entidades ITenantOwned (Tenant ES el registro de tenants, no algo que le pertenezca a uno),
 // así que hoy nada consume el TenantContext que este middleware llena — se mantiene por
 // consistencia con los otros 12 servicios y para no dejar el header-trust inseguro activo.
-// RBAC Fase 7 hotfix (2026-07-22): va ANTES de UseAuthorization() por consistencia con el resto
-// de servicios, aunque acá no exista todavía un consumer de Projection que dependa del orden.
+// Va ANTES de UseAuthorization() por consistencia con el resto de servicios, aunque acá no
+// exista todavía un consumer de Projection que dependa del orden.
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();

@@ -8,7 +8,7 @@
  *    Started/Stopped/ProcessingStarted).
  *  - Fase Backend 7: ScreenShareStarted/Stopped + UpgradedToVideo.
  *
- * A la fecha (2026-07-16) no queda ningun evento de call pendiente. Cuando
+ * A la fecha no queda ningun evento de call pendiente. Cuando
  * una fase futura declare uno nuevo (p.ej. multi-party call), agregarlo aca
  * hasta que un use case lo publique.
  */

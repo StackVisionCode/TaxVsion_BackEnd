@@ -350,11 +350,13 @@ services:
       ServiceAuth__Clients__3__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__3__Permissions__1: cloudstorage.file.view
       ServiceAuth__Clients__3__Permissions__2: cloudstorage.file.delete
-      # Cliente de servicio (M2M) para Correspondence (Fase 2): backfill de CustomerEmailAddresses
-      # via Customer.Api GET /customers/internal/list (policy ServiceOnly — actor_type=Service
-      # alcanza, no requiere ningun "perm" puntual, por eso sin Permissions__N).
+      # Cliente de servicio (M2M) para Correspondence: backfill de CustomerEmailAddresses via
+      # Customer.Api GET /customers/internal/list (policy ServiceOnly, sin permiso puntual) y
+      # descarga de adjuntos vía CloudStorage GetFileMetadataAsync/download-url (AttachFileToDraftHandler).
       ServiceAuth__Clients__4__ClientId: ${CORRESPONDENCE_SERVICE_CLIENT_ID:-correspondence-worker}
       ServiceAuth__Clients__4__Secret: ${CORRESPONDENCE_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__4__Permissions__0: cloudstorage.file.download
+      ServiceAuth__Clients__4__Permissions__1: cloudstorage.file.view
       # Cliente de servicio (M2M) para Scribe: sube/descarga assets de templates/layouts a
       # CloudStorage (publicar plantillas). Nunca borra.
       ServiceAuth__Clients__5__ClientId: ${SCRIBE_SERVICE_CLIENT_ID:-scribe-worker}

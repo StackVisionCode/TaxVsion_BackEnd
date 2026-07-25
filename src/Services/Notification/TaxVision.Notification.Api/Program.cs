@@ -102,13 +102,11 @@ builder.Services.AddHttpClient<IScribeRenderClient, ScribeRenderClient>(
 );
 
 // EmailWebhooksController/EmailWebhookOptions (webhooks de tracking delivered/opened/clicked/bounced de
-// proveedores SMTP tipo SendGrid/Mailgun) retirados en la Fase 19 del plan de hardening (Notification,
-// 2026-07-18): nunca tuvo un secreto real configurado en ningún appsettings/.env del repo (el endpoint
-// devolvía 401 siempre — cero llamadas reales posibles) y su propio comentario XML ya admitía que era
-// scaffolding especulativo ("un adaptador por proveedor traduciría su formato a este payload", tiempo
-// condicional — nunca se construyó ningún adaptador). Postmaster es ahora la única fuente de verdad de
-// tracking de entrega/bounce/suppression para los correos que routea (ver Fase 19, MarkBounced pasa a
-// alimentarse de PostmasterEmailDeliveryBouncedIntegrationEvent en vez de este webhook muerto).
+// proveedores SMTP tipo SendGrid/Mailgun) retirados: nunca tuvo un secreto real configurado en ningún
+// appsettings/.env del repo (el endpoint devolvía 401 siempre — cero llamadas reales posibles) y era
+// scaffolding especulativo, nunca se construyó ningún adaptador de proveedor. Postmaster es ahora la
+// única fuente de verdad de tracking de entrega/bounce/suppression para los correos que routea
+// (MarkBounced se alimenta de PostmasterEmailDeliveryBouncedIntegrationEvent en vez de este webhook muerto).
 
 // Scheduler de campañas: inicia el fan-out cuando llega la hora programada.
 builder.Services.AddHostedService<CampaignSchedulerService>();
@@ -147,15 +145,12 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<EmailCampaignBatchIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<EmailCampaignCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
-    // Notifications Fase 4 (Auth/Signature/Communication) + Fase 19 de hardening (EmailDeliveryService,
-    // 2026-07-18) — evento hacia Postmaster. Dos productores comparten el mismo mensaje y el mismo flag
+    // Evento hacia Postmaster. Dos productores comparten el mismo mensaje y el mismo flag
     // Notification:UsePostmasterDispatch: EventBasedEmailDispatchGateway (path IEmailDispatchGateway) y
     // PostmasterEmailDeliveryService (path IEmailDeliveryService, el que había atrás de /notifications/
     // email/send y de EmailCampaigns). El PublishMessage se declara siempre para no romper el binding
     // aun cuando el flag esté OFF; el runtime simplemente no genera envíos hasta que alguno lo invoque.
-    options
-        .PublishMessage<NotificationsEmailSendRequestedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
+    options.PublishMessage<NotificationsEmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options
@@ -201,9 +196,9 @@ app.UseAuthentication();
 
 // RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter
 // global de NotificationDbContext. Reemplaza al TenantResolutionMiddleware anterior (leía
-// X-Tenant-Id sin nunca sellar IMessageBus.TenantId). RBAC Fase 7 hotfix (2026-07-22): va ANTES
-// de UseAuthorization() — en modo Projection, [HasPermission] necesita el tenant ya poblado
-// durante su propia evaluación, que corre dentro de UseAuthorization().
+// X-Tenant-Id sin nunca sellar IMessageBus.TenantId). Va antes de UseAuthorization() — en modo
+// Projection, [HasPermission] necesita el tenant ya poblado durante su propia evaluación, que
+// corre dentro de UseAuthorization().
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();

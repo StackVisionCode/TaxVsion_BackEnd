@@ -183,14 +183,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 
-// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header X-Tenant-Id
-// sin validar, confiando en el caller — inseguro) y la copia local de JwtTenantContextMiddleware
-// (no sellaba IMessageBus.TenantId, así que un handler invocado vía bus.InvokeAsync nunca
-// heredaba el tenant de la petición HTTP) por el middleware compartido — cierra el mismo gap que
-// ya se había arreglado en los otros 13 servicios, Signature se había quedado atrás. RBAC Fase 7
-// hotfix (2026-07-22): va ANTES de UseAuthorization() — en modo Projection, [HasPermission]
-// necesita el tenant ya poblado durante su propia evaluación, que corre dentro de
-// UseAuthorization().
+// Middleware compartido de tenant: sella IMessageBus.TenantId para que un handler invocado vía
+// bus.InvokeAsync también herede el tenant de la petición HTTP. Va ANTES de UseAuthorization() —
+// en modo Projection, [HasPermission] necesita el tenant ya poblado durante su propia evaluación,
+// que corre dentro de UseAuthorization().
 app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
