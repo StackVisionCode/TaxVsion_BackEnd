@@ -146,6 +146,46 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantConnectAccounts", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.PaymentClient.Domain.Payables.PayableReference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalReferenceId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PurposeKind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Reference")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PayableReferences_Reference");
+
+                    b.HasIndex("TenantId", "PurposeKind", "ExternalReferenceId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PayableReferences_Tenant_Purpose_ExternalRef");
+
+                    b.ToTable("PayableReferences", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.PaymentClient.Domain.PaymentLinks.PaymentLink", b =>
                 {
                     b.Property<Guid>("Id")
@@ -898,6 +938,35 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_WebhookEvents_TenantId_ProviderCode_ProviderEventId");
 
                     b.ToTable("WebhookEvents", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.PaymentClient.Domain.Payables.PayableReference", b =>
+                {
+                    b.OwnsOne("TaxVision.PaymentClient.Domain.ValueObjects.Money", "Amount", b1 =>
+                        {
+                            b1.Property<Guid>("PayableReferenceId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<long>("AmountCents")
+                                .HasColumnType("bigint")
+                                .HasColumnName("AmountCents");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("nvarchar(3)")
+                                .HasColumnName("Currency");
+
+                            b1.HasKey("PayableReferenceId");
+
+                            b1.ToTable("PayableReferences");
+
+                            b1.WithOwner()
+                                .HasForeignKey("PayableReferenceId");
+                        });
+
+                    b.Navigation("Amount")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("TaxVision.PaymentClient.Domain.PaymentLinks.PaymentLink", b =>

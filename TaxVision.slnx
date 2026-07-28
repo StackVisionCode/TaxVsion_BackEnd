@@ -101,6 +101,20 @@
     <Project Path="src/Services/Signature/TaxVision.Signature.Domain/TaxVision.Signature.Domain.csproj" />
     <Project Path="src/Services/Signature/TaxVision.Signature.Infrastructure/TaxVision.Signature.Infrastructure.csproj" />
   </Folder>
+  <!-- BillingService: facturación tenant→taxpayer (adapta el módulo Invoices del CRM legado) -->
+  <Folder Name="/src/Services/Billing/">
+    <Project Path="src/Services/Billing/TaxVision.Billing.Api/TaxVision.Billing.Api.csproj" />
+    <Project Path="src/Services/Billing/TaxVision.Billing.Application/TaxVision.Billing.Application.csproj" />
+    <Project Path="src/Services/Billing/TaxVision.Billing.Domain/TaxVision.Billing.Domain.csproj" />
+    <Project Path="src/Services/Billing/TaxVision.Billing.Infrastructure/TaxVision.Billing.Infrastructure.csproj" />
+  </Folder>
+  <!-- DocumentsService: capacidad transversal de generación documental (HTML->PDF, ZIP, watermark) -->
+  <Folder Name="/src/Services/Documents/">
+    <Project Path="src/Services/Documents/TaxVision.Documents.Api/TaxVision.Documents.Api.csproj" />
+    <Project Path="src/Services/Documents/TaxVision.Documents.Application/TaxVision.Documents.Application.csproj" />
+    <Project Path="src/Services/Documents/TaxVision.Documents.Domain/TaxVision.Documents.Domain.csproj" />
+    <Project Path="src/Services/Documents/TaxVision.Documents.Infrastructure/TaxVision.Documents.Infrastructure.csproj" />
+  </Folder>
   <!-- TenantService -->
   <Folder Name="/src/Services/Tenant/">
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Api/TaxVision.Tenant.Api.csproj" />
@@ -112,8 +126,10 @@
   <Folder Name="/deploy/tests/">
     <Project Path="deploy/tests/TaxVision.BuildingBlocks.Tests/TaxVision.BuildingBlocks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Billing.Tests/TaxVision.Billing.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Documents.Tests/TaxVision.Documents.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Growth.Tests/TaxVision.Growth.Tests.csproj" />

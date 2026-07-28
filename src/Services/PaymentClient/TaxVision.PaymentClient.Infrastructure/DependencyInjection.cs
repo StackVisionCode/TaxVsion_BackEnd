@@ -38,6 +38,7 @@ public static class DependencyInjection
         // RBAC Fase 6 — ISessionDenylistReader se registra en Program.cs (AddSessionDenylist vive en
         // BuildingBlocks.Web, capa que Infrastructure no debe referenciar).
         services.AddScoped<IPaymentLinkRepository, PaymentLinkRepository>();
+        services.AddScoped<IPayableReferenceRepository, PayableReferenceRepository>();
         services.AddScoped<ITenantConnectAccountRepository, TenantConnectAccountRepository>();
         services.AddScoped<IPayoutScheduleRepository, PayoutScheduleRepository>();
         services.AddScoped<ITenantRecurringPaymentRepository, TenantRecurringPaymentRepository>();

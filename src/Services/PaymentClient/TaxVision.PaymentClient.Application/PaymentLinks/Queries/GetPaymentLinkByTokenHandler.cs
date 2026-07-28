@@ -1,14 +1,15 @@
 using BuildingBlocks.Results;
 using TaxVision.PaymentClient.Application.Abstractions;
-using TaxVision.PaymentClient.Domain.ValueObjects;
+using TaxVision.PaymentClient.Application.Abstractions.Payments;
 
 namespace TaxVision.PaymentClient.Application.PaymentLinks.Queries;
 
 /// <summary>
-/// Público, sin JWT — el token del path es la única prueba de posesión. Cualquier razón por
-/// la que el link no sea válido (no existe, vencido, ya usado, revocado) devuelve el MISMO
-/// error <c>PaymentLink.NotFound</c> — nunca se distingue el motivo, para no darle a un
-/// atacante una señal de "este token existió" (anti side-channel).
+/// Público, sin JWT — el token del path es la única prueba de posesión. Si el link no es válido
+/// (no existe, vencido, usado, revocado) devuelve el MISMO error <c>PaymentLink.NotFound</c> — nunca
+/// se distingue el motivo (anti side-channel). Fase 2B: ya NO asume Stripe — presenta la lista de
+/// métodos que el tenant tiene ACTIVOS y que además tienen adapter registrado (se pueden cobrar). Un
+/// link válido sin métodos configurados devuelve 200 con la lista vacía (estado legítimo).
 /// </summary>
 public static class GetPaymentLinkByTokenHandler
 {
@@ -16,6 +17,7 @@ public static class GetPaymentLinkByTokenHandler
         GetPaymentLinkByTokenQuery query,
         IPaymentLinkRepository links,
         ITenantPaymentConfigRepository configs,
+        IPaymentAdapterFactory adapters,
         ITenantRegistry tenants,
         CancellationToken ct
     )
@@ -26,13 +28,20 @@ public static class GetPaymentLinkByTokenHandler
         if (link is null || !link.IsRedeemable(DateTime.UtcNow))
             return Result.Failure<PaymentLinkCheckoutResponse>(notFound);
 
-        var config = await configs.GetByTenantAndProviderAsync(link.TenantId, PaymentProviderCode.Stripe, ct);
-        if (config is null || !config.IsActive)
-            return Result.Failure<PaymentLinkCheckoutResponse>(notFound);
-
         var tenant = await tenants.GetByIdAsync(link.TenantId, ct);
         if (tenant is null)
             return Result.Failure<PaymentLinkCheckoutResponse>(notFound);
+
+        var active = await configs.GetActiveByTenantAsync(link.TenantId, ct);
+        var methods = active
+            .Where(c => adapters.IsRegistered(c.ProviderCode))
+            .Select(c => new CheckoutPaymentMethod(
+                c.ProviderCode.ToString(),
+                c.ProviderCode.ToString(),
+                c.StatementDescriptor.Value,
+                c.PublishableKey
+            ))
+            .ToList();
 
         return Result.Success(
             new PaymentLinkCheckoutResponse(
@@ -41,8 +50,7 @@ public static class GetPaymentLinkByTokenHandler
                 link.Purpose.Kind.ToString(),
                 link.Purpose.ExternalReferenceId,
                 tenant.Name,
-                config.StatementDescriptor.Value,
-                config.PublishableKey
+                methods
             )
         );
     }

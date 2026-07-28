@@ -39,6 +39,24 @@ public sealed class PaymentLinkRepository(PaymentClientDbContext db) : IPaymentL
             .PaymentLinks.IgnoreQueryFilters()
             .FirstOrDefaultAsync(link => link.RelatedTenantPaymentId == tenantPaymentId, ct);
 
+    // IgnoreQueryFilters + tenant explícito: lo llama el resolver estable (público, sin JWT) para
+    // reusar un link vigente de la factura antes de acuñar uno nuevo. Purpose es owned type, así que
+    // Purpose.ExternalReferenceId sí traduce a SQL (columna PurposeExternalReferenceId).
+    public Task<PaymentLink?> GetActiveByExternalReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .PaymentLinks.IgnoreQueryFilters()
+            .Where(link =>
+                link.TenantId == tenantId
+                && link.Purpose.ExternalReferenceId == externalReferenceId
+                && link.Status == PaymentLinkStatus.Active
+            )
+            .OrderByDescending(link => link.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<IReadOnlyList<PaymentLink>> SearchByTenantAsync(
         Guid tenantId,
         PaymentLinkStatus? status,

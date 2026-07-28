@@ -8,6 +8,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.PaymentClient.Domain.Audit;
 using TaxVision.PaymentClient.Domain.Connect;
+using TaxVision.PaymentClient.Domain.Payables;
 using TaxVision.PaymentClient.Domain.PaymentLinks;
 using TaxVision.PaymentClient.Domain.Payouts;
 using TaxVision.PaymentClient.Domain.Permissions;
@@ -36,6 +37,7 @@ public sealed class PaymentClientDbContext(
     public DbSet<PaymentAuditEntry> AuditEntries => Set<PaymentAuditEntry>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<PaymentLink> PaymentLinks => Set<PaymentLink>();
+    public DbSet<PayableReference> PayableReferences => Set<PayableReference>();
     public DbSet<TenantConnectAccount> TenantConnectAccounts => Set<TenantConnectAccount>();
     public DbSet<PayoutSchedule> PayoutSchedules => Set<PayoutSchedule>();
     public DbSet<TenantRecurringPayment> TenantRecurringPayments => Set<TenantRecurringPayment>();

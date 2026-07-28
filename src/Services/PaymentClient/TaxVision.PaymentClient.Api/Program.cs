@@ -43,6 +43,11 @@ builder.Services.AddSwaggerGen();
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
 builder.Services.AddPaymentClientInfrastructure(builder.Configuration);
+
+// Base pública para componer la URL estable de facturas (la embebe Billing en el PDF).
+builder
+    .Services.AddOptions<TaxVision.PaymentClient.Api.Common.PaymentClientPublicOptions>()
+    .Bind(builder.Configuration.GetSection(TaxVision.PaymentClient.Api.Common.PaymentClientPublicOptions.SectionName));
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(
@@ -56,6 +61,19 @@ builder.Services.AddRedisCache(builder.Configuration);
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// Endpoint M2M interno (internal/payables): no basta con "es un servicio" — exige el scope
+// específico además del actor type. La audiencia taxvision-payments ya la valida el JWT
+// (Jwt__ValidAudiences__1). Así, un token de OTRO servicio (p. ej. taxvision-documents) no puede
+// consumir este endpoint aunque también sea actor_type=Service. El service-token emite cada scope
+// como claim "scope" (JwtTokenGenerator.GenerateScopedServiceToken). PermissionPolicyProvider delega
+// los nombres no-"perm:" al provider por defecto, así que esta policy con nombre se resuelve normal.
+builder.Services.AddAuthorizationBuilder().AddPolicy("CreatePaymentLinksService", policy =>
+{
+    policy.RequireAuthenticatedUser();
+    policy.RequireClaim("actor_type", "Service");
+    policy.RequireClaim("scope", "payments.links.create");
+});
 
 // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
 // Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
@@ -156,6 +174,13 @@ builder.Host.UseWolverine(options =>
             }
         )
         .UseDurableInbox();
+
+    // Fase 3: routing explícito del "pago exitoso" al fanout compartido (guardrail #13). PaymentClient
+    // no declaraba routing saliente, así que sin esto el evento nunca llegaba a Billing (que escucha el
+    // fanout). Billing lo consume (InvoicePaymentSucceededConsumer) para marcar la factura Paid.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantPaymentSucceededIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

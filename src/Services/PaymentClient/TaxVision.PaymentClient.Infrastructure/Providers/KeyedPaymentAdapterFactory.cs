@@ -12,4 +12,7 @@ public sealed class KeyedPaymentAdapterFactory(IServiceProvider serviceProvider)
     public IPaymentProvider Resolve(PaymentProviderCode code) =>
         serviceProvider.GetKeyedService<IPaymentProvider>(code)
         ?? throw new InvalidOperationException($"No IPaymentProvider is registered for provider code '{code}'.");
+
+    public bool IsRegistered(PaymentProviderCode code) =>
+        serviceProvider.GetKeyedService<IPaymentProvider>(code) is not null;
 }

@@ -62,6 +62,12 @@ public interface IPaymentProvider
     /// Elements) al customer, y devuelve la metadata autoritativa (brand/last4/expiración)
     /// directamente del provider — el backend nunca confía en lo que el frontend afirma
     /// sobre una tarjeta.</summary>
+    /// <summary>Crea un SetupIntent para que el frontend (Stripe Payment Element) recolecte y
+    /// guarde una tarjeta sin que el PAN toque el backend, y devuelve el <c>client_secret</c> que
+    /// el front usa para confirmarlo. Providers que no soportan tokenización client-side (Manual,
+    /// o Intellipay si usa su propio hosted flow) devuelven un <see cref="Result"/> de fallo.</summary>
+    Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct);
+
     Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
         ProviderCustomerToken customer,
         string paymentMethodReference,

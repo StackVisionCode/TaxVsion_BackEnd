@@ -10,3 +10,8 @@ public sealed record ProviderCustomerToken(string Token, PaymentProviderCode Pro
 /// <summary>Token opaco de un método de pago específico ya tokenizado en el provider
 /// (p.ej. un <c>pm_xxx</c> de Stripe elegido explícitamente en vez del default del customer).</summary>
 public sealed record PaymentMethodToken(string Token);
+
+/// <summary>Resultado de crear un SetupIntent en el provider: el <c>client_secret</c> que el
+/// frontend (Stripe Payment Element) usa para recolectar y confirmar la tarjeta sin que el PAN
+/// toque el backend.</summary>
+public sealed record SetupIntentInfo(string ClientSecret);

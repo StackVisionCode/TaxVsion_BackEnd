@@ -7,12 +7,16 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Repositories;
 
 public sealed class TenantPaymentConfigRepository(PaymentClientDbContext db) : ITenantPaymentConfigRepository
 {
+    // IgnoreQueryFilters + tenant explícito: alcanzable desde el checkout público (RedeemPaymentLink /
+    // GetPaymentLinkByToken) donde no hay JWT y el ITenantContext ambiental está vacío — el filtro
+    // fail-closed daría 0 filas. El tenant viene del link ya resuelto; el predicado explícito aísla.
     public Task<TenantPaymentConfig?> GetByTenantAndProviderAsync(
         Guid tenantId,
         PaymentProviderCode code,
         CancellationToken ct = default
     ) =>
         WithEndpoints(db.TenantPaymentConfigs)
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(config => config.TenantId == tenantId && config.ProviderCode == code, ct);
 
     public Task<TenantPaymentConfig?> GetByIdAsync(
@@ -23,12 +27,23 @@ public sealed class TenantPaymentConfigRepository(PaymentClientDbContext db) : I
         WithEndpoints(db.TenantPaymentConfigs)
             .FirstOrDefaultAsync(config => config.Id == tenantPaymentConfigId && config.TenantId == tenantId, ct);
 
+    // IgnoreQueryFilters + tenant explícito: lo llama el checkout público (GetPaymentLinkByToken) sin JWT.
     public async Task<IReadOnlyList<TenantPaymentConfig>> GetActiveByTenantAsync(
         Guid tenantId,
         CancellationToken ct = default
     ) =>
         await WithEndpoints(db.TenantPaymentConfigs)
+            .IgnoreQueryFilters()
             .Where(config => config.TenantId == tenantId && config.IsActive)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<TenantPaymentConfig>> GetAllByTenantAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        await WithEndpoints(db.TenantPaymentConfigs)
+            .IgnoreQueryFilters()
+            .Where(config => config.TenantId == tenantId)
             .ToListAsync(ct);
 
     public async Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>

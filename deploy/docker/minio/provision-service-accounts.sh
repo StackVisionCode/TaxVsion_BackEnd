@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
-# Fase D0/D-Customer (+ Correspondence Fase 8, + Scribe) — crea las 5 cuentas de servicio
-# scoped que reemplazan el uso de las credenciales root de MinIO (MINIO_ROOT_USER/PASSWORD)
-# en Signature/CommunicationTranscriptWorker/Customer/Correspondence/Scribe. Cada una
-# solo puede s3:PutObject bajo su propio prefijo en taxvision-temp/* (ver policies/*.json)
-# — nunca leer, listar ni tocar taxvision-storage/taxvision-quarantine.
+# Fase D0/D-Customer (+ Correspondence Fase 8, + Scribe, + Documents) — crea las cuentas de
+# servicio scoped que reemplazan el uso de las credenciales root de MinIO (MINIO_ROOT_USER/
+# PASSWORD) en Signature/CommunicationTranscriptWorker/Customer/Correspondence/Scribe/Tenant/
+# Documents. Cada una solo puede s3:PutObject bajo su propio prefijo en taxvision-temp/* (ver
+# policies/*.json) — nunca leer, listar ni tocar taxvision-storage/taxvision-quarantine.
 #
 # Notification tuvo una cuenta propia ("notification-worker") para el modulo de sync IMAP
 # entrante — se elimino junto con ese modulo en la Fase 17 del plan de hardening/migracion
@@ -65,5 +65,7 @@ provision "scribe" "scribe-worker" "${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECR
   "$(dirname "$0")/policies/scribe-source.json"
 provision "tenant" "tenant-worker" "${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET}" \
   "$(dirname "$0")/policies/tenant-source.json"
+provision "documents" "documents-worker" "${DOCUMENTS_MINIO_SECRET:?Set DOCUMENTS_MINIO_SECRET}" \
+  "$(dirname "$0")/policies/documents-source.json"
 
 echo "Done. Set Minio__AccessKey/Minio__SecretKey in each service to the access-key/secret used above."

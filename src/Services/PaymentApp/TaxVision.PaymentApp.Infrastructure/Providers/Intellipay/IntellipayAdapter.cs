@@ -181,6 +181,16 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
     /// <summary>Intellipay no modela "adjuntar una tarjeta extra" — el custId ya es el token
     /// reusable. Gestión de múltiples tarjetas por customer queda para cuando el negocio lo
     /// pida (§44.12: Intellipay production-ready cubre charge/refund/status, no card vault).</summary>
+    public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct) =>
+        Task.FromResult(
+            Result.Failure<SetupIntentInfo>(
+                new Error(
+                    "Intellipay.SetupIntent.NotSupported",
+                    "Intellipay does not support client-side SetupIntents; use its own hosted flow."
+                )
+            )
+        );
+
     public Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
         ProviderCustomerToken customer,
         string paymentMethodReference,

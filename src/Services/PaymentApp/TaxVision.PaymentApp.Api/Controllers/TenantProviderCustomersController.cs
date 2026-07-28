@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.PaymentApp.Api.Common;
 using TaxVision.PaymentApp.Application.ProviderCustomers.Commands.AttachPaymentMethod;
+using TaxVision.PaymentApp.Application.ProviderCustomers.Commands.CreateSetupIntent;
 using TaxVision.PaymentApp.Application.ProviderCustomers.Commands.DetachPaymentMethod;
 using TaxVision.PaymentApp.Application.ProviderCustomers.Commands.SetDefaultPaymentMethod;
 using TaxVision.PaymentApp.Application.ProviderCustomers.Queries;
@@ -31,6 +32,25 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
 
         var result = await bus.InvokeAsync<Result<TenantProviderCustomerResponse>>(
             new GetTenantProviderCustomerQuery(tenantId, provider),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Crea un SetupIntent para que el frontend recolecte la tarjeta con Stripe Payment
+    /// Element (el PAN va directo a Stripe, nunca al backend). Devuelve el client_secret a confirmar;
+    /// el pm resultante se envía luego a POST {provider}/methods.</summary>
+    [HttpPost("{provider}/setup-intent")]
+    [HasPermission(PaymentAppPermissions.ProviderCustomerManage)]
+    [ProducesResponseType<SetupIntentResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CreateSetupIntent(PaymentProviderCode provider, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<SetupIntentResponse>>(
+            new CreateSetupIntentCommand(tenantId, provider),
             ct
         );
 
