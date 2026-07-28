@@ -106,4 +106,10 @@ apply_migration \
   "src/Services/Billing/TaxVision.Billing.Api/TaxVision.Billing.Api.csproj" \
   "$BILLING_DB_CONNECTION"
 
+apply_migration \
+  "Documents" \
+  "src/Services/Documents/TaxVision.Documents.Infrastructure/TaxVision.Documents.Infrastructure.csproj" \
+  "src/Services/Documents/TaxVision.Documents.Api/TaxVision.Documents.Api.csproj" \
+  "$DOCUMENTS_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

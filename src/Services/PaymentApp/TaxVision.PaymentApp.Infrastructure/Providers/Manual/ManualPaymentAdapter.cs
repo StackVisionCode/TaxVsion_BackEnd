@@ -105,6 +105,13 @@ public sealed class ManualPaymentAdapter(ILogger<ManualPaymentAdapter> logger) :
             Result.Success(new ChargeAuthorizationResult(providerChargeReference, PaymentStatus.Succeeded))
         );
 
+    public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct) =>
+        Task.FromResult(
+            Result.Failure<SetupIntentInfo>(
+                new Error("Manual.SetupIntent.NotSupported", "The Manual provider has no client-side card tokenization.")
+            )
+        );
+
     public Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
         ProviderCustomerToken customer,
         string paymentMethodReference,

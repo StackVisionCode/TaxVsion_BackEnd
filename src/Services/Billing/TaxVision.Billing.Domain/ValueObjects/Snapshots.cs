@@ -29,7 +29,8 @@ public sealed record IssuerSnapshot(
     string? Phone,
     string? Email,
     string? Website,
-    Guid? LogoFileId
+    Guid? LogoFileId,
+    string? TaxId = null
 );
 
 /// <summary>Descuento a nivel de factura. Value = basis points (Percentage) o cents (Fixed).

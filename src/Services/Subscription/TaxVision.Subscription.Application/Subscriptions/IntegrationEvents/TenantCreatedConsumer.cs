@@ -54,6 +54,12 @@ public static class TenantCreatedConsumer
             if (IsPlatformTenant(evt.Kind))
                 return;
 
+            // El envelope TenantCreated llega sin tenant ambiental (*DEFAULT*): lo publica el
+            // servicio Tenant desde el flujo de registro anónimo, sin bus.TenantId. Sellar el tenant
+            // aquí (mismo patrón que los jobs de scheduling) estampa el envelope del recalc para que
+            // LocalCommandTenantMiddleware lo restaure y su lookup no pegue el filtro fail-closed.
+            bus.TenantId = evt.NewTenantId.ToString();
+
             if (await subscriptions.GetByTenantIdAsync(evt.NewTenantId, ct) is not null)
             {
                 logger.LogInformation(
@@ -61,7 +67,7 @@ public static class TenantCreatedConsumer
                         + "still recalculating entitlements in case a previous attempt left it stale.",
                     evt.NewTenantId
                 );
-                await bus.RecalculateEntitlementsOrThrowAsync(evt.NewTenantId, ct);
+                await ScheduleEntitlementsRecalcAsync(bus, evt.NewTenantId);
                 return;
             }
 
@@ -84,7 +90,7 @@ public static class TenantCreatedConsumer
             await EnsureDefaultSettingsAsync(evt.NewTenantId, settingsRepository, ct);
             await unitOfWork.SaveChangesAsync(ct);
 
-            await bus.RecalculateEntitlementsOrThrowAsync(evt.NewTenantId, ct);
+            await ScheduleEntitlementsRecalcAsync(bus, evt.NewTenantId);
 
             logger.LogInformation(
                 "Trial subscription created for tenant {TenantId} on plan {PlanCode} until {TrialEnd}.",
@@ -94,6 +100,21 @@ public static class TenantCreatedConsumer
             );
         }
     }
+
+    /// <summary>
+    /// Despacha el recálculo de entitlements como mensaje POST-COMMIT en vez de invocarlo en proceso
+    /// dentro de la transacción del handler. Con AutoApplyTransactions + UseDurableOutboxOnAllSendingEndpoints,
+    /// Wolverine retiene el mensaje publicado hasta que la transacción commitea; así el
+    /// RecalculateEntitlementsCommand corre en su propia transacción/scope con la suscripción ya
+    /// visible en la DB. Antes se usaba bus.InvokeAsync (síncrono, misma transacción): la suscripción
+    /// recién creada y aún sin commitear NO era visible en la conexión separada del recalc →
+    /// Subscription.NotFound → throw → rollback → el tenant quedaba SIN suscripción (la regresión que
+    /// introdujo el cambio a OrThrow). El recalc es idempotente (upsert) y tiene su propio
+    /// RetryWithCooldown + dead-letter, así que un fallo transitorio se auto-sana en el reintento.
+    /// bus.TenantId (sellado arriba) estampa el tenant en el envelope del mensaje.
+    /// </summary>
+    private static async Task ScheduleEntitlementsRecalcAsync(IMessageBus bus, Guid tenantId) =>
+        await bus.PublishAsync(new RecalculateEntitlementsCommand(tenantId));
 
     private static bool IsPlatformTenant(string kind) =>
         Enum.TryParse<TenantKind>(kind, ignoreCase: true, out var parsed) && parsed == TenantKind.Platform;

@@ -11,6 +11,14 @@ public enum InvoiceStatus
     Voided,
 }
 
+/// <summary>Estado del enlace de cobro (ancla estable en PaymentClient) asociado a la factura.</summary>
+public enum InvoicePaymentLinkStatus
+{
+    Active,
+    Superseded,
+    Revoked,
+}
+
 /// <summary>Estado del comprobante de pago verificable.</summary>
 public enum ReceiptStatus
 {

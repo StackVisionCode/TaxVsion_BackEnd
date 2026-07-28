@@ -297,6 +297,9 @@ services:
       ConnectionStrings__Default: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # DEV: aceptar el tenantId del body en /auth/login (sin resolución por Host/subdominio).
+      # En prod queda true (appsettings.json). Development ya usa false.
+      TenantDomains__EnforceHostResolution: "false"
       # RS256: unico servicio con la clave privada — firma los JWT y publica el
       # JWKS real en /auth/.well-known/jwks.json (con HS256 ese endpoint
       # devuelve un keyset vacio, ver SigningKeyProvider.cs:65-69 — rompe la
@@ -412,6 +415,16 @@ services:
       ServiceAuth__Clients__11__Scopes__0: growth.referrals.reward.confirm
       ServiceAuth__Clients__11__Scopes__1: growth.grants.confirm
       ServiceAuth__Clients__11__Scopes__2: growth.codes.reserve-benefit-gift
+      # Billing → Documents (M2M): generar el PDF de facturas.
+      ServiceAuth__Clients__12__ClientId: ${BILLING_DOCUMENTS_CLIENT_ID:-billing-documents}
+      ServiceAuth__Clients__12__Secret: ${BILLING_DOCUMENTS_CLIENT_SECRET:-}
+      ServiceAuth__Clients__12__Audience: taxvision-documents
+      ServiceAuth__Clients__12__Scopes__0: documents.generate
+      # Billing → PaymentClient (M2M): crear el link de cobro de la factura (Fase 2A).
+      ServiceAuth__Clients__13__ClientId: ${BILLING_PAYMENTS_CLIENT_ID:-billing-payments}
+      ServiceAuth__Clients__13__Secret: ${BILLING_PAYMENTS_CLIENT_SECRET:-}
+      ServiceAuth__Clients__13__Audience: taxvision-payments
+      ServiceAuth__Clients__13__Scopes__0: payments.links.create
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1068,6 +1081,16 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
+      # Acepta el token M2M scoped de Billing (audience taxvision-payments) además del genérico —
+      # habilita internal/payables (Fase 2A). Mismo patrón que documents-api.
+      Jwt__ValidAudiences__0: TaxVision.Services
+      Jwt__ValidAudiences__1: taxvision-payments
+      # Base pública con la que PaymentClient compone la URL ESTABLE de facturas (la del PDF). Dev = gateway.
+      PaymentClient__Public__BaseUrl: ${PAYMENTCLIENT_PUBLIC_BASE_URL:-http://localhost:5047}
+      # RBAC Fase 7: enforza permisos contra la proyección local (poblada por eventos de Auth) en vez de
+      # leer perms embebidos en el JWT — los tokens self-service vienen sin perms. Habilita los endpoints
+      # humanos de config de pago (settings 2B). Mismo modo que documents-api.
+      Authorization__PermissionsSource: Projection
       # Modo DirectApiKeys: cada tenant trae sus propias credenciales Stripe
       # (TenantPaymentConfig) cifradas con esta clave.
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
@@ -1148,6 +1171,62 @@ services:
       Jwt__Audience: TaxVision.Services
       Jwt__ValidAudiences__0: TaxVision.Services
       Jwt__ValidAudiences__1: taxvision-billing
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Tokens M2M: un solo proveedor, credenciales por cliente nombrado (punto 10 del review).
+      Billing__ServiceClients__AuthBaseUrl: http://auth-api:8080
+      Billing__ServiceClients__Clients__Documents__ClientId: ${BILLING_DOCUMENTS_CLIENT_ID:-billing-documents}
+      Billing__ServiceClients__Clients__Documents__ClientSecret: ${BILLING_DOCUMENTS_CLIENT_SECRET:-}
+      Billing__ServiceClients__Clients__Payments__ClientId: ${BILLING_PAYMENTS_CLIENT_ID:-billing-payments}
+      Billing__ServiceClients__Clients__Payments__ClientSecret: ${BILLING_PAYMENTS_CLIENT_SECRET:-}
+      # Bases de los servicios destino (prod docker; en dev Documents corre en el host → override por .env).
+      Billing__Documents__BaseUrl: ${BILLING_DOCUMENTS_BASE_URL:-http://documents-api:8080}
+      Billing__PaymentClient__BaseUrl: ${BILLING_PAYMENTCLIENT_BASE_URL:-http://payment-client-api:8080}
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  documents-api:
+    image: taxvision/documents-api:dev
+    container_name: taxvision-documents-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Documents/TaxVision.Documents.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${DOCUMENTS_DB_CONNECTION:?Set DOCUMENTS_DB_CONNECTION in .env}
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Jwt__ValidAudiences__0: TaxVision.Services
+      Jwt__ValidAudiences__1: taxvision-documents
+      # RBAC Fase 7: enforza el permiso documents.branding.manage contra la proyección local (poblada
+      # por eventos de Auth) — los tokens self-service no traen perms embebidos. Habilita el endpoint de
+      # branding humano (documents/branding). Mismo modo que payment-client/cloudstorage.
+      Authorization__PermissionsSource: Projection
+      # MinIO propio scoped al prefijo taxvision-temp/documents/* (patrón scribe/signature).
+      # Endpoint INTERNO (contenedor→MinIO): Documents hace el PUT del PDF al bucket temporal desde la
+      # red de Docker, NO presigna para el navegador. Debe ser minio:9000, no el endpoint público.
+      Documents__Minio__Endpoint: minio:9000
+      Documents__Minio__AccessKey: documents-worker
+      Documents__Minio__SecretKey: ${DOCUMENTS_MINIO_SECRET:-}
+      Documents__Minio__UseTls: ${MINIO_USE_TLS:-false}
+      Documents__Minio__TempBucket: taxvision-temp
+      Documents__Minio__SourcePrefix: documents
+      # Bulkhead de conversiones Chromium simultáneas (memoria). Ajustar según CPU/RAM del contenedor.
+      Documents__Pdf__MaxConcurrency: ${DOCUMENTS_PDF_MAX_CONCURRENCY:-2}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -1322,6 +1401,7 @@ services:
       CORRESPONDENCE_MINIO_SECRET: ${CORRESPONDENCE_MINIO_SECRET:?Set CORRESPONDENCE_MINIO_SECRET in .env}
       SCRIBE_MINIO_SECRET: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
       TENANT_MINIO_SECRET: ${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET in .env}
+      DOCUMENTS_MINIO_SECRET: ${DOCUMENTS_MINIO_SECRET:?Set DOCUMENTS_MINIO_SECRET in .env}
     volumes:
       - ./minio:/provision:ro
     depends_on:
@@ -1366,11 +1446,13 @@ services:
     build:
       context: ../..
       dockerfile: src/Gateway/TaxVision.Gateway/Dockerfile
-    # Ya no publica al host — Caddy es el unico punto de entrada publico
-    # (ver servicio "caddy" mas abajo), el gateway solo es alcanzable
-    # dentro de taxvision-network.
+    # Caddy es el punto de entrada publico en produccion. Para DEV local se mapea
+    # 5047 del host -> 8080 (loopback), alineado con TaxVsion_Front/environment.ts
+    # (apiUrl http://localhost:5047). En prod este mapeo no se usa (Caddy va por red interna).
     expose:
       - "8080"
+    ports:
+      - "127.0.0.1:5047:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1402,6 +1484,7 @@ services:
       ReverseProxy__Clusters__paymentclient__Destinations__paymentclient1__Address: http://payment-client-api:8080/
       ReverseProxy__Clusters__growth__Destinations__growth1__Address: http://growth-api:8080/
       ReverseProxy__Clusters__billing__Destinations__billing1__Address: http://billing-api:8080/
+      ReverseProxy__Clusters__documents__Destinations__documents1__Address: http://documents-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1422,6 +1505,7 @@ services:
       - payment-client-api
       - growth-api
       - billing-api
+      - documents-api
       - otel-collector
     networks:
       - taxvision-network

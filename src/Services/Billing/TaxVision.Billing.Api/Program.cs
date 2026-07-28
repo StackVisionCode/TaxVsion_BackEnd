@@ -70,6 +70,14 @@ builder.Host.UseWolverine(options =>
         .ListenToRabbitQueue("billing-events", queue => queue.BindExchange("taxvision-events", string.Empty))
         .UseDurableInbox();
 
+    // Restaura el TenantContext dentro del scope que Wolverine crea para cada handler: desde el
+    // envelope para integration events (consumer de documents.generation.completed) y desde el
+    // comando local (GenerateInvoicePdf despachado post-commit por IssueInvoice).
+    options
+        .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
+        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+
     options
         .Policies.OnException<Exception>()
         .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));

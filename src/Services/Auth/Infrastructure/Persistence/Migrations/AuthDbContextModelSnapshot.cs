@@ -743,6 +743,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000152"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "documents.branding.manage",
+                            Description = "Configurar el branding de documentos del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "documents",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000015"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "email.use",

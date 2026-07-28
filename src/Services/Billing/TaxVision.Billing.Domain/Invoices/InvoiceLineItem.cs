@@ -38,27 +38,3 @@ public sealed class InvoiceLineItem : BaseEntity
         LineTotal = lineTotal;
     }
 }
-
-/// <summary>Registro interno del cobro asociado a una factura, para correlacionar los eventos
-/// <c>payments.*</c> de PaymentClient (ver BDR-001 en la documentación de diseño).</summary>
-public sealed class InvoicePaymentLink : BaseEntity
-{
-    public Guid InvoiceId { get; private set; }
-    public string PaymentSource { get; private set; } = string.Empty;
-    public Guid PaymentId { get; private set; }
-    public string Status { get; private set; } = string.Empty;
-    public string? PayUrl { get; private set; }
-    public DateTime CreatedAtUtc { get; private set; }
-
-    private InvoicePaymentLink() { }
-
-    internal InvoicePaymentLink(Guid invoiceId, string paymentSource, Guid paymentId, string status, string? payUrl, DateTime createdAtUtc)
-    {
-        InvoiceId = invoiceId;
-        PaymentSource = paymentSource;
-        PaymentId = paymentId;
-        Status = status;
-        PayUrl = payUrl;
-        CreatedAtUtc = createdAtUtc;
-    }
-}

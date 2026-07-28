@@ -24,6 +24,8 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         "/health/ready",
         "/payments-client/webhooks",
         "/payments-client/checkout",
+        // URL estable pública de facturas (resolver): sin JWT, el tenant sale del payable.
+        "/payments-client/invoices",
         "/payments-client/admin",
     ];
 

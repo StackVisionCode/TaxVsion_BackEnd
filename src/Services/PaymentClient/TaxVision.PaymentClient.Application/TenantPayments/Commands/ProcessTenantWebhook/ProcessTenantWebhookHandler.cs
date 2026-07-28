@@ -317,6 +317,23 @@ public static class ProcessTenantWebhookHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
+
+        // Fase 3: señal "pagado" con la referencia externa (id de factura), también en el camino async
+        // del webhook (3DS/SCA) — Billing la consume para marcar la factura Paid.
+        await bus.PublishAsync(
+            new TenantPaymentSucceededIntegrationEvent
+            {
+                TenantId = payment.TenantId,
+                TenantPaymentId = payment.Id,
+                ProviderCode = payment.ProviderCode.ToString(),
+                PurposeKind = payment.Purpose.Kind.ToString(),
+                ExternalReferenceId = payment.Purpose.ExternalReferenceId,
+                AmountCents = payment.Amount.AmountCents,
+                Currency = payment.Amount.Currency,
+                PaidAtUtc = nowUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
     }
 
     /// <summary><paramref name="totalRefundedCents"/> es el acumulado en el charge del

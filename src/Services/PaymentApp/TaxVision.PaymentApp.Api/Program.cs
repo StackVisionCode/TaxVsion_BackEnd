@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using TaxVision.PaymentApp.Api.Common;
+using TaxVision.PaymentApp.Application.Consumers;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
 using TaxVision.PaymentApp.Infrastructure;
 using TaxVision.PaymentApp.Infrastructure.Observability;
@@ -111,6 +112,12 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(ChargeSaaSPaymentCommand).Assembly);
+    // Registro explícito de los consumers de la proyección RBAC: la discovery convencional no los
+    // engancha en este servicio (Wolverine loguea "No known handler para UserRolesChangedIntegrationEvent"),
+    // así que la proyección UserPermissionsProjections quedaba vacía y [HasPermission] daba 403. Idénticos
+    // a los de Subscription, que sí discovery-ean solos — este include fuerza su registro.
+    options.Discovery.IncludeType(typeof(UserRolesChangedPermissionsProjectionConsumer));
+    options.Discovery.IncludeType(typeof(RolePermissionsChangedPermissionsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

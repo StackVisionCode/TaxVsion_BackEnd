@@ -31,6 +31,7 @@ public static class PermissionCatalog
     public const string SignaturesRequest = "signatures.request";
     public const string DocumentsView = "documents.view";
     public const string DocumentsManage = "documents.manage";
+    public const string DocumentsBrandingManage = DocumentsPermissions.BrandingManage;
     public const string EmailUse = "email.use";
     public const string CommsCalls = "comms.calls";
     public const string CampaignsManage = "campaigns.manage";
@@ -370,6 +371,13 @@ public static class PermissionCatalog
             DocumentsManage,
             "documents",
             "Gestionar documentos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000152"),
+            DocumentsBrandingManage,
+            "documents",
+            "Configurar el branding de documentos del tenant",
             false
         ),
         new(

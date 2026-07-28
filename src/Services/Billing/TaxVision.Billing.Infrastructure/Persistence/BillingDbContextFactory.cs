@@ -22,5 +22,8 @@ public sealed class BillingDbContextFactory : IDesignTimeDbContextFactory<Billin
     {
         public Guid TenantId => throw new InvalidOperationException("TenantId is not set at design time.");
         public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) =>
+            throw new InvalidOperationException("TenantId cannot be set at design time.");
     }
 }

@@ -76,6 +76,33 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         }
     }
 
+    public async Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct)
+    {
+        var service = new SetupIntentService(_client);
+        try
+        {
+            var intent = await service.CreateAsync(
+                new SetupIntentCreateOptions
+                {
+                    Customer = customer.Token,
+                    PaymentMethodTypes = ["card"],
+                    // La tarjeta se usará para cobros automáticos posteriores (renovaciones/cambios de plan).
+                    Usage = "off_session",
+                },
+                cancellationToken: ct
+            );
+
+            return Result.Success(new SetupIntentInfo(intent.ClientSecret));
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogWarning(ex, "Stripe CreateSetupIntent failed for customer {Customer}", customer.Token);
+            return Result.Failure<SetupIntentInfo>(
+                new Error("Stripe.SetupIntent.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
     public async Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
         ProviderCustomerToken customer,
         string paymentMethodReference,

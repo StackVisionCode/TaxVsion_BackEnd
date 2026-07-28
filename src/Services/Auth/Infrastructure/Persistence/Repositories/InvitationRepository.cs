@@ -12,8 +12,13 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
     public Task<Invitation?> GetByIdAsync(Guid invitationId, CancellationToken ct = default) =>
         db.Invitations.IgnoreQueryFilters().FirstOrDefaultAsync(invitation => invitation.Id == invitationId, ct);
 
+    // IgnoreQueryFilters(): el lookup por token-hash corre en AcceptInvitation ([AllowAnonymous]),
+    // donde no hay contexto de tenant y el filtro global fail-closed devolvería 0 filas — bloqueando
+    // el alta de todo admin nuevo. El TokenHash es SHA256 de 32 bytes aleatorios (globalmente único);
+    // el handler valida MatchesTokenHash + tenant activo justo después del fetch, así que el filtro
+    // ambiental era redundante aquí (mismo razonamiento que GetByIdAsync arriba).
     public Task<Invitation?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
-        db.Invitations.FirstOrDefaultAsync(invitation => invitation.TokenHash == tokenHash, ct);
+        db.Invitations.IgnoreQueryFilters().FirstOrDefaultAsync(invitation => invitation.TokenHash == tokenHash, ct);
 
     public Task<bool> HasPendingAsync(Guid tenantId, string email, CancellationToken ct = default) =>
         db

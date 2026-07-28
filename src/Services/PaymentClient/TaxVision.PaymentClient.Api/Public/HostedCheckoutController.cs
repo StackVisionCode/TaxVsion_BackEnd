@@ -35,17 +35,27 @@ public sealed class HostedCheckoutController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : NotFound(new { result.Error.Code, result.Error.Message });
     }
 
-    public sealed record PayRequest(string ProviderPaymentMethodToken, string? ReceiptEmail);
+    public sealed record PayRequest(
+        TaxVision.PaymentClient.Domain.ValueObjects.PaymentProviderCode Provider,
+        string ProviderPaymentMethodToken,
+        string? ReceiptEmail
+    );
 
-    /// <summary>El frontend ya tokenizó la tarjeta con Stripe Elements — este endpoint solo
-    /// recibe la referencia opaca resultante, nunca datos crudos de tarjeta.</summary>
+    /// <summary>El frontend ya tokenizó el método con el SDK del proveedor ELEGIDO (p. ej. Stripe
+    /// Elements) — este endpoint solo recibe la referencia opaca resultante + qué proveedor eligió el
+    /// taxpayer, nunca datos crudos de tarjeta.</summary>
     [HttpPost("pay")]
     [ProducesResponseType<RedeemPaymentLinkResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Pay(string linkToken, PayRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<RedeemPaymentLinkResponse>>(
-            new RedeemPaymentLinkCommand(linkToken, request.ProviderPaymentMethodToken, request.ReceiptEmail),
+            new RedeemPaymentLinkCommand(
+                linkToken,
+                request.Provider,
+                request.ProviderPaymentMethodToken,
+                request.ReceiptEmail
+            ),
             ct
         );
 
