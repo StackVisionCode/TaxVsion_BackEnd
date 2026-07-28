@@ -1356,6 +1356,14 @@ services:
       TRANSCRIPT_WORKER_MINIO_SOURCE_PREFIX: transcript
       # Modelo/binario/idioma se dejan en los defaults del Dockerfile
       # (ggml-base, whisper-cli, auto-detect) salvo que se sobreescriban aca.
+      # TRANSCRIPT_WORKER_RECORDING_KINDS: no seteada a proposito — sin ella el
+      # worker usa el default hardcodeado COMMUNICATION_RECORDING_KINDS (kind
+      # call/meeting, campos callId/meetingId), o sea el comportamiento actual
+      # de Communication, intacto. Solo se setearia si algun dia se levanta OTRO
+      # servicio aparte (otro container, otra cola RabbitMQ) que reuse esta misma
+      # imagen para un dominio distinto — ver contracts/recording-kinds.ts. Ejemplo
+      # (NO activo, solo referencia) para un hipotetico servicio de podcasts:
+      # TRANSCRIPT_WORKER_RECORDING_KINDS: '[{"kind":"podcast-episode","targetIdField":"episodeId","triggerEventTypes":["podcasts.episode.recording_ready.v1"],"transcriptReadyEventType":"podcasts.episode.transcript_ready.v1","transcriptFailedEventType":"podcasts.episode.transcript_failed.v1"}]'
     depends_on:
       sqlserver:
         condition: service_healthy

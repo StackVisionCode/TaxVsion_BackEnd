@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { getRabbitContext } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import { TranscriptFailedEventTypes, type TranscriptFailureReason } from '../contracts/events.js';
+import type { TranscriptFailureReason } from '../contracts/events.js';
+import { buildRecordingKindLookups, type RecordingKindMapping } from '../contracts/recording-kinds.js';
 
 export interface TranscriptReadyEvent {
-  readonly kind: 'call' | 'meeting';
+  readonly kind: string;
   readonly tenantId: string;
   readonly correlationId: string | undefined;
   readonly targetId: string;
@@ -18,10 +19,13 @@ export interface TranscriptReadyEvent {
   readonly wordCount: number;
 }
 
-const KIND_TO_EVENT_TYPE: Readonly<Record<'call' | 'meeting', string>> = {
-  call: 'communication.call.transcript_ready.v1',
-  meeting: 'communication.meeting.transcript_ready.v1',
-};
+const { byKind } = buildRecordingKindLookups(config.recordingKinds);
+
+function mappingForKind(kind: string): RecordingKindMapping {
+  const mapping = byKind.get(kind);
+  if (!mapping) throw new Error(`Unknown recording kind: ${kind} (ver config.recordingKinds)`);
+  return mapping;
+}
 
 /**
  * Publica al mismo exchange fanout `taxvision-events` que usa Communication.
@@ -34,7 +38,8 @@ const KIND_TO_EVENT_TYPE: Readonly<Record<'call' | 'meeting', string>> = {
  */
 export function publishTranscriptReady(event: TranscriptReadyEvent): void {
   const rabbit = getRabbitContext();
-  const eventType = KIND_TO_EVENT_TYPE[event.kind];
+  const mapping = mappingForKind(event.kind);
+  const eventType = mapping.transcriptReadyEventType;
   const readyAtUtc = new Date().toISOString();
   const eventId = randomUUID();
   const body = {
@@ -43,7 +48,7 @@ export function publishTranscriptReady(event: TranscriptReadyEvent): void {
     tenantId: event.tenantId,
     correlationId: event.correlationId,
     occurredOnUtc: readyAtUtc,
-    ...(event.kind === 'call' ? { callId: event.targetId } : { meetingId: event.targetId }),
+    [mapping.targetIdField]: event.targetId,
     recordingFileId: event.recordingFileId,
     transcriptFileId: event.transcriptFileId,
     detectedLanguage: event.detectedLanguage,
@@ -65,7 +70,7 @@ export function publishTranscriptReady(event: TranscriptReadyEvent): void {
 }
 
 export interface TranscriptFailedEvent {
-  readonly kind: 'call' | 'meeting';
+  readonly kind: string;
   readonly tenantId: string;
   readonly correlationId: string | undefined;
   readonly targetId: string;
@@ -81,7 +86,8 @@ export interface TranscriptFailedEvent {
  */
 export function publishTranscriptFailed(event: TranscriptFailedEvent): void {
   const rabbit = getRabbitContext();
-  const eventType = TranscriptFailedEventTypes[event.kind];
+  const mapping = mappingForKind(event.kind);
+  const eventType = mapping.transcriptFailedEventType;
   const occurredAtUtc = new Date().toISOString();
   const eventId = randomUUID();
   const body = {
@@ -90,7 +96,7 @@ export function publishTranscriptFailed(event: TranscriptFailedEvent): void {
     tenantId: event.tenantId,
     correlationId: event.correlationId,
     occurredOnUtc: occurredAtUtc,
-    ...(event.kind === 'call' ? { callId: event.targetId } : { meetingId: event.targetId }),
+    [mapping.targetIdField]: event.targetId,
     recordingFileId: event.recordingFileId,
     failureReason: event.failureReason,
     errorMessage: event.errorMessage,

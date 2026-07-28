@@ -4616,6 +4616,31 @@ Verificacion: 202 tests en Communication (+7 nuevos de `attachTranscript` /
 `FolderType.Transcripts`), 30 en CommunicationTranscriptWorker — todos
 verdes, typecheck limpio en los 3 proyectos.
 
+**Generalizacion del worker (post-QA)**: el pipeline en si
+(`pipeline.ts`: download desde CloudStorage → ffmpeg → whisper.cpp → upload →
+publish) siempre fue generico — no sabe nada de "calls" ni "meetings". Lo que
+SI estaba hardcodeado a Communication era la capa de mensajeria:
+`rabbit/consumer.ts` (`EVENT_TYPE_TO_KIND`, un mapa fijo `communication.
+{call,meeting}.recording_*.v1` → `'call'|'meeting'`) y `rabbit/publisher.ts`
+(`KIND_TO_EVENT_TYPE`, igual de fijo para `transcript_ready`/
+`transcript_failed`), ademas de leer `callId`/`meetingId` por nombre literal.
+Se extrajo ese mapeo a un contrato de datos —
+`contracts/recording-kinds.ts` (`RecordingKindMapping`: `kind`,
+`targetIdField`, `triggerEventTypes`, `transcriptReadyEventType`,
+`transcriptFailedEventType`) — configurable via la nueva env var
+`TRANSCRIPT_WORKER_RECORDING_KINDS` (JSON). Sin esa variable seteada (el caso
+de Communication hoy), se usa `COMMUNICATION_RECORDING_KINDS`, que reproduce
+1:1 el mapeo anterior — **cero cambio de comportamiento para Communication**.
+Cualquier otro microservicio que en el futuro necesite transcribir audio
+(por ejemplo, un hipotetico servicio de podcasts) puede desplegar esta misma
+imagen/codigo con su propio `TRANSCRIPT_WORKER_RECORDING_KINDS` (sus propios
+tipos de evento y su propio campo de id, ej. `episodeId`) **sin tocar una
+linea de codigo del worker**. Verificado con un test dedicado
+(`tests/unit/recording-kinds-generic.test.ts`) que configura un mapeo de
+ejemplo ajeno a Communication y confirma que el consumer enruta y el
+publisher publica correctamente con ese mapeo — 34/34 tests verdes
+(30 preexistentes + 4 nuevos), typecheck/lint/build limpios.
+
 ## 30.14 Rich presence (Track A) + chat tipado cliente-preparador (Track B)
 
 Plan implementado fase por fase desde

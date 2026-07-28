@@ -17,8 +17,17 @@ import { pipelineDurationSeconds, pipelineFailuresTotal } from './telemetry/metr
 // config.ts) para poder acortar el backoff en tests sin tocar codigo.
 const RETRY_MAX_ATTEMPTS = config.retry.maxAttempts;
 const RETRY_BACKOFF_MS = config.retry.backoffMs;
+// 'File.NotAvailable' = el archivo todavia esta en ClamAV scan (CloudStorage
+// rechaza download-url con 403 hasta que Status pase a Available) — carrera
+// transitoria contra `recording_processing_started.v1` (se publica apenas
+// termina el upload, sin esperar el scan async), se resuelve sola en 1-3s.
+// Otros 403 (ej. 'File.Forbidden', mismatch real de scope) NO son retriables
+// a proposito, igual que el resto de errores de permiso/config — ver docblock
+// de RETRIABLE_UPLOAD_CODES mas abajo.
 function isRetriableDownloadError(err) {
-    return err instanceof DownloadStatusError && err.status >= 500;
+    if (!(err instanceof DownloadStatusError))
+        return false;
+    return err.status >= 500 || err.errorCode === 'File.NotAvailable';
 }
 // Codigos tipicos de blip transiente hacia MinIO: errores de red de Node
 // (ECONNRESET/ETIMEDOUT/ECONNREFUSED/EPIPE/EAI_AGAIN) o codigos S3-style que

@@ -8,13 +8,34 @@ import { publishSaveFileRequested } from './save-file-requested-publisher.js';
 /**
  * Fase Transcript 4 — lleva el status HTTP para que pipeline.ts pueda
  * clasificar 5xx como retriable (ver retry.ts) sin parsear el mensaje.
+ *
+ * `errorCode` (opcional) — el body de error de CloudStorage (BuildingBlocks
+ * `Error(Code, Message)`, serializado camelCase). Lo agregamos porque un 403
+ * de `download-url` puede ser `File.NotAvailable` (el archivo TODAVIA esta
+ * en ClamAV scan — transitorio, se resuelve solo en 1-3s) o `File.Forbidden`
+ * (mismatch real de scope — un retry no lo arregla nunca). Sin distinguir el
+ * codigo, el download-url de una grabacion recien subida podia perder la
+ * carrera contra el scan async de CloudStorage y el pipeline dead-letreaba
+ * en el primer intento aunque el archivo pasara a Available 200ms despues.
  */
 export class DownloadStatusError extends Error {
     status;
-    constructor(status, message) {
+    errorCode;
+    constructor(status, message, errorCode) {
         super(message);
         this.status = status;
+        this.errorCode = errorCode;
         this.name = 'DownloadStatusError';
+    }
+}
+async function readErrorCode(response) {
+    try {
+        const body = (await response.clone().json());
+        const code = body.code ?? body.Code;
+        return typeof code === 'string' ? code : undefined;
+    }
+    catch {
+        return undefined;
     }
 }
 export class CloudStorageClient {
@@ -29,7 +50,8 @@ export class CloudStorageClient {
             headers: { authorization: `Bearer ${token}` },
         });
         if (!initiate.ok) {
-            throw new DownloadStatusError(initiate.status, `download-url request failed with status ${initiate.status} for file ${fileId}`);
+            const errorCode = await readErrorCode(initiate);
+            throw new DownloadStatusError(initiate.status, `download-url request failed with status ${initiate.status} for file ${fileId}`, errorCode);
         }
         const { downloadUrl } = (await initiate.json());
         // El GET al presigned URL de MinIO NO lleva Authorization — la firma va
