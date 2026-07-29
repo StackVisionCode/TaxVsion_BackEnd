@@ -805,6 +805,34 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("PushDeviceTokens", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Notification.Domain.Onboarding.OnboardingReceiptLookup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReceiptDownloadUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ReceiptFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique();
+
+                    b.ToTable("OnboardingReceiptLookups", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Notification.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")

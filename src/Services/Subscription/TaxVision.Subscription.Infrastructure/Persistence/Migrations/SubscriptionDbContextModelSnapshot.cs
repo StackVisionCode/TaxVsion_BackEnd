@@ -1190,6 +1190,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("NextRenewalAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("PlanCode")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1236,6 +1239,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.HasIndex("NextRenewalAtUtc")
                         .HasDatabaseName("IX_TenantSubscriptions_NextRenewalAtUtc")
                         .HasFilter("[Status] = 'Active'");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantSubscriptions_OnboardingId")
+                        .HasFilter("[OnboardingId] IS NOT NULL");
 
                     b.HasIndex("PlanId");
 

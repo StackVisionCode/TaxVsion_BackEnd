@@ -17,6 +17,14 @@ public sealed class SaaSPaymentRepository(PaymentAppDbContext db) : ISaaSPayment
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(payment => payment.Id == saaSPaymentId && payment.TenantId == tenantId, ct);
 
+    // IgnoreQueryFilters: PayFlow (Fase 17) — OnboardingRefundConsumer solo conoce el PaymentId,
+    // no el tenant (el pago pudo crearse con TenantId=Guid.Empty vía CreateForOnboarding, y el
+    // evento de refund lo publica Auth sin ese dato de todos modos).
+    public Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, CancellationToken ct = default) =>
+        WithChildren(db.SaaSPayments)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(payment => payment.Id == saaSPaymentId, ct);
+
     // IgnoreQueryFilters: dedup global por IdempotencyKey (Stripe payment intent creation) —
     // el propósito es encontrar un pago existente SIN conocer el tenant todavía. Sin esto, un
     // reintento idempotente creaba un pago DUPLICADO cada vez que llegaba dentro del scope

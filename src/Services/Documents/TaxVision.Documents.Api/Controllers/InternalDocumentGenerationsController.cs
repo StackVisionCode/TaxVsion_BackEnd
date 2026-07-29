@@ -61,8 +61,6 @@ public sealed class InternalDocumentGenerationsController(IMessageBus bus) : Con
             ct
         );
 
-        return result.IsSuccess
-            ? Accepted(result.Value)
-            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? Accepted(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

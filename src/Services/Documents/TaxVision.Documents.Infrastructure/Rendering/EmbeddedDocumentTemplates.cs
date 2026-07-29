@@ -16,14 +16,19 @@ internal static class EmbeddedDocumentTemplates
             return true;
         }
 
+        if (string.Equals(templateKey, "onboarding.receipt.v1", StringComparison.OrdinalIgnoreCase) && version == 1)
+        {
+            source = OnboardingReceiptV1;
+            return true;
+        }
+
         source = string.Empty;
         return false;
     }
 
     // Liquid (Fluid). Los datos llegan bajo la variable "invoice" (ver ProcessInvoiceGenerationHandler).
     // HTML autocontenido, apto para impresión A4; sin recursos externos (CSP del motor: nada de red/FS).
-    private const string InvoiceV1 =
-        """
+    private const string InvoiceV1 = """
         <!DOCTYPE html>
         <html lang="es">
         <head>
@@ -172,6 +177,77 @@ internal static class EmbeddedDocumentTemplates
           {% if invoice.notes != "" %}<div class="notes">{{ invoice.notes }}</div>{% endif %}
 
           <div class="footer">{{ invoice.footer }}</div>
+        </body>
+        </html>
+        """;
+
+    // PayFlow (Fase 10). Datos bajo la variable "receipt" (ver ProcessOnboardingReceiptGenerationHandler).
+    // Emisor plataforma fijo (issuer.*) — nunca branding de tenant, no hay tenant todavía.
+    private const string OnboardingReceiptV1 = """
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>Recibo de pago {{ receipt.onboardingId }}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2933; margin: 0; padding: 32px; font-size: 12px; }
+            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #2563eb; padding-bottom: 16px; }
+            .header h1 { margin: 0; font-size: 24px; color: #2563eb; letter-spacing: 1px; }
+            .logo { max-height: 56px; max-width: 220px; margin-bottom: 8px; display: block; }
+            .meta { text-align: right; font-size: 12px; }
+            .meta strong { font-size: 14px; }
+            .issuer { margin: 24px 0; }
+            .issuer h2 { font-size: 11px; text-transform: uppercase; color: #6b7280; margin: 0 0 6px; letter-spacing: .5px; }
+            .issuer p { margin: 2px 0; }
+            .summary { margin-top: 16px; padding: 16px; border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 8px; }
+            .summary-title { font-size: 12px; font-weight: 700; color: #15803d; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .04em; }
+            .row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 4px 0; }
+            .row span:first-child { color: #6b7280; }
+            .row code { font-family: monospace; font-size: 10px; color: #166534; }
+            .total { margin-top: 16px; width: 260px; margin-left: auto; }
+            .total .grand { border-top: 2px solid #2563eb; margin-top: 6px; padding-top: 8px; font-size: 16px; font-weight: bold; color: #2563eb; display: flex; justify-content: space-between; }
+            .paid-note { margin-top: 20px; color: #15803d; font-weight: 600; font-size: 12px; }
+            .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #9ca3af; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              {% if receipt.issuer.logo != "" %}<img class="logo" src="{{ receipt.issuer.logo }}" alt="{{ receipt.issuer.name }}" />{% endif %}
+              <h1>RECIBO DE PAGO</h1>
+              <p>{{ receipt.issuer.name }}</p>
+            </div>
+            <div class="meta">
+              <strong>Ref. {{ receipt.transactionReferenceMask }}</strong><br />
+              Fecha: {{ receipt.paidAt }}
+            </div>
+          </div>
+
+          <div class="issuer">
+            <h2>Emisor</h2>
+            <p><strong>{{ receipt.issuer.name }}</strong></p>
+            <p>{{ receipt.issuer.taxId }}</p>
+            <p>{{ receipt.issuer.addressLine1 }}, {{ receipt.issuer.city }}, {{ receipt.issuer.state }} {{ receipt.issuer.postalCode }}, {{ receipt.issuer.country }}</p>
+            <p>{{ receipt.issuer.email }} · {{ receipt.issuer.phone }} · {{ receipt.issuer.website }}</p>
+          </div>
+
+          <div class="summary">
+            <div class="summary-title">Pagado por</div>
+            <div class="row"><span>Nombre</span><span>{{ receipt.payerName }}</span></div>
+            <div class="row"><span>Email</span><span>{{ receipt.payerEmail }}</span></div>
+            <div class="row"><span>Plan</span><span>{{ receipt.planName }} ({{ receipt.planCode }})</span></div>
+            {% if receipt.paymentMethodMasked != "" %}<div class="row"><span>Método de pago</span><span>{{ receipt.paymentMethodMasked }}</span></div>{% endif %}
+            <div class="row"><span>Referencia de transacción</span><code>{{ receipt.transactionReferenceMask }}</code></div>
+          </div>
+
+          <div class="total">
+            <div class="grand"><span>Total pagado</span><span>{{ receipt.price }} {{ receipt.currency }}</span></div>
+          </div>
+
+          <div class="paid-note">✓ Pago confirmado el {{ receipt.paidAt }}. Este recibo es tu comprobante de pago del onboarding.</div>
+
+          <div class="footer">Documento generado por {{ receipt.issuer.name }} · Onboarding {{ receipt.onboardingId }}</div>
         </body>
         </html>
         """;

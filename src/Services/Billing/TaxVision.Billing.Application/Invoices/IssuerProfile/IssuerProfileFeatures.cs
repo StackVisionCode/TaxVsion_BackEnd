@@ -78,7 +78,9 @@ public static class UpsertIssuerProfileHandler
     )
     {
         if (string.IsNullOrWhiteSpace(command.Name))
-            return Result.Failure(new Error("Billing.IssuerProfile.NameRequired", "El nombre de la empresa es requerido."));
+            return Result.Failure(
+                new Error("Billing.IssuerProfile.NameRequired", "El nombre de la empresa es requerido.")
+            );
 
         var nowUtc = clock.GetUtcNow().UtcDateTime;
         var profile = await profiles.GetByTenantAsync(command.TenantId, ct);
@@ -88,18 +90,28 @@ public static class UpsertIssuerProfileHandler
             await profiles.AddAsync(profile, ct);
         }
 
-        Address? address = string.IsNullOrWhiteSpace(command.Line1) && string.IsNullOrWhiteSpace(command.City)
-            ? null
-            : new Address(
-                command.Line1 ?? string.Empty,
-                null,
-                command.City ?? string.Empty,
-                command.State ?? string.Empty,
-                command.Zip ?? string.Empty,
-                command.Country ?? "US"
-            );
+        Address? address =
+            string.IsNullOrWhiteSpace(command.Line1) && string.IsNullOrWhiteSpace(command.City)
+                ? null
+                : new Address(
+                    command.Line1 ?? string.Empty,
+                    null,
+                    command.City ?? string.Empty,
+                    command.State ?? string.Empty,
+                    command.Zip ?? string.Empty,
+                    command.Country ?? "US"
+                );
 
-        profile.Update(command.Name, command.TaxId, address, command.Phone, command.Email, command.Website, null, nowUtc);
+        profile.Update(
+            command.Name,
+            command.TaxId,
+            address,
+            command.Phone,
+            command.Email,
+            command.Website,
+            null,
+            nowUtc
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

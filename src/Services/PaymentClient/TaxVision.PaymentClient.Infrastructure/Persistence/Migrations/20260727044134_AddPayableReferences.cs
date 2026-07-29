@@ -22,31 +22,33 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     Currency = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
                     Reference = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PayableReferences", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_PayableReferences_Reference",
                 table: "PayableReferences",
                 column: "Reference",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_PayableReferences_Tenant_Purpose_ExternalRef",
                 table: "PayableReferences",
                 columns: new[] { "TenantId", "PurposeKind", "ExternalReferenceId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PayableReferences");
+            migrationBuilder.DropTable(name: "PayableReferences");
         }
     }
 }

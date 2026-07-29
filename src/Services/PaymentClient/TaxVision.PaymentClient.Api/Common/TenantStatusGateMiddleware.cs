@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Tenancy;
 using TaxVision.PaymentClient.Application.Abstractions;
 
@@ -43,6 +44,15 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         }
 
         if (!tenantContext.HasTenant)
+        {
+            await next(ctx);
+            return;
+        }
+
+        // Mismo bug que PaymentApp.TenantStatusGateMiddleware (copia duplicada): un token de
+        // servicio M2M pre-tenant con tenant_id=Guid.Empty se parsea como "hay tenant" (Guid.Empty
+        // es un Guid válido) y sin esta excepción se rechazaría acá con "Tenant.Unknown".
+        if (tenantContext.TenantId == Guid.Empty && ctx.User.GetActorType() == ActorType.Service)
         {
             await next(ctx);
             return;

@@ -13,6 +13,7 @@ using TaxVision.Notification.Domain.Emailing.Layouts;
 using TaxVision.Notification.Domain.Emailing.Sending;
 using TaxVision.Notification.Domain.Emailing.Templates;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Onboarding;
 using TaxVision.Notification.Domain.Permissions;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -45,6 +46,9 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<UserNotificationPreference> UserNotificationPreferences => Set<UserNotificationPreference>();
+
+    // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady.
+    public DbSet<OnboardingReceiptLookup> OnboardingReceiptLookups => Set<OnboardingReceiptLookup>();
 
     // RBAC Fase 7 — proyecciones locales de permisos para AUTORIZACIÓN (perm_v enforcement),
     // distintas de UserPermissionsProjection/RolePermissionsProjection de arriba (Fase 4,

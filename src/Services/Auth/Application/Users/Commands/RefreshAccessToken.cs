@@ -9,7 +9,11 @@ using Wolverine;
 
 namespace TaxVision.Auth.Application.Users.Commands;
 
-public sealed record RefreshAccessTokenCommand(string RefreshToken);
+/// <summary>Fase 18 — ResolvedTenantId viene del Host de la request (IResolvedTenantContext, poblado
+/// por TenantHostResolutionMiddleware), nunca del cliente: el controller lo inyecta, nunca se hace
+/// bind directo del body. Null cuando el Host no resolvió a ningún tenant (ej. dev sin subdominio) —
+/// en ese caso el binding check se salta, no se puede validar contra un candidato inexistente.</summary>
+public sealed record RefreshAccessTokenCommand(string RefreshToken, Guid? ResolvedTenantId = null);
 
 public static class RefreshAccessTokenHandler
 {
@@ -38,6 +42,42 @@ public static class RefreshAccessTokenHandler
         var stored = await sessions.GetTokenByHashAsync(tokens.Hash(command.RefreshToken), ct);
         if (stored is null || stored.SessionId is null)
             return Result.Failure<AuthTokensResponse>(invalid);
+
+        // Fase 18 — binding de host: un refresh token emitido para tenantA no debe poder canjearse
+        // desde el subdominio de tenantB. Solo se puede validar cuando el Host sí resolvió a un
+        // tenant candidato; si no resolvió (null), no hay nada contra qué comparar.
+        if (command.ResolvedTenantId is { } resolvedTenantId && resolvedTenantId != stored.TenantId)
+        {
+            await sessions.RevokeSessionAsync(stored.SessionId.Value, "refresh_token_host_mismatch", ct);
+            await denylist.DenySessionAsync(stored.SessionId.Value, TimeSpan.FromMinutes(20), ct);
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    stored.TenantId,
+                    stored.UserId,
+                    AuthAuditAction.RefreshTokenHostMismatch,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    targetType: "Session",
+                    targetId: stored.SessionId
+                ),
+                ct
+            );
+            await bus.PublishAsync(
+                new SecurityAlertIntegrationEvent
+                {
+                    TenantId = stored.TenantId,
+                    UserId = stored.UserId,
+                    AlertType = SecurityAlertType.RefreshTokenHostMismatch,
+                    IpAddress = request.IpAddress,
+                    UserAgent = request.UserAgent,
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Failure<AuthTokensResponse>(invalid);
+        }
 
         // Detección de reutilización: un token ya rotado/revocado que vuelve a
         // presentarse se trata como robo — se revoca la sesión completa.

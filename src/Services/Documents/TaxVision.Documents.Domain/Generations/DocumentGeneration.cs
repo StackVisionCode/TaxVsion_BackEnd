@@ -67,13 +67,21 @@ public sealed class DocumentGeneration : AggregateRoot
     )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<DocumentGeneration>(new Error("Documents.Generation.InvalidTenant", "TenantId is required."));
+            return Result.Failure<DocumentGeneration>(
+                new Error("Documents.Generation.InvalidTenant", "TenantId is required.")
+            );
         if (string.IsNullOrWhiteSpace(sourceService))
-            return Result.Failure<DocumentGeneration>(new Error("Documents.Generation.InvalidSource", "SourceService is required."));
+            return Result.Failure<DocumentGeneration>(
+                new Error("Documents.Generation.InvalidSource", "SourceService is required.")
+            );
         if (string.IsNullOrWhiteSpace(idempotencyKey))
-            return Result.Failure<DocumentGeneration>(new Error("Documents.Generation.InvalidIdempotencyKey", "IdempotencyKey is required."));
+            return Result.Failure<DocumentGeneration>(
+                new Error("Documents.Generation.InvalidIdempotencyKey", "IdempotencyKey is required.")
+            );
         if (documentVersion < 1)
-            return Result.Failure<DocumentGeneration>(new Error("Documents.Generation.InvalidDocumentVersion", "DocumentVersion must be >= 1."));
+            return Result.Failure<DocumentGeneration>(
+                new Error("Documents.Generation.InvalidDocumentVersion", "DocumentVersion must be >= 1.")
+            );
 
         var generation = new DocumentGeneration
         {
@@ -99,13 +107,20 @@ public sealed class DocumentGeneration : AggregateRoot
     // --- Transiciones explícitas (guardrail #2). El avance normal es lineal; cada método valida
     //     su estado de origen permitido. ---
 
-    public Result Queue(DateTime nowUtc) => Transition(DocumentGenerationStatus.Queued, nowUtc, DocumentGenerationStatus.Requested);
+    public Result Queue(DateTime nowUtc) =>
+        Transition(DocumentGenerationStatus.Queued, nowUtc, DocumentGenerationStatus.Requested);
 
-    public Result StartValidating(DateTime nowUtc) => Transition(DocumentGenerationStatus.Validating, nowUtc, DocumentGenerationStatus.Queued);
+    public Result StartValidating(DateTime nowUtc) =>
+        Transition(DocumentGenerationStatus.Validating, nowUtc, DocumentGenerationStatus.Queued);
 
     public Result StartRendering(DateTime nowUtc)
     {
-        var r = Transition(DocumentGenerationStatus.Rendering, nowUtc, DocumentGenerationStatus.Validating, DocumentGenerationStatus.Queued);
+        var r = Transition(
+            DocumentGenerationStatus.Rendering,
+            nowUtc,
+            DocumentGenerationStatus.Validating,
+            DocumentGenerationStatus.Queued
+        );
         if (r.IsSuccess)
         {
             StartedAtUtc ??= nowUtc;
@@ -118,9 +133,17 @@ public sealed class DocumentGeneration : AggregateRoot
     public Result StartUploading(Guid fileId, DateTime nowUtc)
     {
         if (fileId == Guid.Empty)
-            return Result.Failure(new Error("Documents.Generation.InvalidFileId", "FileId is required to start uploading."));
+            return Result.Failure(
+                new Error("Documents.Generation.InvalidFileId", "FileId is required to start uploading.")
+            );
 
-        var r = Transition(DocumentGenerationStatus.Uploading, nowUtc, DocumentGenerationStatus.Rendering, DocumentGenerationStatus.Transforming, DocumentGenerationStatus.Packaging);
+        var r = Transition(
+            DocumentGenerationStatus.Uploading,
+            nowUtc,
+            DocumentGenerationStatus.Rendering,
+            DocumentGenerationStatus.Transforming,
+            DocumentGenerationStatus.Packaging
+        );
         if (r.IsSuccess)
             FileId = fileId;
         return r;
@@ -130,7 +153,9 @@ public sealed class DocumentGeneration : AggregateRoot
     public Result MarkStored(StorageReference storage, DateTime nowUtc)
     {
         if (FileId is not null && FileId != storage.FileId)
-            return Result.Failure(new Error("Documents.Generation.FileIdMismatch", "Stored FileId does not match the uploaded FileId."));
+            return Result.Failure(
+                new Error("Documents.Generation.FileIdMismatch", "Stored FileId does not match the uploaded FileId.")
+            );
 
         var r = Transition(DocumentGenerationStatus.Stored, nowUtc, DocumentGenerationStatus.Uploading);
         if (r.IsSuccess)
@@ -190,10 +215,16 @@ public sealed class DocumentGeneration : AggregateRoot
         FileName = fileName;
     }
 
-    private Result Transition(DocumentGenerationStatus target, DateTime nowUtc, params DocumentGenerationStatus[] allowedFrom)
+    private Result Transition(
+        DocumentGenerationStatus target,
+        DateTime nowUtc,
+        params DocumentGenerationStatus[] allowedFrom
+    )
     {
         if (!allowedFrom.Contains(Status))
-            return Result.Failure(new Error("Documents.Generation.InvalidTransition", $"Cannot move to {target} from {Status}."));
+            return Result.Failure(
+                new Error("Documents.Generation.InvalidTransition", $"Cannot move to {target} from {Status}.")
+            );
 
         Status = target;
         UpdatedAtUtc = nowUtc;

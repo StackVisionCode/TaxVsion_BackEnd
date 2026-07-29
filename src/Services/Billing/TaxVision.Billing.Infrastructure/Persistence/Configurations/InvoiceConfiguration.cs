@@ -28,9 +28,7 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Property(i => i.ReceiptHash).HasMaxLength(64);
         b.Property(i => i.RowVersion).IsRowVersion();
 
-        b.HasIndex(i => new { i.TenantId, i.InvoiceNumber })
-            .IsUnique()
-            .HasFilter("[InvoiceNumber] IS NOT NULL");
+        b.HasIndex(i => new { i.TenantId, i.InvoiceNumber }).IsUnique().HasFilter("[InvoiceNumber] IS NOT NULL");
         b.HasIndex(i => new { i.TenantId, i.Status });
 
         // Totales Money como escalar "cents|CUR".
@@ -55,16 +53,19 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Ignore(i => i.Discount);
 
         // Líneas en tabla propia; cada Money como "cents|CUR".
-        b.OwnsMany(i => i.Lines, lb =>
-        {
-            lb.ToTable("InvoiceLineItems");
-            lb.WithOwner().HasForeignKey(l => l.InvoiceId);
-            lb.HasKey(l => l.Id);
-            lb.Property(l => l.Description).HasMaxLength(1000).IsRequired();
-            lb.Property(l => l.UnitAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
-            lb.Property(l => l.TaxAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
-            lb.Property(l => l.LineTotal).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
-        });
+        b.OwnsMany(
+            i => i.Lines,
+            lb =>
+            {
+                lb.ToTable("InvoiceLineItems");
+                lb.WithOwner().HasForeignKey(l => l.InvoiceId);
+                lb.HasKey(l => l.Id);
+                lb.Property(l => l.Description).HasMaxLength(1000).IsRequired();
+                lb.Property(l => l.UnitAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
+                lb.Property(l => l.TaxAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
+                lb.Property(l => l.LineTotal).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
+            }
+        );
 
         // Enlaces de pago (Fase 2A): entidad NORMAL (no owned) en tabla propia — la Fase 3 la busca por
         // ExternalPayableId, transiciona estados e indexa. La colección se llena por campo (_paymentLinks).

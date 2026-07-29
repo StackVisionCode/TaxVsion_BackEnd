@@ -20,8 +20,7 @@ public sealed class PayableReferenceRepository(PaymentClientDbContext db) : IPay
         string externalReferenceId,
         CancellationToken ct = default
     ) =>
-        db
-            .Set<PayableReference>()
+        db.Set<PayableReference>()
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(
                 p => p.TenantId == tenantId && p.PurposeKind == kind && p.ExternalReferenceId == externalReferenceId,

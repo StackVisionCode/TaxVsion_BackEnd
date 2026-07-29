@@ -72,6 +72,7 @@ public static class AuthAuditAction
     public const string MfaPolicyUpdated = "auth.mfa.policy_updated";
     public const string TokenRefreshed = "auth.token.refreshed";
     public const string TokenReuseDetected = "auth.token.reuse_detected";
+    public const string RefreshTokenHostMismatch = "auth.token.host_mismatch";
     public const string SessionRevoked = "auth.session.revoked";
     public const string AllSessionsRevoked = "auth.session.all_revoked";
     public const string PasswordChanged = "auth.password.changed";

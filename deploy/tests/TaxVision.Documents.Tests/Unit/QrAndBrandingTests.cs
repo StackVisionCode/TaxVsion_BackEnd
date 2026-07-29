@@ -47,9 +47,28 @@ public sealed class QrAndBrandingTests
                 ["brandColor"] = brandColor,
                 ["displayName"] = displayName,
                 ["footer"] = footer,
-                ["issuer"] = new Dictionary<string, object> { ["name"] = "TaxVision Labs SL", ["taxId"] = "B-1", ["address"] = "" },
-                ["customer"] = new Dictionary<string, object> { ["name"] = "Cliente SA", ["taxId"] = "A-1", ["address"] = "" },
-                ["lines"] = new List<object> { new Dictionary<string, object> { ["description"] = "Item", ["quantity"] = "1", ["unitPrice"] = "10.00", ["amount"] = "10.00" } },
+                ["issuer"] = new Dictionary<string, object>
+                {
+                    ["name"] = "TaxVision Labs SL",
+                    ["taxId"] = "B-1",
+                    ["address"] = "",
+                },
+                ["customer"] = new Dictionary<string, object>
+                {
+                    ["name"] = "Cliente SA",
+                    ["taxId"] = "A-1",
+                    ["address"] = "",
+                },
+                ["lines"] = new List<object>
+                {
+                    new Dictionary<string, object>
+                    {
+                        ["description"] = "Item",
+                        ["quantity"] = "1",
+                        ["unitPrice"] = "10.00",
+                        ["amount"] = "10.00",
+                    },
+                },
                 ["subtotal"] = "10.00",
                 ["taxAmount"] = "2.10",
                 ["total"] = "12.10",
@@ -68,16 +87,24 @@ public sealed class QrAndBrandingTests
             "billing.invoice.v1",
             1,
             Guid.NewGuid(),
-            Data("Pending", "https://acme.pay.taxvision.test/i/abc", qrDataUri, logoDataUri, "#8b1e3f", "ACME Asesores", "ACME · gracias")
+            Data(
+                "Pending",
+                "https://acme.pay.taxvision.test/i/abc",
+                qrDataUri,
+                logoDataUri,
+                "#8b1e3f",
+                "ACME Asesores",
+                "ACME · gracias"
+            )
         );
 
         Assert.True(result.IsSuccess);
         var html = result.Value;
-        Assert.Contains("--brand: #8b1e3f;", html);          // color de marca aplicado
+        Assert.Contains("--brand: #8b1e3f;", html); // color de marca aplicado
         Assert.Contains("<img class=\"logo\" src=\"" + logoDataUri, html); // logo embebido
-        Assert.Contains("ACME Asesores", html);              // nombre visible del tenant
-        Assert.Contains("ACME · gracias", html);             // pie personalizado
-        Assert.Contains(qrDataUri, html);                    // QR del link de pago
+        Assert.Contains("ACME Asesores", html); // nombre visible del tenant
+        Assert.Contains("ACME · gracias", html); // pie personalizado
+        Assert.Contains(qrDataUri, html); // QR del link de pago
         Assert.Contains("Escaneá para pagar", html);
     }
 }

@@ -57,7 +57,11 @@ public static class ErrorHttpMapping
             or "TenantConnectAccount.NotFound"
             or "PayoutSchedule.NotFound"
             or "TenantRecurringPayment.NotFound"
-            or "TenantRecurringPayment.ScheduleNotFound" => StatusCodes.Status404NotFound,
+            or "TenantRecurringPayment.ScheduleNotFound"
+            or "TermsVersion.NotFound"
+            or "Onboarding.TokenReferenceNotFound"
+            or "Onboarding.NotFound"
+            or "Onboarding.ChallengeNotFound" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -120,9 +124,16 @@ public static class ErrorHttpMapping
             or "CorrespondenceTempBucketUploader.UploadFailed"
             or "PostmasterClient.EmptyResponse"
             or "PostmasterClient.UnexpectedStatus"
+            or "PaymentAppClient.EmptyResponse"
+            or "PaymentAppClient.UnexpectedStatus"
             or "Tenant.Logo.Storage.Upload"
             or "Tenant.Logo.Storage.Download"
-            or "Tenant.Logo.Storage.Delete" => StatusCodes.Status502BadGateway,
+            or "Tenant.Logo.Storage.Delete"
+            or "Onboarding.TermsContentFetchFailed"
+            or "Stripe.CheckoutSession.Failed"
+            or "Stripe.CheckoutSession.MissingPaymentIntent"
+            or "Manual.CheckoutSession.NotSupported"
+            or "Intellipay.CheckoutSession.NotImplemented" => StatusCodes.Status502BadGateway,
             "ConnectorsClient.ServiceAuthUnavailable"
             or "ConnectorsClient.Unavailable"
             or "ConnectorsClient.RequestFailed"
@@ -130,6 +141,7 @@ public static class ErrorHttpMapping
             or "CloudStorageClient.RequestFailed"
             or "PostmasterClient.ServiceAuthUnavailable"
             or "PostmasterClient.RequestFailed"
+            or "PaymentAppClient.RequestFailed"
             or "Tenant.Logo.Storage.Auth" => StatusCodes.Status503ServiceUnavailable,
             "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
                 StatusCodes.Status504GatewayTimeout,

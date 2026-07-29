@@ -17,6 +17,7 @@ public sealed class DocumentBranding : AggregateRoot
 {
     public const int MaxDisplayNameLength = 120;
     public const int MaxFooterLength = 300;
+
     // ~700 KB de PNG/JPG en base64. Tope defensivo: un logo enorme infla cada PDF y el mensaje del bus.
     public const int MaxLogoDataUriLength = 1_000_000;
 
@@ -41,7 +42,9 @@ public sealed class DocumentBranding : AggregateRoot
     )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<DocumentBranding>(new Error("Documents.Branding.InvalidTenant", "TenantId is required."));
+            return Result.Failure<DocumentBranding>(
+                new Error("Documents.Branding.InvalidTenant", "TenantId is required.")
+            );
 
         var validated = Validate(displayName, logoDataUri, brandColorHex, footerText);
         if (validated.IsFailure)
@@ -53,7 +56,13 @@ public sealed class DocumentBranding : AggregateRoot
         return Result.Success(branding);
     }
 
-    public Result Update(string? displayName, string? logoDataUri, string? brandColorHex, string? footerText, DateTime nowUtc)
+    public Result Update(
+        string? displayName,
+        string? logoDataUri,
+        string? brandColorHex,
+        string? footerText,
+        DateTime nowUtc
+    )
     {
         var validated = Validate(displayName, logoDataUri, brandColorHex, footerText);
         if (validated.IsFailure)
@@ -85,20 +94,33 @@ public sealed class DocumentBranding : AggregateRoot
         footerText = Trim(footerText);
 
         if (displayName is { Length: > MaxDisplayNameLength })
-            return Result.Failure<BrandingFields>(new Error("Documents.Branding.DisplayNameTooLong", $"DisplayName cannot exceed {MaxDisplayNameLength} characters."));
+            return Result.Failure<BrandingFields>(
+                new Error(
+                    "Documents.Branding.DisplayNameTooLong",
+                    $"DisplayName cannot exceed {MaxDisplayNameLength} characters."
+                )
+            );
 
         if (footerText is { Length: > MaxFooterLength })
-            return Result.Failure<BrandingFields>(new Error("Documents.Branding.FooterTooLong", $"FooterText cannot exceed {MaxFooterLength} characters."));
+            return Result.Failure<BrandingFields>(
+                new Error("Documents.Branding.FooterTooLong", $"FooterText cannot exceed {MaxFooterLength} characters.")
+            );
 
         if (brandColorHex is not null && !IsHexColor(brandColorHex))
-            return Result.Failure<BrandingFields>(new Error("Documents.Branding.InvalidColor", "BrandColorHex must be a #RGB or #RRGGBB hex color."));
+            return Result.Failure<BrandingFields>(
+                new Error("Documents.Branding.InvalidColor", "BrandColorHex must be a #RGB or #RRGGBB hex color.")
+            );
 
         if (logoDataUri is not null)
         {
             if (!logoDataUri.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
-                return Result.Failure<BrandingFields>(new Error("Documents.Branding.InvalidLogo", "LogoDataUri must be an embedded data:image/ URI."));
+                return Result.Failure<BrandingFields>(
+                    new Error("Documents.Branding.InvalidLogo", "LogoDataUri must be an embedded data:image/ URI.")
+                );
             if (logoDataUri.Length > MaxLogoDataUriLength)
-                return Result.Failure<BrandingFields>(new Error("Documents.Branding.LogoTooLarge", "LogoDataUri is too large."));
+                return Result.Failure<BrandingFields>(
+                    new Error("Documents.Branding.LogoTooLarge", "LogoDataUri is too large.")
+                );
         }
 
         return Result.Success(new BrandingFields(displayName, logoDataUri, brandColorHex, footerText));
@@ -109,5 +131,10 @@ public sealed class DocumentBranding : AggregateRoot
     private static bool IsHexColor(string value) =>
         value.Length is 4 or 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
 
-    private readonly record struct BrandingFields(string? DisplayName, string? LogoDataUri, string? BrandColorHex, string? FooterText);
+    private readonly record struct BrandingFields(
+        string? DisplayName,
+        string? LogoDataUri,
+        string? BrandColorHex,
+        string? FooterText
+    );
 }

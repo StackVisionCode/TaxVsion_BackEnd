@@ -80,7 +80,12 @@ public sealed class DocumentGenerationConfiguration : IEntityTypeConfiguration<D
 
         // Idempotencia de la solicitud: una generación por (TenantId, SourceService, IdempotencyKey).
         builder
-            .HasIndex(g => new { g.TenantId, g.SourceService, g.IdempotencyKey })
+            .HasIndex(g => new
+            {
+                g.TenantId,
+                g.SourceService,
+                g.IdempotencyKey,
+            })
             .IsUnique()
             .HasDatabaseName("UX_DocumentGenerations_Tenant_Source_IdempotencyKey");
 

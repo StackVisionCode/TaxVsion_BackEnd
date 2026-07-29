@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Tenancy;
 using TaxVision.PaymentApp.Application.Abstractions;
 
@@ -43,6 +44,18 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         }
 
         if (!tenantContext.HasTenant)
+        {
+            await next(ctx);
+            return;
+        }
+
+        // PayFlow (Fase 8/16): las llamadas M2M pre-tenant (p.ej. onboarding checkout) emiten un
+        // token de servicio con tenant_id=Guid.Empty como sentinela explícito de "todavía no hay
+        // tenant" (ver PaymentAppOnboardingClient.cs) — JwtTenantContextMiddleware igual lo parsea
+        // como "hay tenant" (Guid.Empty es un Guid válido), así que sin esta excepción cualquier
+        // token de servicio con ese sentinela se rechazaba acá con "Tenant.Unknown" (bug real
+        // encontrado corriendo el checkout de onboarding end-to-end: PaymentApp devolvía 403).
+        if (tenantContext.TenantId == Guid.Empty && ctx.User.GetActorType() == ActorType.Service)
         {
             await next(ctx);
             return;

@@ -19,6 +19,7 @@ using TaxVision.Notification.Api.Jobs;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Infrastructure;
+using TaxVision.Notification.Infrastructure.Onboarding;
 using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Scribe;
 using TaxVision.Notification.Infrastructure.Storage;
@@ -98,6 +99,17 @@ builder.Services.AddHttpClient<IScribeRenderClient, ScribeRenderClient>(
     {
         var options = sp.GetRequiredService<IOptions<ScribeClientOptions>>().Value;
         client.BaseAddress = new Uri(options.BaseUrl);
+    }
+);
+
+// PayFlow (Fase 12): cliente HTTP al endpoint one-shot de Auth que resuelve un TokenReference a la
+// URL real de registro — reusa el mismo IServiceTokenAcquirer M2M (apunta a Auth, mismo host que
+// ServiceAuthClientOptions.AuthBaseUrl ya configurado arriba).
+builder.Services.AddHttpClient<IOnboardingTokenClient, OnboardingTokenClient>(
+    (sp, client) =>
+    {
+        var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+        client.BaseAddress = new Uri(options.AuthBaseUrl);
     }
 );
 

@@ -32,6 +32,11 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
     public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
         db.Users.IgnoreQueryFilters().AnyAsync(user => user.TenantId == tenantId && user.Email == email, ct);
 
+    // IgnoreQueryFilters(): invocado desde el handler M2M de creación de TenantAdmin, mismo scope
+    // de Wolverine sin ITenantContext poblado que GetByIdAsync (ver comentario de arriba).
+    public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+        db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(user => user.OnboardingId == onboardingId, ct);
+
     public async Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(
         string email,
         CancellationToken ct = default

@@ -47,6 +47,11 @@ public sealed class User : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? DeactivatedAtUtc { get; private set; }
 
+    /// <summary>PayFlow (Fase 16) — presente solo para el TenantAdmin creado por la Saga de
+    /// onboarding (<c>auth/internal/tenants/{tenantId}/owners</c>). Único índice filtrado: protege
+    /// contra que un reintento del mismo comando M2M cree un segundo TenantAdmin.</summary>
+    public Guid? OnboardingId { get; private set; }
+
     public static Result<User> Register(
         Guid tenantId,
         string name,
@@ -54,7 +59,8 @@ public sealed class User : TenantEntity
         string email,
         string passwordHash,
         UserActorType actorType,
-        Guid? customerId = null
+        Guid? customerId = null,
+        Guid? onboardingId = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -115,6 +121,7 @@ public sealed class User : TenantEntity
             CustomerId = customerId,
             IsActive = true,
             CreatedAtUtc = DateTime.UtcNow,
+            OnboardingId = onboardingId,
         };
 
         user.SetTenant(tenantId);

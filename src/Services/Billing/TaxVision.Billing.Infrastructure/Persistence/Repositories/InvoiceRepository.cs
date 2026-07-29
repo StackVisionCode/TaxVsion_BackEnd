@@ -24,7 +24,11 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
             .Include(i => i.PaymentLinks)
             .FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Id == invoiceId, ct);
 
-    public async Task<IReadOnlyList<Invoice>> ListByTenantAsync(Guid tenantId, int take, CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<Invoice>> ListByTenantAsync(
+        Guid tenantId,
+        int take,
+        CancellationToken ct = default
+    ) =>
         await _dbContext
             .Invoices.IgnoreQueryFilters()
             .Include(i => i.PaymentLinks)

@@ -39,6 +39,39 @@ public sealed class InProcessEmailDispatchGateway(
 {
     public async Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default)
     {
+        // Idempotencia real (mismo bug encontrado en EventBasedEmailDispatchGateway durante la
+        // verificación E2E de PayFlow, ver comentario ahí) -- acá es más grave todavía porque este
+        // gateway manda el SMTP directo, sin ningún guard de idempotencia downstream (a diferencia
+        // de Postmaster/SqlIdempotencyGuard en el otro path): sin este chequeo, un reintento de
+        // Wolverine reenviaría el correo real, no solo duplicaría una fila de log.
+        if (request.RelatedEventId is { } relatedEventId)
+        {
+            var existing = await logRepository.GetByRelatedEventIdAsync(
+                request.TenantId,
+                relatedEventId,
+                request.TemplateKey,
+                ct
+            );
+            if (existing is not null)
+            {
+                var lastAttempt = existing.Attempts.OrderByDescending(a => a.QueuedAtUtc).FirstOrDefault();
+                logger.LogInformation(
+                    "Email {TemplateKey} for tenant {TenantId} already dispatched for event {RelatedEventId} (log {LogId}); skipping duplicate send.",
+                    request.TemplateKey,
+                    request.TenantId,
+                    relatedEventId,
+                    existing.Id
+                );
+                return new EmailDispatchResult(
+                    existing.Id,
+                    lastAttempt?.Id ?? Guid.Empty,
+                    lastAttempt?.Status ?? NotificationDispatchAttemptStatus.Sent,
+                    lastAttempt?.ProviderMessageId,
+                    Error: existing.Status == NotificationStatus.Failed ? existing.Error : null
+                );
+            }
+        }
+
         var logCreation = NotificationLog.Create(
             request.TenantId,
             NotificationChannel.Email,

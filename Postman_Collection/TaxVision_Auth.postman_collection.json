@@ -1869,6 +1869,337 @@
 			]
 		},
 		{
+			"name": "Onboarding (M2M)",
+			"description": "PayFlow Fase 16 — M2M interno, requiere un token de servicio (actor_type=Service, obtenido via POST /auth/service-token con el client_id/client_secret correspondiente en Auth:ServiceAuth:Clients — ver request ServiceToken en la raiz de esta coleccion). La policy ServiceOnly + [AllowActorTypes(Service)] rechaza cualquier token de usuario normal con 403, sin importar rol o permisos. Receptor de la Saga de onboarding pay-first (TenantOnboardingProcessManager, Fase 15) y del propio Tenant service (status). No apto para flujos de testing manual estandar — se incluye solo como utilidad para pruebas M2M explicitas, mismo criterio que las demas carpetas (M2M) de esta coleccion/repositorio.",
+			"item": [
+				{
+					"name": "GetOnboardingStatus (M2M — llamado por Tenant)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"pm.test('tiene status', () => pm.expect(body).to.have.property('status'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Tenant via POST /auth/service-token — ver AuthOnboardingStatusClient (Tenant.Infrastructure/Onboarding), reusa ITenantServiceTokenAcquirer (mismo client tenant-worker que usa Tenant para llamar a CloudStorage)."
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/internal/onboarding/{{onboardingId}}/status",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"internal",
+								"onboarding",
+								"{{onboardingId}}",
+								"status"
+							]
+						},
+						"description": "PayFlow Fase 16 — M2M interno. Llamado por Tenant (AuthOnboardingStatusClient) antes de crear el Tenant real a partir de un onboarding, para confirmar en defensa en profundidad (mas alla del gate de la policy ServiceOnly) que el onboarding sigue Provisioning y el pago esta confirmado. Respuesta 200: InternalOnboardingStatusResponse(status, paymentCompletedAtUtc) — ej. {\"status\": \"Provisioning\", \"paymentCompletedAtUtc\": \"2026-07-28T12:00:00Z\"}."
+					},
+					"response": []
+				},
+				{
+					"name": "CreateTenantOwner (M2M — llamado por la Saga de Auth)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) generado in-process por la propia Saga de Auth (TenantOnboardingProcessManager) via IJwtTokenGenerator.GenerateScopedServiceToken — loopback hacia el propio Auth, no es un client registrado en ServiceAuth:Clients."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"onboardingId\": \"11111111-1111-1111-1111-111111111111\",\n  \"email\": \"owner@example.com\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"passwordHashReference\": \"22222222-2222-2222-2222-222222222222\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/internal/tenants/{{tenantId}}/owners",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"internal",
+								"tenants",
+								"{{tenantId}}",
+								"owners"
+							]
+						},
+						"description": "PayFlow Fase 16 — M2M interno. Llamado por la Saga de onboarding (Fase 15) para crear el TenantAdmin de un tenant recien provisionado. El password NUNCA viaja en este body en texto plano ni siquiera ya hasheado: passwordHashReference es una referencia Redis de un solo uso (ITokenReferenceStore, GETDEL) a un hash PBKDF2 ya calculado durante el registro publico — este endpoint solo canjea la referencia. Idempotente por onboardingId. Responde 200 vacio en exito, o el shape de error estandar en fallo."
+					},
+					"response": []
+				},
+				{
+					"name": "ResolveRegistrationTokenReference (M2M — llamado por Notification)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"pm.test('tiene registrationUrl', () => pm.expect(body).to.have.property('registrationUrl'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Notification (OnboardingTokenClient) via POST /auth/service-token."
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/internal/onboarding/tokens/{{onboardingRegistrationTokenReference}}/raw",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"internal",
+								"onboarding",
+								"tokens",
+								"{{onboardingRegistrationTokenReference}}",
+								"raw"
+							]
+						},
+						"description": "PayFlow Fase 9 — M2M interno. Expone el RegistrationToken crudo guardado en Redis (patron TokenReference, TTL 30s, GETDEL) por OnboardingPaymentSucceededConsumer, para que Notification arme el email de 'completa tu registro' con el link real. One-shot: un segundo intento con la misma referencia devuelve Onboarding.TokenReferenceNotFound (404). Respuesta 200: { registrationUrl }."
+					},
+					"response": []
+				},
+				{
+					"name": "StoreInvitationTokenReference (M2M — llamado por Tenant)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"pm.test('tiene reference', () => pm.expect(body).to.have.property('reference'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Tenant antes de publicar TenantCreatedIntegrationEvent."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"rawToken\": \"raw-admin-invitation-token-before-hashing\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/internal/invitations/token-references",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"internal",
+								"invitations",
+								"token-references"
+							]
+						},
+						"description": "PayFlow Fase 18 — M2M interno. Lado de escritura del patron TokenReference (mismo ITokenReferenceStore que RegistrationToken/PasswordHashReference, Redis GETDEL, TTL 30s) aplicado a AdminInvitationRawToken: Tenant deposita el raw token de activacion del owner ANTES de publicar TenantCreatedIntegrationEvent (que ahora lleva solo AdminInvitationTokenReference, un Guid, nunca el token en claro). TenantCreatedConsumer (Auth) lo consume in-process via ConsumeAsync. Respuesta 200: { reference } (Guid)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Onboarding Admin (PlatformAdmin)",
+			"description": "PayFlow Fase 17 — panel de soporte para onboardings en ManualReview o con fallos permanentes de provisioning. Todos gateados por [Authorize] + [AllowActorTypes(PlatformAdmin)] + [HasPermission(PermissionCatalog.OnboardingAdminManage)] (OnboardingAdminController). resume/update-and-resume publican comandos que la Saga (TenantOnboardingProcessManager) retoma desde el paso fallido; force-complete marca el onboarding completo manualmente tras resolver el problema fuera de banda; cancel-and-refund es irreversible — dispara OnboardingCancelRequestedIntegrationEvent (compensacion en Subscription/Auth/Tenant, no-op si el paso nunca corrio) y OnboardingRefundRequestedIntegrationEvent (consumido por PaymentApp's OnboardingRefundConsumer).",
+			"item": [
+				{
+					"name": "ListOnboardings (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/admin?status=ManualReview&page=1&limit=50",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "auth", "onboarding", "admin" ],
+							"query": [
+								{ "key": "status", "value": "ManualReview", "description": "Opcional — filtra por TenantOnboardingStatus (ej. ManualReview, ProvisioningFailed). Omitir para traer todos los estados." },
+								{ "key": "page", "value": "1" },
+								{ "key": "limit", "value": "50" }
+							]
+						},
+						"description": "Lista paginada de onboardings para el panel de soporte de PlatformAdmin."
+					},
+					"response": []
+				},
+				{
+					"name": "GetOnboardingDetail (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}" ]
+						},
+						"description": "Detalle completo de un onboarding puntual (status, CurrentStep, historial de reintentos, error de la Saga si aplica)."
+					},
+					"response": []
+				},
+				{
+					"name": "ResumeOnboarding (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/resume",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "resume" ]
+						},
+						"description": "Sin body. Reintenta el paso de provisioning que quedo fallido, sin cambiar ningun dato del onboarding (usar cuando la causa raiz del fallo transitorio ya se resolvio, ej. un servicio downstream que estaba caido)."
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateAndResumeOnboarding (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"Subdomain\": \"acme-tax-2\",\n  \"PlanId\": null\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/update-and-resume",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "update-and-resume" ]
+						},
+						"description": "Corrige el dato que causo el fallo permanente (ej. Subdomain ya tomado) antes de reintentar. Ambos campos del body son opcionales — enviar solo el que se necesite corregir."
+					},
+					"response": []
+				},
+				{
+					"name": "ForceCompleteOnboarding (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"Reason\": \"Provisioning verificado manualmente en DB, todos los pasos ya corrieron correctamente pese al error reportado por la Saga.\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/force-complete",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "force-complete" ]
+						},
+						"description": "Marca el onboarding como Completed sin ejecutar ningun paso de provisioning adicional. Usar solo cuando ya se confirmo fuera de banda (DB/logs) que el tenant quedo correctamente provisionado pese al error reportado."
+					},
+					"response": []
+				},
+				{
+					"name": "CancelAndRefundOnboarding (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"Reason\": \"Cliente solicito cancelacion, provisioning no se pudo completar.\",\n  \"Confirmation\": \"I understand this is irreversible\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/cancel-and-refund",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "cancel-and-refund" ]
+						},
+						"description": "IRREVERSIBLE. Requiere el campo Confirmation exacto (\"I understand this is irreversible\") o la API rechaza el request. Dispara compensacion (Subscription/Auth/Tenant deshacen lo que hayan provisionado, no-op por paso) y refund (PaymentApp)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "GetHealthDetailed",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/health/detailed",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "health", "detailed" ]
+						},
+						"description": "Sin auth. Devuelve el detalle de los health checks tageados 'ready' (sql-server, redis, rabbitmq) con status/duracion/error por check. Fase 17: deliberadamente NO agrega checks downstream a Documents/PaymentApp/Tenant/Subscription — ver comentario en Program.cs."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Negative Cases — Actor Type",
 			"item": [
 				{

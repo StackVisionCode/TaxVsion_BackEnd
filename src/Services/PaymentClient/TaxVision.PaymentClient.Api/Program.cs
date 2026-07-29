@@ -68,12 +68,17 @@ builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProv
 // consumir este endpoint aunque también sea actor_type=Service. El service-token emite cada scope
 // como claim "scope" (JwtTokenGenerator.GenerateScopedServiceToken). PermissionPolicyProvider delega
 // los nombres no-"perm:" al provider por defecto, así que esta policy con nombre se resuelve normal.
-builder.Services.AddAuthorizationBuilder().AddPolicy("CreatePaymentLinksService", policy =>
-{
-    policy.RequireAuthenticatedUser();
-    policy.RequireClaim("actor_type", "Service");
-    policy.RequireClaim("scope", "payments.links.create");
-});
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy(
+        "CreatePaymentLinksService",
+        policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireClaim("actor_type", "Service");
+            policy.RequireClaim("scope", "payments.links.create");
+        }
+    );
 
 // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
 // Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el

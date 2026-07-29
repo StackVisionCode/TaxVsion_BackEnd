@@ -1,4 +1,6 @@
 using BuildingBlocks.Authorization;
+using TaxVision.Auth.Domain.Credentials;
+using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 
@@ -95,5 +97,48 @@ public sealed class AuthDomainTests
         Assert.Contains(CloudStoragePermissions.FileUpload, defaults);
         Assert.Contains(CloudStoragePermissions.FileDownload, defaults);
         Assert.DoesNotContain(CloudStoragePermissions.FileDelete, defaults);
+    }
+
+    [Fact]
+    public void PasswordResetToken_becomes_unusable_after_MaxAttempts_failed_attempts()
+    {
+        var now = DateTime.UtcNow;
+        var token = PasswordResetToken.Create(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "hash",
+            "127.0.0.1",
+            TimeSpan.FromMinutes(30)
+        );
+
+        for (var i = 0; i < PasswordResetToken.MaxAttempts; i++)
+        {
+            Assert.True(token.IsUsable(now));
+            token.RegisterAttempt();
+        }
+
+        Assert.False(token.IsUsable(now));
+    }
+
+    [Fact]
+    public void Invitation_tracks_accept_attempts_up_to_MaxAcceptAttempts()
+    {
+        var invitation = Invitation
+            .Create(
+                Guid.NewGuid(),
+                "invitee@example.com",
+                UserActorType.TenantEmployee,
+                customerId: null,
+                invitedByUserId: null,
+                tokenHash: new string('a', 64),
+                expiresAtUtc: DateTime.UtcNow.AddDays(1)
+            )
+            .Value;
+
+        for (var i = 1; i <= Invitation.MaxAcceptAttempts; i++)
+        {
+            invitation.RegisterAcceptAttempt();
+            Assert.Equal(i, invitation.AcceptAttempts);
+        }
     }
 }

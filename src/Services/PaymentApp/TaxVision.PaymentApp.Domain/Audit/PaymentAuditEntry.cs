@@ -41,11 +41,10 @@ public sealed class PaymentAuditEntry : BaseEntity
         string? reason
     )
     {
-        if (tenantId == Guid.Empty)
-            return Result.Failure<PaymentAuditEntry>(
-                new Error("PaymentAuditEntry.InvalidTenant", "TenantId is required.")
-            );
-
+        // PayFlow (Fase 8) — Guid.Empty es válido para acciones sobre un SaaSPayment
+        // Type=OnboardingInitial, que carga TenantId=Guid.Empty como sentinel hasta que el
+        // tenant real existe (ver SaaSPayment.CreateForOnboarding). No hay FK real desde esta
+        // tabla hacia Tenants, así que relajar el guard no compromete integridad referencial.
         if (string.IsNullOrWhiteSpace(aggregateType))
             return Result.Failure<PaymentAuditEntry>(
                 new Error("PaymentAuditEntry.InvalidAggregateType", "AggregateType is required.")

@@ -45,6 +45,11 @@ public static class DependencyInjection
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
         services.AddScoped<IRecipientResolver, RecipientResolver>();
 
+        // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady
+        // (ver OnboardingReceiptLookup). El cliente M2M al endpoint one-shot de tokens de Auth se
+        // registra en Program.cs (necesita HttpClient con BaseAddress, igual que Scribe/CloudStorage).
+        services.AddScoped<IOnboardingReceiptLookupRepository, OnboardingReceiptLookupRepository>();
+
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para AUTORIZACION,
         // consultada por ProjectionPermissionsSource cuando Authorization:PermissionsSource=
         // "Projection". Distinta de la proyeccion de arriba (Fase 4, fan-out de notificaciones) —

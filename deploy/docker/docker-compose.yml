@@ -425,6 +425,12 @@ services:
       ServiceAuth__Clients__13__Secret: ${BILLING_PAYMENTS_CLIENT_SECRET:-}
       ServiceAuth__Clients__13__Audience: taxvision-payments
       ServiceAuth__Clients__13__Scopes__0: payments.links.create
+      # PayFlow (Fase 16) — PaymentApp → Subscription (M2M): resolver el precio real del plan antes
+      # de crear el Stripe Checkout Session del onboarding. Subscription no valida audience/scopes
+      # granulares en este endpoint (solo ServiceOnly + AllowActorTypes(Service)), así que no hace
+      # falta Audience/Scopes acá — mismo estilo que los clientes 0-8.
+      ServiceAuth__Clients__14__ClientId: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_ID:-payment-app-subscription}
+      ServiceAuth__Clients__14__Secret: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1047,6 +1053,12 @@ services:
       Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET:?Set STRIPE_WEBHOOK_SECRET in .env}
       Intellipay__MerchantKey: ${INTELLIPAY_MERCHANT_KEY:-}
       Intellipay__ApiKey: ${INTELLIPAY_API_KEY:-}
+      # PayFlow (Fase 16) — M2M hacia Subscription para resolver el precio real del plan
+      # (ISubscriptionPlanPricingClient), cierra el price-trust gap del checkout de onboarding.
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_ID:-payment-app-subscription}
+      ServiceAuthClient__ClientSecret: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -1442,6 +1454,12 @@ services:
       PAYMENTAPP_DB_CONNECTION: ${PAYMENTAPP_DB_CONNECTION:?Set PAYMENTAPP_DB_CONNECTION in .env}
       PAYMENTCLIENT_DB_CONNECTION: ${PAYMENTCLIENT_DB_CONNECTION:?Set PAYMENTCLIENT_DB_CONNECTION in .env}
       GROWTH_DB_CONNECTION: ${GROWTH_DB_CONNECTION:?Set GROWTH_DB_CONNECTION in .env}
+      # Billing/Documents (services mas nuevos) nunca se agregaron aca pese a que
+      # apply-migrations.sh (set -eu) ya los invoca — sin estas dos, "docker compose
+      # run migrations" fallaba con "unbound variable" ANTES de migrar ningun
+      # servicio, no solo estos dos. Corregido de paso.
+      BILLING_DB_CONNECTION: ${BILLING_DB_CONNECTION:?Set BILLING_DB_CONNECTION in .env}
+      DOCUMENTS_DB_CONNECTION: ${DOCUMENTS_DB_CONNECTION:?Set DOCUMENTS_DB_CONNECTION in .env}
     depends_on:
       sqlserver:
         condition: service_healthy

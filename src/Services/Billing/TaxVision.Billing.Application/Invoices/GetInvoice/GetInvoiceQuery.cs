@@ -39,7 +39,9 @@ public static class GetInvoiceHandler
     {
         var invoice = await invoices.GetByIdAsync(query.TenantId, query.InvoiceId, ct);
         if (invoice is null)
-            return Result.Failure<InvoiceSummaryResponse>(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
+            return Result.Failure<InvoiceSummaryResponse>(
+                new Error("Billing.Invoice.NotFound", "Invoice does not exist.")
+            );
 
         return Result.Success(
             new InvoiceSummaryResponse(

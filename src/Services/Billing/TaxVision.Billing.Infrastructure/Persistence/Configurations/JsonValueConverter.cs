@@ -12,8 +12,6 @@ public sealed class JsonValueConverter<T> : ValueConverter<T, string>
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
     public JsonValueConverter()
-        : base(
-            value => JsonSerializer.Serialize(value, Options),
-            json => JsonSerializer.Deserialize<T>(json, Options)!
-        ) { }
+        : base(value => JsonSerializer.Serialize(value, Options), json => JsonSerializer.Deserialize<T>(json, Options)!)
+    { }
 }

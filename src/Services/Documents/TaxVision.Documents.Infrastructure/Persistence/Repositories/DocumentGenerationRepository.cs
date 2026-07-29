@@ -19,7 +19,11 @@ public sealed class DocumentGenerationRepository(DocumentsDbContext dbContext) :
             .DocumentGenerations.IgnoreQueryFilters()
             .FirstOrDefaultAsync(g => g.Id == generationId && g.TenantId == tenantId, ct);
 
-    public Task<DocumentGeneration?> GetByIdempotencyKeyAsync(Guid tenantId, string idempotencyKey, CancellationToken ct = default) =>
+    public Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        CancellationToken ct = default
+    ) =>
         dbContext
             .DocumentGenerations.IgnoreQueryFilters()
             .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.IdempotencyKey == idempotencyKey, ct);

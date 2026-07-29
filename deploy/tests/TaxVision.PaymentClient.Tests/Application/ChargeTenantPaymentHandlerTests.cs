@@ -235,6 +235,11 @@ file sealed class FakeTenantPaymentConfigRepository(TenantPaymentConfig config) 
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
+    public Task<IReadOnlyList<TenantPaymentConfig>> GetAllByTenantAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => throw new NotImplementedException();
+
     public Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default) =>
         throw new NotImplementedException();
 }
@@ -260,6 +265,9 @@ file sealed class ThrowingPaymentAdapterFactory : IPaymentAdapterFactory
 {
     public IPaymentProvider Resolve(PaymentProviderCode code) =>
         throw new InvalidOperationException("A zero-amount charge must never resolve a payment provider adapter.");
+
+    public bool IsRegistered(PaymentProviderCode code) =>
+        throw new InvalidOperationException("A zero-amount charge must never check a payment provider adapter.");
 }
 
 file sealed class ThrowingSecretProtector : ISecretProtector

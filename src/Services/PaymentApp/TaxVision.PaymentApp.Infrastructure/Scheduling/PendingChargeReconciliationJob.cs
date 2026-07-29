@@ -1,9 +1,13 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using TaxVision.PaymentApp.Domain.ValueObjects;
+using Wolverine;
 
 namespace TaxVision.PaymentApp.Infrastructure.Scheduling;
 
@@ -34,11 +38,17 @@ public sealed class PendingChargeReconciliationJob(
         var cutoffUtc = DateTime.UtcNow - StuckThreshold;
         var stuck = await payments.GetStuckProcessingAsync(cutoffUtc, BatchSize, ct);
 
+        var bus = services.GetRequiredService<IMessageBus>();
+        var correlation = services.GetRequiredService<ICorrelationContext>();
+
         var resolvedCount = 0;
         foreach (var payment in stuck)
         {
-            if (await TryResolveAsync(payment, providerFactory, logger, ct))
-                resolvedCount++;
+            using (correlation.Push(Guid.NewGuid().ToString("N")))
+            {
+                if (await TryResolveAsync(payment, providerFactory, bus, correlation.CorrelationId, logger, ct))
+                    resolvedCount++;
+            }
         }
 
         if (stuck.Count > 0)
@@ -55,6 +65,8 @@ public sealed class PendingChargeReconciliationJob(
     private static async Task<bool> TryResolveAsync(
         SaaSPayment payment,
         IPaymentAdapterFactory providerFactory,
+        IMessageBus bus,
+        string correlationId,
         ILogger logger,
         CancellationToken ct
     )
@@ -77,10 +89,24 @@ public sealed class PendingChargeReconciliationJob(
         var nowUtc = DateTime.UtcNow;
         var outcome = statusResult.Value;
 
+        // Igual criterio que el webhook checkout.session.completed (ver StripePaymentAdapter):
+        // si el provider ya resolvió una referencia más autoritativa que la guardada (p.ej. el
+        // PaymentIntent real detrás de una Checkout Session), se reconcilia acá también -- así
+        // refund/dispute futuros pueden resolver este pago sin depender de que el webhook haya
+        // llegado.
+        if (outcome.ProviderChargeReference != payment.ExternalChargeReference.Value)
+        {
+            var referenceResult = ExternalPaymentReference.Create(payment.ProviderCode, outcome.ProviderChargeReference);
+            if (referenceResult.IsSuccess)
+                payment.ReconcileProviderChargeReference(referenceResult.Value, nowUtc);
+        }
+
         switch (outcome.Status)
         {
             case PaymentStatus.Succeeded:
                 var succeeded = payment.MarkSucceeded(nowUtc, Guid.Empty);
+                if (succeeded.IsSuccess && payment.Type == SaaSPaymentType.OnboardingInitial)
+                    await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
                 return succeeded.IsSuccess;
 
             case PaymentStatus.Failed
@@ -93,6 +119,8 @@ public sealed class PendingChargeReconciliationJob(
                     Guid.Empty,
                     nowUtc
                 );
+                if (failed.IsSuccess && payment.Type == SaaSPaymentType.OnboardingInitial)
+                    await ProcessStripeWebhookHandler.PublishOnboardingResultAsync(payment, bus, correlationId, ct);
                 return failed.IsSuccess;
 
             default:

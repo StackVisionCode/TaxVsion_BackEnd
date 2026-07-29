@@ -49,7 +49,9 @@ builder.Services.Configure<AuthorizationOptions>(options =>
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // Endpoints M2M internos: solo tokens de servicio (actor_type=Service). Mismo patrón que Customer.
-builder.Services.AddAuthorizationBuilder().AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
 // RBAC Fase 7 — fuente de permisos. Con Authorization:PermissionsSource="Projection" se enforza perm_v
 // contra la proyección local (poblada por los eventos de Auth); ausente o "Jwt" lee el claim del token.

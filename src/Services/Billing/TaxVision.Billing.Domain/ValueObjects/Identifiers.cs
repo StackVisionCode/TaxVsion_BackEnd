@@ -56,7 +56,10 @@ public sealed record VerificationHash
         var normalized = value?.Trim().ToLowerInvariant();
         if (normalized is null || normalized.Length != 64 || !normalized.All(Uri.IsHexDigit))
             return Result.Failure<VerificationHash>(
-                new Error("Billing.VerificationHash.Invalid", "VerificationHash must be a 64-character SHA-256 hex digest.")
+                new Error(
+                    "Billing.VerificationHash.Invalid",
+                    "VerificationHash must be a 64-character SHA-256 hex digest."
+                )
             );
 
         return Result.Success(new VerificationHash(normalized));

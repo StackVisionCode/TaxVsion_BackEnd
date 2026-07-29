@@ -27,7 +27,11 @@ public static class DocumentGenerationCompletedConsumer
         if (!string.Equals(evt.OwnerType, "Invoice", StringComparison.OrdinalIgnoreCase))
             return;
 
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             var invoice = await invoices.GetByIdAsync(evt.TenantId, evt.OwnerId, ct);
             if (invoice is null)
@@ -43,11 +47,7 @@ public static class DocumentGenerationCompletedConsumer
             invoice.AttachPdf(evt.FileId, clock.GetUtcNow().UtcDateTime);
             await unitOfWork.SaveChangesAsync(ct);
 
-            logger.LogInformation(
-                "Invoice {InvoiceId} linked to PDF FileId {FileId}.",
-                invoice.Id,
-                evt.FileId
-            );
+            logger.LogInformation("Invoice {InvoiceId} linked to PDF FileId {FileId}.", invoice.Id, evt.FileId);
         }
     }
 }

@@ -33,7 +33,12 @@ public sealed class BillingPaymentClient(
                 new Error("Billing.PaymentClient.TokenFailed", "Could not acquire a service token for PaymentClient.")
             );
 
-        var body = new { amountCents, currency, invoiceId = invoiceId.ToString() };
+        var body = new
+        {
+            amountCents,
+            currency,
+            invoiceId = invoiceId.ToString(),
+        };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/payables/invoices")
         {
@@ -54,7 +59,10 @@ public sealed class BillingPaymentClient(
                     errorBody
                 );
                 return Result.Failure<InvoicePayableResult>(
-                    new Error("Billing.PaymentClient.EnsureFailed", $"PaymentClient returned {(int)response.StatusCode}.")
+                    new Error(
+                        "Billing.PaymentClient.EnsureFailed",
+                        $"PaymentClient returned {(int)response.StatusCode}."
+                    )
                 );
             }
 

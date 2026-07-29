@@ -1,0 +1,112 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging;
+using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Onboarding.Abstractions;
+
+namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
+
+/// <summary>
+/// PayFlow (Fase 9) — primer HttpClient de Auth que llama a OTRO microservicio de TaxVision (no
+/// una API externa). Todo el resto del repo usa un patrón de dos piezas por servicio
+/// (<c>{Service}ServiceTokenAcquirer</c> que llama a <c>POST auth/service-token</c> + cachea, y
+/// el client HTTP real) — acá se omite deliberadamente: Auth ES el emisor de esos tokens, así
+/// que ir por HTTP hasta su propio endpoint de emisión sería un round-trip autoreferencial e
+/// inútil. En su lugar, este cliente inyecta <see cref="IJwtTokenGenerator"/> directo y genera
+/// el token en el mismo proceso, saltándose además el requisito de <c>TenantId != Guid.Empty</c>
+/// que sí aplica a <c>IssueServiceTokenHandler</c> (ese guard vive en el handler que valida
+/// credenciales de un caller EXTERNO — no en el generador en sí, y acá no hay ningún caller
+/// externo que autenticar: Auth ya sabe que es Auth). El client_id embebido
+/// (<c>"auth-onboarding-checkout"</c>) es solo una etiqueta de auditoría en el JWT — PaymentApp
+/// no lo valida contra ningún registro, su <c>ServiceOnly</c> policy solo exige
+/// <c>actor_type=Service</c>.
+/// </summary>
+public sealed class PaymentAppOnboardingClient(
+    HttpClient httpClient,
+    IJwtTokenGenerator tokens,
+    ILogger<PaymentAppOnboardingClient> logger
+) : IPaymentAppOnboardingClient
+{
+    private const string ClientId = "auth-onboarding-checkout";
+
+    // PaymentApp serializa con la política camelCase por defecto de ASP.NET Core; System.Text.Json
+    // deserializa case-sensitive por defecto, así que sin esto los campos nunca bindean.
+    private static readonly JsonSerializerOptions ResponseJsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    public async Task<Result<PaymentAppCheckoutResult>> CreateCheckoutAsync(
+        PaymentAppCheckoutRequest request,
+        CancellationToken ct = default
+    )
+    {
+        var token = tokens.GenerateScopedServiceToken(
+            Guid.Empty,
+            ClientId,
+            permissions: [],
+            scopes: [],
+            audience: "TaxVision.Services",
+            lifetimeMinutes: 5
+        );
+
+        try
+        {
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "payments-app/internal/onboarding/checkout")
+            {
+                Content = JsonContent.Create(
+                    new
+                    {
+                        onboardingId = request.OnboardingId,
+                        planId = request.PlanId,
+                        payerEmail = request.PayerEmail,
+                        successUrl = request.SuccessUrl,
+                        cancelUrl = request.CancelUrl,
+                        idempotencyKey = request.IdempotencyKey,
+                    }
+                ),
+            };
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+
+            using var response = await httpClient.SendAsync(httpRequest, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "PaymentApp onboarding checkout returned {StatusCode} for onboarding {OnboardingId}.",
+                    (int)response.StatusCode,
+                    request.OnboardingId
+                );
+                return Result.Failure<PaymentAppCheckoutResult>(
+                    new Error("PaymentAppClient.UnexpectedStatus", $"PaymentApp returned {(int)response.StatusCode}.")
+                );
+            }
+
+            var dto = await response.Content.ReadFromJsonAsync<PaymentAppCheckoutResponseDto>(ResponseJsonOptions, ct);
+            if (dto is null)
+                return Result.Failure<PaymentAppCheckoutResult>(
+                    new Error("PaymentAppClient.EmptyResponse", "PaymentApp returned an empty checkout response.")
+                );
+
+            return Result.Success(
+                new PaymentAppCheckoutResult(dto.PaymentId, dto.CheckoutUrl, dto.ProviderSessionId, dto.ExpiresAtUtc)
+            );
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "PaymentApp onboarding checkout call failed for onboarding {OnboardingId}.",
+                request.OnboardingId
+            );
+            return Result.Failure<PaymentAppCheckoutResult>(
+                new Error("PaymentAppClient.RequestFailed", "Could not reach PaymentApp.")
+            );
+        }
+    }
+
+    private sealed record PaymentAppCheckoutResponseDto(
+        Guid PaymentId,
+        string CheckoutUrl,
+        string ProviderSessionId,
+        DateTime ExpiresAtUtc
+    );
+}

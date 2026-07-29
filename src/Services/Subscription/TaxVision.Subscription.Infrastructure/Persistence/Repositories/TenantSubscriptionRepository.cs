@@ -14,6 +14,11 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
     public async Task AddAsync(TenantSubscription subscription, CancellationToken ct = default) =>
         await db.Subscriptions.AddAsync(subscription, ct);
 
+    public Task<TenantSubscription?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+        WithRenewals(db.Subscriptions)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(subscription => subscription.OnboardingId == onboardingId, ct);
+
     // IgnoreQueryFilters: jobs cross-tenant (RBAC Fase 5) — recorren suscripciones de todos los
     // tenants buscando renovaciones/expiraciones vencidas, nunca sirven una request autenticada.
     public async Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(

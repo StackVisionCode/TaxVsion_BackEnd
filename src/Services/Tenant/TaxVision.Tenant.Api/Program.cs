@@ -6,6 +6,7 @@ using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
 using BuildingBlocks.Middleware;
@@ -91,7 +92,10 @@ builder
             policy.RequireAssertion(context =>
                 context.User.HasClaim("purpose", "tenant-registration") || context.User.IsInRole("PlatformAdmin")
             )
-    );
+    )
+    // PayFlow (Fase 14) — M2M desde Auth para chequear disponibilidad de subdominio
+    // (GET tenants/internal/subdomain-available) durante el registro post-pago.
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -163,6 +167,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoRemovedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // PayFlow (Fase 16) — publicado por InternalTenantProvisioningController.
+    options.PublishMessage<TenantCreatedForOnboardingIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Sin una cola de entrada bindeada al fanout "taxvision-events", Wolverine descubre el
     // handler en el assembly (Discovery.IncludeAssembly de arriba) pero no tiene de donde

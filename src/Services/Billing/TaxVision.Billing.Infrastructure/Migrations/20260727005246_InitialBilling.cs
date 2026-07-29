@@ -11,8 +11,7 @@ namespace TaxVision.Billing.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.EnsureSchema(
-                name: "billing");
+            migrationBuilder.EnsureSchema(name: "billing");
 
             migrationBuilder.CreateTable(
                 name: "InvoiceNumberSequences",
@@ -23,12 +22,13 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     PeriodKey = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                     Next = table.Column<long>(type: "bigint", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_InvoiceNumberSequences", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "Invoices",
@@ -63,12 +63,13 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     LastModifiedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     DeletedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Invoices", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "InvoiceLineItems",
@@ -82,7 +83,7 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     UnitAmount = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     TaxBasisPoints = table.Column<int>(type: "int", nullable: false),
                     TaxAmount = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
-                    LineTotal = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false)
+                    LineTotal = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -93,21 +94,25 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         principalSchema: "billing",
                         principalTable: "Invoices",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_InvoiceLineItems_InvoiceId",
                 schema: "billing",
                 table: "InvoiceLineItems",
-                column: "InvoiceId");
+                column: "InvoiceId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_InvoiceNumberSequences_TenantId_PeriodKey",
                 schema: "billing",
                 table: "InvoiceNumberSequences",
                 columns: new[] { "TenantId", "PeriodKey" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Invoices_TenantId_InvoiceNumber",
@@ -115,29 +120,25 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "Invoices",
                 columns: new[] { "TenantId", "InvoiceNumber" },
                 unique: true,
-                filter: "[InvoiceNumber] IS NOT NULL");
+                filter: "[InvoiceNumber] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Invoices_TenantId_Status",
                 schema: "billing",
                 table: "Invoices",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "InvoiceLineItems",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "InvoiceLineItems", schema: "billing");
 
-            migrationBuilder.DropTable(
-                name: "InvoiceNumberSequences",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "InvoiceNumberSequences", schema: "billing");
 
-            migrationBuilder.DropTable(
-                name: "Invoices",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "Invoices", schema: "billing");
         }
     }
 }

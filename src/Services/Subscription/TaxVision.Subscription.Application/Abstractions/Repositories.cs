@@ -19,6 +19,9 @@ public interface ISubscriptionRepository
     Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantSubscription subscription, CancellationToken ct = default);
 
+    /// <summary>PayFlow (Fase 16) — idempotencia de subscriptions/internal/activate-from-onboarding.</summary>
+    Task<TenantSubscription?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
+
     /// <summary>Active subscriptions whose NextRenewalAtUtc has passed. Batch job query —
     /// crosses tenants intentionally (only the scheduler calls this, never a tenant-scoped handler).</summary>
     Task<IReadOnlyList<TenantSubscription>> GetDueForRenewalAsync(

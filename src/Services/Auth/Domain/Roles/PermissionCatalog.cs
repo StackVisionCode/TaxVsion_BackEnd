@@ -234,6 +234,12 @@ public static class PermissionCatalog
     public const string TenantStatusChange = TenantPermissions.StatusChange;
     public const string TenantListView = TenantPermissions.ListView;
 
+    // PayFlow (Fase 17) — OnboardingAdminController: listar/inspeccionar onboardings en
+    // ManualReview/ProvisioningFailed y actuar sobre ellos (resume/update-and-resume/force-complete/
+    // cancel-and-refund) de CUALQUIER tenant en curso — el tenant todavía no existe en la mayoría de
+    // los casos, así que "cross-tenant" ni siquiera aplica: es inherentemente PlatformOnly.
+    public const string OnboardingAdminManage = "onboarding.admin.manage";
+
     // Growth — Codes y Referrals comparten deployment, pero conservan permisos de dominio
     // separados. AdminCrossTenant nunca se asigna a roles de tenant.
     public const string GrowthCodesRead = GrowthPermissions.CodesRead;
@@ -1541,6 +1547,15 @@ public static class PermissionCatalog
             TenantListView,
             "tenant",
             "Listar todos los tenants de la plataforma (uso exclusivo de plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000153"),
+            OnboardingAdminManage,
+            "onboarding",
+            "Ver y administrar onboardings de PayFlow en ManualReview/ProvisioningFailed de cualquier tenant (resume, corrección, force-complete, cancelar y reembolsar)",
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true

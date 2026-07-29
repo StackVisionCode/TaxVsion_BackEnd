@@ -10,7 +10,14 @@ public sealed class DocumentBrandingTests
     [Fact]
     public void Create_trims_and_stores_fields()
     {
-        var result = DocumentBranding.Create(Guid.NewGuid(), "  ACME  ", "data:image/png;base64,AAAA", "#8b1e3f", "  pie  ", Now);
+        var result = DocumentBranding.Create(
+            Guid.NewGuid(),
+            "  ACME  ",
+            "data:image/png;base64,AAAA",
+            "#8b1e3f",
+            "  pie  ",
+            Now
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal("ACME", result.Value.DisplayName);
@@ -30,7 +37,14 @@ public sealed class DocumentBrandingTests
     [Fact]
     public void Create_rejects_a_logo_that_is_not_an_embedded_data_uri()
     {
-        var result = DocumentBranding.Create(Guid.NewGuid(), "ACME", "https://cdn.example.com/logo.png", null, null, Now);
+        var result = DocumentBranding.Create(
+            Guid.NewGuid(),
+            "ACME",
+            "https://cdn.example.com/logo.png",
+            null,
+            null,
+            Now
+        );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Documents.Branding.InvalidLogo", result.Error.Code);

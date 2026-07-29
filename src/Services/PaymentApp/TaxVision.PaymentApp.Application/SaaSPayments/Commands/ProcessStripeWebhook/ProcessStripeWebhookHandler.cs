@@ -1,6 +1,8 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
@@ -9,6 +11,7 @@ using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 using TaxVision.PaymentApp.Domain.Webhooks;
+using Wolverine;
 
 namespace TaxVision.PaymentApp.Application.SaaSPayments.Commands.ProcessStripeWebhook;
 
@@ -32,6 +35,7 @@ public static class ProcessStripeWebhookHandler
         IPaymentAppMetrics metrics,
         IPaymentAttemptThrottle throttle,
         ICorrelationContext correlation,
+        IMessageBus bus,
         ILogger<WebhookEvent> logger,
         CancellationToken ct
     )
@@ -141,6 +145,38 @@ public static class ProcessStripeWebhookHandler
 
         await throttle.RegisterWebhookAttemptAsync(payment.TenantId, ct);
 
+        // PayFlow — checkout.session.completed trae el PaymentIntent real cuando la sesión se
+        // creó sin uno sincrónico (comportamiento documentado de Stripe, ver StripePaymentAdapter).
+        // Reconciliar acá, antes de aplicar la transición de estado, para que refund/dispute
+        // futuros (que referencian el PaymentIntent, no la Session) puedan resolver este pago.
+        if (
+            payload.ReconciledChargeReference is { } reconciledRaw
+            && reconciledRaw != payment.ExternalChargeReference?.Value
+        )
+        {
+            var reconciledReferenceResult = ExternalPaymentReference.Create(PaymentProviderCode.Stripe, reconciledRaw);
+            if (reconciledReferenceResult.IsFailure)
+                logger.LogWarning(
+                    "Stripe webhook {ProviderEventId} carried an invalid reconciled charge reference for SaaSPayment {SaaSPaymentId}: {ErrorCode}: {ErrorMessage}",
+                    verification.ProviderEventId,
+                    payment.Id,
+                    reconciledReferenceResult.Error.Code,
+                    reconciledReferenceResult.Error.Message
+                );
+            else
+            {
+                var reconcileResult = payment.ReconcileProviderChargeReference(reconciledReferenceResult.Value, nowUtc);
+                if (reconcileResult.IsFailure)
+                    logger.LogWarning(
+                        "Stripe webhook {ProviderEventId} could not reconcile the charge reference for SaaSPayment {SaaSPaymentId}: {ErrorCode}: {ErrorMessage}",
+                        verification.ProviderEventId,
+                        payment.Id,
+                        reconcileResult.Error.Code,
+                        reconcileResult.Error.Message
+                    );
+            }
+        }
+
         var transitionResult = ApplyPayload(payment, payload, metrics);
         if (transitionResult.IsFailure)
         {
@@ -179,6 +215,14 @@ public static class ProcessStripeWebhookHandler
             DateTime.UtcNow,
             ct
         );
+
+        // PayFlow (Fase 8) — el pago de un onboarding pago-primero recién llegó a un estado
+        // terminal por webhook (nunca por ChargeSaaSPaymentHandler, que este flujo no usa).
+        // payment.Type/payment.OnboardingId ya identifican que es de onboarding sin necesidad
+        // de leer metadata cruda de Stripe — se determina completamente desde el propio
+        // aggregate ya cargado por GetByExternalReferenceAsync.
+        if (payment.Type == SaaSPaymentType.OnboardingInitial)
+            await PublishOnboardingResultAsync(payment, bus, correlation.CorrelationId, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
 
@@ -269,6 +313,53 @@ public static class ProcessStripeWebhookHandler
 
         metrics.RecordRefunded(payment.ProviderCode.ToString());
         return Result.Success();
+    }
+
+    /// <summary>PayFlow (Fase 8) — no-op si el pago no llegó a Succeeded/Failed en esta
+    /// aplicación de webhook (p.ej. quedó Refunded/ChargedBack en un evento posterior, que no
+    /// aplica a un pago inicial de onboarding en la práctica pero no está prohibido por la
+    /// máquina de estados). Público porque <c>PendingChargeReconciliationJob</c> también resuelve
+    /// pagos de onboarding fuera del webhook (fallback out-of-band) y debe publicar el mismo
+    /// evento -- de lo contrario el Saga de Auth queda esperando un evento que nunca llega si el
+    /// job resuelve el pago antes de que el webhook logre procesarse.</summary>
+    public static async ValueTask PublishOnboardingResultAsync(
+        SaaSPayment payment,
+        IMessageBus bus,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
+        if (payment.Status == PaymentStatus.Succeeded)
+        {
+            await bus.PublishAsync(
+                new OnboardingPaymentSucceededIntegrationEvent
+                {
+                    TenantId = PlatformTenant.Id,
+                    OnboardingId = payment.OnboardingId!.Value,
+                    SaaSPaymentId = payment.Id,
+                    PlanId = payment.TargetAggregateId,
+                    AmountPaidCents = payment.Amount.AmountCents,
+                    Currency = payment.Amount.Currency,
+                    PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
+                    ProviderPaymentReference = payment.ExternalChargeReference?.Value ?? string.Empty,
+                    CorrelationId = correlationId,
+                }
+            );
+        }
+        else if (payment.Status == PaymentStatus.Failed)
+        {
+            await bus.PublishAsync(
+                new OnboardingPaymentFailedIntegrationEvent
+                {
+                    TenantId = PlatformTenant.Id,
+                    OnboardingId = payment.OnboardingId!.Value,
+                    SaaSPaymentId = payment.Id,
+                    FailureCode = payment.FailureCode ?? "Unknown",
+                    FailureReason = payment.FailureReason ?? "The charge failed.",
+                    CorrelationId = correlationId,
+                }
+            );
+        }
     }
 
     private static PaymentAuditAction MapAuditAction(PaymentStatus status) =>

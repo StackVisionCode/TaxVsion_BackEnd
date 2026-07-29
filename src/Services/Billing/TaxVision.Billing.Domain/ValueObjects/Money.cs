@@ -38,7 +38,9 @@ public sealed record Money
     public Result<Money> Subtract(Money other)
     {
         if (other.Currency != Currency)
-            return Result.Failure<Money>(new Error("Billing.Money.CurrencyMismatch", "Cannot subtract different currencies."));
+            return Result.Failure<Money>(
+                new Error("Billing.Money.CurrencyMismatch", "Cannot subtract different currencies.")
+            );
 
         if (other.AmountCents > AmountCents)
             return Result.Failure<Money>(new Error("Billing.Money.NegativeResult", "Result cannot be negative."));

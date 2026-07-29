@@ -15,4 +15,16 @@ public interface ILoginThrottler
     Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default);
 
     Task RegisterOtpSentAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>Devuelve el tiempo de espera si el email o la IP superaron el umbral de solicitudes
+    /// de reset de password (3/email/hora, 10/IP/hora, cooldown 60s); null si puede intentar.</summary>
+    Task<TimeSpan?> GetPasswordResetRetryAfterAsync(string email, string? ipAddress, CancellationToken ct = default);
+
+    Task RegisterPasswordResetRequestAsync(string email, string? ipAddress, CancellationToken ct = default);
+
+    /// <summary>Devuelve el tiempo de espera si la IP superó el umbral de canjes de invitación
+    /// intentados (20/hora); null si puede intentar.</summary>
+    Task<TimeSpan?> GetInvitationAcceptRetryAfterAsync(string? ipAddress, CancellationToken ct = default);
+
+    Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default);
 }

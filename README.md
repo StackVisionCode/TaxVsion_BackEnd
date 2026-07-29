@@ -7326,3 +7326,336 @@ con 4 capas independientes (permiso, actor type, tenant boundary, resource owner
 (role-assignment, session revoke) + fitness functions de CI + observabilidad — sin ningún rediseño
 del modelo `ActorType + Role + Permission + AllowedActorTypes` original (regla de oro #1 del plan,
 respetada en las 10 fases).
+
+# 42. PayFlow Fase 16 — Endpoints M2M (Tenant + Subscription)
+
+Primera sección de README sobre PayFlow: el proyecto todavía no tenía documentación propia acá, así
+que un resumen rápido del flujo completo antes de entrar en el detalle de esta fase. PayFlow es el
+onboarding "pay-first" de TaxVision — el cliente paga en Stripe Checkout **antes** de que exista un
+tenant real — implementado como una Saga de Wolverine (`TenantOnboardingProcessManager`, Fase 15,
+`Application/Onboarding/Sagas` en Auth) que orquesta, en orden: Tenant provisiona el tenant real →
+Auth crea el usuario TenantAdmin (owner) → Subscription activa la suscripción directo en `Active`.
+Cada paso es idempotente por `OnboardingId` (verifica si el registro ya existe antes de escribir),
+así que la Saga puede reintentar sin duplicar nada. Esta fase (16) construyó el lado receptor de esa
+orquestación: 5 endpoints M2M nuevos repartidos en 3 servicios, todos `[Authorize(Policy =
+"ServiceOnly")] + [AllowActorTypes(ActorType.Service)]` — nunca alcanzables con un token de usuario.
+
+## 42.1 Los 5 endpoints
+
+| # | Método + ruta | Caller → Target | Propósito |
+|---|---|---|---|
+| 1 | `GET auth/internal/onboarding/{onboardingId}/status` | Tenant → Auth | Confirma, en defensa en profundidad, que el onboarding sigue `Provisioning` y el pago está confirmado antes de que Tenant cree el `Tenant` real. |
+| 2 | `POST auth/internal/tenants/{tenantId}/owners` | Saga (Auth) → Auth | Crea el `TenantAdmin` de un tenant recién provisionado. El password nunca cruza este endpoint: `PasswordHashReference` es una referencia Redis de un solo uso (`ITokenReferenceStore`, GETDEL) a un hash PBKDF2 ya calculado en el registro público — este endpoint solo la canjea. |
+| 3 | `POST tenants/internal/from-onboarding` | Saga (Auth) → Tenant | Crea el `Tenant` real tras la confirmación de pago. Único entry point de los tenants de onboarding pagado — a diferencia del registro gratuito, no crea una `Invitation` de admin (el owner se crea directo vía el endpoint 2). |
+| 4 | `POST subscriptions/internal/activate-from-onboarding` | Saga (Auth) → Subscription | Activa la suscripción del tenant directo en `Active`, saltando el trial gratuito — el cliente ya pagó en PaymentApp antes de este paso. |
+| 5 | `GET subscriptions/internal/plans/{planId}/pricing` | PaymentApp → Subscription | Resuelve el precio real del plan server-side al armar el Stripe Checkout Session, en vez de confiar en un monto enviado por el frontend (ver §42.3). |
+
+Los 5 son idempotentes por `OnboardingId` (los endpoints 1 y 5 son lecturas puras, así que la
+idempotencia les aplica trivialmente).
+
+## 42.2 Registro de clientes M2M
+
+Solo el endpoint 5 necesitó un client nuevo en `ServiceAuth:Clients`: `payment-app-subscription`
+(PaymentApp → Subscription), registrado como `ServiceAuth__Clients__14` en
+`deploy/docker/docker-compose.yml` y `PAYMENTAPP_SUBSCRIPTION_CLIENT_ID`/
+`PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET` en `.env`. Los otros 4 no necesitaron un client registrado
+nuevo:
+
+- Los endpoints 2, 3 y 4 los llama la propia Saga de Auth, in-process, generando un token de
+  servicio de vida corta vía `IJwtTokenGenerator.GenerateScopedServiceToken` (loopback hacia el
+  propio Auth para el 2, llamada normal a otro servicio para el 3 y el 4) — no pasa por
+  `ServiceAuth:Clients`.
+- El endpoint 1 lo llama Tenant reusando su client `tenant-worker` ya registrado desde una fase
+  anterior (`ServiceAuth__Clients__8`, el mismo que usa Tenant para hablar con CloudStorage) — sin
+  registración nueva.
+
+## 42.3 Gap de price-trust cerrado
+
+El checkout de onboarding de PaymentApp confiaba en `PlanPriceCents`/`Currency` enviados por el
+frontend en un request anónimo, sin validación server-side — un cliente podía, en teoría, mandar
+cualquier precio. Se cerró eliminando esos dos campos de toda la cadena del request y haciendo que
+PaymentApp resuelva el precio real llamando al endpoint 5 (`GetPlanPricing`) antes de crear el
+Stripe Checkout Session.
+
+## 42.4 Verificación
+
+- Build del monorepo completo: limpio, 0 errores.
+- Suite de tests del monorepo completo (17 proyectos de test .NET): verificada por separado, en
+  verde — no se corrió de nuevo como parte de este cierre de documentación.
+- Tests nuevos para los 3 handlers de comando agregados en esta fase, 3 tests cada uno, todos en
+  verde: `CreateTenantOwnerFromOnboardingHandlerTests` (Auth), `CreateTenantFromOnboardingHandlerTests`
+  (Tenant), `ActivateFromOnboardingHandlerTests` (Subscription).
+- No se levantó un boot multi-servicio en Docker ni se ejercitó la cadena M2M nueva contra
+  RabbitMQ/Redis reales — consistente con la restricción del repo de no tocar Docker sin
+  autorización explícita. Verificación de esta fase limitada a build + test.
+
+**Riesgo**: 🟢 Bajo — 5 endpoints nuevos, todos M2M-only detrás de `ServiceOnly` +
+`[AllowActorTypes(Service)]`, todos idempotentes por `OnboardingId`, cero cambios a endpoints
+existentes salvo la remoción de los campos de precio no confiables del request de checkout de
+PaymentApp (§42.3).
+
+# 43. PayFlow Fase 17 — Compensaciones, ManualReview y observabilidad
+
+La Saga de onboarding (`TenantOnboardingProcessManager`, Fase 15) publicaba
+`OnboardingProvisioningStepFailedIntegrationEvent` en varios pasos pero nadie lo consumía — un fallo
+en cualquier paso quedaba silenciosamente descartado, dejando el onboarding trabado sin reintento ni
+visibilidad. Fase 17 cierra ese hueco completo: retry automático con backoff, escalamiento a revisión
+manual, panel de soporte para PlatformAdmin, compensación real cuando hay que deshacer pasos ya
+ejecutados, y observabilidad mínima (métricas OTel + health check detallado).
+
+## 43.1 Retry automático + ManualReview
+
+`FailureClassifier` clasifica cada fallo en `Transient` o `Permanent`: el paso `TenantAdmin` (crea el
+owner canjeando una referencia Redis de un solo uso) es siempre `Permanent` — reintentarlo fallaría
+igual, la referencia ya se consumió. Los sufijos de código `.RequestFailed`/`.UnexpectedStatus`/
+`.EmptyResponse` (típicos de un downstream caído o devolviendo 5xx) son `Transient`; todo lo demás es
+`Permanent` por default (ej. `Subdomain` ya tomado — reintentar no cambia nada sin intervención).
+
+`OnboardingRetryScheduler` (`BackgroundService`, tick cada minuto) reintenta los onboardings
+`Transient` con cadencia escalonada — 5 min → 15 min → 1 hora — hasta 3 intentos automáticos. Al
+agotar los 3 intentos, o al reclasificar un fallo como no-reintentable en medio de la espera, el
+onboarding pasa a `TenantOnboardingStatus.ManualReview` (`onboarding.MarkManualReview(...)`).
+
+## 43.2 Panel de soporte — `OnboardingAdminController`
+
+6 endpoints nuevos bajo `auth/onboarding/admin`, todos gateados por `[Authorize]` +
+`[AllowActorTypes(PlatformAdmin)]` + `[HasPermission(PermissionCatalog.OnboardingAdminManage)]`:
+
+| Método + ruta | Propósito |
+|---|---|
+| `GET /admin?status=&page=&limit=` | Lista paginada, filtrable por `TenantOnboardingStatus`. |
+| `GET /admin/{id}` | Detalle de un onboarding puntual. |
+| `POST /admin/{id}/resume` | Reintenta el paso fallido sin cambiar datos — para cuando la causa raíz (downstream caído) ya se resolvió sola. |
+| `POST /admin/{id}/update-and-resume` | Corrige `Subdomain`/`PlanId` (el dato que causó el fallo permanente) y reintenta. |
+| `POST /admin/{id}/force-complete` | Marca `Completed` sin ejecutar más pasos — para cuando ya se confirmó fuera de banda (DB/logs) que el tenant quedó bien provisionado pese al error reportado. |
+| `POST /admin/{id}/cancel-and-refund` | Irreversible — requiere el campo `Confirmation` exacto (`"I understand this is irreversible"`) o la API rechaza el request. Dispara la compensación (§43.3) y el refund. |
+
+## 43.3 Compensación — `OnboardingCancelRequestedIntegrationEvent`
+
+`cancel-and-refund` publica dos eventos: `OnboardingCancelRequestedIntegrationEvent` (payload:
+`OnboardingId`, `Reason`, más `OnboardingTenantId`/`OnboardingUserId`/`OnboardingSubscriptionId`
+opcionales) y `OnboardingRefundRequestedIntegrationEvent`. El primero lo consumen, cada uno de forma
+independiente, los 3 servicios que la Saga pudo haber provisionado parcialmente:
+
+- **Subscription**: cancela la `TenantSubscription` si `OnboardingSubscriptionId` no es null.
+- **Auth**: desactiva el `User` (TenantAdmin) si `OnboardingUserId` no es null.
+- **Tenant**: cierra el `Tenant` (`ChangeStatus(Closed)`) si `OnboardingTenantId` no es null.
+
+Cada consumer es un no-op si su `Onboarding*Id` correspondiente es null — es decir, si ese paso de la
+Saga nunca llegó a ejecutarse, no hay nada que deshacer. Los 3 son idempotentes (repetir el evento no
+falla ni duplica efectos). `OnboardingRefundRequestedIntegrationEvent` lo consume
+`OnboardingRefundConsumer` en PaymentApp, del lado del pago.
+
+## 43.4 Observabilidad
+
+- **Métricas OTel** (`IOnboardingMetrics` / `OnboardingMetrics`, Meter
+  `TaxVision.Auth.Onboarding`, registrado como `additionalMeterNames` en
+  `AddTaxVisionOpenTelemetry`): `onboarding.started_total`, `onboarding.completed_total`,
+  `onboarding.failed_total` (tag `step`), `onboarding.manual_review_total`,
+  `onboarding.duration_seconds` (histograma, tag `outcome`). Se registran en los puntos naturales del
+  flujo: `CreateOnboardingHandler` (started), el paso final `ConfigureTenantDefaultsHandler`
+  (completed + duration), el failure handler de la Saga (failed + manual_review cuando el fallo es
+  `Permanent`), y `OnboardingRetryScheduler` (manual_review al agotar reintentos o reclasificar).
+- **`GET /health/detailed`**: reusa los health checks ya registrados con tag `"ready"`
+  (`sql-server`, `redis`, `rabbitmq`) con un `ResponseWriter` JSON custom que devuelve
+  status/duración/error por check. Deliberadamente **no** agrega checks downstream a
+  Documents/PaymentApp/Tenant/Subscription — alcance limitado a las dependencias directas de Auth, no
+  a la salud de todo el grafo de servicios.
+
+## 43.5 Verificación
+
+- Build del monorepo completo tras cada bloque de cambios: limpio, 0 errores.
+- `TaxVision.Auth.Tests`: **564/564** en verde (incluye los 3 tests nuevos de
+  `OnboardingCancelRequestedConsumerTests` en Auth, más el ajuste de los tests existentes que
+  llamaban a los 4 handlers/Saga que ganaron el parámetro `IOnboardingMetrics`/nuevas firmas).
+- Los 3 consumers de compensación tienen test unitario dedicado, uno por servicio (patrón
+  `Fake*Repository`/`FakeUnitOfWork`/`FakeCorrelationContext`, igual que los handlers hermanos de
+  Fase 16): `OnboardingCancelRequestedConsumerTests` en `TaxVision.Subscription.Tests` (3/3),
+  `TaxVision.Auth.Tests` (3/3) y `TaxVision.Tenant.Tests` (3/3) — cada uno cubre el camino feliz, el
+  no-op cuando el paso nunca corrió, y el caso idempotente/ya-en-el-estado-final.
+- No se levantó un boot multi-servicio en Docker ni se ejercitó la cadena de compensación end-to-end
+  contra RabbitMQ real — misma restricción de no tocar Docker que rige el resto del repo.
+  Verificación limitada a build + test unitario, igual que la Fase 16.
+
+**Riesgo**: 🟢 Bajo — todo el nuevo código es aditivo (nuevos endpoints, nuevos consumers, un nuevo
+parámetro en 4 firmas de handler existentes), gateado por permiso dedicado
+(`OnboardingAdminManage`) + `AllowActorTypes(PlatformAdmin)`, y cada compensación es idempotente y
+no-op-safe por diseño.
+
+# 44. PayFlow Fase 18-19 — Endpoints públicos, hardening de credenciales y cierre del plan
+
+Cierre del plan completo de 19 fases de PayFlow. §42 y §43 documentaron el lado M2M/admin de la Saga;
+esta sección documenta lo que faltaba — los 7 endpoints públicos que el frontend realmente consume
+para llevar a un visitante anónimo desde "quiero una cuenta" hasta un login funcionando en su propio
+subdominio, el hardening de credenciales de Fase 18 (deuda preexistente de Auth, no específica de
+onboarding pero cerrada en la misma iniciativa), y la verificación de cierre de Fase 19.
+
+## 44.1 El flujo público, endpoint por endpoint
+
+Todos en `src/Services/Auth/Api/Controllers/`, todos anónimos salvo donde se indica, todos detrás de
+`TenantHostResolutionMiddleware` mismo pipeline que el resto de Auth (el header `Host` no importa acá
+— el onboarding vive en `PlatformTenant.Id`, no en un tenant real todavía).
+
+| # | Método + ruta | Controller | Propósito | Rate limit |
+|---|---|---|---|---|
+| 1 | `POST onboarding/email-challenges` | `OnboardingChallengesController` | Pide un código OTP de 6 dígitos al email del visitante. | 5/email/hora + 10/IP/hora (Redis, `IOnboardingOtpThrottler`) |
+| 2 | `POST onboarding/email-challenges/{id}/verify` | idem | Verifica el código. | Ninguno a nivel HTTP — `EmailVerificationChallenge.MaxAttempts=5` bloquea el challenge en el propio aggregate. |
+| 3 | `POST onboarding/email-challenges/{id}/resend` | idem | Reenvía un código nuevo. | Cooldown 60s + `MaxResends=5`. |
+| 4 | `POST onboarding` | `OnboardingCheckoutController` | Crea el `TenantOnboarding` (requiere el challenge ya verificado). | — |
+| 5 | `POST onboarding/checkout` | idem | Arranca el Stripe Checkout Session vía M2M a PaymentApp, devuelve la URL de checkout. | — |
+| 6 | `POST onboarding/subdomains/check` | `OnboardingSubdomainController` | Valida formato/disponibilidad del subdominio deseado y lo **reserva** 60 min (pese al nombre "check"). Idempotente — el mismo `onboardingId` puede renovar la reserva llamando de nuevo. | 30/min/IP |
+| 7 | `GET onboarding/status?token=` | `OnboardingStatusController` | Poll de estado para la pantalla de espera post-pago. Nunca expone `OnboardingId` — el token opaco es lo único que el frontend conoce. | 60/min/IP |
+| 8 | `POST onboarding/register/preview` | `OnboardingRegistrationController` | Resuelve el `RegistrationToken` del link del email de recibo → nombre/email enmascarado/plan, para prellenar el form de registro. | 30/min/IP |
+| 9 | `POST onboarding/register/complete` | idem | Canjea el token, crea password + arranca la Saga (Fase 15) que provisiona Tenant→Owner→Subscription→Storage→Subdomain→Defaults. | 10/min/IP |
+| 10 | `GET onboarding/receipts/{fileId}/download` | `OnboardingReceiptDownloadController` | Redirige (302) a una URL presignada fresca de CloudStorage — el link del email nunca expira porque resuelve la URL real en el momento del click, no la embebe. | 30/min/IP |
+| 11 | `GET auth/onboarding/terms/current?kind=&locale=` | `TermsVersionsController` | Términos vigentes que el form de registro debe mostrar y cuyo `termsVersionId`+`contentHash` viajan de vuelta en el paso 9. | — |
+| 12 | `POST auth/onboarding/terms/publish` | idem | Publica una nueva versión de términos. `[AllowActorTypes(PlatformAdmin)]` — no público. | — |
+
+**Invariantes de seguridad que atraviesan todo el flujo** (ver Anexo A del plan maestro para la lista completa):
+`OnboardingId` nunca se expone en ningún endpoint público (los pasos 4-10 hablan en términos de
+`challengeId`/`token`/URLs opacas); el password del owner nunca cruza RabbitMQ — se hashea en la
+primera línea del handler de `register/complete` y solo un `PasswordHashReference` (Redis GETDEL,
+TTL 30s, patrón TokenReference §44.4) llega a la Saga; el `RegistrationToken` crudo tampoco cruza
+RabbitMQ, mismo patrón; el OTP sí viaja en claro por RabbitMQ hacia Notification
+(`OnboardingOtpRequestedIntegrationEvent.OtpCode`) porque ese hop es interno a la infraestructura, no
+público.
+
+## 44.2 Dominio y estados
+
+`TenantOnboarding` (`src/Services/Auth/Domain/Onboarding/TenantOnboardings/TenantOnboarding.cs`) es un
+`BaseEntity` sin tenant — no existe ningún tenant real todavía cuando se crea. Su `Status`
+(`TenantOnboardingStatus`, 12 valores) recorre:
+
+```
+PendingPayment → PaymentProcessing → PaymentCompleted → RegistrationPending → Provisioning → Completed
+                        ↓ (webhook falla)                                          ↓ (paso falla)
+                  PaymentFailed                                          ProvisioningFailed → ManualReview
+```
+
+(`Cancelled`, `Expired`, `Refunded` son estados terminales alcanzables desde varios puntos vía el panel
+admin de §43.2/§43.3.) Mientras `Status=Provisioning`, `CurrentStep`
+(`TenantProvisioningStep`: `Tenant → TenantAdmin → Subscription → CloudStorage → Subdomain → Defaults
+→ Completed`) rastrea en qué paso de la Saga (§44.3) va. `FailedStep`/`FailureCode`/`FailureReason` solo
+se pueblan si `Status` es `ProvisioningFailed` o `ManualReview` — es lo que expone el endpoint 7.
+
+Otros aggregates del módulo: `EmailVerificationChallenge` (OTP, TTL 10 min, hash
+`SHA256(challengeId+":"+code)`, compare constant-time), `TermsVersion` (`ContentHash` inmutable, debe
+ser un SHA-256 hex de 64 caracteres), `OnboardingSubdomainReservation` (aggregate separado de
+`TenantSubdomainReservation` del módulo TenantDomains — aislamiento verificado por fitness function,
+§44.6). Ninguno de estos tres tiene tenant discriminator, todos viven bajo `PlatformTenant.Id` a
+efectos de auditoría.
+
+## 44.3 La Saga (`TenantOnboardingProcessManager`, Fase 15)
+
+Primer `Saga` de Wolverine del monorepo, persistida en `AuthDbContext` (no infraestructura de saga
+aparte). Cascada de handlers, cada uno retorna el siguiente comando:
+
+`OnboardingProvisioningStartedIntegrationEvent` → **Tenant** (M2M `tenants/internal/from-onboarding`)
+→ `TenantCreatedForOnboardingIntegrationEvent` → **Auth mismo, loopback** (M2M
+`auth/internal/tenants/{id}/owners`, canjea `PasswordHashReference` y la destruye) →
+`TenantOwnerCreatedIntegrationEvent` → **Subscription** (M2M
+`subscriptions/internal/activate-from-onboarding`) →
+`SubscriptionActivatedForOnboardingIntegrationEvent` → 3 pasos locales sin M2M (`CloudStorage`,
+`Subdomain`, `Defaults` — ya cubiertos por consumers preexistentes de `TenantCreatedIntegrationEvent`,
+la Saga solo avanza `CurrentStep`) → `TenantOnboardingCompletedIntegrationEvent` → saga termina.
+
+Cualquier paso que falle publica `OnboardingProvisioningStepFailedIntegrationEvent` en vez de tirar
+excepción; `FailureClassifier` decide `Transient` (reintenta automático, §43.1) vs `Permanent`
+(`ManualReview` directo — el paso `TenantAdmin` **siempre** es `Permanent`, porque el
+`PasswordHashReference` de un solo uso ya se consumió).
+
+## 44.4 Patrón TokenReference (compartido con Fase 18)
+
+`ITokenReferenceStore`/`RedisTokenReferenceStore` (`src/Services/Auth/Infrastructure/Security/`,
+namespace compartido desde que Fase 18 lo sacó de `Onboarding/` para que `Invitation` también lo
+pudiera usar sin romper la fitness function del módulo): `StoreAsync(rawValue) → Guid`, TTL 30s,
+`ConsumeAsync(reference)` es un `GETDEL` atómico — un solo consumo posible. Tres usos: el
+`RegistrationToken` crudo del email de recibo (Fase 9), el `PasswordHashReference` del registro (Fase
+13/15), y el `AdminInvitationToken` crudo del flujo de invitación normal (Fase 18, no específico de
+onboarding pero mismo mecanismo).
+
+## 44.5 Fase 18 — Hardening de credenciales (deuda preexistente, cerrada en la misma iniciativa)
+
+El plan maestro incluyó esta fase como cierre de 5 huecos de seguridad en Auth que ya existían antes
+de PayFlow y quedaron expuestos por la auditoría del flujo de onboarding — no son específicos del
+onboarding, pero se cerraron en la misma sesión:
+
+| Item | Mecanismo |
+|---|---|
+| `ForgotPassword` sin throttle | `ILoginThrottler.GetPasswordResetRetryAfterAsync` — 3/email/hora, 10/IP/hora, cooldown 60s. Corta **antes** de tocar `IUserRepository`, preservando la anti-enumeración de "siempre 202". |
+| `ResetPassword` sin límite de intentos | `PasswordResetToken.MaxAttempts=5` (mismo patrón que `PhoneVerificationToken`), `RegisterAttempt()` en los 2 failure paths post-hash-match. |
+| `RefreshToken` sin host binding | `RefreshAccessTokenCommand.ResolvedTenantId` (del Host, nunca del body) vs `stored.TenantId` — mismatch revoca sesión + deniega access token + audita (`AuthAuditAction.RefreshTokenHostMismatch`) + publica `SecurityAlertIntegrationEvent`. |
+| `AcceptInvitation` sin throttle | `ILoginThrottler.GetInvitationAcceptRetryAfterAsync` — 20/IP/hora; `Invitation.MaxAcceptAttempts=5` por invitación. |
+| `AdminInvitationRawToken` en claro por RabbitMQ | Reemplazado por `AdminInvitationTokenReference (Guid?)` — mismo patrón TokenReference de §44.4. |
+
+MFA OTP en claro por RabbitMQ (`MfaChallengeRequestedIntegrationEvent`) quedó **deliberadamente fuera
+de alcance** — el plan lo marca explícito, no es deuda de esta fase.
+
+## 44.6 Configuración
+
+```json
+// Auth
+"Onboarding": {
+  "RegistrationUrlBase": "http://localhost:5173",
+  "AuthPublicBaseUrl": "http://localhost:5124",
+  "TenantBaseDomain": "taxprocore.com"
+},
+"Terms": { "CurrentVersion": "2026-07-14" },
+"Auth": {
+  "PaymentApp": { "BaseUrl": "http://localhost:5430" },
+  "Documents": { "BaseUrl": "http://localhost:5450" },
+  "CloudStorage": { "BaseUrl": "http://localhost:5330" }
+}
+
+// PaymentApp
+"Stripe": { "SecretKey": "", "WebhookSecret": "" }
+```
+
+Valores hardcodeados (no config, documentados acá porque el frontend/QA los necesita conocer): OTP
+TTL 10 min, checkout Stripe TTL 24h, `RegistrationToken` TTL 72h, `TokenReference` (Redis) TTL 30s,
+reserva de subdominio TTL 60 min.
+
+## 44.7 Inventario completo de endpoints M2M
+
+§42.1 y §43.2 ya documentaron 11 de los endpoints M2M/admin del flujo. Esta tabla cierra el
+inventario con los que faltaban — ninguno tenía entrada propia en el README hasta esta fase:
+
+| # | Método + ruta | Servicio | Caller → Target | Fase |
+|---|---|---|---|---|
+| 1 | `POST payments-app/internal/onboarding/checkout` | PaymentApp | Auth (`OnboardingCheckoutController`) → PaymentApp | 8/16 |
+| 2 | `GET auth/internal/onboarding/tokens/{reference}/raw` | Auth | Notification (`OnboardingTokenClient`) → Auth | 9 |
+| 3 | `GET tenants/internal/subdomain-available?slug=` | Tenant | Auth (`TenantSubdomainAvailabilityClient`) → Tenant | 14 |
+| 4 | `POST internal/document-generations/onboarding-receipts` | Documents | Auth (`OnboardingPaymentSucceededConsumer` vía `IReceiptDocumentClient`) → Documents | 11 |
+| 5 | `POST auth/internal/invitations/token-references` | Auth | Tenant → Auth | 18 |
+
+Los 5 son `[Authorize(Policy="ServiceOnly")] + [AllowActorTypes(Service)]`, igual que los 11 ya
+documentados. Los 3 primeros (#1-#3) se agregaron a las colecciones Postman de PaymentApp/Auth/
+Tenant en esta misma fase (carpetas "Onboarding (M2M)"); el #5 se agregó a la colección de Auth.
+El #4 (Documents) **no tiene entrada Postman** — `TaxVision.Documents` no tiene ninguna colección
+Postman propia en el repo (gap preexistente de todo el servicio, no específico de PayFlow ni de
+esta fase; fuera de alcance cerrarlo acá).
+
+## 44.8 Verificación de Fase 19 (cierre del plan)
+
+- `dotnet build TaxVision.slnx`: limpio, 0 errores.
+- `dotnet test TaxVision.slnx`: verde en todo el monorepo (Auth.Tests **570/570**, incluye los 6 tests
+  de Fase 18 — organizados en `ForgotPasswordHandlerTests.cs`, `RefreshAccessTokenHandlerTests.cs` y 2
+  casos nuevos en `Domain/AuthDomainTests.cs`, no en un archivo nombrado por fase).
+- Entregables de esta fase: esta sección (§44, incluyendo el cierre del inventario M2M en §44.7), la
+  colección Postman nueva `TaxVision_Onboarding.postman_collection.json`, 5 endpoints M2M agregados a
+  las colecciones existentes de Auth/Tenant/PaymentApp que faltaban desde sus fases originales (8/9/14/18),
+  `documents/architecture/payflowguide/API_Contract.md` (contrato completo para el equipo de frontend)
+  y los 2 ADRs (`ADR-001-Auth-Hosts-Onboarding.md`, `ADR-002-Documents-Hosts-Receipt.md`).
+- **No ejecutado en esta sesión**: la verificación manual end-to-end contra servicios reales (Stripe
+  Checkout con tarjeta de test, email real de OTP/recibo, matar un servicio a mitad de la Saga para
+  confirmar `ManualReview`+retry, grep de logs Serilog en busca de `passwordPlaintext`) — requiere
+  levantar el stack completo vía Docker Compose (RabbitMQ + Redis + SQL Server + los 6+ servicios
+  involucrados + Stripe en modo test), lo cual está fuera del alcance que esta sesión puede ejecutar
+  sin autorización explícita de tocar Docker. El checklist de 6 pasos queda documentado en
+  `API_Contract.md` §Verificación E2E para que el equipo lo corra manualmente antes de merge, tal como
+  lo pide el Anexo A del plan maestro.
+
+**Riesgo**: 🟢 Bajo para el trabajo de esta fase (documentación pura, cero cambios de código). 🟡
+Medio para el plan completo hasta no correr la verificación E2E manual de 6 pasos — el build/test
+verde cubre corrección de tipos y lógica unitaria, no el camino feliz completo contra Stripe/RabbitMQ
+reales.

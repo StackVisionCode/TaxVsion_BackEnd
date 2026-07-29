@@ -214,4 +214,23 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
                 )
             )
         );
+
+    /// <summary>PayFlow (Fase 8) — <see cref="IntellipayCapabilities.Instance"/> declara
+    /// <c>SupportsHostedCheckoutRedirect=true</c> (Intellipay sí ofrece un hosted flow propio),
+    /// pero ese flujo nunca se cableó a este método de <see cref="IPaymentProvider"/> — PayFlow
+    /// solo necesita Stripe (ver <c>CreateOnboardingCheckoutHandler</c>), así que este gap
+    /// preexistente queda documentado y fuera de alcance en vez de "NotSupported" (que sería
+    /// inexacto dado lo que el propio catálogo de capacidades afirma).</summary>
+    public Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
+        HostedCheckoutSessionRequest request,
+        CancellationToken ct
+    ) =>
+        Task.FromResult(
+            Result.Failure<HostedCheckoutSessionResult>(
+                new Error(
+                    "Intellipay.CheckoutSession.NotImplemented",
+                    "Intellipay's hosted checkout is not wired to this interface yet."
+                )
+            )
+        );
 }

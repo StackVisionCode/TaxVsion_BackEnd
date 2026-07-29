@@ -153,7 +153,13 @@ public static class ProcessInvoiceGenerationHandler
     {
         var data = BuildRenderData(command, branding, qrGenerator);
 
-        var html = await renderer.RenderHtmlAsync(command.TemplateKey, command.TemplateVersion, command.TenantId, data, ct);
+        var html = await renderer.RenderHtmlAsync(
+            command.TemplateKey,
+            command.TemplateVersion,
+            command.TenantId,
+            data,
+            ct
+        );
         if (html.IsFailure)
             return Result.Failure<byte[]>(html.Error);
 
@@ -175,29 +181,34 @@ public static class ProcessInvoiceGenerationHandler
         // El link de pago lo arma Billing con el subdominio del tenant; Documents solo lo acepta si es una
         // URL absoluta http/https (fail-closed: si no lo es, no se dibuja botón ni QR). El QR codifica esa
         // misma URL — hereda el subdominio automáticamente. Pagada ⇒ nunca se ofrece pago.
-        var paymentUrl = IsRenderablePaymentUrl(invoice.PaymentUrl) && invoice.Status != "Paid"
-            ? invoice.PaymentUrl!
-            : string.Empty;
+        var paymentUrl =
+            IsRenderablePaymentUrl(invoice.PaymentUrl) && invoice.Status != "Paid" ? invoice.PaymentUrl! : string.Empty;
         var paymentQr = paymentUrl.Length > 0 ? qrGenerator.CreatePngDataUri(paymentUrl) : string.Empty;
 
         // Logo solo embebido (data:) — un recurso externo lo bloquea el CSP del motor.
-        var logo = branding?.LogoDataUri is { Length: > 0 } l && l.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
-            ? l
-            : string.Empty;
+        var logo =
+            branding?.LogoDataUri is { Length: > 0 } l && l.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+                ? l
+                : string.Empty;
         var brandColor = IsHexColor(branding?.BrandColorHex) ? branding!.BrandColorHex! : "#2563eb";
-        var displayName = string.IsNullOrWhiteSpace(branding?.DisplayName) ? invoice.Issuer.Name : branding!.DisplayName!;
+        var displayName = string.IsNullOrWhiteSpace(branding?.DisplayName)
+            ? invoice.Issuer.Name
+            : branding!.DisplayName!;
         var footer = string.IsNullOrWhiteSpace(branding?.FooterText)
             ? $"Documento generado por TaxVision · Factura {command.InvoiceNumber}"
             : branding!.FooterText!;
 
         var lines = invoice
-            .Lines.Select(object (line) => new Dictionary<string, object>
-            {
-                ["description"] = line.Description,
-                ["quantity"] = line.Quantity.ToString("0.##", culture),
-                ["unitPrice"] = line.UnitPrice.ToString("N2", culture),
-                ["amount"] = line.Amount.ToString("N2", culture),
-            })
+            .Lines.Select(
+                object (line) =>
+                    new Dictionary<string, object>
+                    {
+                        ["description"] = line.Description,
+                        ["quantity"] = line.Quantity.ToString("0.##", culture),
+                        ["unitPrice"] = line.UnitPrice.ToString("N2", culture),
+                        ["amount"] = line.Amount.ToString("N2", culture),
+                    }
+            )
             .ToList();
 
         return new Dictionary<string, object?>

@@ -7,6 +7,17 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
+using CheckoutSessionCreateOptions = Stripe.Checkout.SessionCreateOptions;
+using CheckoutSessionLineItemOptions = Stripe.Checkout.SessionLineItemOptions;
+using CheckoutSessionLineItemPriceDataOptions = Stripe.Checkout.SessionLineItemPriceDataOptions;
+using CheckoutSessionLineItemPriceDataProductDataOptions = Stripe.Checkout.SessionLineItemPriceDataProductDataOptions;
+using CheckoutSessionPaymentIntentDataOptions = Stripe.Checkout.SessionPaymentIntentDataOptions;
+// Alias explícito: este archivo vive en el namespace ...Providers.Stripe, así que una
+// referencia calificada "Stripe.Checkout.X" se resuelve como relativa al namespace propio
+// (…Providers.Stripe.Checkout, inexistente) en vez del namespace global del SDK.
+using CheckoutSessionService = Stripe.Checkout.SessionService;
+using CheckoutSession = Stripe.Checkout.Session;
+using CheckoutSessionGetOptions = Stripe.Checkout.SessionGetOptions;
 
 namespace TaxVision.PaymentApp.Infrastructure.Providers.Stripe;
 
@@ -76,7 +87,10 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         }
     }
 
-    public async Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct)
+    public async Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(
+        ProviderCustomerToken customer,
+        CancellationToken ct
+    )
     {
         var service = new SetupIntentService(_client);
         try
@@ -242,6 +256,16 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         CancellationToken ct
     )
     {
+        // Bug real encontrado en la verificación E2E de PayFlow: para un checkout de onboarding
+        // cuya referencia cayó al fallback documentado en CreateHostedCheckoutSessionAsync (id de
+        // Checkout Session, prefijo "cs_", en vez de PaymentIntent, prefijo "pi_"), resolverla
+        // contra el PaymentIntentService de abajo siempre devolvía 404 "No such payment_intent" --
+        // PendingChargeReconciliationJob nunca podía reconciliar estos pagos y quedaban
+        // Processing para siempre. Los prefijos de id de Stripe son estables y públicos (parte de
+        // su API), así que discriminar por ellos acá es seguro.
+        if (providerChargeReference.StartsWith("cs_", StringComparison.Ordinal))
+            return await GetCheckoutSessionStatusAsync(providerChargeReference, ct);
+
         var service = new PaymentIntentService(_client);
         try
         {
@@ -251,6 +275,52 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe GetChargeStatus failed. Reference={Reference}", providerChargeReference);
+            return Result.Failure<ChargeAuthorizationResult>(
+                new Error("Stripe.ChargeStatus.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
+    private async Task<Result<ChargeAuthorizationResult>> GetCheckoutSessionStatusAsync(
+        string sessionId,
+        CancellationToken ct
+    )
+    {
+        var service = new CheckoutSessionService(_client);
+        try
+        {
+            var session = await service.GetAsync(
+                sessionId,
+                new CheckoutSessionGetOptions { Expand = ["payment_intent"] },
+                cancellationToken: ct
+            );
+
+            // Reconciliar hacia el PaymentIntent real en cuanto exista -- mismo criterio que el
+            // webhook checkout.session.completed (ParseCheckoutSessionCompleted): así refund/dispute
+            // futuros, que llegan referenciando el PaymentIntent y no la Session, pueden resolver
+            // este pago.
+            var reference = string.IsNullOrEmpty(session.PaymentIntentId) ? session.Id : session.PaymentIntentId;
+
+            return Result.Success(
+                session.PaymentStatus switch
+                {
+                    "paid" or "no_payment_required" => new ChargeAuthorizationResult(
+                        reference,
+                        PaymentStatus.Succeeded
+                    ),
+                    _ when session.Status == "expired" => new ChargeAuthorizationResult(
+                        reference,
+                        PaymentStatus.Failed,
+                        FailureCode: "Stripe.CheckoutSession.Expired",
+                        FailureMessage: "The checkout session expired before payment was completed."
+                    ),
+                    _ => new ChargeAuthorizationResult(reference, PaymentStatus.Processing),
+                }
+            );
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogWarning(ex, "Stripe GetCheckoutSessionStatus failed. SessionId={SessionId}", sessionId);
             return Result.Failure<ChargeAuthorizationResult>(
                 new Error("Stripe.ChargeStatus.Failed", ex.StripeError?.Message ?? ex.Message)
             );
@@ -325,6 +395,81 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         }
     }
 
+    /// <summary>PayFlow (Fase 8) — Checkout Session en modo <c>payment</c>. Investigado a fondo en
+    /// la verificación E2E: Stripe documenta <c>payment_intent</c> como <c>nullable</c> en la
+    /// respuesta de creación (no se garantiza sincrónico, ni con <c>Expand</c> — si el campo crudo
+    /// viene null no hay nada que expandir). Cuando eso pasa, usamos el propio id de la Session
+    /// como referencia provisoria; el webhook <c>checkout.session.completed</c>
+    /// (<see cref="ParseWebhookEventAsync"/>) confirma el pago y reconcilia la referencia real.</summary>
+    public async Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
+        HostedCheckoutSessionRequest request,
+        CancellationToken ct
+    )
+    {
+        var service = new CheckoutSessionService(_client);
+        try
+        {
+            var session = await service.CreateAsync(
+                new CheckoutSessionCreateOptions
+                {
+                    Mode = "payment",
+                    PaymentMethodTypes = ["card"],
+                    CustomerEmail = request.PayerEmail,
+                    LineItems =
+                    [
+                        new CheckoutSessionLineItemOptions
+                        {
+                            Quantity = 1,
+                            PriceData = new CheckoutSessionLineItemPriceDataOptions
+                            {
+                                Currency = request.Amount.Currency.ToLowerInvariant(),
+                                UnitAmount = request.Amount.AmountCents,
+                                ProductData = new CheckoutSessionLineItemPriceDataProductDataOptions
+                                {
+                                    Name = request.Descriptor.Value,
+                                },
+                            },
+                        },
+                    ],
+                    SuccessUrl = request.SuccessUrl,
+                    CancelUrl = request.CancelUrl,
+                    ExpiresAt = request.ExpiresAtUtc,
+                    PaymentIntentData = new CheckoutSessionPaymentIntentDataOptions
+                    {
+                        StatementDescriptorSuffix = request.Descriptor.Value,
+                        Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
+                    },
+                    Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value),
+                    // Expand no fuerza la creación sincrónica del PaymentIntent -- sólo trae el
+                    // objeto completo SI el campo crudo ya viene poblado. Se deja porque a veces sí
+                    // ayuda (no hace daño) pero el fallback de abajo es lo que hace el flujo
+                    // confiable de verdad.
+                    Expand = ["payment_intent"],
+                },
+                new RequestOptions { IdempotencyKey = request.IdempotencyKey.Value },
+                ct
+            );
+
+            // Fallback documentado: si Stripe no creó el PaymentIntent sincrónicamente, usamos el
+            // id de la propia Session como referencia provisoria (siempre presente) -- el webhook
+            // checkout.session.completed la reconcilia con el PaymentIntent real una vez que existe.
+            var providerReference = string.IsNullOrEmpty(session.PaymentIntentId) ? session.Id : session.PaymentIntentId;
+
+            return Result.Success(new HostedCheckoutSessionResult(session.Id, providerReference, session.Url));
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Stripe CreateHostedCheckoutSession failed. IdempotencyKey={IdempotencyKey}",
+                request.IdempotencyKey.Value
+            );
+            return Result.Failure<HostedCheckoutSessionResult>(
+                new Error("Stripe.CheckoutSession.Failed", ex.StripeError?.Message ?? ex.Message)
+            );
+        }
+    }
+
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
         string rawPayload,
         string signatureHeader,
@@ -334,7 +479,19 @@ public sealed class StripePaymentAdapter : IPaymentProvider
     {
         try
         {
-            var stripeEvent = EventUtility.ConstructEvent(rawPayload, signatureHeader, webhookSecret);
+            // Bug real encontrado en la verificación E2E de PayFlow: Stripe.net 47.4.0 tiene
+            // hardcodeada la API version que espera (2025-02-24.acacia) y por default
+            // ConstructEvent tira excepción si la cuenta usa una más nueva -- Stripe mismo
+            // recomienda este flag en el mensaje de la excepción. El chequeo de versión no tiene
+            // nada que ver con la autenticidad del webhook: la validación HMAC de la firma (lo
+            // único que realmente garantiza que el payload vino de Stripe) se sigue haciendo
+            // igual con este flag en false.
+            var stripeEvent = EventUtility.ConstructEvent(
+                rawPayload,
+                signatureHeader,
+                webhookSecret,
+                throwOnApiVersionMismatch: false
+            );
             return Task.FromResult(
                 Result.Success(new WebhookVerificationResult(stripeEvent.Id, stripeEvent.Type, rawPayload))
             );
@@ -357,7 +514,9 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         Event stripeEvent;
         try
         {
-            stripeEvent = EventUtility.ParseEvent(rawPayload);
+            // Mismo mismatch de versión de API que en VerifyWebhookSignatureAsync -- ParseEvent
+            // tiene el mismo chequeo por default.
+            stripeEvent = EventUtility.ParseEvent(rawPayload, throwOnApiVersionMismatch: false);
         }
         catch (Exception ex) when (ex is StripeException or System.Text.Json.JsonException)
         {
@@ -372,6 +531,7 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             "payment_intent.succeeded" => ParsePaymentIntent(stripeEvent, PaymentStatus.Succeeded),
             "payment_intent.payment_failed" => ParsePaymentIntent(stripeEvent, PaymentStatus.Failed),
             "payment_intent.canceled" => ParsePaymentIntent(stripeEvent, PaymentStatus.Cancelled),
+            "checkout.session.completed" => ParseCheckoutSessionCompleted(stripeEvent),
             "charge.refunded" => ParseCharge(stripeEvent),
             "charge.dispute.created" => ParseDispute(stripeEvent),
             _ => Result.Failure<WebhookEventPayload>(
@@ -380,6 +540,37 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         };
 
         return Task.FromResult(result);
+    }
+
+    /// <summary>PayFlow — la contraparte del fallback en <see cref="CreateHostedCheckoutSessionAsync"/>:
+    /// resuelve el <c>SaaSPayment</c> por el id de Session (guardado como referencia provisoria si
+    /// el PaymentIntent no estaba disponible al crearla) y, si para este punto Stripe ya tiene un
+    /// PaymentIntent real asociado, lo trae en <see cref="WebhookEventPayload.ReconciledChargeReference"/>
+    /// para que el handler lo persista -- así refund/dispute (que llegan referenciando el
+    /// PaymentIntent/charge, no la Session) puedan seguir resolviendo este pago después.</summary>
+    private static Result<WebhookEventPayload> ParseCheckoutSessionCompleted(Event stripeEvent)
+    {
+        if (stripeEvent.Data.Object is not CheckoutSession session)
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.Webhook.UnexpectedPayload", "Expected a Checkout Session object.")
+            );
+
+        var status = session.PaymentStatus switch
+        {
+            "paid" or "no_payment_required" => PaymentStatus.Succeeded,
+            _ => PaymentStatus.Failed,
+        };
+
+        return Result.Success(
+            new WebhookEventPayload(
+                ProviderChargeReference: session.Id,
+                Status: status,
+                FailureCode: status == PaymentStatus.Failed ? "Stripe.CheckoutSession.Unpaid" : null,
+                FailureMessage: status == PaymentStatus.Failed ? "Checkout session completed without payment." : null,
+                RefundedAmountCents: null,
+                ReconciledChargeReference: string.IsNullOrEmpty(session.PaymentIntentId) ? null : session.PaymentIntentId
+            )
+        );
     }
 
     private static Result<WebhookEventPayload> ParsePaymentIntent(Event stripeEvent, PaymentStatus mappedStatus)

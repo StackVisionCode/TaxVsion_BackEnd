@@ -64,6 +64,7 @@ builder.Services.AddHostedService<TenantDomainBackfillService>();
 builder.Services.AddHostedService<PermissionsBackfillService>();
 builder.Services.AddHostedService<TenantDomainProvisioningPoller>();
 builder.Services.AddHostedService<AuthMaintenanceService>();
+builder.Services.AddHostedService<OnboardingRetryScheduler>();
 
 // Contexto de request (IP/user-agent) para auditoría y sesiones.
 builder.Services.AddHttpContextAccessor();
@@ -92,7 +93,17 @@ if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
 else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "auth-service");
+// PayFlow (Fase 9) — primer policy M2M-only de Auth, mismo patrón "ServiceOnly" que PaymentApp
+// (Fase 8): gatea InternalOnboardingTokensController, invocado por otro servicio (no por Auth).
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
+builder.Services.AddTaxVisionOpenTelemetry(
+    builder.Configuration,
+    "auth-service",
+    TaxVision.Auth.Infrastructure.Onboarding.Observability.OnboardingMetrics.MeterName
+);
 
 // Rate limiting para los endpoints públicos de resolución de tenant (Fase A4) —
 // partición por IP real (ya normalizada por ForwardedHeadersMiddleware, que corre
@@ -124,6 +135,83 @@ builder.Services.AddRateLimiter(options =>
                 _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    // PayFlow (Fase 11) — endpoint anónimo mediador de descarga del recibo (GetOnboardingReceiptDownloadRedirectQuery).
+    // El FileId ya funciona como capability opaca; esto sólo acota fuerza bruta contra ese espacio de GUIDs.
+    options.AddPolicy(
+        "onboarding-receipt-download",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    // PayFlow (Fase 13) — endpoints públicos del form de registro (preview/complete/status), límites
+    // exactos del plan: preview 30/min, complete 10/min (más estricto, deriva la Saga de provisioning),
+    // status 60/min (polling legítimo del frontend mientras la Saga corre).
+    options.AddPolicy(
+        "onboarding-registration-preview",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    options.AddPolicy(
+        "onboarding-registration-complete",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    options.AddPolicy(
+        "onboarding-status",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    // PayFlow (Fase 14) — check-y-reserva de subdominio; mismo límite que onboarding-registration-preview
+    // (30/min), el frontend puede llamarlo varias veces mientras el usuario tipea.
+    options.AddPolicy(
+        "onboarding-subdomain-check",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                 }
@@ -191,6 +279,14 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantSubdomainChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantDomainReservedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantResolutionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingOtpRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingRegistrationReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingReceiptReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingProvisioningStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingProvisioningStepFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantOnboardingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // PayFlow (Fase 16) — publicado por InternalTenantOwnersController, no por la Saga.
+    options.PublishMessage<TenantOwnerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
     options
@@ -276,6 +372,37 @@ app.UseMiddleware<TermsAcceptanceMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+
+// PayFlow (Fase 17) — desglose por dependencia (sql-server/redis/rabbitmq, las mismas registradas
+// arriba para "ready") en vez de solo Healthy/Unhealthy. Deliberadamente NO agrega checks nuevos
+// contra Documents/PaymentApp/Tenant/Subscription (M2M) — esos 4 requieren wiring HTTP adicional
+// que quedó fuera del alcance de esta fase; ver memoria de la fase para el disclosure completo.
+app.MapHealthChecks(
+    "/health/detailed",
+    new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("ready"),
+        ResponseWriter = async (context, report) =>
+        {
+            context.Response.ContentType = "application/json";
+            var payload = new
+            {
+                status = report.Status.ToString(),
+                totalDurationMs = report.TotalDuration.TotalMilliseconds,
+                checks = report.Entries.Select(entry => new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    durationMs = entry.Value.Duration.TotalMilliseconds,
+                    description = entry.Value.Description,
+                    error = entry.Value.Exception?.Message,
+                }),
+            };
+            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(payload));
+        },
+    }
+);
+
 app.MapControllers();
 
 app.Run();

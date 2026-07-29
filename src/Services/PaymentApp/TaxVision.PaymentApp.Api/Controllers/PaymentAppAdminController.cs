@@ -6,6 +6,7 @@ using BuildingBlocks.Web.Csv;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.PaymentApp.Application.Admin.Commands;
 using TaxVision.PaymentApp.Application.Admin.Queries;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using Wolverine;
@@ -50,6 +51,19 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
         [FromQuery] int pageSize,
         CancellationToken ct
     ) => Search(tenantId, status, type, from, to, page, pageSize, ct);
+
+    /// <summary>Reenvía <c>OnboardingPaymentSucceededIntegrationEvent</c>/<c>Failed</c> para un
+    /// pago de onboarding ya en estado terminal cuyo evento nunca llegó a Auth (p.ej. resuelto
+    /// por <c>PendingChargeReconciliationJob</c> antes de que ese job publicara el evento -- ver
+    /// <see cref="RepublishOnboardingPaymentResultHandler"/>). No re-ejecuta ningún cobro, solo
+    /// reenvía la notificación downstream.</summary>
+    [HttpPost("payments/{id:guid}/republish-onboarding-result")]
+    [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    public async Task<IActionResult> RepublishOnboardingResult(Guid id, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result>(new RepublishOnboardingPaymentResultCommand(id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 
     private const int ExportMaxRows = 5000;
 

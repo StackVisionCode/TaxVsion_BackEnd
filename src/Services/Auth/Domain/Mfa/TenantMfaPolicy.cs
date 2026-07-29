@@ -6,7 +6,6 @@ namespace TaxVision.Auth.Domain.Mfa;
 
 /// <summary>
 /// Política MFA por tenant. Id = TenantId (relación 1:1 con la proyección de Tenant).
-/// MFA para administradores es obligatorio por diseño y no puede desactivarse.
 /// </summary>
 public sealed class TenantMfaPolicy : BaseEntity
 {

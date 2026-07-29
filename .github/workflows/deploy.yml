@@ -68,6 +68,13 @@ jobs:
           PAYMENTAPP_DB_CONNECTION=${{ secrets.PAYMENTAPP_DB_CONNECTION }}
           PAYMENTCLIENT_DB_CONNECTION=${{ secrets.PAYMENTCLIENT_DB_CONNECTION }}
           GROWTH_DB_CONNECTION=${{ secrets.GROWTH_DB_CONNECTION }}
+          # Billing y Documents (servicios mas nuevos) nunca se agregaron aca -- el
+          # step "Apply .NET EF Core migrations" fallaba con "unbound variable" antes
+          # de migrar NINGUN servicio (apply-migrations.sh usa set -eu), y el propio
+          # docker-compose.yml exige estos dos con :? para billing-api/documents-api.
+          # Corregido de paso junto con el docker-compose.yml (ver migrations service).
+          BILLING_DB_CONNECTION=${{ secrets.BILLING_DB_CONNECTION }}
+          DOCUMENTS_DB_CONNECTION=${{ secrets.DOCUMENTS_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
           # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
           # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
@@ -87,6 +94,11 @@ jobs:
           CUSTOMER_MINIO_SECRET=${{ secrets.CUSTOMER_MINIO_SECRET }}
           CORRESPONDENCE_MINIO_SECRET=${{ secrets.CORRESPONDENCE_MINIO_SECRET }}
           SCRIBE_MINIO_SECRET=${{ secrets.SCRIBE_MINIO_SECRET }}
+          # Documents (recibos de onboarding PayFlow Fase 10-11 + PDFs de Billing)
+          # faltaba por completo -- Documents__Minio__SecretKey tiene default vacio
+          # en docker-compose.yml, asi que sin esto los uploads a MinIO fallaban con
+          # error de autenticacion en produccion.
+          DOCUMENTS_MINIO_SECRET=${{ secrets.DOCUMENTS_MINIO_SECRET }}
           GRAFANA_ADMIN_USER=${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
@@ -143,6 +155,20 @@ jobs:
           PAYMENTCLIENT_GROWTH_CLIENT_SECRET=${{ secrets.PAYMENTCLIENT_GROWTH_CLIENT_SECRET }}
           SUBSCRIPTION_GROWTH_CLIENT_ID=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_ID }}
           SUBSCRIPTION_GROWTH_CLIENT_SECRET=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_SECRET }}
+          # PayFlow Fase 16 -- PaymentApp resuelve el precio real del plan server-side
+          # (GET subscriptions/internal/plans/{id}/pricing) al armar el Stripe Checkout
+          # Session de onboarding, en vez de confiar en un monto del frontend. Faltaba
+          # del todo en este workflow -- ServiceAuth__Clients__14__Secret tiene default
+          # vacio en docker-compose.yml, asi que ese M2M quedaba sin autenticar.
+          PAYMENTAPP_SUBSCRIPTION_CLIENT_ID=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_ID }}
+          PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET }}
+          # Billing -- clientes M2M hacia Documents (PDFs de factura) y hacia
+          # PaymentApp/PaymentClient (Payments). Mismo gap: faltaban del todo, los
+          # secrets correspondientes en docker-compose.yml tienen default vacio.
+          BILLING_DOCUMENTS_CLIENT_ID=${{ secrets.BILLING_DOCUMENTS_CLIENT_ID }}
+          BILLING_DOCUMENTS_CLIENT_SECRET=${{ secrets.BILLING_DOCUMENTS_CLIENT_SECRET }}
+          BILLING_PAYMENTS_CLIENT_ID=${{ secrets.BILLING_PAYMENTS_CLIENT_ID }}
+          BILLING_PAYMENTS_CLIENT_SECRET=${{ secrets.BILLING_PAYMENTS_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}
@@ -159,6 +185,11 @@ jobs:
           # ---------- PaymentClient (Fases E-M) ----------
           STRIPE_CONNECT_PLATFORM_SECRET_KEY=${{ secrets.STRIPE_CONNECT_PLATFORM_SECRET_KEY }}
           STRIPE_CONNECT_WEBHOOK_SECRET=${{ secrets.STRIPE_CONNECT_WEBHOOK_SECRET }}
+          # PaymentClient__Public__BaseUrl solo tenia default http://localhost:5047 (dev)
+          # -- sin esto, cualquier link publico generado por PaymentClient en produccion
+          # (payment links, redirects post-checkout) apuntaba a localhost. Faltaba del
+          # todo en este workflow.
+          PAYMENTCLIENT_PUBLIC_BASE_URL=${{ secrets.PAYMENTCLIENT_PUBLIC_BASE_URL }}
 
           # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
           # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto
@@ -317,7 +348,7 @@ jobs:
       - name: Provision scoped MinIO service accounts
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
-      - name: Apply .NET EF Core migrations (14 servicios)
+      - name: Apply .NET EF Core migrations (16 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
 
       - name: Apply Communication Prisma migrations

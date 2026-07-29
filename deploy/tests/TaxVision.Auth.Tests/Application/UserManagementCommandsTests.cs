@@ -27,6 +27,9 @@ public sealed class UserManagementCommandsTests
         public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
             throw NotExpected();
 
+        public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+            throw NotExpected();
+
         public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
             throw NotExpected();
 

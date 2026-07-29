@@ -6,10 +6,15 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Auth.Application.Onboarding.Sagas;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.Onboarding.EmailVerification;
+using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
+using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Domain.Onboarding.TermsVersions;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
@@ -56,6 +61,12 @@ public sealed class AuthDbContext(
     public DbSet<TenantDomain> TenantDomains => Set<TenantDomain>();
     public DbSet<TenantSubdomainReservation> TenantSubdomainReservations => Set<TenantSubdomainReservation>();
     public DbSet<TenantTermsAcceptance> TenantTermsAcceptances => Set<TenantTermsAcceptance>();
+    public DbSet<TenantOnboarding> TenantOnboardings => Set<TenantOnboarding>();
+    public DbSet<OnboardingSubdomainReservation> OnboardingSubdomainReservations =>
+        Set<OnboardingSubdomainReservation>();
+    public DbSet<EmailVerificationChallenge> EmailVerificationChallenges => Set<EmailVerificationChallenge>();
+    public DbSet<TermsVersion> TermsVersions => Set<TermsVersion>();
+    public DbSet<TenantOnboardingProcessManager> OnboardingSagas => Set<TenantOnboardingProcessManager>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -22,7 +22,8 @@ public sealed class BillingMetrics : IDisposable
 
     public void RecordInvoiceIssued() => _invoicesIssued.Add(1);
 
-    public void RecordInvoicePaid(string method) => _invoicesPaid.Add(1, new KeyValuePair<string, object?>("method", method));
+    public void RecordInvoicePaid(string method) =>
+        _invoicesPaid.Add(1, new KeyValuePair<string, object?>("method", method));
 
     public void RecordReceiptIssued() => _receiptsIssued.Add(1);
 

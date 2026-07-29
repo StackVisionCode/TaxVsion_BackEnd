@@ -32,7 +32,12 @@ public sealed class PayableReferenceConfiguration : IEntityTypeConfiguration<Pay
 
         // Idempotencia del ensure: un payable por (tenant, propósito, recurso externo).
         builder
-            .HasIndex(p => new { p.TenantId, p.PurposeKind, p.ExternalReferenceId })
+            .HasIndex(p => new
+            {
+                p.TenantId,
+                p.PurposeKind,
+                p.ExternalReferenceId,
+            })
             .IsUnique()
             .HasDatabaseName("UX_PayableReferences_Tenant_Purpose_ExternalRef");
     }

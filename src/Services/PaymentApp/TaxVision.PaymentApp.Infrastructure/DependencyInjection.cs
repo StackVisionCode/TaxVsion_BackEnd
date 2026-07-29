@@ -14,6 +14,7 @@ using TaxVision.PaymentApp.Infrastructure.Providers.Intellipay;
 using TaxVision.PaymentApp.Infrastructure.Providers.Stripe;
 using TaxVision.PaymentApp.Infrastructure.Scheduling;
 using TaxVision.PaymentApp.Infrastructure.Security;
+using TaxVision.PaymentApp.Infrastructure.Subscriptions;
 
 namespace TaxVision.PaymentApp.Infrastructure;
 
@@ -67,6 +68,38 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddSubscriptionClient(services, configuration);
         return services;
     }
+
+    /// <summary>PayFlow (Fase 16) — cierra el price-trust gap: resuelve el precio real de un plan
+    /// vía M2M a Subscription en vez de confiar en el valor que enviaba el caller.</summary>
+    private static void AddSubscriptionClient(IServiceCollection services, IConfiguration config)
+    {
+        services.AddOptions<ServiceAuthClientOptions>().Bind(config.GetSection(ServiceAuthClientOptions.SectionName));
+        services.AddOptions<SubscriptionClientOptions>().Bind(config.GetSection(SubscriptionClientOptions.SectionName));
+
+        services.AddHttpClient<IPaymentAppServiceTokenAcquirer, PaymentAppServiceTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        services.AddHttpClient<ISubscriptionPlanPricingClient, SubscriptionPlanPricingClient>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+    }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

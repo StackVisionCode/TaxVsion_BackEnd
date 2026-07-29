@@ -151,6 +151,9 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<Guid?>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("PrimaryColor")
                         .HasMaxLength(7)
                         .HasColumnType("nvarchar(7)")
@@ -171,6 +174,10 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .HasColumnName("TextColorHex");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique()
+                        .HasFilter("[OnboardingId] IS NOT NULL");
 
                     b.HasIndex("SubDomain")
                         .IsUnique();

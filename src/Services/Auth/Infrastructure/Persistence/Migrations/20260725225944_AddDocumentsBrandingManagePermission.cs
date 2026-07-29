@@ -13,8 +13,33 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "MinPlanTier", "Module", "PlatformOnly" },
-                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000152"), "TenantEmployee,TenantAdmin,PlatformAdmin", "documents.branding.manage", "Configurar el branding de documentos del tenant", true, false, false, 0, "documents", false });
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "MinPlanTier",
+                    "Module",
+                    "PlatformOnly",
+                },
+                values: new object[]
+                {
+                    new Guid("a1000000-0000-0000-0000-000000000152"),
+                    "TenantEmployee,TenantAdmin,PlatformAdmin",
+                    "documents.branding.manage",
+                    "Configurar el branding de documentos del tenant",
+                    true,
+                    false,
+                    false,
+                    0,
+                    "documents",
+                    false,
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -23,7 +48,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000152"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000152")
+            );
         }
     }
 }

@@ -64,11 +64,20 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Fase 18 — ResolvedTenantId no se bindea del body: sale de IResolvedTenantContext
+    /// (Host de la request, poblado por TenantHostResolutionMiddleware), igual que en Login.</summary>
+    public sealed record RefreshRequest(string RefreshToken);
+
     [HttpPost("refresh")]
     [AllowAnonymous]
     [ProducesResponseType<AuthTokensResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Refresh(RefreshAccessTokenCommand command, CancellationToken ct)
+    public async Task<IActionResult> Refresh(
+        RefreshRequest request,
+        [FromServices] IResolvedTenantContext tenantContext,
+        CancellationToken ct
+    )
     {
+        var command = new RefreshAccessTokenCommand(request.RefreshToken, tenantContext.ResolvedTenantId);
         var result = await bus.InvokeAsync<Result<AuthTokensResponse>>(command, ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

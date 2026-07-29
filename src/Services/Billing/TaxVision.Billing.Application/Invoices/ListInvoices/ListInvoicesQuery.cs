@@ -16,8 +16,7 @@ public static class ListInvoicesHandler
     {
         var list = await invoices.ListByTenantAsync(query.TenantId, query.Take, ct);
 
-        IReadOnlyList<InvoiceSummaryResponse> response = list
-            .Select(invoice => new InvoiceSummaryResponse(
+        IReadOnlyList<InvoiceSummaryResponse> response = list.Select(invoice => new InvoiceSummaryResponse(
                 invoice.Id,
                 invoice.InvoiceNumber,
                 invoice.Status.ToString(),

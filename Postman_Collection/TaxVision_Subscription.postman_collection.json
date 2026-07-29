@@ -1039,6 +1039,101 @@
 			]
 		},
 		{
+			"name": "Internal Activation (M2M)",
+			"description": "PayFlow Fase 16 — M2M interno, requiere un token de servicio (actor_type=Service, obtenido via POST /auth/service-token con el client_id/client_secret correspondiente en Auth:ServiceAuth:Clients — ver request ServiceToken en la coleccion de Auth). La policy ServiceOnly + [AllowActorTypes(Service)] rechaza cualquier token de usuario normal con 403, sin importar rol o permisos. ActivateFromOnboarding lo llama la Saga de onboarding pay-first (TenantOnboardingProcessManager en Auth, Fase 15); GetPlanPricing lo llama PaymentApp al armar el Stripe Checkout Session (client payment-app-subscription, nuevo en esta fase). No apto para flujos de testing manual estandar — se incluye solo como utilidad para pruebas M2M explicitas.",
+			"item": [
+				{
+					"name": "ActivateFromOnboarding (M2M — llamado por la Saga de Auth)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) generado in-process por la Saga de Auth (TenantOnboardingProcessManager) via IJwtTokenGenerator.GenerateScopedServiceToken — no es un client registrado en ServiceAuth:Clients. Fire-and-forget: la Saga avanza cuando le llega SubscriptionActivatedForOnboardingIntegrationEvent por el bus."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"onboardingId\": \"11111111-1111-1111-1111-111111111111\",\n  \"tenantId\": \"33333333-3333-3333-3333-333333333333\",\n  \"planId\": \"44444444-4444-4444-4444-444444444444\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/internal/activate-from-onboarding",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"internal",
+								"activate-from-onboarding"
+							]
+						},
+						"description": "PayFlow Fase 16 — M2M interno. Llamado por la Saga de onboarding de Auth (Fase 15) para activar la suscripcion de un tenant recien provisionado directo en Active — se salta el trial gratuito que reciben los demas tenants porque el cliente ya pago en PaymentApp antes de llegar a este paso. Idempotente por onboardingId. Responde 200 vacio en exito, o el shape de error estandar en fallo."
+					},
+					"response": []
+				},
+				{
+					"name": "GetPlanPricing (M2M — llamado por PaymentApp)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"pm.test('tiene monthlyPriceCents', () => pm.expect(body).to.have.property('monthlyPriceCents'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por PaymentApp via POST /auth/service-token con el client registrado payment-app-subscription (ServiceAuth__Clients__14 en docker-compose.yml, PAYMENTAPP_SUBSCRIPTION_CLIENT_ID/_SECRET en .env)."
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/subscriptions/internal/plans/{{planId}}/pricing",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"subscriptions",
+								"internal",
+								"plans",
+								"{{planId}}",
+								"pricing"
+							]
+						},
+						"description": "PayFlow Fase 16 — M2M interno. Llamado por PaymentApp al crear el Stripe Checkout Session del onboarding pagado, para resolver el precio real del plan server-side en vez de confiar en un monto enviado por el frontend (cierre del gap de price-trust, ver README §42). Respuesta 200: InternalPlanPricingResponse(planId, monthlyPriceCents, currency) — ej. {\"planId\": \"44444444-...\", \"monthlyPriceCents\": 4900, \"currency\": \"USD\"}."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Negative Cases — Actor Type",
 			"item": [
 				{

@@ -54,6 +54,12 @@ public static class TenantCreatedConsumer
             if (IsPlatformTenant(evt.Kind))
                 return;
 
+            // PayFlow (Fase 16) — un tenant creado vía onboarding pago-primero activa su
+            // suscripción directo en Active vía subscriptions/internal/activate-from-onboarding
+            // (ActivateFromOnboardingHandler), no con el trial automático de este consumer.
+            if (evt.OnboardingId is not null)
+                return;
+
             // El envelope TenantCreated llega sin tenant ambiental (*DEFAULT*): lo publica el
             // servicio Tenant desde el flujo de registro anónimo, sin bus.TenantId. Sellar el tenant
             // aquí (mismo patrón que los jobs de scheduling) estampa el envelope del recalc para que

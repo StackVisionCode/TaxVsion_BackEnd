@@ -382,6 +382,105 @@
 			]
 		},
 		{
+			"name": "Provisioning (M2M)",
+			"description": "PayFlow Fase 16 — M2M interno, requiere un token de servicio (actor_type=Service, obtenido via POST /auth/service-token con el client_id/client_secret correspondiente en Auth:ServiceAuth:Clients — ver request ServiceToken en la coleccion de Auth). La policy ServiceOnly + [AllowActorTypes(Service)] rechaza cualquier token de usuario normal con 403, sin importar rol o permisos. Receptor de la Saga de onboarding pay-first (TenantOnboardingProcessManager en Auth, Fase 15). No apto para flujos de testing manual estandar — se incluye solo como utilidad para pruebas M2M explicitas.",
+			"item": [
+				{
+					"name": "CreateFromOnboarding (M2M — llamado por la Saga de Auth)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) generado in-process por la Saga de Auth (TenantOnboardingProcessManager) via IJwtTokenGenerator.GenerateScopedServiceToken — no es un client registrado en ServiceAuth:Clients, es fire-and-forget: la Saga no espera el TenantId en esta respuesta, avanza cuando le llega TenantCreatedForOnboardingIntegrationEvent por el bus."
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"onboardingId\": \"11111111-1111-1111-1111-111111111111\",\n  \"officeName\": \"Acme Tax Office\",\n  \"subdomain\": \"acme-tax\",\n  \"adminEmail\": \"owner@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/tenants/internal/from-onboarding",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"tenants",
+								"internal",
+								"from-onboarding"
+							]
+						},
+						"description": "PayFlow Fase 16 — M2M interno. Llamado por la Saga de onboarding de Auth (Fase 15) para crear el Tenant real tras la confirmacion del pago. Unico entry point para tenants creados via onboarding pagado — a diferencia del registro gratuito (Registro_Tenant, arriba), NO crea una Invitation de admin: el owner se crea directo via Auth (POST auth/internal/tenants/{tenantId}/owners, coleccion de Auth). Idempotente por onboardingId. Responde 200 vacio en exito, o el shape de error estandar en fallo."
+					},
+					"response": []
+				},
+				{
+					"name": "CheckSubdomainAvailability (M2M — llamado por Auth)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"pm.test('tiene taken', () => pm.expect(body).to.have.property('taken'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text",
+								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Auth (TenantSubdomainAvailabilityClient) via POST /auth/service-token — mismo client tenant-worker que usa Tenant para hablar con CloudStorage, en la direccion inversa."
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/tenants/internal/subdomain-available?slug={{onboardingSubdomainSlug}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"tenants",
+								"internal",
+								"subdomain-available"
+							],
+							"query": [
+								{
+									"key": "slug",
+									"value": "{{onboardingSubdomainSlug}}"
+								}
+							]
+						},
+						"description": "PayFlow Fase 14 — M2M interno. Llamado por Auth (TenantSubdomainAvailabilityClient) durante el registro post-pago, antes de que el tenant exista, para validar que el subdominio elegido no colisione con un Tenant.SubDomain ya existente (chequeo adicional al de OnboardingSubdomainReservation, que solo rastrea reservas temporales del propio Onboarding). Respuesta 200: { taken: bool }."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Negative Cases — Actor Type",
 			"item": [
 				{

@@ -20,7 +20,11 @@ public interface IDocumentGenerationRepository
     Task<DocumentGeneration?> GetByIdAsync(Guid tenantId, Guid generationId, CancellationToken ct = default);
 
     /// <summary>Deduplicación por (TenantId, IdempotencyKey). Devuelve la generación existente si la hubiera.</summary>
-    Task<DocumentGeneration?> GetByIdempotencyKeyAsync(Guid tenantId, string idempotencyKey, CancellationToken ct = default);
+    Task<DocumentGeneration?> GetByIdempotencyKeyAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        CancellationToken ct = default
+    );
 
     /// <summary>Correlación del evento CloudStorage FileAvailable → la generación que subió ese FileId.</summary>
     Task<DocumentGeneration?> GetByFileIdAsync(Guid fileId, CancellationToken ct = default);
@@ -55,6 +59,28 @@ public interface IQrCodeGenerator
 {
     string CreatePngDataUri(string content, int pixelsPerModule = 6);
 }
+
+/// <summary>PayFlow (Fase 10) — datos fijos del emisor plataforma (TaxVision Inc.) para el recibo
+/// de onboarding: a diferencia de Invoice (branding por tenant), este documento lo emite la
+/// plataforma misma, antes de que exista un tenant. Config estática, sin I/O — método síncrono.</summary>
+public interface IPlatformIssuerProvider
+{
+    IssuerSnapshot GetSnapshot();
+}
+
+public sealed record IssuerSnapshot(
+    string Name,
+    string TaxId,
+    string AddressLine1,
+    string City,
+    string State,
+    string PostalCode,
+    string Country,
+    string Phone,
+    string Email,
+    string Website,
+    string? LogoDataUri
+);
 
 /// <summary>Sube el archivo generado al bucket temporal (IAM MinIO propia) y publica
 /// SaveFileRequestedIntegrationEvent para que CloudStorage lo almacene permanentemente. Documents

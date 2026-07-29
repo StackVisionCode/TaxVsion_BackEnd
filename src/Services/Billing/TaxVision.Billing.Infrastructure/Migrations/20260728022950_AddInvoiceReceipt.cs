@@ -16,7 +16,8 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "Invoices",
                 type: "nvarchar(64)",
                 maxLength: 64,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "ReceiptNumber",
@@ -24,21 +25,16 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "Invoices",
                 type: "nvarchar(96)",
                 maxLength: 96,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ReceiptHash",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "ReceiptHash", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "ReceiptNumber",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "ReceiptNumber", schema: "billing", table: "Invoices");
         }
     }
 }

@@ -11,8 +11,7 @@ namespace TaxVision.Documents.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.EnsureSchema(
-                name: "documents");
+            migrationBuilder.EnsureSchema(name: "documents");
 
             migrationBuilder.CreateTable(
                 name: "DocumentGenerations",
@@ -48,40 +47,42 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     CompletedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: true),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_DocumentGenerations", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_DocumentGenerations_FileId",
                 schema: "documents",
                 table: "DocumentGenerations",
                 column: "FileId",
-                filter: "[FileId] IS NOT NULL");
+                filter: "[FileId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_DocumentGenerations_Tenant_Status",
                 schema: "documents",
                 table: "DocumentGenerations",
-                columns: new[] { "TenantId", "Status" });
+                columns: new[] { "TenantId", "Status" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_DocumentGenerations_Tenant_Source_IdempotencyKey",
                 schema: "documents",
                 table: "DocumentGenerations",
                 columns: new[] { "TenantId", "SourceService", "IdempotencyKey" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "DocumentGenerations",
-                schema: "documents");
+            migrationBuilder.DropTable(name: "DocumentGenerations", schema: "documents");
         }
     }
 }

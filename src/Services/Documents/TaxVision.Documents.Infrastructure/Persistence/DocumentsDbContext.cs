@@ -34,8 +34,10 @@ public sealed class DocumentsDbContext(
 
     public DbSet<DocumentGeneration> DocumentGenerations => Set<DocumentGeneration>();
     public DbSet<DocumentBranding> DocumentBrandings => Set<DocumentBranding>();
-    public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections => Set<AuthzUserPermissionsProjection>();
-    public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections => Set<AuthzRolePermissionsProjection>();
+    public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections =>
+        Set<AuthzUserPermissionsProjection>();
+    public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
+        Set<AuthzRolePermissionsProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -25,6 +25,13 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
         builder.Property(subscription => subscription.CancellationReason).HasMaxLength(500);
         builder.Property(subscription => subscription.SuspensionReason).HasMaxLength(500);
         builder.Property(subscription => subscription.RowVersion).IsRowVersion();
+        builder.Property(subscription => subscription.OnboardingId);
+
+        builder
+            .HasIndex(subscription => subscription.OnboardingId)
+            .IsUnique()
+            .HasFilter("[OnboardingId] IS NOT NULL")
+            .HasDatabaseName("UX_TenantSubscriptions_OnboardingId");
 
         builder
             .HasIndex(subscription => subscription.TenantId)

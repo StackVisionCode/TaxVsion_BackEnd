@@ -34,7 +34,9 @@ public static class RecordManualPaymentHandler
     {
         var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
         if (invoice is null)
-            return Result.Failure<RecordManualPaymentResult>(new Error("Billing.Invoice.NotFound", "Invoice does not exist."));
+            return Result.Failure<RecordManualPaymentResult>(
+                new Error("Billing.Invoice.NotFound", "Invoice does not exist.")
+            );
 
         // Método manual: cualquier valor no-electrónico del enum; default Other si no parsea.
         if (!Enum.TryParse<PaymentMethod>(command.Method, ignoreCase: true, out var method))

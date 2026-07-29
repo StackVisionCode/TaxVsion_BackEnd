@@ -21,10 +21,8 @@ namespace TaxVision.PaymentClient.Api.Controllers.Internal;
 [Route("internal/payables")]
 [Authorize(Policy = "CreatePaymentLinksService")]
 [AllowActorTypes(ActorType.Service)]
-public sealed class InternalPayablesController(
-    IMessageBus bus,
-    IOptions<PaymentClientPublicOptions> publicOptions
-) : ControllerBase
+public sealed class InternalPayablesController(IMessageBus bus, IOptions<PaymentClientPublicOptions> publicOptions)
+    : ControllerBase
 {
     public sealed record EnsureInvoicePayableRequest(long AmountCents, string Currency, string InvoiceId);
 

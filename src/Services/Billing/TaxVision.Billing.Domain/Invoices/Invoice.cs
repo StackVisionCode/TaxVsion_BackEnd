@@ -106,16 +106,25 @@ public sealed class Invoice : AggregateRoot
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line.Description))
-                return Result.Failure<Invoice>(new Error("Billing.Invoice.LineDescription", "Line description is required."));
+                return Result.Failure<Invoice>(
+                    new Error("Billing.Invoice.LineDescription", "Line description is required.")
+                );
             if (line.Quantity <= 0)
-                return Result.Failure<Invoice>(new Error("Billing.Invoice.LineQuantity", "Line quantity must be greater than zero."));
+                return Result.Failure<Invoice>(
+                    new Error("Billing.Invoice.LineQuantity", "Line quantity must be greater than zero.")
+                );
             if (line.UnitAmountCents < 0)
-                return Result.Failure<Invoice>(new Error("Billing.Invoice.LineAmount", "Line unit amount cannot be negative."));
+                return Result.Failure<Invoice>(
+                    new Error("Billing.Invoice.LineAmount", "Line unit amount cannot be negative.")
+                );
             if (line.TaxBasisPoints is < 0 or > 100_000)
-                return Result.Failure<Invoice>(new Error("Billing.Invoice.LineTax", "Tax basis points must be between 0 and 100000."));
+                return Result.Failure<Invoice>(
+                    new Error("Billing.Invoice.LineTax", "Tax basis points must be between 0 and 100000.")
+                );
 
             var lineSubtotal = line.UnitAmountCents * line.Quantity;
-            var lineTax = (long)Math.Round(lineSubtotal * (line.TaxBasisPoints / 10_000.0), MidpointRounding.AwayFromZero);
+            var lineTax = (long)
+                Math.Round(lineSubtotal * (line.TaxBasisPoints / 10_000.0), MidpointRounding.AwayFromZero);
             var lineTotal = lineSubtotal + lineTax;
 
             invoice._lines.Add(
@@ -149,7 +158,9 @@ public sealed class Invoice : AggregateRoot
     public Result Issue(string invoiceNumber, DateTime nowUtc, DateTime dueDateUtc, Guid actorUserId)
     {
         if (Status != InvoiceStatus.Draft)
-            return Result.Failure(new Error("Billing.Invoice.NotDraft", $"Only a Draft invoice can be issued (current: {Status})."));
+            return Result.Failure(
+                new Error("Billing.Invoice.NotDraft", $"Only a Draft invoice can be issued (current: {Status}).")
+            );
         if (string.IsNullOrWhiteSpace(invoiceNumber))
             return Result.Failure(new Error("Billing.Invoice.NumberRequired", "Invoice number is required."));
 
@@ -205,11 +216,16 @@ public sealed class Invoice : AggregateRoot
             return Result.Success();
 
         if (Status is not (InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid))
-            return Result.Failure(new Error("Billing.Invoice.NotPayable", $"Cannot pay an invoice in status {Status}."));
+            return Result.Failure(
+                new Error("Billing.Invoice.NotPayable", $"Cannot pay an invoice in status {Status}.")
+            );
 
         if (!string.Equals(currency, Currency, StringComparison.OrdinalIgnoreCase))
             return Result.Failure(
-                new Error("Billing.Invoice.CurrencyMismatch", $"Payment currency {currency} does not match invoice currency {Currency}.")
+                new Error(
+                    "Billing.Invoice.CurrencyMismatch",
+                    $"Payment currency {currency} does not match invoice currency {Currency}."
+                )
             );
 
         AmountPaid = Money.Create(amountCents, Currency).Value;

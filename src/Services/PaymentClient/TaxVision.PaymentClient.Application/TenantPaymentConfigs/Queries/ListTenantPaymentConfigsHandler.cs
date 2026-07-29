@@ -13,8 +13,7 @@ public static class ListTenantPaymentConfigsHandler
     {
         var all = await configs.GetAllByTenantAsync(query.TenantId, ct);
 
-        IReadOnlyList<TenantPaymentConfigResponse> response = all
-            .Select(config => new TenantPaymentConfigResponse(
+        IReadOnlyList<TenantPaymentConfigResponse> response = all.Select(config => new TenantPaymentConfigResponse(
                 config.Id,
                 config.ProviderCode.ToString(),
                 config.Mode.ToString(),

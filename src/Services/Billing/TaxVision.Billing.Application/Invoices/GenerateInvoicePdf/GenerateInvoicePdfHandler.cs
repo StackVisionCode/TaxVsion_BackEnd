@@ -61,9 +61,17 @@ public static class GenerateInvoicePdfHandler
         var payablePart = activeLink is null ? "nolink" : activeLink.ExternalPayableId.ToString("N");
         var statusPart = invoice.Status == InvoiceStatus.Paid ? "paid" : "v1";
         var idempotencyKey = $"invoice-pdf:{invoice.Id:N}:{statusPart}:{payablePart}";
-        var result = await documents.GenerateAsync(request, command.TenantId, idempotencyKey, correlation.CorrelationId, ct);
+        var result = await documents.GenerateAsync(
+            request,
+            command.TenantId,
+            idempotencyKey,
+            correlation.CorrelationId,
+            ct
+        );
         if (result.IsFailure)
-            throw new InvalidOperationException($"Documents generation failed: {result.Error.Code} - {result.Error.Message}");
+            throw new InvalidOperationException(
+                $"Documents generation failed: {result.Error.Code} - {result.Error.Message}"
+            );
     }
 
     private static decimal ToDollars(long cents) => cents / 100m;

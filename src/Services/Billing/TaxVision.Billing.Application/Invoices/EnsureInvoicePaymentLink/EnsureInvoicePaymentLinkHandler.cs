@@ -43,7 +43,11 @@ public static class EnsureInvoicePaymentLinkHandler
                     $"Ensure payable failed: {ensured.Error.Code} - {ensured.Error.Message}"
                 );
 
-            invoice.AttachPaymentLink(ensured.Value.PayableId, ensured.Value.CheckoutUrl, clock.GetUtcNow().UtcDateTime);
+            invoice.AttachPaymentLink(
+                ensured.Value.PayableId,
+                ensured.Value.CheckoutUrl,
+                clock.GetUtcNow().UtcDateTime
+            );
             await unitOfWork.SaveChangesAsync(ct);
         }
 

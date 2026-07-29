@@ -337,12 +337,19 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("NextRetryAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("PaidAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("PromotionSnapshotHash")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ProviderCheckoutSessionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("ProviderCode")
                         .IsRequired()
@@ -392,6 +399,11 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.HasIndex("NextRetryAtUtc")
                         .HasDatabaseName("IX_SaaSPayments_Status_NextRetry")
                         .HasFilter("[Status] = 'Failed' AND [NextRetryAtUtc] IS NOT NULL");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SaaSPayments_OnboardingId")
+                        .HasFilter("[OnboardingId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_SaaSPayments_TenantId_Status");

@@ -16,6 +16,7 @@ public sealed record SecurityAlertIntegrationEvent : IntegrationEvent
 public static class SecurityAlertType
 {
     public const string TokenReuseDetected = "token_reuse_detected";
+    public const string RefreshTokenHostMismatch = "refresh_token_host_mismatch";
     public const string AccountLockedOut = "account_locked_out";
     public const string MfaDisabled = "mfa_disabled";
     public const string PasswordChanged = "password_changed";

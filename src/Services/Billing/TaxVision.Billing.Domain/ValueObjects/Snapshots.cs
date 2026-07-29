@@ -1,14 +1,7 @@
 namespace TaxVision.Billing.Domain.ValueObjects;
 
 /// <summary>Dirección postal usada en snapshots de cliente/emisor.</summary>
-public sealed record Address(
-    string Line1,
-    string? Line2,
-    string City,
-    string State,
-    string Zip,
-    string Country
-);
+public sealed record Address(string Line1, string? Line2, string City, string State, string Zip, string Country);
 
 /// <summary>Copia congelada de la identidad del cliente al emitir la factura. El CustomerId es
 /// el GUID real del maestro Customer (a diferencia del CRM legado, que lo escondía en TaxId).</summary>

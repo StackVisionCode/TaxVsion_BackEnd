@@ -47,6 +47,8 @@ public static class NotificationTemplateSeedSource
             SignatureExpired,
             SignatureDeclined,
             SignatureVerificationChallenge,
+            OnboardingOtpRequested,
+            OnboardingRegistrationReady,
         ];
 
     private static NotificationTemplateSeed Invitation { get; } =
@@ -493,6 +495,118 @@ public static class NotificationTemplateSeedSource
                 ("code", VariableType.String, true, null, "Código de verificación de un solo uso."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+            ]
+        );
+
+    // PayFlow (Fase 12) — Auth (Fase 5/9) publica estos 2 eventos pre-tenant (TenantId=Guid.Empty)
+    // durante el flujo pago-primero. El firstName ya viene resuelto con fallback desde el consumer
+    // (evt.FirstNameHint ?? "there" / evt.FirstName), igual que "office"/"inviter" en Invitation de
+    // arriba — no se usa el filtro `default` de Fluid en ningún template existente de este archivo.
+    private static NotificationTemplateSeed OnboardingOtpRequested { get; } =
+        new(
+            EventKey: "onboarding.otp_requested.v1",
+            TemplateKey: "onboarding.otp_code",
+            Name: "Onboarding — Código de verificación",
+            Subject: "{{ otp_code }} es tu código de verificación de {{ product_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  Hola {{ first_name }}, tu código de verificación para continuar con el alta en {{ product_name }} es:
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:8px 0 20px 0;font-family:Arial,Helvetica,sans-serif;font-size:32px;letter-spacing:8px;font-weight:bold;color:#111111;">
+                  {{ otp_code }}
+                </td>
+              </tr>
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#718096;">
+                  Expira en {{ expires_in_minutes }} minutos. Nunca lo compartas: el equipo de {{ product_name }} jamás te lo pedirá.
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("otp_code", VariableType.String, true, null, "Código OTP de un solo uso."),
+                (
+                    "first_name",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Nombre del comprador (con fallback ya resuelto por el consumer)."
+                ),
+                ("expires_in_minutes", VariableType.Number, true, null, "Minutos hasta la expiración del código."),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed OnboardingRegistrationReady { get; } =
+        new(
+            EventKey: "onboarding.registration_ready.v1",
+            TemplateKey: "onboarding.registration_ready",
+            Name: "Onboarding — Completar registro",
+            Subject: "Tu pago fue confirmado — completa tu cuenta de {{ product_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  Hola {{ first_name }}, confirmamos tu pago de {{ price_formatted }} el {{ paid_at }} para el plan {{ plan_name }}. Ya podés completar tu cuenta:
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ registration_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Completar mi cuenta</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              {% if receipt_download_url != blank %}
+              <tr>
+                <td align="center" style="padding:0 0 16px 0;">
+                  <a href="{{ receipt_download_url }}" target="_blank" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#2b6cb0;text-decoration:underline;">Descargar recibo</a>
+                </td>
+              </tr>
+              {% endif %}
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#718096;">
+                  Si no reconocés esta compra, contactá a soporte de inmediato.
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del comprador."),
+                (
+                    "plan_name",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Nombre del plan (con fallback ya resuelto por el consumer)."
+                ),
+                ("price_formatted", VariableType.String, true, null, "Monto ya formateado (p. ej. '49.00 USD')."),
+                ("paid_at", VariableType.String, true, null, "Fecha de pago ya formateada (UTC)."),
+                (
+                    "registration_url",
+                    VariableType.Url,
+                    true,
+                    null,
+                    "URL de registro con el raw token, resuelta vía Auth."
+                ),
+                (
+                    "receipt_download_url",
+                    VariableType.Url,
+                    false,
+                    null,
+                    "Link mediador de descarga del recibo, si ya llegó."
+                ),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
             ]
         );
 }

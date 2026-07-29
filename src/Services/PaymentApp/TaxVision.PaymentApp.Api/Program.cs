@@ -55,6 +55,12 @@ builder.Services.AddRedisCache(builder.Configuration);
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
+// PayFlow (Fase 8) — M2M-only: Auth's onboarding Saga (Fase 15) llama al endpoint de checkout
+// inicial con un token de servicio, nunca con un JWT de tenant/usuario.
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
 // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
 // Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
 // comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
@@ -142,6 +148,9 @@ builder.Host.UseWolverine(options =>
         .ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionPlanChangePaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SaaSPaymentMethodExpiringSoonIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // PayFlow (Fase 8) — resultado del pago inicial de un onboarding pago-primero.
+    options.PublishMessage<OnboardingPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated/TenantStatusChanged (proyección local) y
     // SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue/SubscriptionPlanChangeDue

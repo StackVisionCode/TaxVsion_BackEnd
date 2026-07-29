@@ -97,7 +97,14 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<RecordManualPaymentResult>>(
-            new RecordManualPaymentCommand(tenantId, invoiceId, request.Method, request.AmountCents, request.PaidAtUtc, actorId),
+            new RecordManualPaymentCommand(
+                tenantId,
+                invoiceId,
+                request.Method,
+                request.AmountCents,
+                request.PaidAtUtc,
+                actorId
+            ),
             ct
         );
 

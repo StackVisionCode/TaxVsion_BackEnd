@@ -54,6 +54,11 @@ public sealed class TenantSubscription : TenantEntity
     public IReadOnlyCollection<PlanChangeRequest> PlanChangeRequests => _planChangeRequests;
     public IReadOnlyCollection<PendingDowngrade> PendingDowngrades => _pendingDowngrades;
 
+    /// <summary>PayFlow (Fase 16) — presente solo para suscripciones activadas vía
+    /// <c>subscriptions/internal/activate-from-onboarding</c>. Único índice filtrado: idempotencia
+    /// de ese endpoint contra reintentos del mismo comando M2M.</summary>
+    public Guid? OnboardingId { get; private set; }
+
     private TenantSubscription() { }
 
     public static Result<TenantSubscription> StartTrial(
@@ -102,7 +107,8 @@ public sealed class TenantSubscription : TenantEntity
         DateTime periodStartUtc,
         DateTime periodEndUtc,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        Guid? onboardingId = null
     )
     {
         var tenantGuard = EnsureTenant(tenantId);
@@ -130,6 +136,7 @@ public sealed class TenantSubscription : TenantEntity
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,
             UpdatedBy = actorUserId,
+            OnboardingId = onboardingId,
         };
         subscription.SetTenant(tenantId);
         return Result.Success(subscription);

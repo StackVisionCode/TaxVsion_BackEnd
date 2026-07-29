@@ -46,7 +46,12 @@ public sealed class BillingDocumentsClient(
                 currency = request.Currency,
                 issueDate = request.IssueDate,
                 dueDate = request.DueDate,
-                issuer = new { name = request.Issuer.Name, taxId = request.Issuer.TaxId, address = request.Issuer.Address },
+                issuer = new
+                {
+                    name = request.Issuer.Name,
+                    taxId = request.Issuer.TaxId,
+                    address = request.Issuer.Address,
+                },
                 customer = new
                 {
                     name = request.Customer.Name,

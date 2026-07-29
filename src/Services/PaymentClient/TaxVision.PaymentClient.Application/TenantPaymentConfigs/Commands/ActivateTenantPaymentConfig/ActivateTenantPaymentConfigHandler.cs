@@ -25,9 +25,10 @@ public static class ActivateTenantPaymentConfigHandler
             return Result.Failure(new Error("TenantPaymentConfig.NotFound", "TenantPaymentConfig does not exist."));
 
         var nowUtc = DateTime.UtcNow;
-        var activateResult = config.Mode == TenantPaymentMode.Connect
-            ? config.MarkActiveViaConnect(command.ActorUserId, nowUtc)
-            : config.MarkActive(command.ActorUserId, nowUtc);
+        var activateResult =
+            config.Mode == TenantPaymentMode.Connect
+                ? config.MarkActiveViaConnect(command.ActorUserId, nowUtc)
+                : config.MarkActive(command.ActorUserId, nowUtc);
         if (activateResult.IsFailure)
             return activateResult;
 

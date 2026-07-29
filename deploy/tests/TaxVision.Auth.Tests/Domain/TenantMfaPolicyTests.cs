@@ -5,17 +5,18 @@ namespace TaxVision.Auth.Tests.Domain;
 
 /// <summary>
 /// Fase A1 — confirma que la política MFA por tenant distingue correctamente al
-/// Tenant Customer (portal) del resto de actores, y que admins siempre requieren MFA.
+/// Tenant Customer (portal) del resto de actores. MFA es opt-in por defecto para
+/// todos los actor types, incluidos los admins (el enrolamiento se activa desde ajustes).
 /// </summary>
 public sealed class TenantMfaPolicyTests
 {
     [Fact]
-    public void Admins_always_require_mfa_by_default()
+    public void Admins_do_not_require_mfa_by_default()
     {
         var policy = TenantMfaPolicy.CreateDefault(Guid.NewGuid());
 
-        Assert.True(policy.RequiresFor(UserActorType.TenantAdmin));
-        Assert.True(policy.RequiresFor(UserActorType.PlatformAdmin));
+        Assert.False(policy.RequiresFor(UserActorType.TenantAdmin));
+        Assert.False(policy.RequiresFor(UserActorType.PlatformAdmin));
     }
 
     [Fact]
@@ -39,14 +40,14 @@ public sealed class TenantMfaPolicyTests
     }
 
     [Fact]
-    public void Admin_mfa_requirement_cannot_be_turned_off_through_update()
+    public void Admin_mfa_requirement_is_not_affected_by_update()
     {
-        // Update() no expone requireForAdmins — es intencional, ver comentario del agregado:
-        // "MFA para administradores es obligatorio por diseño y no puede desactivarse".
+        // Update() no expone requireForAdmins — no hay forma de activar/desactivar MFA
+        // de admins vía este método hoy (ver gap funcional documentado en 00_Baseline.md §7.2).
         var policy = TenantMfaPolicy.CreateDefault(Guid.NewGuid());
 
         policy.Update(requireForEmployees: true, requireForCustomerPortal: true, trustedDeviceDays: 10);
 
-        Assert.True(policy.RequiresFor(UserActorType.TenantAdmin));
+        Assert.False(policy.RequiresFor(UserActorType.TenantAdmin));
     }
 }

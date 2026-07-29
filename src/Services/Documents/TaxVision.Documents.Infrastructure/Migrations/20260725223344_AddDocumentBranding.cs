@@ -24,27 +24,27 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_DocumentBrandings", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_DocumentBrandings_Tenant",
                 schema: "documents",
                 table: "DocumentBrandings",
                 column: "TenantId",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "DocumentBrandings",
-                schema: "documents");
+            migrationBuilder.DropTable(name: "DocumentBrandings", schema: "documents");
         }
     }
 }

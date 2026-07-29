@@ -7,6 +7,7 @@ using Minio;
 using TaxVision.Tenant.Application.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Infrastructure.Branding;
+using TaxVision.Tenant.Infrastructure.Onboarding;
 using TaxVision.Tenant.Infrastructure.Persistence;
 using TaxVision.Tenant.Infrastructure.Persistence.Repositories;
 
@@ -78,6 +79,29 @@ public static class InfrastructureRegistration
                 var opt =
                     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<CloudStorageClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // PayFlow (Fase 16) — mismo AuthBaseUrl que ITenantServiceTokenAcquirer, no una options
+        // class nueva: ambos apuntan al mismo Auth.
+        services.AddHttpClient<IAuthOnboardingStatusClient, AuthOnboardingStatusClient>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // Fase 18 — mismo AuthBaseUrl que los dos clientes de arriba.
+        services.AddHttpClient<IAuthInvitationTokenReferenceClient, AuthInvitationTokenReferenceClient>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );

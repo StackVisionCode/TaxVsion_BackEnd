@@ -35,7 +35,9 @@ public sealed class PayableReference : TenantEntity
     )
     {
         if (tenantId == Guid.Empty)
-            return Result.Failure<PayableReference>(new Error("PayableReference.InvalidTenant", "TenantId is required."));
+            return Result.Failure<PayableReference>(
+                new Error("PayableReference.InvalidTenant", "TenantId is required.")
+            );
         if (string.IsNullOrWhiteSpace(externalReferenceId))
             return Result.Failure<PayableReference>(
                 new Error("PayableReference.InvalidReference", "ExternalReferenceId is required.")

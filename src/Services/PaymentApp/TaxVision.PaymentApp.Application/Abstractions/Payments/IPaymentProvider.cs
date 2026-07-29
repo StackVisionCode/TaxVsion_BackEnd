@@ -78,4 +78,14 @@ public interface IPaymentProvider
     /// marcado detached independientemente de esto, pero sin esta llamada el método seguiría
     /// chargeable directo desde el dashboard del provider.</summary>
     Task<Result> DetachPaymentMethodAsync(string paymentMethodReference, CancellationToken ct);
+
+    /// <summary>PayFlow (Fase 8) — crea una página de checkout hosteada por el provider para
+    /// un pago sin customer/tenant preexistente (pay-first onboarding). Providers sin
+    /// <see cref="ProviderCapabilities.SupportsHostedCheckoutRedirect"/> real devuelven un
+    /// <see cref="Result{T}"/> de fallo (Manual: no soportado; Intellipay: capacidad declarada
+    /// pero aún no cableada a esta interfaz — ver adapter).</summary>
+    Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
+        HostedCheckoutSessionRequest request,
+        CancellationToken ct
+    );
 }

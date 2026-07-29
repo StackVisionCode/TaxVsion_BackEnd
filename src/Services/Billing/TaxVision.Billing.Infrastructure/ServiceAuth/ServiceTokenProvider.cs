@@ -29,8 +29,7 @@ public sealed class BillingServiceClientsOptions
     public string AuthBaseUrl { get; set; } = "http://localhost:5124";
 
     /// <summary>Clientes por nombre (case-insensitive): "Documents", "Payments", …</summary>
-    public Dictionary<string, ServiceClientCredentials> Clients { get; set; } =
-        new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, ServiceClientCredentials> Clients { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class ServiceTokenProvider(
@@ -57,7 +56,12 @@ public sealed class ServiceTokenProvider(
         {
             using var response = await http.PostAsJsonAsync(
                 "auth/service-token",
-                new { clientId = creds.ClientId, clientSecret = creds.ClientSecret, tenantId },
+                new
+                {
+                    clientId = creds.ClientId,
+                    clientSecret = creds.ClientSecret,
+                    tenantId,
+                },
                 ct
             );
 
@@ -81,7 +85,12 @@ public sealed class ServiceTokenProvider(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            logger.LogWarning(ex, "Service-token request ({ClientName}) for tenant {TenantId} threw.", clientName, tenantId);
+            logger.LogWarning(
+                ex,
+                "Service-token request ({ClientName}) for tenant {TenantId} threw.",
+                clientName,
+                tenantId
+            );
             return null;
         }
     }

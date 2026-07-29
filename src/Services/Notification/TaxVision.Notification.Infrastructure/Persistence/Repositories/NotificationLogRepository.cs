@@ -31,4 +31,20 @@ public sealed class NotificationLogRepository(NotificationDbContext db) : INotif
 
         return (items, total);
     }
+
+    public async Task<NotificationLog?> GetByRelatedEventIdAsync(
+        Guid tenantId,
+        Guid relatedEventId,
+        string templateKey,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .NotificationLogs.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Include(log => log.Attempts)
+            .Where(log =>
+                log.TenantId == tenantId && log.RelatedEventId == relatedEventId && log.TemplateKey == templateKey
+            )
+            .OrderByDescending(log => log.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
 }

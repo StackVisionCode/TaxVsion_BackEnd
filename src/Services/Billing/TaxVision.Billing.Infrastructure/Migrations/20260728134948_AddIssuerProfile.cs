@@ -25,27 +25,27 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     Website = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     LogoFileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_IssuerProfiles", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_IssuerProfiles_TenantId",
                 schema: "billing",
                 table: "IssuerProfiles",
                 column: "TenantId",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "IssuerProfiles",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "IssuerProfiles", schema: "billing");
         }
     }
 }

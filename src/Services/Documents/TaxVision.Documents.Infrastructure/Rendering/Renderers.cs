@@ -36,8 +36,15 @@ public sealed class TemplateDocumentRenderer(ILogger<TemplateDocumentRenderer> l
 
         if (!Parser.TryParse(source, out var template, out var parseError))
         {
-            logger.LogError("Template {TemplateKey} v{Version} failed to parse: {Error}.", templateKey, templateVersion, parseError);
-            return Result.Failure<string>(new Error("Documents.Template.ParseError", "The template could not be parsed."));
+            logger.LogError(
+                "Template {TemplateKey} v{Version} failed to parse: {Error}.",
+                templateKey,
+                templateVersion,
+                parseError
+            );
+            return Result.Failure<string>(
+                new Error("Documents.Template.ParseError", "The template could not be parsed.")
+            );
         }
 
         try
@@ -53,7 +60,9 @@ public sealed class TemplateDocumentRenderer(ILogger<TemplateDocumentRenderer> l
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Template {TemplateKey} v{Version} failed to render.", templateKey, templateVersion);
-            return Result.Failure<string>(new Error("Documents.Template.RenderError", "The template could not be rendered."));
+            return Result.Failure<string>(
+                new Error("Documents.Template.RenderError", "The template could not be rendered.")
+            );
         }
     }
 }
@@ -72,7 +81,10 @@ public sealed class PlaywrightHtmlToPdfConverter : IHtmlToPdfConverter, IAsyncDi
     private IPlaywright? _playwright;
     private IBrowser? _browser;
 
-    public PlaywrightHtmlToPdfConverter(IOptions<DocumentsPdfOptions> options, ILogger<PlaywrightHtmlToPdfConverter> logger)
+    public PlaywrightHtmlToPdfConverter(
+        IOptions<DocumentsPdfOptions> options,
+        ILogger<PlaywrightHtmlToPdfConverter> logger
+    )
     {
         var max = Math.Max(1, options.Value.MaxConcurrency);
         _concurrency = new SemaphoreSlim(max, max);
@@ -113,7 +125,9 @@ public sealed class PlaywrightHtmlToPdfConverter : IHtmlToPdfConverter, IAsyncDi
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Chromium PDF conversion failed.");
-            return Result.Failure<byte[]>(new Error("Documents.Pdf.ConversionFailed", "HTML to PDF conversion failed."));
+            return Result.Failure<byte[]>(
+                new Error("Documents.Pdf.ConversionFailed", "HTML to PDF conversion failed.")
+            );
         }
         finally
         {

@@ -7,6 +7,7 @@ using TaxVision.Documents.Application.Abstractions;
 using TaxVision.Documents.Infrastructure.Observability;
 using TaxVision.Documents.Infrastructure.Persistence;
 using TaxVision.Documents.Infrastructure.Persistence.Repositories;
+using TaxVision.Documents.Infrastructure.PlatformIssuer;
 using TaxVision.Documents.Infrastructure.Rendering;
 using TaxVision.Documents.Infrastructure.Storage;
 
@@ -33,9 +34,11 @@ public static class DependencyInjection
         // ProjectionPermissionsSource (BuildingBlocks.Permissions.IUserPermissionsProjectionReader).
         services.AddScoped<AuthzUserPermissionsProjectionRepository>();
         services.AddScoped<IAuthzUserPermissionsProjectionRepository>(sp =>
-            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>());
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
         services.AddScoped<BuildingBlocks.Permissions.IUserPermissionsProjectionReader>(sp =>
-            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>());
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
         services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
         services.AddScoped<IDocumentTemplateRenderer, TemplateDocumentRenderer>();
         services.AddSingleton<IHtmlToPdfConverter, PlaywrightHtmlToPdfConverter>();
@@ -44,8 +47,12 @@ public static class DependencyInjection
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<DocumentsMetrics>();
 
+        // PayFlow (Fase 10) — datos fijos del emisor plataforma para el recibo de onboarding.
+        services.AddSingleton<IPlatformIssuerProvider, PlatformIssuerProvider>();
+
         services.AddOptions<DocumentsPdfOptions>().Bind(configuration.GetSection(DocumentsPdfOptions.SectionName));
         services.AddOptions<DocumentsMinioOptions>().Bind(configuration.GetSection(DocumentsMinioOptions.SectionName));
+        services.AddOptions<PlatformIssuerOptions>().Bind(configuration.GetSection(PlatformIssuerOptions.SectionName));
 
         // Cliente MinIO propio de Documents — credenciales scoped (IAM documents-source), nunca las root
         // de CloudStorage. Solo para el PUT del archivo generado al bucket temporal.
