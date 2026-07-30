@@ -7,6 +7,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
@@ -147,6 +148,23 @@ builder.Services.AddRateLimiter(options =>
     // El FileId ya funciona como capability opaca; esto sólo acota fuerza bruta contra ese espacio de GUIDs.
     options.AddPolicy(
         "onboarding-receipt-download",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 30,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
+    // Auditoría (gap MinIO/legal-docs) — mismo patrón que onboarding-receipt-download: el Id de
+    // TermsVersion ya funciona como capability opaca, esto solo acota fuerza bruta contra ese
+    // espacio de GUIDs para el frontend público de onboarding que renderiza ToS/Privacy inline.
+    options.AddPolicy(
+        "terms-content-download",
         context =>
             RateLimitPartition.GetFixedWindowLimiter(
                 PartitionKey(context),
@@ -383,6 +401,12 @@ builder.Host.UseWolverine(options =>
     // antipatrón que documenta el comentario de TenantSubdomainChangedIntegrationEvent arriba.
     options.PublishMessage<OnboardingRefundRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingCancelRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Auditoría (gap MinIO/legal-docs) — pedido de guardado a CloudStorage para el documento legal
+    // (ToS/Privacy) que PlatformAdmin sube (TermsContentStorageClient). Sin este registro, igual que
+    // TenantSubdomainChangedIntegrationEvent/OnboardingRefundRequestedIntegrationEvent arriba, Wolverine
+    // no tiene ninguna ruta para el mensaje y lo descarta en silencio — mismo patrón exacto que
+    // Documents.Api Program.cs usa para el mismo evento (cola dedicada point-to-point).
+    options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-external-uploads");
 
     // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
     options

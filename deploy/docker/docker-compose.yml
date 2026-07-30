@@ -452,6 +452,16 @@ services:
       PlatformEmergencyAccess__Name: ${PLATFORM_EMERGENCY_NAME:-}
       PlatformEmergencyAccess__LastName: ${PLATFORM_EMERGENCY_LASTNAME:-}
       PlatformEmergencyAccess__PasswordHash: ${PLATFORM_EMERGENCY_PASSWORD_HASH:-}
+      # Auditoría (gap MinIO/legal-docs) — credenciales MinIO propias de Auth (IAM scoped a
+      # taxvision-temp/auth/*, ver deploy/docker/minio/policies/auth-source.json), primer uso de
+      # MinIO en Auth: PlatformAdmin sube documentos legales (ToS/Privacy Policy). Mismo patron D0/D1
+      # que Documents/Scribe. Endpoint INTERNO (contenedor→MinIO), no el publico.
+      Auth__Minio__Endpoint: minio:9000
+      Auth__Minio__AccessKey: auth-worker
+      Auth__Minio__SecretKey: ${AUTH_MINIO_SECRET:-}
+      Auth__Minio__UseTls: ${MINIO_USE_TLS:-false}
+      Auth__Minio__TempBucket: taxvision-temp
+      Auth__Minio__SourcePrefix: auth
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -475,6 +485,8 @@ services:
       rabbitmq:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -1422,6 +1434,7 @@ services:
       SCRIBE_MINIO_SECRET: ${SCRIBE_MINIO_SECRET:?Set SCRIBE_MINIO_SECRET in .env}
       TENANT_MINIO_SECRET: ${TENANT_MINIO_SECRET:?Set TENANT_MINIO_SECRET in .env}
       DOCUMENTS_MINIO_SECRET: ${DOCUMENTS_MINIO_SECRET:?Set DOCUMENTS_MINIO_SECRET in .env}
+      AUTH_MINIO_SECRET: ${AUTH_MINIO_SECRET:?Set AUTH_MINIO_SECRET in .env}
     volumes:
       - ./minio:/provision:ro
     depends_on:

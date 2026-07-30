@@ -43,7 +43,7 @@ public sealed class TermsAcceptanceMiddlewareTests
                 .Publish(
                     TermsKind.TermsOfService,
                     version,
-                    "https://taxvision.example.com/legal/" + version,
+                    Guid.NewGuid(),
                     ValidHash,
                     "en-US",
                     Guid.NewGuid(),

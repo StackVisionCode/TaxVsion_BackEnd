@@ -2,7 +2,7 @@ using TaxVision.Auth.Domain.Onboarding.TermsVersions;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 
-/// <summary>PayFlow Fase 6 — TermsVersion.Publish.</summary>
+/// <summary>PayFlow Fase 6 (+ auditoría MinIO/legal-docs) — TermsVersion.Publish/SetContentUri.</summary>
 public sealed class TermsVersionTests
 {
     private static readonly DateTime Now = DateTime.UtcNow;
@@ -12,11 +12,12 @@ public sealed class TermsVersionTests
     public void Publish_succeeds_with_valid_inputs()
     {
         var userId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
 
         var result = TermsVersion.Publish(
             TermsKind.TermsOfService,
             "2026-08-01",
-            "https://taxvision.example.com/legal/tos-2026-08-01",
+            fileId,
             ValidHash,
             "en-US",
             userId,
@@ -26,7 +27,9 @@ public sealed class TermsVersionTests
         Assert.True(result.IsSuccess);
         Assert.Equal(TermsKind.TermsOfService, result.Value.Kind);
         Assert.Equal("2026-08-01", result.Value.Version);
+        Assert.Equal(fileId, result.Value.ContentFileId);
         Assert.Equal(ValidHash, result.Value.ContentHash);
+        Assert.Null(result.Value.ContentUri);
         Assert.Equal("en-US", result.Value.Locale);
         Assert.Equal(userId, result.Value.CreatedByUserId);
         Assert.Equal(Now, result.Value.EffectiveFromUtc);
@@ -39,7 +42,7 @@ public sealed class TermsVersionTests
         var result = TermsVersion.Publish(
             TermsKind.PrivacyPolicy,
             "2026-08-01",
-            "https://taxvision.example.com/legal/privacy-2026-08-01",
+            Guid.NewGuid(),
             new string('A', 64),
             "en-US",
             Guid.NewGuid(),
@@ -58,7 +61,7 @@ public sealed class TermsVersionTests
         var result = TermsVersion.Publish(
             TermsKind.TermsOfService,
             version!,
-            "https://taxvision.example.com/legal/tos",
+            Guid.NewGuid(),
             ValidHash,
             "en-US",
             Guid.NewGuid(),
@@ -70,12 +73,12 @@ public sealed class TermsVersionTests
     }
 
     [Fact]
-    public void Publish_fails_for_missing_content_uri()
+    public void Publish_fails_for_missing_content_file_id()
     {
         var result = TermsVersion.Publish(
             TermsKind.TermsOfService,
             "2026-08-01",
-            "",
+            Guid.Empty,
             ValidHash,
             "en-US",
             Guid.NewGuid(),
@@ -83,7 +86,7 @@ public sealed class TermsVersionTests
         );
 
         Assert.True(result.IsFailure);
-        Assert.Equal("Onboarding.TermsContentUriInvalid", result.Error.Code);
+        Assert.Equal("Onboarding.TermsContentFileIdRequired", result.Error.Code);
     }
 
     [Theory]
@@ -95,7 +98,7 @@ public sealed class TermsVersionTests
         var result = TermsVersion.Publish(
             TermsKind.TermsOfService,
             "2026-08-01",
-            "https://taxvision.example.com/legal/tos",
+            Guid.NewGuid(),
             hash,
             "en-US",
             Guid.NewGuid(),
@@ -112,7 +115,7 @@ public sealed class TermsVersionTests
         var result = TermsVersion.Publish(
             TermsKind.TermsOfService,
             "2026-08-01",
-            "https://taxvision.example.com/legal/tos",
+            Guid.NewGuid(),
             ValidHash,
             "",
             Guid.NewGuid(),
@@ -129,7 +132,7 @@ public sealed class TermsVersionTests
         var result = TermsVersion.Publish(
             TermsKind.TermsOfService,
             "2026-08-01",
-            "https://taxvision.example.com/legal/tos",
+            Guid.NewGuid(),
             ValidHash,
             "en-US",
             Guid.Empty,
@@ -146,7 +149,7 @@ public sealed class TermsVersionTests
         var result = TermsVersion.Publish(
             TermsKind.TermsOfService,
             "2026-08-01",
-            "https://taxvision.example.com/legal/tos",
+            Guid.NewGuid(),
             ValidHash,
             "en-US",
             Guid.NewGuid(),
@@ -156,5 +159,40 @@ public sealed class TermsVersionTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Onboarding.TermsEffectiveUntilInvalid", result.Error.Code);
+    }
+
+    [Fact]
+    public void SetContentUri_succeeds_with_a_valid_uri()
+    {
+        var published = TermsVersion.Publish(
+            TermsKind.TermsOfService,
+            "2026-08-01",
+            Guid.NewGuid(),
+            ValidHash,
+            "en-US",
+            Guid.NewGuid(),
+            Now
+        );
+        var version = published.Value;
+
+        var result = version.SetContentUri($"/auth/onboarding/terms/{version.Id}/content");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal($"/auth/onboarding/terms/{version.Id}/content", version.ContentUri);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public void SetContentUri_fails_for_missing_uri(string? uri)
+    {
+        var version = TermsVersion
+            .Publish(TermsKind.TermsOfService, "2026-08-01", Guid.NewGuid(), ValidHash, "en-US", Guid.NewGuid(), Now)
+            .Value;
+
+        var result = version.SetContentUri(uri!);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.TermsContentUriInvalid", result.Error.Code);
     }
 }

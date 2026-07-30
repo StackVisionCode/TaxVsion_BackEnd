@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Application.Terms.Commands;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
@@ -41,6 +42,10 @@ public static class CreateTenantOwnerFromOnboardingHandler
         IUserRepository users,
         IRoleRepository roles,
         ITokenReferenceStore passwordHashReferences,
+        ITenantOnboardingRepository onboardings,
+        ITenantTermsAcceptanceRepository termsAcceptances,
+        ITermsVersionRepository termsVersions,
+        IAuthAuditWriter audit,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -133,6 +138,36 @@ public static class CreateTenantOwnerFromOnboardingHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
+
+        // Gap real encontrado auditando TenantTermsAcceptances: AcceptTermsFromOnboardingCommand
+        // (ver su propio doc-comment, "UoW #8 de la Saga, Fase 15") nunca tuvo un caller real en
+        // todo el codebase — CompleteOnboardingRegistrationHandler (Fase 13) no podía invocarlo
+        // porque en ese momento el Tenant/User todavía no existen (los crea recién esta Saga, dos
+        // pasos después); la aceptación quedaba solo en los campos planos de TenantOnboarding
+        // (operativos), pero el ledger de auditoría dedicado (IP/UserAgent/contexto, para poder
+        // probar "este tenant aceptó esta versión exacta") nunca se completaba. Acá, con TenantId
+        // y UserId ya confirmados, es el primer punto posible para cerrar ese registro.
+        var onboarding = await onboardings.GetByIdAsync(command.OnboardingId, ct);
+        if (onboarding is { TermsVersionId: { } termsVersionId, TermsContentHash: { } termsContentHash })
+        {
+            await AcceptTermsFromOnboardingHandler.Handle(
+                new AcceptTermsFromOnboardingCommand(
+                    command.TenantId,
+                    user.Id,
+                    termsVersionId,
+                    termsContentHash,
+                    onboarding.AcceptedFromIp,
+                    onboarding.UserAgent
+                ),
+                termsAcceptances,
+                termsVersions,
+                audit,
+                correlation,
+                unitOfWork,
+                bus,
+                ct
+            );
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
 

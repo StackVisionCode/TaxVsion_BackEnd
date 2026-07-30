@@ -112,6 +112,14 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<PostmasterEmailDeliveryProviderNotConfiguredIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    // Bug real encontrado en auditoría: NotificationsEmailSendRequestedConsumer publica estos
+    // 3 eventos de callback de entrega, pero nunca tuvieron ruta registrada -- Wolverine los
+    // descartaba silenciosamente y Notification nunca se enteraba de si un email se entregó,
+    // falló o fue suprimido (mismo patrón de bug ya encontrado 3 veces en Auth/CloudStorage).
+    options.PublishMessage<PostmasterEmailDeliverySucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PostmasterEmailDeliveryFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PostmasterEmailDeliverySuppressedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
     // El consumer de notifications.email_send_requested.v1 se agrega en Fase 5.
     // La cola/binding se declara ya en Fase 1 para que exista en Rabbit desde el arranque.
     options

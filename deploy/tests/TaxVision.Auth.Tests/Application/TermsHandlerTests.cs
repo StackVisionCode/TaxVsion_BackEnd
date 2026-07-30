@@ -54,15 +54,7 @@ public sealed class TermsHandlerTests
         public TermsVersion Seed(TermsKind kind, string version, string locale, DateTime effectiveFromUtc)
         {
             var published = TermsVersion
-                .Publish(
-                    kind,
-                    version,
-                    "https://taxvision.example.com/legal/" + version,
-                    ValidHash,
-                    locale,
-                    Guid.NewGuid(),
-                    effectiveFromUtc
-                )
+                .Publish(kind, version, Guid.NewGuid(), ValidHash, locale, Guid.NewGuid(), effectiveFromUtc)
                 .Value;
             _all.Add(published);
             return published;

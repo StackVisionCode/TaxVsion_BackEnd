@@ -352,7 +352,9 @@
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const response = pm.response.json();",
+									"pm.environment.set(\"onboardingTermsVersionId\", response.termsVersionId);"
 								]
 							}
 						}
@@ -360,20 +362,50 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Content-Type", "value": "application/json", "type": "text" },
 							{ "key": "Authorization", "value": "Bearer {{platformAdminToken}}", "type": "text" }
 						],
 						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"kind\": \"TermsOfService\",\n  \"version\": \"2026-08-01\",\n  \"contentUri\": \"https://taxvision.com/legal/tos-2026-08-01.html\",\n  \"locale\": \"en-US\",\n  \"effectiveUntilUtc\": null\n}",
-							"options": { "raw": { "language": "json" } }
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "Kind", "value": "TermsOfService", "type": "text" },
+								{ "key": "Version", "value": "2026-08-01", "type": "text" },
+								{ "key": "Locale", "value": "en-US", "type": "text" },
+								{ "key": "EffectiveUntilUtc", "value": "", "type": "text", "disabled": true },
+								{ "key": "File", "type": "file", "src": [], "description": "Documento .html (text/html) real de ToS/Privacy. Max 5MB." }
+							]
 						},
 						"url": {
 							"raw": "{{UrlBase}}/auth/onboarding/terms/publish",
 							"host": ["{{UrlBase}}"],
 							"path": ["auth", "onboarding", "terms", "publish"]
 						},
-						"description": "Solo PlatformAdmin. Publica una nueva version de terminos legales."
+						"description": "Solo PlatformAdmin. Sube el documento HTML real a CloudStorage (patron D0/D1, MinIO propio de Auth) y publica una nueva version de terminos legales. Kind es TermsOfService o PrivacyPolicy -- para tener ambos vigentes hay que publicar dos veces (una por Kind), aunque el archivo subido sea el mismo. El hash SHA-256 se calcula del lado del servidor a partir de los bytes subidos, nunca se confia en un valor del cliente."
+					},
+					"response": []
+				},
+				{
+					"name": "GetTermsContent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"content-type es text/html\", () => pm.response.headers.get(\"Content-Type\").includes(\"text/html\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/terms/{{onboardingTermsVersionId}}/content",
+							"host": ["{{UrlBase}}"],
+							"path": ["auth", "onboarding", "terms", "{{onboardingTermsVersionId}}", "content"]
+						},
+						"description": "Publico y anonimo (rate-limited, policy \"terms-content-download\"). Mediador entre el frontend de onboarding y la URL presignada real de CloudStorage -- en cada pedido resuelve una URL fresca y devuelve el HTML inline (a diferencia de OnboardingReceiptDownloadController, este NO redirige: el frontend necesita el texto para renderizarlo, no un link de descarga). El termsVersionId de GetCurrentTermsVersion o Publish_TermsVersion funciona como capability opaca."
 					},
 					"response": []
 				}

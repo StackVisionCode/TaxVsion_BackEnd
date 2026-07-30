@@ -5,6 +5,7 @@ using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Messaging.PaymentIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
@@ -151,6 +152,10 @@ builder.Host.UseWolverine(options =>
     // PayFlow (Fase 8) — resultado del pago inicial de un onboarding pago-primero.
     options.PublishMessage<OnboardingPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Bug real encontrado en auditoría: SaaSPaymentChargeOutcome ya publicaba este evento para
+    // liquidar beneficios de referidos en Growth, pero nunca tuvo ruta registrada -- Wolverine
+    // lo descartaba silenciosamente y los descuentos de referidos nunca se liquidaban.
+    options.PublishMessage<PaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated/TenantStatusChanged (proyección local) y
     // SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue/SubscriptionPlanChangeDue

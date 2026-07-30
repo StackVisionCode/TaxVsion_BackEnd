@@ -102,7 +102,7 @@ public sealed class OnboardingRegistrationHandlersTests
             .Publish(
                 TermsKind.TermsOfService,
                 "v1",
-                "https://example.com/tos",
+                Guid.NewGuid(),
                 new string('a', 64),
                 "en",
                 Guid.NewGuid(),
@@ -213,7 +213,7 @@ public sealed class OnboardingRegistrationHandlersTests
             .Publish(
                 TermsKind.TermsOfService,
                 "v1",
-                "https://example.com/tos",
+                Guid.NewGuid(),
                 new string('a', 64),
                 "en",
                 Guid.NewGuid(),
@@ -257,7 +257,7 @@ public sealed class OnboardingRegistrationHandlersTests
             .Publish(
                 TermsKind.TermsOfService,
                 "v0",
-                "https://example.com/tos-old",
+                Guid.NewGuid(),
                 new string('a', 64),
                 "en",
                 Guid.NewGuid(),
@@ -301,7 +301,7 @@ public sealed class OnboardingRegistrationHandlersTests
             .Publish(
                 TermsKind.TermsOfService,
                 "v1",
-                "https://example.com/tos",
+                Guid.NewGuid(),
                 new string('a', 64),
                 "en",
                 Guid.NewGuid(),

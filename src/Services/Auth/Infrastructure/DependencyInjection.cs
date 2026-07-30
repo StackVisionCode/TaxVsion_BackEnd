@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Minio;
 using StackExchange.Redis;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Invitations.Commands;
@@ -19,6 +20,7 @@ using TaxVision.Auth.Infrastructure.Onboarding.Observability;
 using TaxVision.Auth.Infrastructure.Onboarding.Persistence.Repositories;
 using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
+using TaxVision.Auth.Infrastructure.Onboarding.Storage;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Persistence.Repositories;
 using TaxVision.Auth.Infrastructure.Security;
@@ -116,9 +118,25 @@ public static class DependencyInjection
         // separada para esto.
         services.AddSingleton<IOtpCodeGenerator, NumericOtpCodeGenerator>();
 
-        // Onboarding (PayFlow) — Fase 6
-        services.AddHttpClient<ITermsDocumentHasher, HttpTermsDocumentHasher>(client =>
-            client.Timeout = TimeSpan.FromSeconds(30)
+        // Auditoría (gap MinIO/legal-docs) — credenciales MinIO propias de Auth (primer uso en el
+        // servicio) para subir documentos legales (ToS/Privacy Policy), patrón D0/D1 igual que
+        // Documents/Scribe. Nunca las credenciales root de CloudStorage.
+        services.AddOptions<AuthMinioOptions>().Bind(configuration.GetSection(AuthMinioOptions.SectionName));
+        services.AddSingleton<IMinioClient>(sp =>
+        {
+            var opt = sp.GetRequiredService<IOptions<AuthMinioOptions>>().Value;
+            var builder = new MinioClient().WithEndpoint(opt.Endpoint).WithCredentials(opt.AccessKey, opt.SecretKey);
+            if (opt.UseTls)
+                builder = builder.WithSSL();
+            return builder.Build();
+        });
+        services.AddHttpClient<ITermsContentStorageClient, TermsContentStorageClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<CloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(opt.BaseUrl.EndsWith('/') ? opt.BaseUrl : opt.BaseUrl + "/");
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
         );
 
         // Onboarding (PayFlow) — Fase 9. Auth ya asume Redis disponible sin fallback (ver

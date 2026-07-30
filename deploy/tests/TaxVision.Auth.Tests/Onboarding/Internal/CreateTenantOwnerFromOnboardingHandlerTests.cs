@@ -2,8 +2,14 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Internal.Commands;
+using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using TaxVision.Auth.Domain.Onboarding.ValueObjects;
 using TaxVision.Auth.Domain.Roles;
+using TaxVision.Auth.Domain.Terms;
 using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Tests.Application;
 
@@ -12,7 +18,14 @@ namespace TaxVision.Auth.Tests.Onboarding.Internal;
 /// <summary>PayFlow (Fase 16) — CreateTenantOwnerFromOnboardingHandler: idempotencia por
 /// OnboardingId, el password nunca cruza en claro (solo la referencia Redis ya hasheada), y el
 /// TenantAdmin creado recibe su rol de sistema + bump de PermissionsVersion (mismo contrato que
-/// AcceptInvitationHandler).</summary>
+/// AcceptInvitationHandler).
+/// <para>
+/// Gap real cerrado en esta sesión: <c>AcceptTermsFromOnboardingCommand</c> nunca tenía un caller
+/// real en todo el codebase (ver su doc-comment, "UoW #8 de la Saga") — la aceptación de términos
+/// del onboarding quedaba solo en los campos planos de <c>TenantOnboarding</c>, nunca en el ledger
+/// de auditoría dedicado <c>TenantTermsAcceptances</c>. Este handler es el primer punto donde
+/// Tenant y User ya existen simultáneamente, así que es donde se cierra ese registro.
+/// </para></summary>
 public sealed class CreateTenantOwnerFromOnboardingHandlerTests
 {
     [Fact]
@@ -35,6 +48,9 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
         var roles = new FakeRoleRepository { Catalog = [permission] };
         roles.Seed(systemRole);
         var tokenStore = new FakeTokenReferenceStore { ToConsume = "pbkdf2-hash-already-computed" };
+        var onboardings = new FakeTenantOnboardingRepository();
+        var termsAcceptances = new FakeTenantTermsAcceptanceRepository();
+        var termsVersions = new FakeTermsVersionRepository();
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
 
@@ -52,6 +68,10 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
             users,
             roles,
             tokenStore,
+            onboardings,
+            termsAcceptances,
+            termsVersions,
+            new FakeAuthAuditWriter(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -76,6 +96,10 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
         Assert.Equal(tenantId, ownerCreated.TenantId);
         Assert.Equal(onboardingId, ownerCreated.OnboardingId);
         Assert.Equal(users.Added.Id, ownerCreated.CreatedUserId);
+
+        // Sin onboarding en el repo (no seedeado), el bloque de aceptación de términos no debe
+        // intentar escribir nada — no hay TermsVersionId/TermsContentHash que leer.
+        Assert.Null(termsAcceptances.Added);
     }
 
     [Fact]
@@ -111,6 +135,10 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
             users,
             roles,
             tokenStore,
+            new FakeTenantOnboardingRepository(),
+            new FakeTenantTermsAcceptanceRepository(),
+            new FakeTermsVersionRepository(),
+            new FakeAuthAuditWriter(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -144,6 +172,10 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
             users,
             roles,
             tokenStore,
+            new FakeTenantOnboardingRepository(),
+            new FakeTenantTermsAcceptanceRepository(),
+            new FakeTermsVersionRepository(),
+            new FakeAuthAuditWriter(),
             unitOfWork,
             bus,
             new FakeCorrelationContext(),
@@ -155,6 +187,89 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
         Assert.Null(users.Added);
         Assert.Empty(bus.Published);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Records_the_terms_acceptance_ledger_when_the_onboarding_captured_terms_data()
+    {
+        var tenantId = Guid.NewGuid();
+        var onboardingId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var termsVersions = new FakeTermsVersionRepository();
+        var termsVersion = termsVersions.Seed(TermsKind.TermsOfService, "2026.1", "en-US", now.AddDays(-1));
+
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        Assert.True(onboarding.MarkPaymentProcessing(Guid.NewGuid(), "pi_123").IsSuccess);
+        Assert.True(onboarding.MarkPaymentCompleted("pi_123", now).IsSuccess);
+        Assert.True(
+            onboarding
+                .SetRegistrationToken(RegistrationTokenHash.Create(new string('a', 64)).Value, now.AddHours(72))
+                .IsSuccess
+        );
+        Assert.True(
+            onboarding
+                .StartProvisioning(
+                    "Ada's Tax Office",
+                    "adas-office",
+                    termsVersion.Id,
+                    termsVersion.ContentHash!,
+                    "203.0.113.7",
+                    "xunit-agent",
+                    now
+                )
+                .IsSuccess
+        );
+
+        var permission = Permission.Seed(
+            Guid.NewGuid(),
+            "customers.view",
+            "customers",
+            "desc",
+            isCustomerPortal: false
+        );
+        var systemRole = Role.Create(tenantId, Role.SystemTenantAdmin, null, isSystem: true).Value;
+        Assert.True(systemRole.SetPermissions([permission.Id], seeding: true).IsSuccess);
+
+        var users = new FakeUserRepository();
+        var roles = new FakeRoleRepository { Catalog = [permission] };
+        roles.Seed(systemRole);
+        var tokenStore = new FakeTokenReferenceStore { ToConsume = "pbkdf2-hash-already-computed" };
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var termsAcceptances = new FakeTenantTermsAcceptanceRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        var result = await CreateTenantOwnerFromOnboardingHandler.Handle(
+            new CreateTenantOwnerFromOnboardingCommand(
+                onboardingId,
+                tenantId,
+                "owner@acme.com",
+                "Ada",
+                "Lovelace",
+                tokenStore.Reference
+            ),
+            users,
+            roles,
+            tokenStore,
+            onboardings,
+            termsAcceptances,
+            termsVersions,
+            new FakeAuthAuditWriter(),
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.NotNull(termsAcceptances.Added);
+        Assert.Equal(tenantId, termsAcceptances.Added!.TenantId);
+        Assert.Equal(users.Added!.Id, termsAcceptances.Added.AcceptedByUserId);
+        Assert.Equal(termsVersion.Id, termsAcceptances.Added.TermsVersionId);
+        Assert.Equal("203.0.113.7", termsAcceptances.Added.AcceptedFromIp);
+        Assert.Equal("xunit-agent", termsAcceptances.Added.UserAgent);
+        Assert.Equal("Onboarding", termsAcceptances.Added.AcceptedInContext);
     }
 
     private sealed class FakeUserRepository : IUserRepository
@@ -245,6 +360,82 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
 
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             Task.FromResult(_roles.SingleOrDefault(r => r.TenantId == tenantId && r.Name == systemRoleName));
+    }
+
+    private sealed class FakeTenantTermsAcceptanceRepository : ITenantTermsAcceptanceRepository
+    {
+        private readonly List<TenantTermsAcceptance> _all = [];
+
+        public TenantTermsAcceptance? Added { get; private set; }
+
+        public Task AddAsync(TenantTermsAcceptance acceptance, CancellationToken ct = default)
+        {
+            Added = acceptance;
+            _all.Add(acceptance);
+            return Task.CompletedTask;
+        }
+
+        public Task<TenantTermsAcceptance?> GetLatestAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(
+                _all.Where(a => a.TenantId == tenantId).OrderByDescending(a => a.AcceptedAtUtc).FirstOrDefault()
+            );
+
+        public Task<TenantTermsAcceptance?> GetByVersionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid termsVersionId,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                _all.FirstOrDefault(a =>
+                    a.TenantId == tenantId && a.AcceptedByUserId == userId && a.TermsVersionId == termsVersionId
+                )
+            );
+    }
+
+    private sealed class FakeTermsVersionRepository : ITermsVersionRepository
+    {
+        private readonly List<TermsVersion> _all = [];
+
+        public TermsVersion Seed(TermsKind kind, string version, string locale, DateTime effectiveFromUtc)
+        {
+            var published = TermsVersion
+                .Publish(kind, version, Guid.NewGuid(), new string('a', 64), locale, Guid.NewGuid(), effectiveFromUtc)
+                .Value;
+            _all.Add(published);
+            return published;
+        }
+
+        public Task AddAsync(TermsVersion version, CancellationToken ct = default)
+        {
+            _all.Add(version);
+            return Task.CompletedTask;
+        }
+
+        public Task<TermsVersion?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+            Task.FromResult(_all.FirstOrDefault(v => v.Id == id));
+
+        public Task<TermsVersion?> GetCurrentAsync(
+            TermsKind kind,
+            string locale,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                _all.Where(v =>
+                        v.Kind == kind
+                        && v.Locale == locale
+                        && v.EffectiveFromUtc <= nowUtc
+                        && (v.EffectiveUntilUtc == null || v.EffectiveUntilUtc > nowUtc)
+                    )
+                    .OrderByDescending(v => v.EffectiveFromUtc)
+                    .FirstOrDefault()
+            );
+    }
+
+    private sealed class FakeAuthAuditWriter : IAuthAuditWriter
+    {
+        public Task AddAsync(AuthAuditLog log, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

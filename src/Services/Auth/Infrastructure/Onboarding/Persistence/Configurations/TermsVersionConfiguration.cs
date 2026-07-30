@@ -13,6 +13,7 @@ public sealed class TermsVersionConfiguration : IEntityTypeConfiguration<TermsVe
 
         builder.Property(version => version.Kind).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(version => version.Version).HasMaxLength(64).IsRequired();
+        builder.Property(version => version.ContentFileId);
         builder.Property(version => version.ContentUri).HasMaxLength(2048);
         builder.Property(version => version.ContentHash).HasMaxLength(64);
         builder.Property(version => version.EffectiveFromUtc).IsRequired();

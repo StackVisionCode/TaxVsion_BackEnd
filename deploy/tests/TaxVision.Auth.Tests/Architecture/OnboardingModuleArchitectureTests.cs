@@ -23,6 +23,16 @@ namespace TaxVision.Auth.Tests.Architecture;
 /// compradores concurrentes se lleven el mismo slug por caminos distintos (Path A alta directa vs.
 /// Path C pago-primero). Es la única excepción bidireccional del módulo: ambos lados solo consultan
 /// un repositorio de disponibilidad, nunca mutan el aggregate del otro módulo.
+///
+/// Auditoría (gap TenantTermsAcceptances) — cuarta excepción documentada, hace bidireccional la de
+/// Fase 6: <c>CreateTenantOwnerFromOnboardingHandler</c> (Onboarding) ahora invoca
+/// <c>AcceptTermsFromOnboardingHandler</c> (Terms) para completar el ledger de auditoría dedicado
+/// (<c>TenantTermsAcceptances</c>: IP/UserAgent/contexto) en el único punto donde Tenant y User ya
+/// existen simultáneamente — <c>CompleteOnboardingRegistrationHandler</c> (Fase 13) no puede
+/// hacerlo porque en ese momento el Tenant/User todavía no existen (la Saga los crea recién dos
+/// pasos después). Antes de este fix, <c>AcceptTermsFromOnboardingCommand</c> no tenía ningún
+/// caller real en el codebase — la aceptación de términos del onboarding quedaba solo en los
+/// campos planos de <c>TenantOnboarding</c>, nunca en el ledger dedicado.
 /// </summary>
 public sealed class OnboardingModuleArchitectureTests
 {
@@ -71,11 +81,15 @@ public sealed class OnboardingModuleArchitectureTests
         "TaxVision.Auth.Application.Tenants",
         "TaxVision.Auth.Application.Audit",
         "TaxVision.Auth.Application.RefreshTokens",
-        "TaxVision.Auth.Application.Terms",
         // TenantDomains NO está acá (auditoría F11): a diferencia de los demás módulos hermanos,
         // Onboarding SÍ tiene una dependencia legítima y documentada sobre TenantDomains
         // (ITenantSubdomainReservationRepository, cross-check de reserva de subdominio) — ver
         // doc-comment de la clase.
+        //
+        // Terms tampoco está acá (gap TenantTermsAcceptances, ver doc-comment de la clase):
+        // CreateTenantOwnerFromOnboardingHandler invoca AcceptTermsFromOnboardingHandler para
+        // completar el ledger de auditoría dedicado — la excepción de Fase 6 (Terms → Onboarding)
+        // ahora es bidireccional, igual que TenantDomains.
     ];
 
     [Fact]

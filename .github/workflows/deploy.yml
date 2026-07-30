@@ -99,6 +99,10 @@ jobs:
           # en docker-compose.yml, asi que sin esto los uploads a MinIO fallaban con
           # error de autenticacion en produccion.
           DOCUMENTS_MINIO_SECRET=${{ secrets.DOCUMENTS_MINIO_SECRET }}
+          # Auth (Auditoria gap MinIO/legal-docs): PlatformAdmin sube documentos legales
+          # (ToS/Privacy) directo a taxvision-temp/auth/*, mismo patron D0/D1. Primer uso
+          # de MinIO en Auth -- Auth__Minio__SecretKey no tiene default en docker-compose.yml.
+          AUTH_MINIO_SECRET=${{ secrets.AUTH_MINIO_SECRET }}
           GRAFANA_ADMIN_USER=${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
