@@ -87,6 +87,7 @@ public sealed class PermissionsBackfillService(
                         RoleNames = userRoles.Select(role => role.Name).ToArray(),
                         RoleIds = userRoles.Select(role => role.Id).ToArray(),
                         PermissionCodes = permissionCodes.ToArray(),
+                        ActorType = user.ActorType.ToString(),
                     }
                 );
                 user.MarkPermissionsBackfilled(DateTime.UtcNow);

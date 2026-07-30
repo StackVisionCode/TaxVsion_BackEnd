@@ -22,4 +22,15 @@ public sealed record UserRolesChangedIntegrationEvent : IntegrationEvent
     /// cuenta. Ver Fase 1 del plan de notificaciones dinámicas.
     /// </summary>
     public string[] PermissionCodes { get; init; } = [];
+
+    /// <summary>
+    /// El campo nunca existió acá desde que Communication empezó a consumir este evento para
+    /// mantener su <c>UserPermissionsProjection</c> — el consumer (<c>auth-consumers.ts</c>)
+    /// siempre buscó <c>actorType</c>/<c>ActorType</c> en el payload y, al no encontrarlo,
+    /// caía en un fallback hardcodeado a <c>"TenantEmployee"</c>. Cualquier TenantAdmin al que
+    /// se le reasignaran roles quedaba con su actor type corrompido en la proyección — bug real
+    /// encontrado auditando una proyección con TenantAdmin marcados como TenantEmployee.
+    /// Requerido (no opcional) para que no vuelva a pasar por descuido en un publisher nuevo.
+    /// </summary>
+    public required string ActorType { get; init; }
 }

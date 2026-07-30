@@ -29,6 +29,7 @@ public sealed class AuthzPermissionsProjectionConsumersTests
             RoleNames = ["TenantAdmin"],
             RoleIds = [Guid.NewGuid()],
             PermissionCodes = ["signature.request.view"],
+            ActorType = "TenantAdmin",
         };
 
         await AuthzUserRolesChangedPermissionsProjectionConsumer.Handle(
@@ -63,6 +64,7 @@ public sealed class AuthzPermissionsProjectionConsumersTests
             RoleNames = [],
             RoleIds = [],
             PermissionCodes = ["new"],
+            ActorType = "TenantAdmin",
         };
 
         await AuthzUserRolesChangedPermissionsProjectionConsumer.Handle(

@@ -285,6 +285,7 @@ public static class AssignUserRolesHandler
                 RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
                 RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
                 PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                ActorType = target.ActorType.ToString(),
                 CorrelationId = correlation.CorrelationId,
             }
         );

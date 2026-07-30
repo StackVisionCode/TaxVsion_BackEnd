@@ -167,6 +167,7 @@ public static class AcceptInvitationHandler
                     RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
                     RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
                     PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                    ActorType = user.ActorType.ToString(),
                     CorrelationId = correlation.CorrelationId,
                 }
             );

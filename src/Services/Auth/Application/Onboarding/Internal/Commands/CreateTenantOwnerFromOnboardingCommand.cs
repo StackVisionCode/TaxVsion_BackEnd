@@ -92,6 +92,7 @@ public static class CreateTenantOwnerFromOnboardingHandler
                     RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
                     RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
                     PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                    ActorType = user.ActorType.ToString(),
                     CorrelationId = correlation.CorrelationId,
                 }
             );
@@ -105,6 +106,30 @@ public static class CreateTenantOwnerFromOnboardingHandler
                 TenantId = command.TenantId,
                 OnboardingId = command.OnboardingId,
                 CreatedUserId = user.Id,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
+        // Bug real encontrado auditando UserDirectoryEntry en Communication: este handler es el
+        // "gemelo" de AcceptInvitationHandler (ver comentario de clase arriba) para el owner de
+        // PayFlow, pero al escribirlo se copió el bloque de UserRolesChanged y se omitió este —
+        // el único evento que alimenta UserDirectoryEntry (displayName/email/actorType) en
+        // Communication, TenantEmployeeDirectoryEntry en Customer, y el consumer de bienvenida
+        // en Notification. Sin él, TODO TenantAdmin dado de alta vía onboarding pay-first quedaba
+        // invisible en los tres — nunca podía ser resuelto por nombre en chat/calls, ni asignado
+        // como preparador de un cliente, ni recibía el email de bienvenida. Mismo patrón que
+        // AcceptInvitation.cs: publicar ANTES de SaveChangesAsync para que el outbox de Wolverine
+        // agrupe el mensaje con el commit del UnitOfWork.
+        await bus.PublishAsync(
+            new UserRegisteredIntegrationEvent
+            {
+                UserId = user.Id,
+                TenantId = user.TenantId,
+                Email = user.Email,
+                ActorType = user.ActorType.ToString(),
+                CustomerId = user.CustomerId,
+                Name = user.Name,
+                LastName = user.LastName,
                 CorrelationId = correlation.CorrelationId,
             }
         );
