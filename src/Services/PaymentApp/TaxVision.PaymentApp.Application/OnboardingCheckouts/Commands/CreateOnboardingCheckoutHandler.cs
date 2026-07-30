@@ -20,6 +20,17 @@ namespace TaxVision.PaymentApp.Application.OnboardingCheckouts.Commands;
 /// PayFlow (Fase 16) — el precio/moneda ya NO vienen del caller: se resuelven acá mismo vía M2M a
 /// Subscription (<see cref="ISubscriptionPlanPricingClient"/>), cerrando el gap documentado en
 /// <c>Auth.Application.Onboarding.TenantOnboardings.Commands.StartOnboardingCheckoutCommand</c>.
+/// <para>
+/// PayFlow (auditoría F20) — <c>Handle</c> descompuesto en pasos con nombre (replay idempotente,
+/// resolver precio+preparar el aggregate, crear la sesión en Stripe, registrarla en el aggregate,
+/// persistir+auditar) para que cada uno se lea de una sola vez; el comportamiento no cambió.
+/// </para>
+/// <para>
+/// PayFlow (auditoría F33) — <c>metrics.RecordAttempted</c> vivía repartido entre
+/// <c>CreateStripeSessionAsync</c> (rama de fallo) y <c>PersistAndAuditAsync</c> (rama de éxito),
+/// dos private methods no contiguos para el mismo contador. Ahora se registra una sola vez en
+/// <c>Handle</c>, justo después de conocer el resultado de la sesión de Stripe.
+/// </para>
 /// </summary>
 public static class CreateOnboardingCheckoutHandler
 {
@@ -39,33 +50,11 @@ public static class CreateOnboardingCheckoutHandler
         CancellationToken ct
     )
     {
-        var existing = await payments.GetByIdempotencyKeyAsync(command.IdempotencyKey, ct);
-        if (existing is not null)
-        {
-            var replay = BuildResponse(existing);
-            if (replay is null)
-            {
-                logger.LogWarning(
-                    "Onboarding checkout for IdempotencyKey {Key} already exists but has no recorded checkout session.",
-                    command.IdempotencyKey
-                );
-                return Result.Failure<OnboardingCheckoutResponse>(
-                    new Error("Onboarding.Checkout.NoSession", "This checkout already exists in an unexpected state.")
-                );
-            }
+        var replay = await TryReplayExistingAsync(command, payments, logger, ct);
+        if (replay is not null)
+            return replay;
 
-            logger.LogInformation(
-                "Onboarding checkout already exists for IdempotencyKey {Key}; replaying (idempotent).",
-                command.IdempotencyKey
-            );
-            return Result.Success(replay);
-        }
-
-        var priceResult = await planPricing.GetMonthlyPriceAsync(command.PlanId, ct);
-        if (priceResult.IsFailure)
-            return Result.Failure<OnboardingCheckoutResponse>(priceResult.Error);
-
-        var preparedResult = PrepareNewPayment(command, priceResult.Value);
+        var preparedResult = await ResolvePriceAndPreparePaymentAsync(command, planPricing, ct);
         if (preparedResult.IsFailure)
             return Result.Failure<OnboardingCheckoutResponse>(preparedResult.Error);
 
@@ -73,6 +62,89 @@ public static class CreateOnboardingCheckoutHandler
         var nowUtc = DateTime.UtcNow;
         var expiresAtUtc = nowUtc.Add(SessionLifetime);
 
+        var sessionResult = await CreateStripeSessionAsync(command, payment, providerFactory, expiresAtUtc, logger, ct);
+
+        metrics.RecordAttempted(PaymentProviderCode.Stripe.ToString(), SaaSPaymentType.OnboardingInitial.ToString());
+        if (sessionResult.IsFailure)
+        {
+            metrics.RecordFailed(
+                PaymentProviderCode.Stripe.ToString(),
+                SaaSPaymentType.OnboardingInitial.ToString(),
+                sessionResult.Error.Code
+            );
+            return Result.Failure<OnboardingCheckoutResponse>(sessionResult.Error);
+        }
+
+        var session = sessionResult.Value;
+        var recordResult = RecordSession(command, payment, session, nowUtc, logger);
+        if (recordResult.IsFailure)
+            return Result.Failure<OnboardingCheckoutResponse>(recordResult.Error);
+
+        await PersistAndAuditAsync(command, payment, session, payments, audit, unitOfWork, correlation, nowUtc, ct);
+
+        logger.LogInformation(
+            "Onboarding checkout {SaaSPaymentId} created for onboarding {OnboardingId}.",
+            payment.Id,
+            command.OnboardingId
+        );
+
+        return Result.Success(
+            new OnboardingCheckoutResponse(payment.Id, session.CheckoutUrl, session.ProviderSessionId, expiresAtUtc)
+        );
+    }
+
+    private static async Task<Result<OnboardingCheckoutResponse>?> TryReplayExistingAsync(
+        CreateOnboardingCheckoutCommand command,
+        ISaaSPaymentRepository payments,
+        ILogger<SaaSPayment> logger,
+        CancellationToken ct
+    )
+    {
+        var existing = await payments.GetByIdempotencyKeyAsync(command.IdempotencyKey, ct);
+        if (existing is null)
+            return null;
+
+        var replay = BuildResponse(existing);
+        if (replay is null)
+        {
+            logger.LogWarning(
+                "Onboarding checkout for IdempotencyKey {Key} already exists but has no recorded checkout session.",
+                command.IdempotencyKey
+            );
+            return Result.Failure<OnboardingCheckoutResponse>(
+                new Error("Onboarding.Checkout.NoSession", "This checkout already exists in an unexpected state.")
+            );
+        }
+
+        logger.LogInformation(
+            "Onboarding checkout already exists for IdempotencyKey {Key}; replaying (idempotent).",
+            command.IdempotencyKey
+        );
+        return Result.Success(replay);
+    }
+
+    private static async Task<Result<SaaSPayment>> ResolvePriceAndPreparePaymentAsync(
+        CreateOnboardingCheckoutCommand command,
+        ISubscriptionPlanPricingClient planPricing,
+        CancellationToken ct
+    )
+    {
+        var priceResult = await planPricing.GetMonthlyPriceAsync(command.PlanId, ct);
+        if (priceResult.IsFailure)
+            return Result.Failure<SaaSPayment>(priceResult.Error);
+
+        return PrepareNewPayment(command, priceResult.Value);
+    }
+
+    private static async Task<Result<HostedCheckoutSessionResult>> CreateStripeSessionAsync(
+        CreateOnboardingCheckoutCommand command,
+        SaaSPayment payment,
+        IPaymentAdapterFactory providerFactory,
+        DateTime expiresAtUtc,
+        ILogger<SaaSPayment> logger,
+        CancellationToken ct
+    )
+    {
         var adapter = providerFactory.Resolve(PaymentProviderCode.Stripe);
         var sessionRequest = new HostedCheckoutSessionRequest(
             Amount: payment.Amount,
@@ -92,27 +164,28 @@ public static class CreateOnboardingCheckoutHandler
         var sessionResult = await adapter.CreateHostedCheckoutSessionAsync(sessionRequest, ct);
         if (sessionResult.IsFailure)
         {
-            metrics.RecordAttempted(
-                PaymentProviderCode.Stripe.ToString(),
-                SaaSPaymentType.OnboardingInitial.ToString()
-            );
-            metrics.RecordFailed(
-                PaymentProviderCode.Stripe.ToString(),
-                SaaSPaymentType.OnboardingInitial.ToString(),
-                sessionResult.Error.Code
-            );
             logger.LogWarning(
                 "Onboarding checkout session creation failed for onboarding {OnboardingId}. Error={ErrorCode}: {ErrorMessage}",
                 command.OnboardingId,
                 sessionResult.Error.Code,
                 sessionResult.Error.Message
             );
-            return Result.Failure<OnboardingCheckoutResponse>(sessionResult.Error);
         }
 
+        return sessionResult;
+    }
+
+    private static Result RecordSession(
+        CreateOnboardingCheckoutCommand command,
+        SaaSPayment payment,
+        HostedCheckoutSessionResult session,
+        DateTime nowUtc,
+        ILogger<SaaSPayment> logger
+    )
+    {
         var referenceResult = ExternalPaymentReference.Create(
             PaymentProviderCode.Stripe,
-            sessionResult.Value.ProviderPaymentIntentReference
+            session.ProviderPaymentIntentReference
         );
         if (referenceResult.IsFailure)
         {
@@ -123,32 +196,44 @@ public static class CreateOnboardingCheckoutHandler
             logger.LogWarning(
                 "Onboarding checkout for {OnboardingId} created a Stripe session ({SessionId}) but its payment reference was invalid: {ErrorCode}: {ErrorMessage}",
                 command.OnboardingId,
-                sessionResult.Value.ProviderSessionId,
+                session.ProviderSessionId,
                 referenceResult.Error.Code,
                 referenceResult.Error.Message
             );
-            return Result.Failure<OnboardingCheckoutResponse>(referenceResult.Error);
+            return Result.Failure(referenceResult.Error);
         }
 
         var recordResult = payment.RecordHostedCheckoutSession(
-            sessionResult.Value.ProviderSessionId,
+            session.ProviderSessionId,
             referenceResult.Value,
-            sessionResult.Value.CheckoutUrl,
+            session.CheckoutUrl,
             nowUtc
         );
         if (recordResult.IsFailure)
             logger.LogWarning(
                 "Onboarding checkout for {OnboardingId} created a Stripe session ({SessionId}) but recording it locally failed: {ErrorCode}: {ErrorMessage}",
                 command.OnboardingId,
-                sessionResult.Value.ProviderSessionId,
+                session.ProviderSessionId,
                 recordResult.Error.Code,
                 recordResult.Error.Message
             );
-        if (recordResult.IsFailure)
-            return Result.Failure<OnboardingCheckoutResponse>(recordResult.Error);
 
+        return recordResult;
+    }
+
+    private static async Task PersistAndAuditAsync(
+        CreateOnboardingCheckoutCommand command,
+        SaaSPayment payment,
+        HostedCheckoutSessionResult session,
+        ISaaSPaymentRepository payments,
+        IPaymentAuditLogWriter audit,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
         await payments.AddAsync(payment, ct);
-        metrics.RecordAttempted(PaymentProviderCode.Stripe.ToString(), SaaSPaymentType.OnboardingInitial.ToString());
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -163,7 +248,7 @@ public static class CreateOnboardingCheckoutHandler
             {
                 payment.Status,
                 OnboardingId = command.OnboardingId,
-                sessionResult.Value.ProviderSessionId,
+                session.ProviderSessionId,
             },
             reason: null,
             nowUtc,
@@ -171,21 +256,6 @@ public static class CreateOnboardingCheckoutHandler
         );
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        logger.LogInformation(
-            "Onboarding checkout {SaaSPaymentId} created for onboarding {OnboardingId}.",
-            payment.Id,
-            command.OnboardingId
-        );
-
-        return Result.Success(
-            new OnboardingCheckoutResponse(
-                payment.Id,
-                sessionResult.Value.CheckoutUrl,
-                sessionResult.Value.ProviderSessionId,
-                expiresAtUtc
-            )
-        );
     }
 
     private static Result<SaaSPayment> PrepareNewPayment(

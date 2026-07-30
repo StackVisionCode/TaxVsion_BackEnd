@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
 using Wolverine;
 
@@ -25,6 +26,7 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
 
     [HttpPost]
     [AllowAnonymous]
+    [EnableRateLimiting("onboarding-checkout-create")]
     [ProducesResponseType<CreateOnboardingResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateOnboardingRequest request, CancellationToken ct)
     {
@@ -55,6 +57,7 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
 
     [HttpPost("checkout")]
     [AllowAnonymous]
+    [EnableRateLimiting("onboarding-checkout-create")]
     [ProducesResponseType<StartOnboardingCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Checkout(StartCheckoutRequest request, CancellationToken ct)
     {

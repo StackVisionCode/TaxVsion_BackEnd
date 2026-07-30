@@ -25,6 +25,7 @@ public static class PreviewRegistrationHandler
         PreviewRegistrationQuery query,
         ITenantOnboardingRepository onboardings,
         ISecureTokenService tokens,
+        IPlanCatalogClient planCatalog,
         CancellationToken ct
     )
     {
@@ -53,14 +54,14 @@ public static class PreviewRegistrationHandler
                 new Error("Onboarding.TokenExpired", "The registration token has expired.")
             );
 
+        var planName = await planCatalog.GetPlanNameAsync(onboarding.PlanId, ct);
+
         return Result.Success(
             new PreviewRegistrationResponse(
                 onboarding.FirstName,
                 onboarding.LastName,
                 MaskEmail(onboarding.Email),
-                // PlanName real no disponible en Auth hasta Fase 16 (catálogo de planes vive en
-                // Subscription) — mismo gap ya documentado en OnboardingRegistrationReadyIntegrationEvent.PlanName.
-                null
+                planName
             )
         );
     }

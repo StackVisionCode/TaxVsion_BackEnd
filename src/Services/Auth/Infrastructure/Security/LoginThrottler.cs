@@ -1,4 +1,5 @@
 using BuildingBlocks.Caching;
+using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 
 namespace TaxVision.Auth.Infrastructure.Security;
@@ -8,6 +9,11 @@ namespace TaxVision.Auth.Infrastructure.Security;
 /// El lockout autoritativo por cuenta vive en User (FailedLoginCount/LockoutEndUtc);
 /// esto añade defensa por IP y control de reenvío de OTP. El contador no es
 /// estrictamente atómico, lo cual es aceptable para este propósito.
+/// <para>
+/// Auditoría F08 — los métodos <c>AuthorizeOnboarding*</c> vinieron de <c>RedisOnboardingOtpThrottler</c>
+/// (eliminado); mismas claves Redis (<c>auth:onboarding:otp-create:*</c>/<c>auth:onboarding:otp-resend:*</c>)
+/// para no invalidar cooldowns en vuelo al desplegar este cambio.
+/// </para>
 /// </summary>
 public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
 {
@@ -15,11 +21,15 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
     private const int MaxPasswordResetRequestsPerEmail = 3;
     private const int MaxPasswordResetRequestsPerIp = 10;
     private const int MaxInvitationAcceptAttemptsPerIp = 20;
+    private const int MaxOnboardingChallengesPerEmailPerHour = 5;
+    private const int MaxOnboardingChallengesPerIpPerHour = 10;
     private static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan OtpResendWindow = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan PasswordResetWindow = TimeSpan.FromHours(1);
     private static readonly TimeSpan PasswordResetCooldown = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan InvitationAcceptWindow = TimeSpan.FromHours(1);
+    private static readonly TimeSpan OnboardingChallengeCreationWindow = TimeSpan.FromHours(1);
+    private static readonly TimeSpan OnboardingResendCooldown = TimeSpan.FromSeconds(60);
 
     public async Task<TimeSpan?> GetIpRetryAfterAsync(string? ipAddress, CancellationToken ct = default)
     {
@@ -115,4 +125,54 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
     private static string PasswordResetIpKey(string ipAddress) => $"auth:pwreset-ip:{ipAddress}";
 
     private static string InvitationAcceptKey(string ipAddress) => $"auth:invite-accept-ip:{ipAddress}";
+
+    public async Task<Result> AuthorizeOnboardingChallengeCreationAsync(
+        string email,
+        string ipAddress,
+        CancellationToken ct = default
+    )
+    {
+        var emailKey = OnboardingChallengeEmailKey(email);
+        var emailCount = (await cache.GetAsync<int?>(emailKey, ct) ?? 0) + 1;
+        await cache.SetAsync(emailKey, emailCount, OnboardingChallengeCreationWindow, ct);
+        if (emailCount > MaxOnboardingChallengesPerEmailPerHour)
+            return Result.Failure(
+                new Error(
+                    "Onboarding.OtpRateLimited",
+                    "Too many verification requests for this email. Try again later."
+                )
+            );
+
+        var ipKey = OnboardingChallengeIpKey(ipAddress);
+        var ipCount = (await cache.GetAsync<int?>(ipKey, ct) ?? 0) + 1;
+        await cache.SetAsync(ipKey, ipCount, OnboardingChallengeCreationWindow, ct);
+        if (ipCount > MaxOnboardingChallengesPerIpPerHour)
+            return Result.Failure(
+                new Error(
+                    "Onboarding.OtpRateLimited",
+                    "Too many verification requests from this address. Try again later."
+                )
+            );
+
+        return Result.Success();
+    }
+
+    public async Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default)
+    {
+        var key = OnboardingResendKey(challengeId);
+        var alreadySentRecently = await cache.GetAsync<bool?>(key, ct);
+        if (alreadySentRecently == true)
+            return Result.Failure(
+                new Error("Onboarding.ResendCooldown", "Please wait before requesting another code.")
+            );
+
+        await cache.SetAsync(key, true, OnboardingResendCooldown, ct);
+        return Result.Success();
+    }
+
+    private static string OnboardingChallengeEmailKey(string email) => $"auth:onboarding:otp-create:email:{email}";
+
+    private static string OnboardingChallengeIpKey(string ipAddress) => $"auth:onboarding:otp-create:ip:{ipAddress}";
+
+    private static string OnboardingResendKey(Guid challengeId) => $"auth:onboarding:otp-resend:{challengeId:N}";
 }

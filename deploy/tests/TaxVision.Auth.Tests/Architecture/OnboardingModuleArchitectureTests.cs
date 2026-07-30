@@ -14,10 +14,15 @@ namespace TaxVision.Auth.Tests.Architecture;
 /// PayFlow Fase 6 (retrofit) — segunda excepción documentada: <c>Terms</c> (self-service ToS/AUP,
 /// preexistente) ahora resuelve su "version vigente" contra Onboarding.TermsVersions.TermsVersion
 /// (Opcion C del plan) en vez de TermsOptions.CurrentVersion — ver AcceptTermsHandler. Es una
-/// integración deliberada, unidireccional (Terms → Onboarding, nunca al revés), así que
-/// <c>NonOnboarding_Files_DoNotReferenceOnboardingInternals</c> excluye explícitamente
-/// <c>Terms</c> de sus dos comprobaciones (Domain no lo necesita hoy, pero se documenta ahí por
-/// simetría) — el resto de módulos hermanos de Auth siguen prohibidos de tocar Onboarding.
+/// integración deliberada, unidireccional (Terms → Onboarding, nunca al revés).
+///
+/// Auditoría F11 — tercera excepción documentada, esta bidireccional: <c>ReserveSubdomainForOnboardingHandler</c>
+/// (Onboarding) inyecta <c>ITenantSubdomainReservationRepository</c> (TenantDomains) y
+/// <c>ReserveSubdomainHandler</c> (TenantDomains) inyecta <c>IOnboardingSubdomainReservationRepository</c>
+/// (Onboarding) — cada Path necesita ver la reserva activa del otro para no dejar que dos
+/// compradores concurrentes se lleven el mismo slug por caminos distintos (Path A alta directa vs.
+/// Path C pago-primero). Es la única excepción bidireccional del módulo: ambos lados solo consultan
+/// un repositorio de disponibilidad, nunca mutan el aggregate del otro módulo.
 /// </summary>
 public sealed class OnboardingModuleArchitectureTests
 {
@@ -31,6 +36,10 @@ public sealed class OnboardingModuleArchitectureTests
     // PayFlow Fase 6 — excepción documentada (ver doc-comment de la clase): Terms es el único
     // módulo hermano autorizado a depender de Onboarding, y solo en un sentido.
     private const string TermsApplicationNamespace = "TaxVision.Auth.Application.Terms";
+
+    // Auditoría F11 — excepción bidireccional documentada (ver doc-comment de la clase): TenantDomains
+    // y Onboarding se consultan mutuamente para la reserva de subdominio cross-path.
+    private const string TenantDomainsApplicationNamespace = "TaxVision.Auth.Application.TenantDomains";
 
     private static readonly string[] SiblingDomainModules =
     [
@@ -63,7 +72,10 @@ public sealed class OnboardingModuleArchitectureTests
         "TaxVision.Auth.Application.Audit",
         "TaxVision.Auth.Application.RefreshTokens",
         "TaxVision.Auth.Application.Terms",
-        "TaxVision.Auth.Application.TenantDomains",
+        // TenantDomains NO está acá (auditoría F11): a diferencia de los demás módulos hermanos,
+        // Onboarding SÍ tiene una dependencia legítima y documentada sobre TenantDomains
+        // (ITenantSubdomainReservationRepository, cross-check de reserva de subdominio) — ver
+        // doc-comment de la clase.
     ];
 
     [Fact]
@@ -111,6 +123,8 @@ public sealed class OnboardingModuleArchitectureTests
             .DoNotResideInNamespace(OnboardingApplicationNamespace)
             .And()
             .DoNotResideInNamespace(TermsApplicationNamespace)
+            .And()
+            .DoNotResideInNamespace(TenantDomainsApplicationNamespace)
             .Should()
             .NotHaveDependencyOnAny(OnboardingApplicationNamespace, OnboardingDomainNamespace)
             .GetResult();

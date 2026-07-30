@@ -7,7 +7,9 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
+using CheckoutSession = Stripe.Checkout.Session;
 using CheckoutSessionCreateOptions = Stripe.Checkout.SessionCreateOptions;
+using CheckoutSessionGetOptions = Stripe.Checkout.SessionGetOptions;
 using CheckoutSessionLineItemOptions = Stripe.Checkout.SessionLineItemOptions;
 using CheckoutSessionLineItemPriceDataOptions = Stripe.Checkout.SessionLineItemPriceDataOptions;
 using CheckoutSessionLineItemPriceDataProductDataOptions = Stripe.Checkout.SessionLineItemPriceDataProductDataOptions;
@@ -16,8 +18,6 @@ using CheckoutSessionPaymentIntentDataOptions = Stripe.Checkout.SessionPaymentIn
 // referencia calificada "Stripe.Checkout.X" se resuelve como relativa al namespace propio
 // (…Providers.Stripe.Checkout, inexistente) en vez del namespace global del SDK.
 using CheckoutSessionService = Stripe.Checkout.SessionService;
-using CheckoutSession = Stripe.Checkout.Session;
-using CheckoutSessionGetOptions = Stripe.Checkout.SessionGetOptions;
 
 namespace TaxVision.PaymentApp.Infrastructure.Providers.Stripe;
 
@@ -453,7 +453,9 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             // Fallback documentado: si Stripe no creó el PaymentIntent sincrónicamente, usamos el
             // id de la propia Session como referencia provisoria (siempre presente) -- el webhook
             // checkout.session.completed la reconcilia con el PaymentIntent real una vez que existe.
-            var providerReference = string.IsNullOrEmpty(session.PaymentIntentId) ? session.Id : session.PaymentIntentId;
+            var providerReference = string.IsNullOrEmpty(session.PaymentIntentId)
+                ? session.Id
+                : session.PaymentIntentId;
 
             return Result.Success(new HostedCheckoutSessionResult(session.Id, providerReference, session.Url));
         }
@@ -568,7 +570,9 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                 FailureCode: status == PaymentStatus.Failed ? "Stripe.CheckoutSession.Unpaid" : null,
                 FailureMessage: status == PaymentStatus.Failed ? "Checkout session completed without payment." : null,
                 RefundedAmountCents: null,
-                ReconciledChargeReference: string.IsNullOrEmpty(session.PaymentIntentId) ? null : session.PaymentIntentId
+                ReconciledChargeReference: string.IsNullOrEmpty(session.PaymentIntentId)
+                    ? null
+                    : session.PaymentIntentId
             )
         );
     }

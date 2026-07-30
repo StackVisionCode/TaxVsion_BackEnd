@@ -52,7 +52,12 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         // Mismo bug que PaymentApp.TenantStatusGateMiddleware (copia duplicada): un token de
         // servicio M2M pre-tenant con tenant_id=Guid.Empty se parsea como "hay tenant" (Guid.Empty
         // es un Guid válido) y sin esta excepción se rechazaría acá con "Tenant.Unknown".
-        if (tenantContext.TenantId == Guid.Empty && ctx.User.GetActorType() == ActorType.Service)
+        // Auditoría PayFlow F34 movió los clientes M2M de Guid.Empty a PlatformTenant.Id por
+        // consistencia — misma regresión que en PaymentApp, mismo fix: aceptar ambos sentinelas.
+        if (
+            (tenantContext.TenantId == Guid.Empty || tenantContext.TenantId == PlatformTenant.Id)
+            && ctx.User.GetActorType() == ActorType.Service
+        )
         {
             await next(ctx);
             return;

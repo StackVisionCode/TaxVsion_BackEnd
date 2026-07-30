@@ -13,6 +13,14 @@ namespace TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 /// eventos de integración cross-servicio (OnboardingPaymentSucceeded, TenantOnboardingCompleted,
 /// etc.) los publican explícitamente los handlers de Application en las fases 8/9/12/13/15 del
 /// plan, igual que ya hace <c>SetRolePermissionsHandler</c> con <c>RolePermissionsChangedIntegrationEvent</c>.
+/// <para>
+/// Auditoría F10 — implicación práctica de lo anterior: esta clase NO soporta
+/// <c>AggregateRoot.AddDomainEvent</c>, así que no hay forma de emitir un domain event *interno*
+/// (in-process, sin cruzar servicios) desde una transición de estado. Si algún día hace falta uno
+/// (p.ej. para actualizar una proyección local en Auth cuando cambia el status), hay que publicarlo
+/// explícitamente en el handler de Application que invoca la transición — mismo patrón que ya usan
+/// los integration events de arriba, ver <c>CompleteOnboardingRegistrationHandler</c> como ejemplo.
+/// </para>
 /// </summary>
 public sealed class TenantOnboarding : BaseEntity
 {

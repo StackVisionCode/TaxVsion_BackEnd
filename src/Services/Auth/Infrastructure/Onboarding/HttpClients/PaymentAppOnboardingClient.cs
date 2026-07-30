@@ -2,9 +2,12 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
-using TaxVision.Auth.Application.Abstractions;
+using Polly.CircuitBreaker;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
+using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
@@ -14,8 +17,9 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// (<c>{Service}ServiceTokenAcquirer</c> que llama a <c>POST auth/service-token</c> + cachea, y
 /// el client HTTP real) — acá se omite deliberadamente: Auth ES el emisor de esos tokens, así
 /// que ir por HTTP hasta su propio endpoint de emisión sería un round-trip autoreferencial e
-/// inútil. En su lugar, este cliente inyecta <see cref="IJwtTokenGenerator"/> directo y genera
-/// el token en el mismo proceso, saltándose además el requisito de <c>TenantId != Guid.Empty</c>
+/// inútil. En su lugar, este cliente usa <see cref="OnboardingServiceTokenCache"/> (auditoría
+/// F13 — cacheado, no mintado por request), que a su vez mintea con <see cref="IJwtTokenGenerator"/>
+/// en el mismo proceso, saltándose además el requisito de <c>TenantId != Guid.Empty</c>
 /// que sí aplica a <c>IssueServiceTokenHandler</c> (ese guard vive en el handler que valida
 /// credenciales de un caller EXTERNO — no en el generador en sí, y acá no hay ningún caller
 /// externo que autenticar: Auth ya sabe que es Auth). El client_id embebido
@@ -25,7 +29,8 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// </summary>
 public sealed class PaymentAppOnboardingClient(
     HttpClient httpClient,
-    IJwtTokenGenerator tokens,
+    OnboardingServiceTokenCache tokenCache,
+    OnboardingHttpResiliencePipelineRegistry resilience,
     ILogger<PaymentAppOnboardingClient> logger
 ) : IPaymentAppOnboardingClient
 {
@@ -40,8 +45,8 @@ public sealed class PaymentAppOnboardingClient(
         CancellationToken ct = default
     )
     {
-        var token = tokens.GenerateScopedServiceToken(
-            Guid.Empty,
+        var token = tokenCache.GetOrCreate(
+            PlatformTenant.Id,
             ClientId,
             permissions: [],
             scopes: [],
@@ -67,7 +72,8 @@ public sealed class PaymentAppOnboardingClient(
             };
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
-            using var response = await httpClient.SendAsync(httpRequest, ct);
+            var breaker = resilience.GetOrCreate(nameof(PaymentAppOnboardingClient));
+            using var response = await breaker.ExecuteAsync(token => httpClient.SendAsync(httpRequest, token), ct);
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning(
@@ -90,7 +96,7 @@ public sealed class PaymentAppOnboardingClient(
                 new PaymentAppCheckoutResult(dto.PaymentId, dto.CheckoutUrl, dto.ProviderSessionId, dto.ExpiresAtUtc)
             );
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
             logger.LogWarning(
                 ex,

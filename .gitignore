@@ -496,3 +496,4 @@ output/
 .env.zip
 jwt-private.pem
 src/Services/CommunicationTranscriptWorker/vendor/whisper/models/*.bin
+.claude/

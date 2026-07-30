@@ -1,5 +1,6 @@
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.Onboarding.SubdomainReservations.Commands;
@@ -134,6 +135,7 @@ public sealed class OnboardingSubdomainHandlersTests
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
             new ReserveSubdomainForOnboardingCommand("adas-office", onboardingId, "ada@example.com"),
             reservations,
+            new FakeTenantSubdomainReservationRepository(),
             tenantAvailability,
             Options,
             unitOfWork,
@@ -172,6 +174,7 @@ public sealed class OnboardingSubdomainHandlersTests
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
             new ReserveSubdomainForOnboardingCommand("adas-office", onboardingId, "ada@example.com"),
             reservations,
+            new FakeTenantSubdomainReservationRepository(),
             tenantAvailability,
             Options,
             unitOfWork,
@@ -206,6 +209,44 @@ public sealed class OnboardingSubdomainHandlersTests
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
             new ReserveSubdomainForOnboardingCommand("adas-office", Guid.NewGuid(), "buyer@example.com"),
             reservations,
+            new FakeTenantSubdomainReservationRepository(),
+            tenantAvailability,
+            Options,
+            unitOfWork,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.Available);
+        Assert.Equal("Onboarding.SubdomainReservedTemporarily", result.Value.Reason);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    // Auditoría F11 — regresión real del cross-check: un slug reservado por Path A (alta directa)
+    // debe bloquear también a Path C (Onboarding, pago-primero), no solo su propia tabla.
+    [Fact]
+    public async Task Reserve_fails_when_reserved_by_tenant_domains_path()
+    {
+        var tenantDomainReservation = TenantSubdomainReservation
+            .Create(
+                SubdomainSlug.Create("adas-office").Value,
+                "other@example.com",
+                DateTime.UtcNow,
+                TimeSpan.FromMinutes(15)
+            )
+            .Value;
+        var reservations = new FakeOnboardingSubdomainReservationRepository();
+        var tenantDomainReservations = new FakeTenantSubdomainReservationRepository
+        {
+            ActiveReservation = tenantDomainReservation,
+        };
+        var tenantAvailability = new FakeTenantSubdomainAvailabilityClient { Taken = false };
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await ReserveSubdomainForOnboardingHandler.Handle(
+            new ReserveSubdomainForOnboardingCommand("adas-office", Guid.NewGuid(), "buyer@example.com"),
+            reservations,
+            tenantDomainReservations,
             tenantAvailability,
             Options,
             unitOfWork,
@@ -228,6 +269,7 @@ public sealed class OnboardingSubdomainHandlersTests
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
             new ReserveSubdomainForOnboardingCommand("adas-office", Guid.NewGuid(), "buyer@example.com"),
             reservations,
+            new FakeTenantSubdomainReservationRepository(),
             tenantAvailability,
             Options,
             unitOfWork,
@@ -247,6 +289,21 @@ public sealed class OnboardingSubdomainHandlersTests
 
         public Task<Result<bool>> IsTakenAsync(string slug, CancellationToken ct = default) =>
             Task.FromResult(Failure is not null ? Result.Failure<bool>(Failure) : Result.Success(Taken));
+    }
+
+    // Auditoría F11 — cross-check contra Path A (TenantDomains); vacío por defecto (sin reserva activa).
+    private sealed class FakeTenantSubdomainReservationRepository : ITenantSubdomainReservationRepository
+    {
+        public TenantSubdomainReservation? ActiveReservation { get; set; }
+
+        public Task<TenantSubdomainReservation?> GetActiveBySlugAsync(
+            string slug,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult(ActiveReservation);
+
+        public Task AddAsync(TenantSubdomainReservation reservation, CancellationToken ct = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class FakeOnboardingSubdomainReservationRepository : IOnboardingSubdomainReservationRepository

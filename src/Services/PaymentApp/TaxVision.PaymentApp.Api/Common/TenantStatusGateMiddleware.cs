@@ -55,7 +55,14 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         // como "hay tenant" (Guid.Empty es un Guid válido), así que sin esta excepción cualquier
         // token de servicio con ese sentinela se rechazaba acá con "Tenant.Unknown" (bug real
         // encontrado corriendo el checkout de onboarding end-to-end: PaymentApp devolvía 403).
-        if (tenantContext.TenantId == Guid.Empty && ctx.User.GetActorType() == ActorType.Service)
+        // Auditoría PayFlow F34 cambió PaymentAppOnboardingClient de Guid.Empty a PlatformTenant.Id
+        // (consistencia con los otros 6 clientes M2M) sin actualizar esta excepción — regresión real
+        // encontrada corriendo el onboarding E2E de nuevo: el mismo 403 volvió, ahora con
+        // TenantId=PlatformTenant.Id en vez de Guid.Empty. Se aceptan ambos sentinelas.
+        if (
+            (tenantContext.TenantId == Guid.Empty || tenantContext.TenantId == PlatformTenant.Id)
+            && ctx.User.GetActorType() == ActorType.Service
+        )
         {
             await next(ctx);
             return;

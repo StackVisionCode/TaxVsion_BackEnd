@@ -111,7 +111,7 @@ public static class ProcessOnboardingReceiptGenerationHandler
                 ownerType: OwnerTypeOnboarding,
                 ownerId: command.OnboardingId,
                 folderType: FolderTypeReceipts,
-                taxYear: null,
+                taxYear: command.Receipt.PaidAtUtc.Year,
                 actorId: PlatformTenant.Id,
                 correlationId: correlation.CorrelationId,
                 ct: ct
@@ -170,11 +170,9 @@ public static class ProcessOnboardingReceiptGenerationHandler
         {
             ["receipt"] = new Dictionary<string, object>
             {
-                ["onboardingId"] = command.OnboardingId.ToString("N"),
                 ["payerName"] = $"{receipt.PayerFirstName} {receipt.PayerLastName}".Trim(),
                 ["payerEmail"] = receipt.PayerEmail,
                 ["planName"] = receipt.PlanName,
-                ["planCode"] = receipt.PlanCode,
                 ["price"] = priceFormatted,
                 ["currency"] = receipt.Currency,
                 ["paidAt"] = receipt.PaidAtUtc.ToString("yyyy-MM-dd HH:mm 'UTC'", culture),

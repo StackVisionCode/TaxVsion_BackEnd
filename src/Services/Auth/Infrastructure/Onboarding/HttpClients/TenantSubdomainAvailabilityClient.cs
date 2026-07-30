@@ -4,8 +4,8 @@ using System.Text.Json;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
-using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
@@ -16,7 +16,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// </summary>
 public sealed class TenantSubdomainAvailabilityClient(
     HttpClient httpClient,
-    IJwtTokenGenerator tokens,
+    OnboardingServiceTokenCache tokenCache,
     ILogger<TenantSubdomainAvailabilityClient> logger
 ) : ITenantSubdomainAvailabilityClient
 {
@@ -27,7 +27,7 @@ public sealed class TenantSubdomainAvailabilityClient(
 
     public async Task<Result<bool>> IsTakenAsync(string slug, CancellationToken ct = default)
     {
-        var token = tokens.GenerateScopedServiceToken(
+        var token = tokenCache.GetOrCreate(
             PlatformTenant.Id,
             ClientId,
             permissions: [],

@@ -20,6 +20,14 @@ internal sealed class FakeOnboardingMetrics : IOnboardingMetrics
     public void RecordDurationSeconds(double seconds, string outcome) { }
 }
 
+/// <summary>Fake best-effort catalog lookup. Devuelve el nombre configurado (o null si no) sin
+/// pegarle a Subscription — el fix en vivo del día agregó <see cref="IPlanCatalogClient"/> como
+/// dep de <c>PreviewRegistrationHandler</c> y <c>OnboardingPaymentSucceededConsumer</c>.</summary>
+internal sealed class FakePlanCatalogClient(string? planName = null) : IPlanCatalogClient
+{
+    public Task<string?> GetPlanNameAsync(Guid planId, CancellationToken ct = default) => Task.FromResult(planName);
+}
+
 internal sealed class FakeEmailVerificationChallengeRepository : IEmailVerificationChallengeRepository
 {
     public EmailVerificationChallenge? Challenge { get; set; }
@@ -145,6 +153,7 @@ internal sealed class FakeTokenReferenceStore : ITokenReferenceStore
     public string? Stored { get; private set; }
     public Guid Reference { get; } = Guid.NewGuid();
     public string? ToConsume { get; set; }
+    public string? ToPeek { get; set; }
 
     public Task<Guid> StoreAsync(string rawToken, CancellationToken ct = default)
     {
@@ -154,6 +163,9 @@ internal sealed class FakeTokenReferenceStore : ITokenReferenceStore
 
     public Task<string?> ConsumeAsync(Guid reference, CancellationToken ct = default) =>
         Task.FromResult(reference == Reference ? ToConsume : null);
+
+    public Task<string?> PeekAsync(Guid reference, CancellationToken ct = default) =>
+        Task.FromResult(reference == Reference ? ToPeek : null);
 }
 
 internal static class OnboardingTestFactory

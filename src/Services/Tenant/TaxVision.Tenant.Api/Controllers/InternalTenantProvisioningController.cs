@@ -20,7 +20,8 @@ public sealed class InternalTenantProvisioningController(IMessageBus bus) : Cont
         Guid OnboardingId,
         string OfficeName,
         string Subdomain,
-        string AdminEmail
+        string AdminEmail,
+        DateTime PaymentCompletedAtUtc
     );
 
     [HttpPost("from-onboarding")]
@@ -33,7 +34,8 @@ public sealed class InternalTenantProvisioningController(IMessageBus bus) : Cont
             request.OnboardingId,
             request.OfficeName,
             request.Subdomain,
-            request.AdminEmail
+            request.AdminEmail,
+            request.PaymentCompletedAtUtc
         );
 
         var result = await bus.InvokeAsync<Result>(command, ct);

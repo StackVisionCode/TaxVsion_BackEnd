@@ -49,6 +49,7 @@ public static class NotificationTemplateSeedSource
             SignatureVerificationChallenge,
             OnboardingOtpRequested,
             OnboardingRegistrationReady,
+            OnboardingReceiptReady,
         ];
 
     private static NotificationTemplateSeed Invitation { get; } =
@@ -605,6 +606,50 @@ public static class NotificationTemplateSeedSource
                     false,
                     null,
                     "Link mediador de descarga del recibo, si ya llegó."
+                ),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
+            ]
+        );
+
+    // Sigue a OnboardingRegistrationReady: en la práctica el PDF (Playwright + subida a
+    // CloudStorage) siempre tarda más que el envío del email de bienvenida disparado por el mismo
+    // pago, así que el botón de descarga condicional de ese email casi nunca sale — este es el
+    // segundo envío que faltaba (ver comentario de cabecera del archivo de consumers).
+    private static NotificationTemplateSeed OnboardingReceiptReady { get; } =
+        new(
+            EventKey: "onboarding.receipt_ready.v1",
+            TemplateKey: "onboarding.receipt_ready",
+            Name: "Onboarding — Recibo disponible",
+            Subject: "Tu recibo de pago de {{ product_name }} ya está disponible",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  Hola {{ first_name }}, tu recibo de pago de {{ product_name }} ya está listo para descargar:
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:0 0 16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ receipt_download_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Descargar recibo</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del comprador."),
+                (
+                    "receipt_download_url",
+                    VariableType.Url,
+                    true,
+                    null,
+                    "Link mediador de descarga del recibo (Auth), nunca vence."
                 ),
                 ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
             ]

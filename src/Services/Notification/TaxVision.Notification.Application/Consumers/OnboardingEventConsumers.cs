@@ -89,18 +89,23 @@ public static class OnboardingRegistrationReadyConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             // A diferencia del resto de este archivo, esta llamada no es best-effort: sin la URL de
-            // registro real (resuelta contra el TokenReference, single-use del lado de Auth) el
-            // email no tiene ningún propósito. Si falla, Wolverine reintenta el evento completo —
-            // no se degrada a un email sin link.
+            // registro real (resuelta contra el TokenReference del lado de Auth) el email no tiene
+            // ningún propósito. Auditoría F15 — hasta acá este `if` hacía `return;` sin relanzar, así
+            // que Wolverine NUNCA reintentaba (el comentario original ya decía "Wolverine reintenta
+            // el evento completo", pero el código no lo hacía). Ahora sí lanza, y como Auth resuelve
+            // esta referencia con PeekAsync (no GETDEL) el reintento encuentra el mismo raw token
+            // dentro de la ventana de 30s en vez de fallar por "ya consumido".
             var urlResult = await tokenClient.ResolveRegistrationUrlAsync(evt.TokenReference, ct);
             if (urlResult.IsFailure)
             {
-                logger.LogWarning(
-                    "Could not resolve the registration URL for onboarding {OnboardingId}: {ErrorCode}",
+                logger.LogError(
+                    "Could not resolve the registration URL for onboarding {OnboardingId}: {ErrorCode}. Wolverine will retry.",
                     evt.OnboardingId,
                     urlResult.Error.Code
                 );
-                return;
+                throw new InvalidOperationException(
+                    $"Could not resolve the registration URL for onboarding {evt.OnboardingId}: {urlResult.Error.Code}."
+                );
             }
 
             // Best-effort: si OnboardingReceiptReady todavía no llegó (la generación del PDF es
@@ -146,13 +151,22 @@ public static class OnboardingRegistrationReadyConsumer
     }
 }
 
-/// <summary>No estaba en la lista de "2 consumers" del plan — ver el comentario de cabecera de este
-/// archivo. Solo persiste la proyección local; no envía ningún email por sí mismo.</summary>
+/// <summary>
+/// Actualiza la proyección local que <c>OnboardingRegistrationReadyConsumer</c> consulta
+/// best-effort, y ADEMÁS manda un email de seguimiento corto con el link de descarga — en la
+/// práctica el PDF (Playwright + subida) siempre tarda más que el email de bienvenida disparado por
+/// el mismo pago, así que ese primer intento best-effort estructuralmente nunca alcanza a tiempo (ver
+/// comentario de cabecera de este archivo); sin este segundo envío, el recibo nunca llegaba por
+/// ningún canal.
+/// </summary>
 public static class OnboardingReceiptReadyConsumer
 {
     public static async Task Handle(
         OnboardingReceiptReadyIntegrationEvent evt,
         IOnboardingReceiptLookupRepository receiptLookups,
+        IEmailDispatchGateway gateway,
+        IScribeRenderClient scribeClient,
+        IOptions<PortalOptions> portal,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -161,7 +175,8 @@ public static class OnboardingReceiptReadyConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             // Idempotente ante redelivery — el índice único de OnboardingId también lo garantiza,
-            // pero chequear antes evita una ConflictException esperable en el camino feliz.
+            // pero chequear antes evita una ConflictException esperable en el camino feliz, y evita
+            // reenviar el email de seguimiento en cada redelivery.
             var existing = await receiptLookups.GetByOnboardingIdAsync(evt.OnboardingId, ct);
             if (existing is not null)
                 return;
@@ -176,6 +191,35 @@ public static class OnboardingReceiptReadyConsumer
                 ct
             );
             await unitOfWork.SaveChangesAsync(ct);
+
+            var render = (
+                await scribeClient.RenderAsync(
+                    "onboarding.receipt_ready.v1",
+                    evt.TenantId,
+                    new Dictionary<string, object?>
+                    {
+                        ["first_name"] = evt.FirstName,
+                        ["receipt_download_url"] = evt.ReceiptDownloadUrl,
+                        ["product_name"] = portal.Value.ProductName,
+                    },
+                    ct
+                )
+            ).EnsureRendered("onboarding.receipt_ready.v1");
+
+            await gateway.QueueEmailAsync(
+                new EmailDispatchRequest(
+                    TenantId: evt.TenantId,
+                    To: evt.Email,
+                    Subject: render.Subject,
+                    HtmlBody: render.Html,
+                    TextBody: render.Text ?? string.Empty,
+                    TemplateKey: "onboarding.receipt_ready",
+                    RelatedEventId: evt.EventId,
+                    CorrelationId: correlation.CorrelationId,
+                    InlineAssets: render.InlineAssets
+                ),
+                ct
+            );
         }
     }
 }

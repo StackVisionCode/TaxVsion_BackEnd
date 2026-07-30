@@ -2,6 +2,7 @@ using System.Text.Json;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Invitations.Commands;
@@ -88,6 +89,15 @@ public sealed class AcceptInvitationHandlerTests
 
         public Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default) =>
             Task.CompletedTask;
+
+        public Task<Result> AuthorizeOnboardingChallengeCreationAsync(
+            string email,
+            string ipAddress,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success());
+
+        public Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success());
     }
 
     private sealed class FakeUserRepository : IUserRepository

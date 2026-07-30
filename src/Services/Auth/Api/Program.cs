@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 using TaxVision.Auth.Api.Bootstrap;
 using TaxVision.Auth.Api.Common;
@@ -26,6 +27,7 @@ using TaxVision.Auth.Api.Middleware;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Infrastructure;
+using TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Security;
 using Wolverine;
@@ -202,6 +204,26 @@ builder.Services.AddRateLimiter(options =>
             )
     );
 
+    // PayFlow (Fase 9) — endpoints anónimos que crean estado servidor pesado: POST /onboarding
+    // inserta un TenantOnboarding + emisión de OTP challenge, POST /onboarding/checkout dispara
+    // una llamada M2M a PaymentApp y una Stripe Checkout Session real (costo en el dashboard de
+    // Stripe). 5/min por IP corta la creación masiva sin bloquear a usuarios reales que reintentan
+    // por error. Los demás endpoints públicos ya tenían política, este era el gap real reportado
+    // por el audit F02.
+    options.AddPolicy(
+        "onboarding-checkout-create",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
     // PayFlow (Fase 14) — check-y-reserva de subdominio; mismo límite que onboarding-registration-preview
     // (30/min), el frontend puede llamarlo varias veces mientras el usuario tipea.
     options.AddPolicy(
@@ -218,6 +240,25 @@ builder.Services.AddRateLimiter(options =>
             )
     );
 
+    // Auditoría F22 — OnboardingChallengesController (create/verify/resend del OTP de email) era el
+    // único controller anónimo del módulo sin rate-limit HTTP por IP, contradiciendo la propia
+    // premisa de F02. Ya tiene throttle de negocio vía ILoginThrottler (contador Redis por
+    // email/challenge), pero eso no evita floods baratos a nivel HTTP antes de tocar Redis/SQL.
+    // Mismo límite que onboarding-registration-preview: acota sin bloquear reintentos legítimos.
+    options.AddPolicy(
+        "onboarding-email-challenge",
+        context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(context),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }
+            )
+    );
+
     static string PartitionKey(HttpContext context) => context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 });
 
@@ -225,11 +266,60 @@ var authRabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
 );
 var authRedis = HostPort.Parse(builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379", 6379);
+
+// PayFlow (auditoría F19) — checks HTTP reales contra los 4 downstream M2M de Onboarding, aparte de
+// "ready" para no acoplar el liveness/readiness de Auth (k8s probes) a la disponibilidad de otros
+// servicios: si Documents está caído, Auth sigue "ready" (puede servir el resto de su API), pero
+// /health/downstream lo refleja para alertar sin tumbar el pod. Mismo HttpEndpointHealthCheck que ya
+// usa el Gateway contra sus clusters — apunta a /health/ready de cada servicio (valida sus propias
+// dependencias, no solo que el proceso responda).
+builder.Services.AddHttpClient("taxvision-health", client => client.Timeout = TimeSpan.FromSeconds(5));
+var documentsHealthUrl = new Uri(
+    new Uri(builder.Configuration[$"{DocumentsClientOptions.SectionName}:BaseUrl"] ?? "http://localhost:5450"),
+    "health/ready"
+).ToString();
+var paymentAppHealthUrl = new Uri(
+    new Uri(builder.Configuration[$"{PaymentAppClientOptions.SectionName}:BaseUrl"] ?? "http://localhost:5430"),
+    "health/ready"
+).ToString();
+var tenantHealthUrl = new Uri(
+    new Uri(builder.Configuration[$"{TenantClientOptions.SectionName}:BaseUrl"] ?? "http://localhost:5217"),
+    "health/ready"
+).ToString();
+var subscriptionHealthUrl = new Uri(
+    new Uri(builder.Configuration[$"{SubscriptionClientOptions.SectionName}:BaseUrl"] ?? "http://localhost:5360"),
+    "health/ready"
+).ToString();
+
 builder
     .Services.AddHealthChecks()
     .AddDbContextCheck<AuthDbContext>("sql-server", tags: ["ready"])
     .AddCheck("redis", new TcpEndpointHealthCheck(authRedis.Host, authRedis.Port), tags: ["ready"])
-    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(authRabbitUri.Host, authRabbitUri.Port), tags: ["ready"]);
+    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(authRabbitUri.Host, authRabbitUri.Port), tags: ["ready"])
+    .AddTypeActivatedCheck<HttpEndpointHealthCheck>(
+        "documents-api",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["payflow-downstream"],
+        args: [documentsHealthUrl]
+    )
+    .AddTypeActivatedCheck<HttpEndpointHealthCheck>(
+        "paymentapp-api",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["payflow-downstream"],
+        args: [paymentAppHealthUrl]
+    )
+    .AddTypeActivatedCheck<HttpEndpointHealthCheck>(
+        "tenant-api",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["payflow-downstream"],
+        args: [tenantHealthUrl]
+    )
+    .AddTypeActivatedCheck<HttpEndpointHealthCheck>(
+        "subscription-api",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["payflow-downstream"],
+        args: [subscriptionHealthUrl]
+    );
 
 builder.Host.UseWolverine(options =>
 {
@@ -287,6 +377,12 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantOnboardingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // PayFlow (Fase 16) — publicado por InternalTenantOwnersController, no por la Saga.
     options.PublishMessage<TenantOwnerCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // PayFlow (Fase 17) — publicados por CancelAndRefundOnboardingAdminHandler; sin estos registros
+    // Wolverine nunca los mandaba a RabbitMQ y toda la compensación (refund Stripe, close tenant,
+    // deactivate user, cancel subscription) quedaba silenciosamente muerta en producción — mismo
+    // antipatrón que documenta el comentario de TenantSubdomainChangedIntegrationEvent arriba.
+    options.PublishMessage<OnboardingRefundRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingCancelRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Eventos consumidos (Tenant, Customer, Subscription) — misma cola durable.
     options
@@ -374,14 +470,42 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => fa
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
 // PayFlow (Fase 17) — desglose por dependencia (sql-server/redis/rabbitmq, las mismas registradas
-// arriba para "ready") en vez de solo Healthy/Unhealthy. Deliberadamente NO agrega checks nuevos
-// contra Documents/PaymentApp/Tenant/Subscription (M2M) — esos 4 requieren wiring HTTP adicional
-// que quedó fuera del alcance de esta fase; ver memoria de la fase para el disclosure completo.
+// arriba para "ready") en vez de solo Healthy/Unhealthy.
 app.MapHealthChecks(
     "/health/detailed",
     new HealthCheckOptions
     {
         Predicate = check => check.Tags.Contains("ready"),
+        ResponseWriter = async (context, report) =>
+        {
+            context.Response.ContentType = "application/json";
+            var payload = new
+            {
+                status = report.Status.ToString(),
+                totalDurationMs = report.TotalDuration.TotalMilliseconds,
+                checks = report.Entries.Select(entry => new
+                {
+                    name = entry.Key,
+                    status = entry.Value.Status.ToString(),
+                    durationMs = entry.Value.Duration.TotalMilliseconds,
+                    description = entry.Value.Description,
+                    error = entry.Value.Exception?.Message,
+                }),
+            };
+            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(payload));
+        },
+    }
+);
+
+// PayFlow (auditoría F19) — Documents/PaymentApp/Tenant/Subscription en un path SEPARADO de
+// /health/ready a propósito: si alguno de los 4 está caído, Auth sigue "ready" para todo lo que no
+// depende de ellos (k8s no debería tumbar el pod por esto), pero un operador/dashboard que consulte
+// /health/downstream ve el desglose real de qué M2M de Onboarding está fallando.
+app.MapHealthChecks(
+    "/health/downstream",
+    new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("payflow-downstream"),
         ResponseWriter = async (context, report) =>
         {
             context.Response.ContentType = "application/json";

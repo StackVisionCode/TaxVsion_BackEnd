@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Credentials.Commands;
 using TaxVision.Auth.Domain.Credentials;
@@ -95,6 +96,15 @@ public sealed class ForgotPasswordHandlerTests
 
         public Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default) =>
             Task.CompletedTask;
+
+        public Task<Result> AuthorizeOnboardingChallengeCreationAsync(
+            string email,
+            string ipAddress,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success());
+
+        public Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success());
     }
 
     private sealed class FakeSecureTokenService : ISecureTokenService

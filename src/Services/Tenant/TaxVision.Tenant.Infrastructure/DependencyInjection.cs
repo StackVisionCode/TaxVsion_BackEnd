@@ -83,19 +83,7 @@ public static class InfrastructureRegistration
             }
         );
 
-        // PayFlow (Fase 16) — mismo AuthBaseUrl que ITenantServiceTokenAcquirer, no una options
-        // class nueva: ambos apuntan al mismo Auth.
-        services.AddHttpClient<IAuthOnboardingStatusClient, AuthOnboardingStatusClient>(
-            (sp, http) =>
-            {
-                var opt =
-                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceAuthClientOptions>>().Value;
-                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
-                http.Timeout = TimeSpan.FromSeconds(30);
-            }
-        );
-
-        // Fase 18 — mismo AuthBaseUrl que los dos clientes de arriba.
+        // Fase 18 — mismo AuthBaseUrl que ITenantServiceTokenAcquirer.
         services.AddHttpClient<IAuthInvitationTokenReferenceClient, AuthInvitationTokenReferenceClient>(
             (sp, http) =>
             {

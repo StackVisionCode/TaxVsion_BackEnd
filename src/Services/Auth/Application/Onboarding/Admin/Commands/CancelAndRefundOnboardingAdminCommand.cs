@@ -13,9 +13,15 @@ public sealed record CancelAndRefundOnboardingAdminCommand(Guid OnboardingId, st
 /// Exige el texto de confirmación exacto (plan Fase 17) — evita un refund accidental por un click
 /// perdido en un botón de admin. Publica <see cref="OnboardingRefundRequestedIntegrationEvent"/>
 /// (PaymentApp ejecuta el refund real vía Stripe) y <see cref="OnboardingCancelRequestedIntegrationEvent"/>
-/// (compensa Tenant/Auth/Subscription si ya llegaron a existir) — el orden importa: ambos se publican
-/// DESPUÉS de persistir <c>MarkRefunded</c>, nunca antes, para que un fallo de PublishAsync no deje
-/// el onboarding en un estado inconsistente con lo que ya se le prometió al cliente.</summary>
+/// (compensa Tenant/Auth/Subscription si ya llegaron a existir) — ambos ANTES de
+/// <c>unitOfWork.SaveChangesAsync</c>, mismo patrón que el resto del módulo Onboarding
+/// (ver <c>OnboardingPaymentSucceededConsumer</c>). Con el transactional outbox de Wolverine
+/// (<c>UseEntityFrameworkCoreTransactions</c> + <c>AutoApplyTransactions</c>), <c>PublishAsync</c>
+/// encola el mensaje dentro de la MISMA transacción de EF que compromete <c>SaveChangesAsync</c> —
+/// si se invirtiera el orden, el outbox insert quedaría en una transacción aparte y un crash entre
+/// el commit del aggregate y el publish dejaría el onboarding "Refunded" en BD sin que ningún
+/// consumer se enterara jamás (bug real F04 detectado en auditoría, corregido acá). También registra
+/// <c>duration_seconds</c> (outcome "refunded") — auditoría F18, antes solo se medía en el happy path.</summary>
 public static class CancelAndRefundOnboardingAdminHandler
 {
     private const string RequiredConfirmation = "I understand this is irreversible";
@@ -26,6 +32,7 @@ public static class CancelAndRefundOnboardingAdminHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IOnboardingMetrics metrics,
         CancellationToken ct
     )
     {
@@ -55,7 +62,7 @@ public static class CancelAndRefundOnboardingAdminHandler
         if (result.IsFailure)
             return result;
 
-        await unitOfWork.SaveChangesAsync(ct);
+        metrics.RecordDurationSeconds((DateTime.UtcNow - onboarding.CreatedAtUtc).TotalSeconds, "refunded");
 
         await bus.PublishAsync(
             new OnboardingRefundRequestedIntegrationEvent
@@ -81,6 +88,8 @@ public static class CancelAndRefundOnboardingAdminHandler
                 }
             );
         }
+
+        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
     }

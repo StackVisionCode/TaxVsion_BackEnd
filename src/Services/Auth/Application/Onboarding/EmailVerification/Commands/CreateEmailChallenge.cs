@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Domain.Onboarding.EmailVerification;
 using Wolverine;
@@ -18,7 +19,7 @@ public static class CreateEmailChallengeHandler
     public static async Task<Result<Guid>> Handle(
         CreateEmailChallengeCommand command,
         IEmailVerificationChallengeRepository challenges,
-        IOnboardingOtpThrottler throttler,
+        ILoginThrottler throttler,
         IOtpCodeGenerator otpGenerator,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -26,7 +27,11 @@ public static class CreateEmailChallengeHandler
         CancellationToken ct
     )
     {
-        var throttleResult = await throttler.AuthorizeChallengeCreationAsync(command.Email, command.IpAddress, ct);
+        var throttleResult = await throttler.AuthorizeOnboardingChallengeCreationAsync(
+            command.Email,
+            command.IpAddress,
+            ct
+        );
         if (throttleResult.IsFailure)
             return Result.Failure<Guid>(throttleResult.Error);
 

@@ -4,8 +4,8 @@ using System.Text.Json;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
-using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
@@ -22,7 +22,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// </summary>
 public sealed class CloudStorageDownloadUrlClient(
     HttpClient httpClient,
-    IJwtTokenGenerator tokens,
+    OnboardingServiceTokenCache tokenCache,
     ILogger<CloudStorageDownloadUrlClient> logger
 ) : ICloudStorageDownloadUrlClient
 {
@@ -33,7 +33,7 @@ public sealed class CloudStorageDownloadUrlClient(
 
     public async Task<Result<Uri>> GetDownloadUrlAsync(Guid fileId, CancellationToken ct = default)
     {
-        var token = tokens.GenerateScopedServiceToken(
+        var token = tokenCache.GetOrCreate(
             PlatformTenant.Id,
             ClientId,
             permissions: [DownloadPermission],

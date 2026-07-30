@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
 using TaxVision.Auth.Domain.TenantDomains;
@@ -18,12 +19,21 @@ public sealed record SubdomainReservationResponse(bool Available, string? Reason
 /// mismos chequeos que <see cref="Queries.CheckSubdomainAvailabilityHandler"/> (no lo invoca vía bus
 /// — mismo criterio que <c>ReserveSubdomainHandler</c> de TenantDomains, que tampoco compone
 /// handlers entre sí) para poder actuar sobre el resultado en la misma transacción.
+/// <para>
+/// Auditoría F11 — además de su propia tabla, ahora también consulta
+/// <see cref="ITenantSubdomainReservationRepository"/> (Path A / <c>TenantDomains</c>): sin este
+/// chequeo, dos compradores concurrentes podían reservar el mismo slug por caminos distintos (uno
+/// vía onboarding pago-primero, el otro vía el flujo de alta directa) — ninguno de los dos lados se
+/// enteraba de la reserva del otro hasta que <c>ITenantSubdomainAvailabilityClient</c> (que solo ve
+/// tenants ya creados, no reservas en vuelo) lo detectaba, si es que llegaba a detectarlo a tiempo.
+/// </para>
 /// </summary>
 public static class ReserveSubdomainForOnboardingHandler
 {
     public static async Task<Result<SubdomainReservationResponse>> Handle(
         ReserveSubdomainForOnboardingCommand command,
         IOnboardingSubdomainReservationRepository reservations,
+        ITenantSubdomainReservationRepository tenantDomainReservations,
         ITenantSubdomainAvailabilityClient tenantAvailability,
         IOptions<OnboardingOptions> onboardingOptions,
         IUnitOfWork unitOfWork,
@@ -45,6 +55,11 @@ public static class ReserveSubdomainForOnboardingHandler
 
         var activeReservation = await reservations.GetActiveBySlugAsync(slug.Value, nowUtc, ct);
         if (activeReservation is not null && activeReservation.OnboardingId != command.OnboardingId)
+            return Result.Success(
+                new SubdomainReservationResponse(false, "Onboarding.SubdomainReservedTemporarily", null)
+            );
+
+        if (await tenantDomainReservations.GetActiveBySlugAsync(slug.Value, nowUtc, ct) is not null)
             return Result.Success(
                 new SubdomainReservationResponse(false, "Onboarding.SubdomainReservedTemporarily", null)
             );

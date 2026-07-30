@@ -3,8 +3,10 @@ using System.Net.Http.Json;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
-using TaxVision.Auth.Application.Abstractions;
+using Polly.CircuitBreaker;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
+using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
@@ -22,7 +24,8 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// </summary>
 public sealed class ReceiptDocumentClient(
     HttpClient httpClient,
-    IJwtTokenGenerator tokens,
+    OnboardingServiceTokenCache tokenCache,
+    OnboardingHttpResiliencePipelineRegistry resilience,
     ILogger<ReceiptDocumentClient> logger
 ) : IReceiptDocumentClient
 {
@@ -36,7 +39,7 @@ public sealed class ReceiptDocumentClient(
         CancellationToken ct = default
     )
     {
-        var token = tokens.GenerateScopedServiceToken(
+        var token = tokenCache.GetOrCreate(
             PlatformTenant.Id,
             ClientId,
             permissions: [],
@@ -65,7 +68,6 @@ public sealed class ReceiptDocumentClient(
                             payerLastName = request.PayerLastName,
                             payerEmail = request.PayerEmail,
                             planName = request.PlanName,
-                            planCode = request.PlanCode,
                             pricePaidCents = request.PricePaidCents,
                             currency = request.Currency,
                             paidAtUtc = request.PaidAtUtc,
@@ -80,7 +82,8 @@ public sealed class ReceiptDocumentClient(
             if (!string.IsNullOrEmpty(request.CorrelationId))
                 httpRequest.Headers.TryAddWithoutValidation("X-Correlation-Id", request.CorrelationId);
 
-            using var response = await httpClient.SendAsync(httpRequest, ct);
+            var breaker = resilience.GetOrCreate(nameof(ReceiptDocumentClient));
+            using var response = await breaker.ExecuteAsync(token => httpClient.SendAsync(httpRequest, token), ct);
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning(
@@ -98,7 +101,7 @@ public sealed class ReceiptDocumentClient(
 
             return Result.Success();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
             logger.LogWarning(
                 ex,

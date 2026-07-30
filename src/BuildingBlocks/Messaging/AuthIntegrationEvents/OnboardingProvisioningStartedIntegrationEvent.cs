@@ -33,4 +33,9 @@ public sealed record OnboardingProvisioningStartedIntegrationEvent : Integration
     public required string RequestedSubdomain { get; init; }
     public required Guid TermsVersionId { get; init; }
     public required Guid PasswordHashReference { get; init; }
+
+    /// <summary>Auditoría F17 — viaja hasta el comando de la Saga que crea el Tenant, y de ahí hasta
+    /// Tenant, para que el guard de "onboarding listo" se resuelva localmente sin un M2M síncrono de
+    /// vuelta a Auth.</summary>
+    public required DateTime PaymentCompletedAtUtc { get; init; }
 }

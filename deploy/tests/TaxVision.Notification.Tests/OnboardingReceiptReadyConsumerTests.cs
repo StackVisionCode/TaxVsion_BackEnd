@@ -1,38 +1,51 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
+using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Onboarding;
 
 namespace TaxVision.Notification.Tests;
 
-/// <summary>PayFlow (Fase 12) — cubre solo la parte persistente-y-testeable de
-/// OnboardingEventConsumers.cs: OnboardingReceiptReadyConsumer escribe la proyección local que
-/// resuelve la carrera con OnboardingRegistrationReadyConsumer (que sí depende de Scribe/gateway/
-/// M2M — no se cubre acá, mismo criterio que el resto de AuthEventConsumers, nunca unit-testeados
-/// en este servicio). Fakes locales de mano, sin Moq — mismo patrón que
+/// <summary>PayFlow (Fase 12 + fix del día que agregó el segundo envío) — cubre las dos ramas del
+/// OnboardingReceiptReadyConsumer: (1) primera llegada persiste la proyección Y encola el email de
+/// seguimiento con el link de descarga, (2) redelivery encuentra la proyección ya persistida y sale
+/// sin encolar (guard de idempotencia). Fakes locales de mano, sin Moq — mismo patrón que
 /// AuthzPermissionsProjectionConsumersTests.cs.</summary>
 public sealed class OnboardingReceiptReadyConsumerTests
 {
+    private static readonly PortalOptions Portal = new() { ProductName = "TaxVision" };
+
     [Fact]
-    public async Task Persists_the_lookup_when_none_exists()
+    public async Task Persists_the_lookup_and_queues_the_follow_up_email_when_none_exists()
     {
         var onboardingId = Guid.NewGuid();
         var fileId = Guid.NewGuid();
         var repo = new FakeOnboardingReceiptLookupRepository();
         var uow = new NoOpUnitOfWork();
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribeClient = new FakeScribeRenderClient();
 
         var evt = new OnboardingReceiptReadyIntegrationEvent
         {
             OnboardingId = onboardingId,
             ReceiptFileId = fileId,
             ReceiptDownloadUrl = "https://auth.example.com/onboarding/receipts/" + fileId + "/download",
+            Email = "buyer@example.com",
+            FirstName = "Ada",
         };
 
         await OnboardingReceiptReadyConsumer.Handle(
             evt,
             repo,
+            gateway,
+            scribeClient,
+            Options.Create(Portal),
             uow,
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -43,6 +56,11 @@ public sealed class OnboardingReceiptReadyConsumerTests
         Assert.Equal(fileId, stored!.ReceiptFileId);
         Assert.Equal(evt.ReceiptDownloadUrl, stored.ReceiptDownloadUrl);
         Assert.Equal(1, uow.SaveCount);
+
+        var queued = Assert.Single(gateway.Queued);
+        Assert.Equal("buyer@example.com", queued.To);
+        Assert.Equal("onboarding.receipt_ready", queued.TemplateKey);
+        Assert.Equal(evt.EventId, queued.RelatedEventId);
     }
 
     [Fact]
@@ -57,17 +75,24 @@ public sealed class OnboardingReceiptReadyConsumerTests
         );
         var repo = new FakeOnboardingReceiptLookupRepository(existing);
         var uow = new NoOpUnitOfWork();
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribeClient = new FakeScribeRenderClient();
 
         var evt = new OnboardingReceiptReadyIntegrationEvent
         {
             OnboardingId = onboardingId,
             ReceiptFileId = Guid.NewGuid(),
             ReceiptDownloadUrl = "https://a-different-url",
+            Email = "buyer@example.com",
+            FirstName = "Ada",
         };
 
         await OnboardingReceiptReadyConsumer.Handle(
             evt,
             repo,
+            gateway,
+            scribeClient,
+            Options.Create(Portal),
             uow,
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -76,6 +101,7 @@ public sealed class OnboardingReceiptReadyConsumerTests
         var stored = await repo.GetByOnboardingIdAsync(onboardingId);
         Assert.Same(existing, stored);
         Assert.Equal(0, uow.SaveCount);
+        Assert.Empty(gateway.Queued);
     }
 
     private sealed class FakeOnboardingReceiptLookupRepository : IOnboardingReceiptLookupRepository
@@ -126,6 +152,40 @@ public sealed class OnboardingReceiptReadyConsumerTests
         private sealed class NoOpDisposable : IDisposable
         {
             public void Dispose() { }
+        }
+    }
+
+    private sealed class FakeScribeRenderClient : IScribeRenderClient
+    {
+        public Task<Result<ScribeRenderedEmail>> RenderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                Result.Success(
+                    new ScribeRenderedEmail("Tu recibo ya está disponible", "<p>Descarga tu recibo</p>", null)
+                )
+            );
+    }
+
+    private sealed class RecordingEmailDispatchGateway : IEmailDispatchGateway
+    {
+        public List<EmailDispatchRequest> Queued { get; } = [];
+
+        public Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default)
+        {
+            Queued.Add(request);
+            return Task.FromResult(
+                new EmailDispatchResult(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    NotificationDispatchAttemptStatus.Queued,
+                    null,
+                    null
+                )
+            );
         }
     }
 }

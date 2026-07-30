@@ -10,9 +10,15 @@ public sealed record ResolveRegistrationTokenReferenceQuery(Guid TokenReference)
 public sealed record ResolveRegistrationTokenReferenceResponse(string RegistrationUrl);
 
 /// <summary>PayFlow (Fase 9) — el lado de lectura del endpoint M2M one-shot
-/// (<c>GET /auth/internal/onboarding/tokens/{reference}/raw</c>). El raw token se consume (se
-/// borra de Redis) en la misma llamada — un segundo intento con la misma referencia siempre
-/// falla, por diseño.</summary>
+/// (<c>GET /auth/internal/onboarding/tokens/{reference}/raw</c>).
+/// <para>
+/// Auditoría F15 — hasta acá el raw token se consumía (GETDEL) en la misma llamada, así que un
+/// retry de Notification tras un fallo transient (timeout, 5xx) siempre encontraba la referencia
+/// ya borrada. Ahora usa <see cref="ITokenReferenceStore.PeekAsync"/>: lee sin borrar, respetando el
+/// TTL original (30s) — la ventana de exposición del raw token no cambia, pero un reintento dentro
+/// de esa ventana ya no falla espuriamente.
+/// </para>
+/// </summary>
 public static class ResolveRegistrationTokenReferenceHandler
 {
     public static async Task<Result<ResolveRegistrationTokenReferenceResponse>> Handle(
@@ -22,7 +28,7 @@ public static class ResolveRegistrationTokenReferenceHandler
         CancellationToken ct
     )
     {
-        var rawToken = await tokenReferences.ConsumeAsync(query.TokenReference, ct);
+        var rawToken = await tokenReferences.PeekAsync(query.TokenReference, ct);
         if (rawToken is null)
             return Result.Failure<ResolveRegistrationTokenReferenceResponse>(
                 new Error(

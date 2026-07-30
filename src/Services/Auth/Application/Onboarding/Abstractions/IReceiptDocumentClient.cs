@@ -22,7 +22,6 @@ public sealed record RequestReceiptGenerationRequest(
     string PayerLastName,
     string PayerEmail,
     string PlanName,
-    string PlanCode,
     long PricePaidCents,
     string Currency,
     DateTime PaidAtUtc,

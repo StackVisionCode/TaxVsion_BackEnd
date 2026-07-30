@@ -17,7 +17,7 @@ using TaxVision.Auth.Infrastructure.Cloudflare;
 using TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 using TaxVision.Auth.Infrastructure.Onboarding.Observability;
 using TaxVision.Auth.Infrastructure.Onboarding.Persistence.Repositories;
-using TaxVision.Auth.Infrastructure.Onboarding.RateLimit;
+using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Persistence.Repositories;
@@ -111,9 +111,10 @@ public static class DependencyInjection
         services.AddScoped<IAccessTokenDenylist>(sp => sp.GetRequiredService<AccessTokenDenylist>());
         services.AddScoped<ISessionDenylistReader>(sp => sp.GetRequiredService<AccessTokenDenylist>());
 
-        // Onboarding (PayFlow) — Fase 5
+        // Onboarding (PayFlow) — Fase 5. Auditoría F08: el throttle de OTP de onboarding se
+        // consolidó en ILoginThrottler/LoginThrottler (ver ese archivo) — ya no hay una interfaz
+        // separada para esto.
         services.AddSingleton<IOtpCodeGenerator, NumericOtpCodeGenerator>();
-        services.AddScoped<IOnboardingOtpThrottler, RedisOnboardingOtpThrottler>();
 
         // Onboarding (PayFlow) — Fase 6
         services.AddHttpClient<ITermsDocumentHasher, HttpTermsDocumentHasher>(client =>
@@ -126,6 +127,15 @@ public static class DependencyInjection
         var redisConnectionString = configuration.GetConnectionString("Redis") ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
         services.AddScoped<ITokenReferenceStore, RedisTokenReferenceStore>();
+
+        // Onboarding (PayFlow, auditoría F06) — un breaker por cliente M2M, ver
+        // OnboardingHttpResiliencePipeline para el detalle de la política.
+        services.AddSingleton<OnboardingHttpResiliencePipelineRegistry>();
+
+        // Onboarding (PayFlow, auditoría F13) — cache singleton de tokens M2M por clientId, ver
+        // OnboardingServiceTokenCache para el detalle de por qué es seguro cachear.
+        services.AddSingleton<OnboardingServiceTokenCache>();
+
         services.AddHttpClient<IPaymentAppOnboardingClient, PaymentAppOnboardingClient>(
             (sp, http) =>
             {
@@ -195,6 +205,15 @@ public static class DependencyInjection
                 var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
                 http.BaseAddress = new Uri(opt.BaseUrl.EndsWith('/') ? opt.BaseUrl : opt.BaseUrl + "/");
                 http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        services.AddHttpClient<IPlanCatalogClient, PlanCatalogClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(opt.BaseUrl.EndsWith('/') ? opt.BaseUrl : opt.BaseUrl + "/");
+                http.Timeout = TimeSpan.FromSeconds(10);
             }
         );
 

@@ -1,8 +1,17 @@
+using BuildingBlocks.Results;
+
 namespace TaxVision.Auth.Application.Abstractions;
 
 /// <summary>
 /// Throttling complementario por IP respaldado por Redis. El lockout autoritativo
 /// por cuenta vive en User (FailedLoginCount/LockoutEndUtc).
+/// <para>
+/// Auditoría F08 — los 2 métodos <c>AuthorizeOnboarding*</c> de abajo absorbieron lo que antes era
+/// la interfaz separada <c>IOnboardingOtpThrottler</c>: mismo patrón Redis email+IP/challengeId que
+/// el resto de este archivo, y onboarding es pre-registro (no hay <c>userId</c> todavía, a
+/// diferencia de <see cref="IsOtpResendThrottledAsync"/>/<see cref="RegisterOtpSentAsync"/> que sí
+/// son OTP de MFA de un usuario ya existente) — por eso son métodos nuevos, no overloads.
+/// </para>
 /// </summary>
 public interface ILoginThrottler
 {
@@ -27,4 +36,16 @@ public interface ILoginThrottler
     Task<TimeSpan?> GetInvitationAcceptRetryAfterAsync(string? ipAddress, CancellationToken ct = default);
 
     Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default);
+
+    /// <summary>Fail-closed: rechaza si el email o la IP superaron el umbral de creación de retos de
+    /// verificación de onboarding (5/email/hora, 10/IP/hora).</summary>
+    Task<Result> AuthorizeOnboardingChallengeCreationAsync(
+        string email,
+        string ipAddress,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Fail-closed: rechaza un reenvío de OTP de onboarding si el challenge ya envió uno en
+    /// los últimos 60s.</summary>
+    Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default);
 }

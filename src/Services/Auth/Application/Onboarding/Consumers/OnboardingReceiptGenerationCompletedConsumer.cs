@@ -73,6 +73,8 @@ public static class OnboardingReceiptGenerationCompletedConsumer
                     OnboardingId = onboarding.Id,
                     ReceiptFileId = evt.FileId,
                     ReceiptDownloadUrl = downloadUrl,
+                    Email = onboarding.Email,
+                    FirstName = onboarding.FirstName,
                     CorrelationId = correlationId,
                 }
             );

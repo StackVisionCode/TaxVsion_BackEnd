@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.EmailVerification.Commands;
 using Wolverine;
@@ -19,6 +20,7 @@ public sealed class OnboardingChallengesController(IMessageBus bus) : Controller
 
     [HttpPost]
     [AllowAnonymous]
+    [EnableRateLimiting("onboarding-email-challenge")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(
         CreateChallengeRequest request,
@@ -42,6 +44,7 @@ public sealed class OnboardingChallengesController(IMessageBus bus) : Controller
 
     [HttpPost("{challengeId:guid}/verify")]
     [AllowAnonymous]
+    [EnableRateLimiting("onboarding-email-challenge")]
     public async Task<IActionResult> Verify(Guid challengeId, VerifyChallengeRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new VerifyEmailChallengeCommand(challengeId, request.Code), ct);
@@ -50,6 +53,7 @@ public sealed class OnboardingChallengesController(IMessageBus bus) : Controller
 
     [HttpPost("{challengeId:guid}/resend")]
     [AllowAnonymous]
+    [EnableRateLimiting("onboarding-email-challenge")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> Resend(Guid challengeId, CancellationToken ct)
     {

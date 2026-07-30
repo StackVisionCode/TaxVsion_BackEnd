@@ -3,15 +3,20 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
-using TaxVision.Tenant.Domain.Enums;
 
 namespace TaxVision.Tenant.Application.Tenants.Consumers;
 
 /// <summary>PayFlow (Fase 17) — compensa un onboarding cancelado (admin cancel-and-refund, Auth)
 /// que ya había creado el tenant. No-op si el paso Tenant nunca llegó a correr
 /// (<see cref="OnboardingCancelRequestedIntegrationEvent.OnboardingTenantId"/> null).
-/// <see cref="TaxVision.Tenant.Domain.Tenant.ChangeStatus"/> es idempotente hacia Closed — un
-/// replay del evento no falla.</summary>
+/// <see cref="TaxVision.Tenant.Domain.Tenant.CloseForOnboardingCancellation"/> es idempotente hacia
+/// Closed — un replay del evento no falla.
+/// <para>
+/// Auditoría F09 — antes usaba el setter genérico <c>ChangeStatus(Closed)</c> (deuda pre-existente
+/// a PayFlow, no introducida por este consumer, que aceptaba cualquier <c>TenantStatus</c> sin
+/// interceptar semánticamente la transición). Ahora usa el método específico del aggregate.
+/// </para>
+/// </summary>
 public static class OnboardingCancelRequestedConsumer
 {
     public static async Task Handle(
@@ -43,7 +48,7 @@ public static class OnboardingCancelRequestedConsumer
                 return;
             }
 
-            var result = tenant.ChangeStatus(EnumTenantStatus.TenantStatus.Closed);
+            var result = tenant.CloseForOnboardingCancellation();
             if (result.IsFailure)
             {
                 logger.LogWarning(

@@ -5,7 +5,7 @@ namespace TaxVision.Auth.Infrastructure.Security;
 
 /// <summary>
 /// Necesita GETDEL atómico (borrar exactamente al leer, TTL corto de 30s) que <c>ICacheService</c>
-/// (el wrapper de <c>IDistributedCache</c> que Auth ya usa en <c>RedisOnboardingOtpThrottler</c>) no
+/// (el wrapper de <c>IDistributedCache</c> que Auth ya usa en <c>LoginThrottler</c>) no
 /// puede dar — Get+Remove por separado no es atómico. Por eso este es el primer uso de
 /// <see cref="IConnectionMultiplexer"/> crudo en Auth, igual que <c>RedisOAuthConnectStateStore</c>
 /// en Connectors. Originado en PayFlow Fase 9 para el RegistrationToken de Onboarding; Fase 18 lo
@@ -27,6 +27,13 @@ public sealed class RedisTokenReferenceStore(IConnectionMultiplexer redis) : ITo
     {
         var db = redis.GetDatabase();
         var value = await db.StringGetDeleteAsync(Key(reference));
+        return value.IsNullOrEmpty ? null : value.ToString();
+    }
+
+    public async Task<string?> PeekAsync(Guid reference, CancellationToken ct = default)
+    {
+        var db = redis.GetDatabase();
+        var value = await db.StringGetAsync(Key(reference));
         return value.IsNullOrEmpty ? null : value.ToString();
     }
 

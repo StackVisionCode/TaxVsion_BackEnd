@@ -6,6 +6,7 @@ using TaxVision.Auth.Application.Onboarding.Admin.Commands;
 using TaxVision.Auth.Application.Onboarding.Sagas.Commands;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 using TaxVision.Auth.Tests.Application;
+using TaxVision.Auth.Tests.Onboarding;
 
 namespace TaxVision.Auth.Tests.Onboarding.Admin;
 
@@ -207,6 +208,7 @@ public sealed class OnboardingAdminCommandsTests
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
+            new FakeOnboardingMetrics(),
             CancellationToken.None
         );
 
@@ -229,6 +231,7 @@ public sealed class OnboardingAdminCommandsTests
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
+            new FakeOnboardingMetrics(),
             CancellationToken.None
         );
 
@@ -250,6 +253,7 @@ public sealed class OnboardingAdminCommandsTests
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
+            new FakeOnboardingMetrics(),
             CancellationToken.None
         );
 

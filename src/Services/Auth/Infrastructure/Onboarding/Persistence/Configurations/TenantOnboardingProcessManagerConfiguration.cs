@@ -22,5 +22,17 @@ public sealed class TenantOnboardingProcessManagerConfiguration
         builder.Property(saga => saga.LastName).HasMaxLength(128).IsRequired();
         builder.Property(saga => saga.PlanId).IsRequired();
         builder.Property(saga => saga.Version);
+
+        // F12 había marcado esto Ignore() asumiendo que "no tiene motivo para tocar SQL" — falso: en
+        // un Saga EF-backed de Wolverine, Start() y Handle(TenantCreatedForOnboardingIntegrationEvent)
+        // corren en procesos de mensaje separados (Tenant service responde de forma asíncrona), así
+        // que la fila de OnboardingSagas ES el único estado que sobrevive entre ambos pasos. Con
+        // Ignore(), SaveChangesAsync tras Start() nunca persistía el valor y la siguiente carga del
+        // saga desde SQL lo traía null, tirando InvalidOperationException en PasswordHashReference!.Value
+        // — bug real, encontrado corriendo el onboarding E2E de punta a punta (100% de los registros
+        // completos se caían acá). Se vuelve a mapear como columna normal; sigue siendo sólo una
+        // referencia Redis GETDEL de un solo uso (nunca el hash en sí), y la Saga la pone a null y
+        // guarda inmediatamente después de consumirla en Handle(TenantCreatedForOnboardingIntegrationEvent).
+        builder.Property(saga => saga.PasswordHashReference);
     }
 }

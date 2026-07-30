@@ -15,9 +15,9 @@ public sealed record OnboardingRegistrationReadyIntegrationEvent : IntegrationEv
     public required string Email { get; init; }
     public required string FirstName { get; init; }
 
-    /// <summary>Deliberadamente nullable y sin poblar todavía — Auth no tiene acceso al
-    /// catálogo de planes de Subscription hasta Fase 16. Scribe/Notification deben tolerar
-    /// null (fallback genérico) hasta que se cierre ese M2M.</summary>
+    /// <summary>Nullable — <c>IPlanCatalogClient</c> (Auth.Infrastructure) resuelve esto contra
+    /// <c>GET plans</c> de Subscription antes de publicar; null solo si Subscription no responde.
+    /// Notification conserva un fallback genérico ("tu plan") para ese caso residual.</summary>
     public string? PlanName { get; init; }
 
     public required string PriceFormatted { get; init; }

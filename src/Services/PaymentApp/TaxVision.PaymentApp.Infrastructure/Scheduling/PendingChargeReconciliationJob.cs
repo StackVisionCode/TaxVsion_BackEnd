@@ -96,7 +96,10 @@ public sealed class PendingChargeReconciliationJob(
         // llegado.
         if (outcome.ProviderChargeReference != payment.ExternalChargeReference.Value)
         {
-            var referenceResult = ExternalPaymentReference.Create(payment.ProviderCode, outcome.ProviderChargeReference);
+            var referenceResult = ExternalPaymentReference.Create(
+                payment.ProviderCode,
+                outcome.ProviderChargeReference
+            );
             if (referenceResult.IsSuccess)
                 payment.ReconcileProviderChargeReference(referenceResult.Value, nowUtc);
         }

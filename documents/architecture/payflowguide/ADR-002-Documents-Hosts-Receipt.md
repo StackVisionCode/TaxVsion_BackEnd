@@ -46,6 +46,22 @@ posteriori, cerrando la deuda de documentación de Fase 19.
    para el sellado de documentos), sin pasar por Documents.
 3. **Generar el PDF dentro de PaymentApp**, ya que es quien procesa el pago y tiene los montos/
    moneda a mano de primera mano.
+4. **Reusar `TaxVision.Scribe`** (el servicio que ya renderiza el resto de los emails
+   transaccionales de PayFlow vía `IScribeRenderClient`, incluido el email que avisa que el recibo
+   está listo — ver `OnboardingReceiptReadyConsumer` en Notification).
+
+## Por qué no Scribe (auditoría F07)
+
+La opción 4 se descartó porque Scribe resuelve un problema distinto: renderiza **HTML de email**
+(Fluid → string HTML, consumido directo por el proveedor SMTP), nunca produce un archivo binario
+descargable ni sabe nada de `IHtmlToPdfConverter`. Extender Scribe para emitir PDF hubiera
+significado agregarle una responsabilidad completamente nueva (conversión HTML→PDF + almacenamiento
+en CloudStorage + gestión de `FileId`) que ya existe, probada, en el pipeline de Documents — hacerlo
+dos veces en dos servicios distintos es la duplicación que Scribe Fase 8 (`project_scribe_fase8_migration.md`)
+justamente vino a eliminar del lado de los emails. La consecuencia aceptada (ver "Negativas" abajo)
+es que el layout del recibo vive en Documents (`.tv-doc`/Fluid embebido) mientras que el email de
+aviso vive en un seed de Scribe — dos lugares para dos artefactos de dominio distintos (documento
+descargable vs. notificación), no dos lugares para el mismo artefacto.
 
 ## Opción seleccionada y motivo
 

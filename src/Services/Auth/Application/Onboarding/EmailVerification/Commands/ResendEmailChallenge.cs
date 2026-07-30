@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using Wolverine;
 
@@ -17,7 +18,7 @@ public static class ResendEmailChallengeHandler
     public static async Task<Result> Handle(
         ResendEmailChallengeCommand command,
         IEmailVerificationChallengeRepository challenges,
-        IOnboardingOtpThrottler throttler,
+        ILoginThrottler throttler,
         IOtpCodeGenerator otpGenerator,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -31,7 +32,7 @@ public static class ResendEmailChallengeHandler
                 new Error("Onboarding.ChallengeNotFound", "The verification challenge was not found.")
             );
 
-        var throttleResult = await throttler.AuthorizeResendAsync(command.ChallengeId, ct);
+        var throttleResult = await throttler.AuthorizeOnboardingResendAsync(command.ChallengeId, ct);
         if (throttleResult.IsFailure)
             return throttleResult;
 

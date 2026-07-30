@@ -77,6 +77,24 @@ public partial class Tenant : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>Auditoría F09 — método específico para <c>OnboardingCancelRequestedConsumer</c> en
+    /// vez del setter genérico <see cref="ChangeStatus"/>. Misma guarda de <c>Platform</c>; el
+    /// destino es siempre <c>Closed</c>, así que la guarda anti-reactivación de
+    /// <see cref="ChangeStatus"/> no aplica — Closed→Closed es el propio caso idempotente que este
+    /// consumer necesita ante un replay del evento.</summary>
+    public Result CloseForOnboardingCancellation()
+    {
+        if (Kind == TenantKind.Platform)
+        {
+            return Result.Failure(
+                new Error("Tenant.PlatformProtected", "The reserved platform tenant cannot change status.")
+            );
+        }
+
+        Status = EnumTenantStatus.TenantStatus.Closed;
+        return Result.Success();
+    }
+
     public Result ChangeStatus(EnumTenantStatus.TenantStatus status)
     {
         if (Kind == TenantKind.Platform)

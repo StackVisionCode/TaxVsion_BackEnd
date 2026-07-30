@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
@@ -61,7 +62,8 @@ public sealed class TenantOnboardingProcessManager : Saga
             evt.OnboardingId,
             evt.OfficeName,
             evt.RequestedSubdomain,
-            evt.Email
+            evt.Email,
+            evt.PaymentCompletedAtUtc
         );
         return (saga, command);
     }
@@ -70,9 +72,14 @@ public sealed class TenantOnboardingProcessManager : Saga
         TenantCreatedForOnboardingIntegrationEvent evt,
         ITenantOnboardingRepository onboardings,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
+
         TenantId = evt.CreatedTenantId;
 
         var onboarding = await onboardings.GetByIdAsync(Id, ct);
@@ -101,9 +108,14 @@ public sealed class TenantOnboardingProcessManager : Saga
         TenantOwnerCreatedIntegrationEvent evt,
         ITenantOnboardingRepository onboardings,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
+
         UserId = evt.CreatedUserId;
 
         var onboarding = await onboardings.GetByIdAsync(Id, ct);
@@ -123,9 +135,14 @@ public sealed class TenantOnboardingProcessManager : Saga
         SubscriptionActivatedForOnboardingIntegrationEvent evt,
         ITenantOnboardingRepository onboardings,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
+
         SubscriptionId = evt.CreatedSubscriptionId;
 
         var onboarding = await onboardings.GetByIdAsync(Id, ct);
@@ -145,15 +162,26 @@ public sealed class TenantOnboardingProcessManager : Saga
     /// <see cref="FailureClassifier"/>: un fallo Permanent (incluye SIEMPRE el paso TenantAdmin, ver
     /// doc-comment del classifier) salta directo a ManualReview sin esperar al retry scheduler — "sin
     /// retry, ManualReview inmediato" (plan Fase 17). Un fallo Transient queda en ProvisioningFailed
-    /// para que <c>OnboardingRetryScheduler</c> lo reintente con cadencia escalonada.</summary>
+    /// para que <c>OnboardingRetryScheduler</c> lo reintente con cadencia escalonada.
+    /// <para>
+    /// Auditoría F18 — a diferencia de ProvisioningFailed (resumible automáticamente, no es un
+    /// desenlace real todavía), ManualReview SÍ registra <c>duration_seconds</c> con outcome
+    /// "manual_review": es el punto donde el proceso deja de avanzar solo y pasa a depender de un
+    /// operador — vale la pena medir cuánto tardó en llegar ahí, igual que se mide "completed".
+    /// </para></summary>
     public async Task Handle(
         OnboardingProvisioningStepFailedIntegrationEvent evt,
         ITenantOnboardingRepository onboardings,
         IUnitOfWork unitOfWork,
         IOnboardingMetrics metrics,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
+
         var onboarding = await onboardings.GetByIdAsync(Id, ct);
         if (onboarding is null)
             return;
@@ -170,6 +198,7 @@ public sealed class TenantOnboardingProcessManager : Saga
         {
             onboarding.MarkManualReview($"Permanent failure at step {step}: {evt.FailureReason}");
             metrics.RecordManualReview();
+            metrics.RecordDurationSeconds((DateTime.UtcNow - onboarding.CreatedAtUtc).TotalSeconds, "manual_review");
         }
 
         await unitOfWork.SaveChangesAsync(ct);
@@ -208,7 +237,8 @@ public sealed class TenantOnboardingProcessManager : Saga
                 Id,
                 onboarding.OfficeName!,
                 onboarding.RequestedSubdomain!,
-                Email
+                Email,
+                onboarding.PaymentCompletedAtUtc!.Value
             ),
             TenantProvisioningStep.Subscription => new ActivateSubscriptionCommand(
                 Id,
@@ -219,7 +249,15 @@ public sealed class TenantOnboardingProcessManager : Saga
         };
     }
 
-    public void Handle(TenantOnboardingCompletedIntegrationEvent evt) => MarkCompleted();
+    /// <summary>Auditoría F21 — quinto <c>Handle</c> de integration event de esta Saga; el fix de F03
+    /// solo cubrió los otros 4, dejando este sin <c>correlation.Push</c>.</summary>
+    public void Handle(TenantOnboardingCompletedIntegrationEvent evt, ICorrelationContext correlation)
+    {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
+        MarkCompleted();
+    }
 
     public static void NotFound(TenantCreatedForOnboardingIntegrationEvent evt) { }
 

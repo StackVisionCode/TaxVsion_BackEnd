@@ -10,7 +10,8 @@ public sealed record CreateTenantForOnboardingCommand(
     Guid OnboardingId,
     string OfficeName,
     string Subdomain,
-    string AdminEmail
+    string AdminEmail,
+    DateTime PaymentCompletedAtUtc
 );
 
 /// <summary>PayFlow (Fase 15) — primer paso de la Saga: dispara la creación del Tenant real vía M2M
@@ -32,7 +33,8 @@ public static class CreateTenantForOnboardingHandler
                 command.OnboardingId,
                 command.OfficeName,
                 command.Subdomain,
-                command.AdminEmail
+                command.AdminEmail,
+                command.PaymentCompletedAtUtc
             ),
             ct
         );

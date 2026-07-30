@@ -3,8 +3,10 @@ using System.Net.Http.Json;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
-using TaxVision.Auth.Application.Abstractions;
+using Polly.CircuitBreaker;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
+using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
@@ -16,7 +18,8 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// </summary>
 public sealed class SubscriptionActivationClient(
     HttpClient httpClient,
-    IJwtTokenGenerator tokens,
+    OnboardingServiceTokenCache tokenCache,
+    OnboardingHttpResiliencePipelineRegistry resilience,
     ILogger<SubscriptionActivationClient> logger
 ) : ISubscriptionActivationClient
 {
@@ -27,7 +30,7 @@ public sealed class SubscriptionActivationClient(
         CancellationToken ct = default
     )
     {
-        var token = tokens.GenerateScopedServiceToken(
+        var token = tokenCache.GetOrCreate(
             PlatformTenant.Id,
             ClientId,
             permissions: [],
@@ -54,7 +57,8 @@ public sealed class SubscriptionActivationClient(
             };
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
-            using var response = await httpClient.SendAsync(httpRequest, ct);
+            var breaker = resilience.GetOrCreate(nameof(SubscriptionActivationClient));
+            using var response = await breaker.ExecuteAsync(token => httpClient.SendAsync(httpRequest, token), ct);
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning(
@@ -72,7 +76,7 @@ public sealed class SubscriptionActivationClient(
 
             return Result.Success();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
             logger.LogWarning(
                 ex,

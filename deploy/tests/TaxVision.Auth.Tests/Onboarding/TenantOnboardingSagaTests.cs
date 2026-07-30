@@ -59,6 +59,7 @@ public sealed class TenantOnboardingSagaTests
             RequestedSubdomain = onboarding.RequestedSubdomain!,
             TermsVersionId = onboarding.TermsVersionId!.Value,
             PasswordHashReference = Guid.NewGuid(),
+            PaymentCompletedAtUtc = onboarding.PaymentCompletedAtUtc!.Value,
         };
 
     [Fact]
@@ -76,6 +77,7 @@ public sealed class TenantOnboardingSagaTests
         Assert.Equal(evt.OnboardingId, command.OnboardingId);
         Assert.Equal(evt.OfficeName, command.OfficeName);
         Assert.Equal(evt.RequestedSubdomain, command.Subdomain);
+        Assert.Equal(evt.PaymentCompletedAtUtc, command.PaymentCompletedAtUtc);
         Assert.False(saga.IsCompleted());
     }
 
@@ -96,7 +98,13 @@ public sealed class TenantOnboardingSagaTests
             CreatedTenantId = Guid.NewGuid(),
         };
 
-        var command = await saga.Handle(tenantCreated, onboardings, unitOfWork, CancellationToken.None);
+        var command = await saga.Handle(
+            tenantCreated,
+            onboardings,
+            unitOfWork,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
 
         Assert.NotNull(command);
         Assert.Equal(tenantCreated.CreatedTenantId, saga.TenantId);
@@ -129,7 +137,13 @@ public sealed class TenantOnboardingSagaTests
             CreatedUserId = Guid.NewGuid(),
         };
 
-        var command = await saga.Handle(ownerCreated, onboardings, unitOfWork, CancellationToken.None);
+        var command = await saga.Handle(
+            ownerCreated,
+            onboardings,
+            unitOfWork,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
 
         Assert.NotNull(command);
         Assert.Equal(ownerCreated.CreatedUserId, saga.UserId);
@@ -163,7 +177,13 @@ public sealed class TenantOnboardingSagaTests
             CreatedSubscriptionId = Guid.NewGuid(),
         };
 
-        var command = await saga.Handle(subscriptionActivated, onboardings, unitOfWork, CancellationToken.None);
+        var command = await saga.Handle(
+            subscriptionActivated,
+            onboardings,
+            unitOfWork,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
 
         Assert.NotNull(command);
         Assert.Equal(subscriptionActivated.CreatedSubscriptionId, saga.SubscriptionId);
@@ -193,7 +213,14 @@ public sealed class TenantOnboardingSagaTests
             FailureReason = "Could not reach Tenant.",
         };
 
-        await saga.Handle(failed, onboardings, unitOfWork, new FakeOnboardingMetrics(), CancellationToken.None);
+        await saga.Handle(
+            failed,
+            onboardings,
+            unitOfWork,
+            new FakeOnboardingMetrics(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
 
         Assert.Equal(TenantOnboardingStatus.ProvisioningFailed, onboarding.Status);
         Assert.Equal(TenantProvisioningStep.Tenant, onboarding.FailedStep);
@@ -217,7 +244,8 @@ public sealed class TenantOnboardingSagaTests
                 CompletedTenantId = Guid.NewGuid(),
                 CompletedUserId = Guid.NewGuid(),
                 CompletedSubscriptionId = Guid.NewGuid(),
-            }
+            },
+            new FakeCorrelationContext()
         );
 
         Assert.True(saga.IsCompleted());
@@ -230,7 +258,8 @@ public sealed class TenantOnboardingSagaTests
             Guid.NewGuid(),
             "Ada's Office",
             "adas-office",
-            "buyer@example.com"
+            "buyer@example.com",
+            DateTime.UtcNow
         );
         var client = new FakeTenantProvisioningClient(Result.Success());
         var correlation = new FakeCorrelationContext();
@@ -253,7 +282,8 @@ public sealed class TenantOnboardingSagaTests
             Guid.NewGuid(),
             "Ada's Office",
             "adas-office",
-            "buyer@example.com"
+            "buyer@example.com",
+            DateTime.UtcNow
         );
         var client = new FakeTenantProvisioningClient(
             Result.Failure(new Error("TenantProvisioningClient.RequestFailed", "boom"))
@@ -296,6 +326,30 @@ public sealed class TenantOnboardingSagaTests
         Assert.Equal(TenantProvisioningStep.TenantAdmin.ToString(), result!.FailedStep);
     }
 
+    // Auditoría F16 — CreateTenantOwnerHandler solo tenía cobertura del branch de fallo; el happy
+    // path (fire-and-forget, sin cascada porque la Saga avanza vía TenantOwnerCreatedIntegrationEvent
+    // del bus, no por el valor de retorno) nunca se había ejercitado.
+    [Fact]
+    public async Task CreateTenantOwnerHandler_does_not_cascade_on_success()
+    {
+        var command = new CreateTenantOwnerCommand(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "buyer@example.com",
+            "Ada",
+            "Lovelace",
+            Guid.NewGuid()
+        );
+        var client = new FakeAuthInternalOwnerCreationClient(Result.Success());
+        var correlation = new FakeCorrelationContext();
+
+        var result = await CreateTenantOwnerHandler.Handle(command, client, correlation, CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Equal(command.OnboardingId, client.LastRequest!.OnboardingId);
+        Assert.Equal(command.PasswordHashReference, client.LastRequest.PasswordHashReference);
+    }
+
     [Fact]
     public async Task ActivateSubscriptionHandler_publishes_a_step_failed_event_on_failure()
     {
@@ -309,6 +363,21 @@ public sealed class TenantOnboardingSagaTests
 
         Assert.NotNull(result);
         Assert.Equal(TenantProvisioningStep.Subscription.ToString(), result!.FailedStep);
+    }
+
+    // Auditoría F16 — mismo gap que CreateTenantOwnerHandler: solo el branch de fallo tenía test.
+    [Fact]
+    public async Task ActivateSubscriptionHandler_does_not_cascade_on_success()
+    {
+        var command = new ActivateSubscriptionCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var client = new FakeSubscriptionActivationClient(Result.Success());
+        var correlation = new FakeCorrelationContext();
+
+        var result = await ActivateSubscriptionHandler.Handle(command, client, correlation, CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Equal(command.OnboardingId, client.LastRequest!.OnboardingId);
+        Assert.Equal(command.PlanId, client.LastRequest.PlanId);
     }
 
     [Fact]
@@ -341,6 +410,38 @@ public sealed class TenantOnboardingSagaTests
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }
 
+    // Auditoría F16 — ProvisionStorageForTenantHandler solo tenía el happy path cubierto; el branch
+    // de fallo (Fase 17: publica OnboardingProvisioningStepFailedIntegrationEvent en vez de descartar
+    // en silencio) nunca se había ejercitado. Onboarding recién arrancado (CurrentStep=Tenant) hace
+    // que MarkStepCompleted(CloudStorage) falle por transición inválida.
+    [Fact]
+    public async Task ProvisionStorageForTenantHandler_publishes_a_step_failed_event_on_failure()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = NewProvisioningOnboarding(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var unitOfWork = new FakeUnitOfWork();
+        var correlation = new FakeCorrelationContext();
+        var command = new ProvisionStorageForTenantCommand(
+            onboarding.Id,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid()
+        );
+
+        var result = await ProvisionStorageForTenantHandler.Handle(
+            command,
+            onboardings,
+            unitOfWork,
+            correlation,
+            CancellationToken.None
+        );
+
+        var stepFailed = Assert.IsType<OnboardingProvisioningStepFailedIntegrationEvent>(result);
+        Assert.Equal(TenantProvisioningStep.CloudStorage.ToString(), stepFailed.FailedStep);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
     [Fact]
     public async Task ActivateSubdomainForTenantHandler_marks_the_step_and_cascades()
     {
@@ -370,6 +471,35 @@ public sealed class TenantOnboardingSagaTests
         Assert.NotNull(next);
         Assert.Equal(TenantProvisioningStep.Defaults, onboarding.CurrentStep);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    // Auditoría F16 — mismo gap que ProvisionStorageForTenantHandler: branch de fallo nunca cubierto.
+    [Fact]
+    public async Task ActivateSubdomainForTenantHandler_publishes_a_step_failed_event_on_failure()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = NewProvisioningOnboarding(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var unitOfWork = new FakeUnitOfWork();
+        var correlation = new FakeCorrelationContext();
+        var command = new ActivateSubdomainForTenantCommand(
+            onboarding.Id,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid()
+        );
+
+        var result = await ActivateSubdomainForTenantHandler.Handle(
+            command,
+            onboardings,
+            unitOfWork,
+            correlation,
+            CancellationToken.None
+        );
+
+        var stepFailed = Assert.IsType<OnboardingProvisioningStepFailedIntegrationEvent>(result);
+        Assert.Equal(TenantProvisioningStep.Subdomain.ToString(), stepFailed.FailedStep);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
@@ -407,5 +537,30 @@ public sealed class TenantOnboardingSagaTests
         Assert.Equal(TenantOnboardingStatus.Completed, onboarding.Status);
         Assert.NotNull(onboarding.RegistrationTokenUsedAtUtc);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    // Auditoría F16 — mismo gap que los otros 2 pasos locales: branch de fallo nunca cubierto.
+    [Fact]
+    public async Task ConfigureTenantDefaultsHandler_publishes_a_step_failed_event_on_failure()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = NewProvisioningOnboarding(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var unitOfWork = new FakeUnitOfWork();
+        var correlation = new FakeCorrelationContext();
+        var command = new ConfigureTenantDefaultsCommand(onboarding.Id, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        var result = await ConfigureTenantDefaultsHandler.Handle(
+            command,
+            onboardings,
+            unitOfWork,
+            correlation,
+            new FakeOnboardingMetrics(),
+            CancellationToken.None
+        );
+
+        var stepFailed = Assert.IsType<OnboardingProvisioningStepFailedIntegrationEvent>(result);
+        Assert.Equal(TenantProvisioningStep.Defaults.ToString(), stepFailed.FailedStep);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 }

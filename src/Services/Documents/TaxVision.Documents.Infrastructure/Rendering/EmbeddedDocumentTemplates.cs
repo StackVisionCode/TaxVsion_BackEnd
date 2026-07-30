@@ -188,7 +188,7 @@ internal static class EmbeddedDocumentTemplates
         <html lang="es">
         <head>
           <meta charset="utf-8" />
-          <title>Recibo de pago {{ receipt.onboardingId }}</title>
+          <title>Recibo de pago {{ receipt.transactionReferenceMask }}</title>
           <style>
             * { box-sizing: border-box; }
             body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2933; margin: 0; padding: 32px; font-size: 12px; }
@@ -236,7 +236,7 @@ internal static class EmbeddedDocumentTemplates
             <div class="summary-title">Pagado por</div>
             <div class="row"><span>Nombre</span><span>{{ receipt.payerName }}</span></div>
             <div class="row"><span>Email</span><span>{{ receipt.payerEmail }}</span></div>
-            <div class="row"><span>Plan</span><span>{{ receipt.planName }} ({{ receipt.planCode }})</span></div>
+            <div class="row"><span>Plan</span><span>{{ receipt.planName }}</span></div>
             {% if receipt.paymentMethodMasked != "" %}<div class="row"><span>Método de pago</span><span>{{ receipt.paymentMethodMasked }}</span></div>{% endif %}
             <div class="row"><span>Referencia de transacción</span><code>{{ receipt.transactionReferenceMask }}</code></div>
           </div>
@@ -247,7 +247,7 @@ internal static class EmbeddedDocumentTemplates
 
           <div class="paid-note">✓ Pago confirmado el {{ receipt.paidAt }}. Este recibo es tu comprobante de pago del onboarding.</div>
 
-          <div class="footer">Documento generado por {{ receipt.issuer.name }} · Onboarding {{ receipt.onboardingId }}</div>
+          <div class="footer">Documento generado por {{ receipt.issuer.name }} · Ref. {{ receipt.transactionReferenceMask }}</div>
         </body>
         </html>
         """;

@@ -44,6 +44,7 @@ public sealed class OnboardingRegistrationHandlersTests
             new PreviewRegistrationQuery(rawToken),
             onboardings,
             Tokens,
+            new FakePlanCatalogClient(),
             CancellationToken.None
         );
 
@@ -63,6 +64,7 @@ public sealed class OnboardingRegistrationHandlersTests
             new PreviewRegistrationQuery("not-a-real-token"),
             onboardings,
             Tokens,
+            new FakePlanCatalogClient(),
             CancellationToken.None
         );
 
@@ -82,6 +84,7 @@ public sealed class OnboardingRegistrationHandlersTests
             new PreviewRegistrationQuery(rawToken),
             onboardings,
             Tokens,
+            new FakePlanCatalogClient(),
             CancellationToken.None
         );
 

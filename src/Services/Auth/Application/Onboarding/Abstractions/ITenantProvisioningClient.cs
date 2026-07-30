@@ -6,7 +6,8 @@ public sealed record CreateTenantForOnboardingRequest(
     Guid OnboardingId,
     string OfficeName,
     string Subdomain,
-    string AdminEmail
+    string AdminEmail,
+    DateTime PaymentCompletedAtUtc
 );
 
 /// <summary>PayFlow (Fase 15) — dispara la creación asíncrona del Tenant real
