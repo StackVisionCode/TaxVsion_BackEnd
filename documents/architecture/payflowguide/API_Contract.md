@@ -10,6 +10,10 @@ son de `TaxVision.Auth` salvo donde se indica. Todos los endpoints listados acá
 admin de PlatformAdmin y no forma parte del flujo público.
 
 Base URL: `{{UrlBase}}` (Gateway). Todas las rutas están relativas a esa base, sin prefijo `/api`.
+El Gateway rutea `/onboarding/**` → `Auth` (ver `ReverseProxy.Routes.onboarding` en
+`src/Gateway/TaxVision.Gateway/appsettings.json`) además de `/auth/**`, ya que los 6 controllers de
+este módulo usan el prefijo bare `onboarding/...` en vez de `auth/onboarding/...` (única excepción:
+`TermsVersionsController`, bajo `auth/onboarding/terms`, cubierto por la ruta `auth`).
 
 ## Índice
 
@@ -170,13 +174,21 @@ en `PendingPayment`), errores `502`/`503` si PaymentApp o Stripe fallan.
 ### 2.6 `POST onboarding/subdomains/check`
 
 Valida formato/disponibilidad del subdominio elegido y **lo reserva por 60 minutos** (a pesar del
-nombre "check"). Se llama en la pantalla de registro (paso 8), no en el checkout — el `onboardingId`
-en este punto viene del `token` decodificado en 2.7 preview, no hace falta que el frontend lo haya
-retenido desde 2.4.
+nombre "check"). Se llama en la pantalla de registro (paso 8), no en el checkout.
+
+El onboarding se resuelve **server-side** a partir del mismo `token` opaco que usan 2.7 y 2.8 — el
+mismo hash-lookup contra `RegistrationTokenHash` (`Onboarding.InvalidToken`/`TokenUsed`/
+`TokenExpired`). El endpoint nunca recibe `onboardingId` ni `email` del cliente: el invariante §5
+(el `onboardingId` real se expone una única vez, en la respuesta de `POST onboarding`, y sólo vive
+en memoria de esa sesión de compra) hacía que este endpoint fuera estructuralmente imposible de
+llamar cuando el link de registro llega por email después del webhook async de Stripe — en ese
+momento el comprador puede estar en otra pestaña, otro dispositivo o incluso otro día, sin ningún
+`onboardingId` en memoria. `email` tampoco se acepta: se usa `onboarding.Email` ya validado, evitando
+que el cliente mande un email arbitrario para la reserva.
 
 **Request**
 ```json
-{ "slug": "freedomtax", "onboardingId": "8c2e1a90-1111-2222-3333-444455556666", "email": "buyer@example.com" }
+{ "slug": "freedomtax", "token": "9f8e7d6c5b4a...raw-token-from-email-link" }
 ```
 
 **Response 200**
@@ -188,12 +200,13 @@ o si no está disponible:
 { "available": false, "reason": "TAKEN", "expiresAtUtc": null }
 ```
 
-Llamar de nuevo con el mismo `onboardingId` + `slug` renueva la reserva (idempotente) — útil si el
-usuario tarda en completar el form.
+Llamar de nuevo con el mismo `token` + `slug` renueva la reserva (idempotente) — útil si el usuario
+tarda en completar el form.
 
-**Errores**: `Onboarding.SubdomainTaken` (400), formato inválido de slug (400, código de
-`SubdomainSlug` VO), `Onboarding.SubdomainReservationEmail` (400 — el email no coincide con el de la
-reserva activa de otro slug).
+**Errores**: `Onboarding.InvalidToken`/`TokenUsed`/`TokenExpired` (400, mismos que 2.7/2.8),
+`Onboarding.SubdomainTaken` (400), formato inválido de slug (400, código de `SubdomainSlug` VO),
+`Onboarding.SubdomainReservedTemporarily` (400 — otro onboarding tiene el slug reservado, sea por
+este mismo flujo o por el flujo de alta directa vía `TenantDomains`).
 
 ---
 
@@ -360,6 +373,7 @@ onboarding, chequear el `code`, no el status HTTP, para decidir el mensaje al us
 | `Onboarding.EmailNotVerified` | 400 | El challenge referenciado no está verificado |
 | `Onboarding.InvalidState` | 400 | Transición de estado no permitida desde el estado actual |
 | `Onboarding.SubdomainTaken` | 400 | Slug no disponible |
+| `Onboarding.SubdomainReservedTemporarily` | 400 | Otro onboarding (o el flujo de alta directa vía `TenantDomains`) tiene el slug reservado ahora mismo |
 | `Onboarding.SubdomainNotReserved` | 400 | El slug del registro no tiene reserva activa de este onboarding |
 | `Onboarding.InvalidToken` / `TokenUsed` / `TokenExpired` | 400 | `RegistrationToken` inválido/consumido/vencido |
 | `Onboarding.TermsNotAccepted` | 400 | `termsAccepted=false` |

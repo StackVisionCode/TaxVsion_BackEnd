@@ -1869,6 +1869,386 @@
 			]
 		},
 		{
+			"name": "Onboarding (Public)",
+			"description": "PayFlow — flujo público \"pay-first\" completo, anónimo (sin Authorization) salvo donde se indica. Contrato completo en documents/architecture/payflowguide/API_Contract.md §2. Corre en orden: OTP (1-3) → CreateOnboarding+Checkout (4-5, pagar con tarjeta test 4242 4242 4242 4242 en el checkoutUrl) → [async: esperar el email de \"completa tu registro\" con el RegistrationToken real y pegarlo a mano en la variable {{registrationToken}} del environment, Postman no puede automatizar ese paso] → Terms (6) → Preview+CheckSubdomain+Complete (7-9) → Status (10) → Receipt (11, llega por otro email async en paralelo al paso 4-5).\n\nAuditoría frontend (post-Fase 14, verificada y cerrada esta sesión): dos bloqueos reales de backend detectados por el equipo de frontend antes de esta colección. (1) El Gateway no ruteaba /onboarding/** — src/Gateway/TaxVision.Gateway/appsettings.json ya tiene la entrada onboarding→auth. (2) POST onboarding/subdomains/check (paso 8) exigía onboardingId/email crudos del cliente, imposibles de tener en ese punto del flujo (invariante §5: el onboardingId real solo se expone una vez, en la respuesta de CreateOnboarding) — el endpoint ahora resuelve el onboarding server-side por el mismo token opaco que preview/complete.",
+			"item": [
+				{
+					"name": "1. RequestOtp",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+									"const body = pm.response.json();",
+									"pm.environment.set('onboardingChallengeId', body.challengeId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"buyer@example.com\",\n  \"firstNameHint\": \"Ada\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/email-challenges",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"email-challenges"
+							]
+						},
+						"description": "API_Contract §2.1. Pide un OTP de 6 dígitos al email indicado. Rate limit: 5/email/hr, 10/IP/hr (Onboarding.OtpRateLimited)."
+					},
+					"response": []
+				},
+				{
+					"name": "2. VerifyOtp",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/verify",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"email-challenges",
+								"{{onboardingChallengeId}}",
+								"verify"
+							]
+						},
+						"description": "API_Contract §2.2. 204 en éxito. 5 intentos fallidos → Onboarding.OtpLocked (400)."
+					},
+					"response": []
+				},
+				{
+					"name": "3. ResendOtp (opcional)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/resend",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"email-challenges",
+								"{{onboardingChallengeId}}",
+								"resend"
+							]
+						},
+						"description": "API_Contract §2.3. 202 Accepted. Cooldown 60s entre resends, máx 5 por challenge (Onboarding.ResendCooldown / Onboarding.ResendLimitExceeded)."
+					},
+					"response": []
+				},
+				{
+					"name": "4. CreateOnboarding",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+									"const body = pm.response.json();",
+									"pm.environment.set('onboardingId', body.onboardingId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"buyer@example.com\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"phone\": \"+1-555-0100\",\n  \"planId\": \"{{planId}}\",\n  \"emailVerificationChallengeId\": \"{{onboardingChallengeId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding"
+							]
+						},
+						"description": "API_Contract §2.4. Crea el TenantOnboarding (UoW #1). Respuesta 201: { onboardingId, email, planId }. Nota: onboardingId se expone acá UNA SOLA VEZ (invariante §5) — solo hace falta para el siguiente paso (checkout), nunca más adelante en el flujo."
+					},
+					"response": []
+				},
+				{
+					"name": "5. StartCheckout",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"console.log('Abrir en el browser para pagar (tarjeta test 4242 4242 4242 4242): ' + body.checkoutUrl);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"onboardingId\": \"{{onboardingId}}\",\n  \"payerEmail\": \"buyer@example.com\",\n  \"successUrl\": \"https://app.taxvision.local/onboarding/success\",\n  \"cancelUrl\": \"https://app.taxvision.local/onboarding/cancel\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/checkout",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"checkout"
+							]
+						},
+						"description": "API_Contract §2.5. Dispara el checkout en PaymentApp/Stripe. Respuesta 200: { paymentId, checkoutUrl, expiresAtUtc }. Paso manual: seguir checkoutUrl en un browser y pagar — después de eso el webhook de Stripe activa el onboarding de forma asíncrona y llega el email con el RegistrationToken real (pegar a mano en la variable de environment registrationToken antes de correr los pasos 7-10)."
+					},
+					"response": []
+				},
+				{
+					"name": "6. GetCurrentTerms",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const body = pm.response.json();",
+									"pm.environment.set('termsVersionId', body.termsVersionId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/terms/current?kind=TermsOfService&locale=en-US",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"onboarding",
+								"terms",
+								"current"
+							],
+							"query": [
+								{ "key": "kind", "value": "TermsOfService", "description": "TermsOfService | PrivacyPolicy" },
+								{ "key": "locale", "value": "en-US" }
+							]
+						},
+						"description": "API_Contract §2.11. Único endpoint del módulo bajo el prefijo auth/onboarding (no onboarding/ a secas) — el Gateway ya lo ruteaba correctamente incluso antes del fix del Gap 1. Respuesta 200: TermsVersionResponse (termsVersionId, kind, version, contentUri, contentHash, locale, ...)."
+					},
+					"response": []
+				},
+				{
+					"name": "6b. GetTermsContent",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/terms/{{termsVersionId}}/content",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"auth",
+								"onboarding",
+								"terms",
+								"{{termsVersionId}}",
+								"content"
+							]
+						},
+						"description": "Auditoría gap MinIO/legal-docs. Devuelve el HTML real del documento (text/html) para renderizar inline antes de que exista cualquier tenant. Rate limit: policy terms-content-download."
+					},
+					"response": []
+				},
+				{
+					"name": "7. PreviewRegistration",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{registrationToken}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/register/preview",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"register",
+								"preview"
+							]
+						},
+						"description": "API_Contract §2.7. Resuelve el RegistrationToken (del link del email de recibo) para prellenar el form. Respuesta 200: { firstName, lastName, maskedEmail, planName }. registrationToken debe pegarse a mano en el environment tras el paso 5 (llega por email, Postman no puede automatizar el webhook async de Stripe)."
+					},
+					"response": []
+				},
+				{
+					"name": "8. CheckAndReserveSubdomain",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"slug\": \"freedomtax\",\n  \"token\": \"{{registrationToken}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/subdomains/check",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"subdomains",
+								"check"
+							]
+						},
+						"description": "API_Contract §2.6. Gap 2 (auditoría frontend, cerrado esta sesión): antes exigía { slug, onboardingId, email } — imposible de armar en este punto del flujo porque onboardingId ya no vive en ningún lado del cliente (invariante §5). Ahora resuelve el onboarding server-side por el mismo token opaco que preview/complete, mismo patrón exacto que esos dos endpoints. Valida formato+disponibilidad y RESERVA el slug por 60 min (a pesar del nombre \"check\"). Llamar de nuevo con el mismo token+slug renueva la reserva (idempotente). Respuesta 200: { available, reason, expiresAtUtc }."
+					},
+					"response": []
+				},
+				{
+					"name": "9. CompleteRegistration",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 202', () => pm.response.to.have.status(202));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{registrationToken}}\",\n  \"password\": \"Str0ng-P@ssw0rd!\",\n  \"officeName\": \"FreedomTax LLC\",\n  \"subdomain\": \"freedomtax\",\n  \"termsAccepted\": true,\n  \"termsVersionId\": \"{{termsVersionId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/register/complete",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"register",
+								"complete"
+							]
+						},
+						"description": "API_Contract §2.8. Canjea el token, crea el password del owner (hasheado en la primera línea del handler, nunca cruza RabbitMQ en claro) y arranca el provisioning (la Saga). subdomain debe coincidir con el slug reservado en el paso 8 para este mismo onboarding (si no: 400/409 Onboarding.SubdomainNotReserved). Respuesta 202: { status, statusUrl } — el MISMO token sirve para el polling del paso 10, no se emite uno nuevo."
+					},
+					"response": []
+				},
+				{
+					"name": "10. GetOnboardingStatus",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/status?token={{registrationToken}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"status"
+							],
+							"query": [
+								{ "key": "token", "value": "{{registrationToken}}" }
+							]
+						},
+						"description": "API_Contract §2.9. Polling del progreso post-submit (llamar cada 2-3s hasta status terminal). Respuesta 200: { status, currentStep, failureReason, failureCode, redirectUrl }. Nunca expone OnboardingId."
+					},
+					"response": []
+				},
+				{
+					"name": "11. DownloadReceipt",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/receipts/{{onboardingReceiptFileId}}/download",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"receipts",
+								"{{onboardingReceiptFileId}}",
+								"download"
+							]
+						},
+						"description": "API_Contract §2.10. 302 redirect a una URL presignada de CloudStorage (expira en minutos) — cada click pide una fresca, así el link embebido en el email de recibo nunca vence. onboardingReceiptFileId llega en el link del email de recibo (async, en paralelo al paso 5)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Onboarding (M2M)",
 			"description": "PayFlow Fase 16 — M2M interno, requiere un token de servicio (actor_type=Service, obtenido via POST /auth/service-token con el client_id/client_secret correspondiente en Auth:ServiceAuth:Clients — ver request ServiceToken en la raiz de esta coleccion). La policy ServiceOnly + [AllowActorTypes(Service)] rechaza cualquier token de usuario normal con 403, sin importar rol o permisos. Receptor de la Saga de onboarding pay-first (TenantOnboardingProcessManager, Fase 15) y del propio Tenant service (status). No apto para flujos de testing manual estandar — se incluye solo como utilidad para pruebas M2M explicitas, mismo criterio que las demas carpetas (M2M) de esta coleccion/repositorio.",
 			"item": [

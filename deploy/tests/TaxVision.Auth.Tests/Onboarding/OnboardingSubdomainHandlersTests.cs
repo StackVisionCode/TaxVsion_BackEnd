@@ -6,7 +6,10 @@ using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.Onboarding.SubdomainReservations.Commands;
 using TaxVision.Auth.Application.Onboarding.SubdomainReservations.Queries;
 using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
+using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Domain.Onboarding.ValueObjects;
 using TaxVision.Auth.Domain.TenantDomains;
+using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;
@@ -18,6 +21,24 @@ public sealed class OnboardingSubdomainHandlersTests
     private static readonly IOptions<OnboardingOptions> Options = Microsoft.Extensions.Options.Options.Create(
         new OnboardingOptions { SubdomainReservationTtlMinutes = 60 }
     );
+
+    private static readonly SecureTokenService Tokens = new();
+
+    /// <summary>Auditoría frontend (post-Fase 14) — <c>ReserveSubdomainForOnboardingHandler</c>
+    /// pasó de recibir <c>OnboardingId</c> crudo a resolverlo server-side por token, mismo patrón
+    /// que <c>OnboardingRegistrationHandlersTests.NewPendingRegistration</c>.</summary>
+    private static (TenantOnboarding onboarding, string rawToken) NewPendingRegistration(DateTime now)
+    {
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        Assert.True(onboarding.MarkPaymentProcessing(Guid.NewGuid(), "pi_123").IsSuccess);
+        Assert.True(onboarding.MarkPaymentCompleted("pi_123", now).IsSuccess);
+
+        var rawToken = Tokens.GenerateToken();
+        var hash = RegistrationTokenHash.Create(Tokens.Hash(rawToken)).Value;
+        Assert.True(onboarding.SetRegistrationToken(hash, now.AddHours(72)).IsSuccess);
+
+        return (onboarding, rawToken);
+    }
 
     [Fact]
     public async Task Check_reports_available_when_free_locally_and_in_tenant()
@@ -127,13 +148,17 @@ public sealed class OnboardingSubdomainHandlersTests
     [Fact]
     public async Task Reserve_creates_a_new_active_reservation_for_a_free_slug()
     {
+        var now = DateTime.UtcNow;
+        var (onboarding, rawToken) = NewPendingRegistration(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
         var reservations = new FakeOnboardingSubdomainReservationRepository();
         var tenantAvailability = new FakeTenantSubdomainAvailabilityClient { Taken = false };
         var unitOfWork = new FakeUnitOfWork();
-        var onboardingId = Guid.NewGuid();
 
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
-            new ReserveSubdomainForOnboardingCommand("adas-office", onboardingId, "ada@example.com"),
+            new ReserveSubdomainForOnboardingCommand("adas-office", rawToken),
+            onboardings,
+            Tokens,
             reservations,
             new FakeTenantSubdomainReservationRepository(),
             tenantAvailability,
@@ -149,20 +174,74 @@ public sealed class OnboardingSubdomainHandlersTests
 
         var stored = await reservations.GetActiveBySlugAsync("adas-office", DateTime.UtcNow, CancellationToken.None);
         Assert.NotNull(stored);
-        Assert.Equal(onboardingId, stored!.OnboardingId);
+        Assert.Equal(onboarding.Id, stored!.OnboardingId);
+    }
+
+    [Fact]
+    public async Task Reserve_fails_for_an_unknown_token()
+    {
+        var onboardings = new FakeTenantOnboardingRepository();
+        var reservations = new FakeOnboardingSubdomainReservationRepository();
+        var tenantAvailability = new FakeTenantSubdomainAvailabilityClient { Taken = false };
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await ReserveSubdomainForOnboardingHandler.Handle(
+            new ReserveSubdomainForOnboardingCommand("adas-office", "not-a-real-token"),
+            onboardings,
+            Tokens,
+            reservations,
+            new FakeTenantSubdomainReservationRepository(),
+            tenantAvailability,
+            Options,
+            unitOfWork,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.InvalidToken", result.Error.Code);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Reserve_fails_for_an_already_used_token()
+    {
+        var now = DateTime.UtcNow;
+        var (onboarding, rawToken) = NewPendingRegistration(now);
+        Assert.True(onboarding.ConsumeRegistrationToken(now).IsSuccess);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var reservations = new FakeOnboardingSubdomainReservationRepository();
+        var tenantAvailability = new FakeTenantSubdomainAvailabilityClient { Taken = false };
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await ReserveSubdomainForOnboardingHandler.Handle(
+            new ReserveSubdomainForOnboardingCommand("adas-office", rawToken),
+            onboardings,
+            Tokens,
+            reservations,
+            new FakeTenantSubdomainReservationRepository(),
+            tenantAvailability,
+            Options,
+            unitOfWork,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.TokenUsed", result.Error.Code);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
     public async Task Reserve_renews_an_existing_active_reservation_for_the_same_onboarding()
     {
         var now = DateTime.UtcNow;
-        var onboardingId = Guid.NewGuid();
+        var (onboarding, rawToken) = NewPendingRegistration(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
         var reservations = new FakeOnboardingSubdomainReservationRepository();
         var existing = OnboardingSubdomainReservation
             .Create(
                 SubdomainSlug.Create("adas-office").Value,
-                onboardingId,
-                "ada@example.com",
+                onboarding.Id,
+                onboarding.Email,
                 now,
                 TimeSpan.FromMinutes(1)
             )
@@ -172,7 +251,9 @@ public sealed class OnboardingSubdomainHandlersTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
-            new ReserveSubdomainForOnboardingCommand("adas-office", onboardingId, "ada@example.com"),
+            new ReserveSubdomainForOnboardingCommand("adas-office", rawToken),
+            onboardings,
+            Tokens,
             reservations,
             new FakeTenantSubdomainReservationRepository(),
             tenantAvailability,
@@ -191,6 +272,8 @@ public sealed class OnboardingSubdomainHandlersTests
     public async Task Reserve_fails_when_reserved_by_another_onboarding()
     {
         var now = DateTime.UtcNow;
+        var (onboarding, rawToken) = NewPendingRegistration(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
         var reservations = new FakeOnboardingSubdomainReservationRepository();
         reservations.Seed(
             OnboardingSubdomainReservation
@@ -207,7 +290,9 @@ public sealed class OnboardingSubdomainHandlersTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
-            new ReserveSubdomainForOnboardingCommand("adas-office", Guid.NewGuid(), "buyer@example.com"),
+            new ReserveSubdomainForOnboardingCommand("adas-office", rawToken),
+            onboardings,
+            Tokens,
             reservations,
             new FakeTenantSubdomainReservationRepository(),
             tenantAvailability,
@@ -227,13 +312,11 @@ public sealed class OnboardingSubdomainHandlersTests
     [Fact]
     public async Task Reserve_fails_when_reserved_by_tenant_domains_path()
     {
+        var now = DateTime.UtcNow;
+        var (onboarding, rawToken) = NewPendingRegistration(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
         var tenantDomainReservation = TenantSubdomainReservation
-            .Create(
-                SubdomainSlug.Create("adas-office").Value,
-                "other@example.com",
-                DateTime.UtcNow,
-                TimeSpan.FromMinutes(15)
-            )
+            .Create(SubdomainSlug.Create("adas-office").Value, "other@example.com", now, TimeSpan.FromMinutes(15))
             .Value;
         var reservations = new FakeOnboardingSubdomainReservationRepository();
         var tenantDomainReservations = new FakeTenantSubdomainReservationRepository
@@ -244,7 +327,9 @@ public sealed class OnboardingSubdomainHandlersTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
-            new ReserveSubdomainForOnboardingCommand("adas-office", Guid.NewGuid(), "buyer@example.com"),
+            new ReserveSubdomainForOnboardingCommand("adas-office", rawToken),
+            onboardings,
+            Tokens,
             reservations,
             tenantDomainReservations,
             tenantAvailability,
@@ -262,12 +347,17 @@ public sealed class OnboardingSubdomainHandlersTests
     [Fact]
     public async Task Reserve_fails_when_already_taken_in_tenant()
     {
+        var now = DateTime.UtcNow;
+        var (onboarding, rawToken) = NewPendingRegistration(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
         var reservations = new FakeOnboardingSubdomainReservationRepository();
         var tenantAvailability = new FakeTenantSubdomainAvailabilityClient { Taken = true };
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await ReserveSubdomainForOnboardingHandler.Handle(
-            new ReserveSubdomainForOnboardingCommand("adas-office", Guid.NewGuid(), "buyer@example.com"),
+            new ReserveSubdomainForOnboardingCommand("adas-office", rawToken),
+            onboardings,
+            Tokens,
             reservations,
             new FakeTenantSubdomainReservationRepository(),
             tenantAvailability,

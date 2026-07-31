@@ -15,7 +15,7 @@ namespace TaxVision.Auth.Api.Controllers;
 [Route("onboarding/subdomains")]
 public sealed class OnboardingSubdomainController(IMessageBus bus) : ControllerBase
 {
-    public sealed record CheckSubdomainRequest(string Slug, Guid OnboardingId, string Email);
+    public sealed record CheckSubdomainRequest(string Slug, string Token);
 
     [HttpPost("check")]
     [AllowAnonymous]
@@ -24,7 +24,7 @@ public sealed class OnboardingSubdomainController(IMessageBus bus) : ControllerB
     public async Task<IActionResult> Check(CheckSubdomainRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<SubdomainReservationResponse>>(
-            new ReserveSubdomainForOnboardingCommand(request.Slug, request.OnboardingId, request.Email),
+            new ReserveSubdomainForOnboardingCommand(request.Slug, request.Token),
             ct
         );
 
