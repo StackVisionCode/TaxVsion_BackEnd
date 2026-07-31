@@ -17,7 +17,8 @@ namespace TaxVision.Notification.Application.Consumers;
 // literal del plan) sea algo real: sin él, OnboardingRegistrationReadyConsumer no tendría ninguna
 // forma de saber si el recibo ya está listo. Es 100% "Notification consumers" — dentro de lo
 // permitido — y replica el patrón ya usado varias veces en este servicio (proyección local
-// alimentada por un consumer, leída por otro: UserPermissionsProjection, RolePermissionsProjection).
+// alimentada por un consumer, leída por otro: NotificationRecipientPermissionsProjection,
+// NotificationRecipientRolePermissionsProjection).
 // ---------------------------------------------------------------------------
 
 public static class OnboardingOtpRequestedConsumer

@@ -6,13 +6,14 @@ namespace TaxVision.Notification.Domain.Permissions;
 /// <summary>
 /// Proyección local de permisos efectivos por usuario (Fase 4 del plan de notificaciones
 /// dinámicas). La usa <c>IRecipientResolver</c> para resolver audiencias <c>ByPermission</c>
-/// sin llamar a Auth por HTTP. Mismo espíritu que la proyección homónima de Signature, pero
-/// guarda <c>PermissionCodes</c> (no nombres de rol en CSV): acá la resolución es por
-/// código de permiso, no por rol.
+/// sin llamar a Auth por HTTP. Distinta de <c>AuthzUserPermissionsProjection</c> (esa es de
+/// AUTORIZACIÓN de endpoints, ver su docblock) — esta es de resolución de audiencia de
+/// notificaciones, guarda <c>PermissionCodes</c> (no nombres de rol en CSV): acá la
+/// resolución es por código de permiso, no por rol.
 /// </summary>
-public sealed class UserPermissionsProjection : TenantEntity
+public sealed class NotificationRecipientPermissionsProjection : TenantEntity
 {
-    private UserPermissionsProjection() { }
+    private NotificationRecipientPermissionsProjection() { }
 
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
@@ -22,7 +23,7 @@ public sealed class UserPermissionsProjection : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static UserPermissionsProjection Create(
+    public static NotificationRecipientPermissionsProjection Create(
         Guid tenantId,
         Guid userId,
         int permissionsVersion,
@@ -31,7 +32,7 @@ public sealed class UserPermissionsProjection : TenantEntity
     )
     {
         var now = DateTime.UtcNow;
-        var projection = new UserPermissionsProjection
+        var projection = new NotificationRecipientPermissionsProjection
         {
             Id = Guid.NewGuid(),
             UserId = userId,

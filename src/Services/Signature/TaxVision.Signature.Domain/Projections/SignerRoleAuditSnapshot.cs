@@ -3,8 +3,10 @@ using BuildingBlocks.Domain;
 namespace TaxVision.Signature.Domain.Projections;
 
 /// <summary>
-/// Proyección local de roles/permisos de usuarios del tenant. Se alimenta de
-/// <c>UserRolesChangedIntegrationEvent</c> emitido por Auth. La usa Signature para:
+/// Snapshot de roles de usuarios del tenant al momento de firmar/cancelar (NO es la
+/// proyección de autorización RBAC — para eso ver <c>AuthzUserPermissionsProjection</c>).
+/// Se alimenta de <c>UserRolesChangedIntegrationEvent</c> emitido por Auth. La usa Signature
+/// para:
 /// <list type="bullet">
 ///   <item>Snapshot del usuario en <c>SignatureAuditEvent</c> (quién firmó/canceló) sin
 ///     tener que llamar a Auth por HTTP.</item>
@@ -17,12 +19,12 @@ namespace TaxVision.Signature.Domain.Projections;
 /// eventos out-of-order, se conserva el más reciente.
 /// </para>
 /// </summary>
-public sealed class UserPermissionsProjection : TenantEntity
+public sealed class SignerRoleAuditSnapshot : TenantEntity
 {
     public const int MaxRoleNameLength = 60;
     public const int MaxRolesJoinedLength = 500;
 
-    private UserPermissionsProjection() { }
+    private SignerRoleAuditSnapshot() { }
 
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
@@ -33,10 +35,10 @@ public sealed class UserPermissionsProjection : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static UserPermissionsProjection ForNewUser(Guid tenantId, Guid userId, int version, string[] roles)
+    public static SignerRoleAuditSnapshot ForNewUser(Guid tenantId, Guid userId, int version, string[] roles)
     {
         var now = DateTime.UtcNow;
-        var projection = new UserPermissionsProjection
+        var projection = new SignerRoleAuditSnapshot
         {
             Id = Guid.NewGuid(),
             UserId = userId,

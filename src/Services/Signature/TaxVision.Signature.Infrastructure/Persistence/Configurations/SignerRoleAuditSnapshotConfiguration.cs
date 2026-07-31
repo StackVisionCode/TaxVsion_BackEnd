@@ -4,17 +4,17 @@ using TaxVision.Signature.Domain.Projections;
 
 namespace TaxVision.Signature.Infrastructure.Persistence.Configurations;
 
-public sealed class UserPermissionsProjectionConfiguration : IEntityTypeConfiguration<UserPermissionsProjection>
+public sealed class SignerRoleAuditSnapshotConfiguration : IEntityTypeConfiguration<SignerRoleAuditSnapshot>
 {
-    public void Configure(EntityTypeBuilder<UserPermissionsProjection> builder)
+    public void Configure(EntityTypeBuilder<SignerRoleAuditSnapshot> builder)
     {
-        builder.ToTable("UserPermissionsProjections");
+        builder.ToTable("SignerRoleAuditSnapshots");
         builder.HasKey(p => p.Id);
 
         builder.Property(p => p.TenantId).IsRequired();
         builder.Property(p => p.UserId).IsRequired();
         builder.Property(p => p.PermissionsVersion).IsRequired();
-        builder.Property(p => p.RolesCsv).HasMaxLength(UserPermissionsProjection.MaxRolesJoinedLength).IsRequired();
+        builder.Property(p => p.RolesCsv).HasMaxLength(SignerRoleAuditSnapshot.MaxRolesJoinedLength).IsRequired();
         builder.Property(p => p.CreatedAtUtc).IsRequired();
         builder.Property(p => p.UpdatedAtUtc).IsRequired();
 

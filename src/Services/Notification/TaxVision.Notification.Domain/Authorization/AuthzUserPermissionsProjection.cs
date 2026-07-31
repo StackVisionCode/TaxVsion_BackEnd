@@ -11,7 +11,7 @@ namespace TaxVision.Notification.Domain.Authorization;
 ///
 /// <para>
 /// Deliberadamente NO es la misma entidad que <c>TaxVision.Notification.Domain.Permissions.
-/// UserPermissionsProjection</c> (Fase 4 del plan de notificaciones dinámicas), pese al shape
+/// NotificationRecipientPermissionsProjection</c> (Fase 4 del plan de notificaciones dinámicas), pese al shape
 /// casi idéntico: esa otra proyección alimenta <c>IRecipientResolver</c>/<c>ByPermission</c>
 /// para resolver AUDIENCIAS de notificación ("qué usuarios tienen permiso X"), un propósito de
 /// negocio completamente distinto al de autorizar la propia request HTTP que está llegando.

@@ -2,11 +2,15 @@ using TaxVision.Notification.Domain.Permissions;
 
 namespace TaxVision.Notification.Application.Abstractions;
 
-public interface IUserPermissionsProjectionRepository
+public interface INotificationRecipientPermissionsProjectionRepository
 {
-    Task<UserPermissionsProjection?> GetAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+    Task<NotificationRecipientPermissionsProjection?> GetAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    );
 
-    Task AddAsync(UserPermissionsProjection projection, CancellationToken ct = default);
+    Task AddAsync(NotificationRecipientPermissionsProjection projection, CancellationToken ct = default);
 
     /// <summary>Usuarios activos del tenant cuyo conjunto de permisos efectivos incluye <paramref name="permissionCode"/> — resuelve <c>ByPermission</c>.</summary>
     Task<IReadOnlyList<Guid>> FindActiveUserIdsByPermissionAsync(
@@ -16,7 +20,7 @@ public interface IUserPermissionsProjectionRepository
     );
 
     /// <summary>Usuarios activos del tenant que tienen <paramref name="roleId"/> entre sus roles — para recomputar la unión cuando cambia ese rol.</summary>
-    Task<IReadOnlyList<UserPermissionsProjection>> FindActiveByTenantAndRoleIdAsync(
+    Task<IReadOnlyList<NotificationRecipientPermissionsProjection>> FindActiveByTenantAndRoleIdAsync(
         Guid tenantId,
         Guid roleId,
         CancellationToken ct = default

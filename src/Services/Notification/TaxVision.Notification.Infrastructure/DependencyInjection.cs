@@ -41,8 +41,14 @@ public static class DependencyInjection
         // Fase 4 del plan de notificaciones dinámicas — proyecciones locales de permisos
         // (alimentadas por UserRolesChanged/RolePermissionsChanged de Auth) + el resolver
         // que las usa para audiencias ByPermission.
-        services.AddScoped<IUserPermissionsProjectionRepository, UserPermissionsProjectionRepository>();
-        services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+        services.AddScoped<
+            INotificationRecipientPermissionsProjectionRepository,
+            NotificationRecipientPermissionsProjectionRepository
+        >();
+        services.AddScoped<
+            INotificationRecipientRolePermissionsProjectionRepository,
+            NotificationRecipientRolePermissionsProjectionRepository
+        >();
         services.AddScoped<IRecipientResolver, RecipientResolver>();
 
         // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady
@@ -52,8 +58,9 @@ public static class DependencyInjection
 
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para AUTORIZACION,
         // consultada por ProjectionPermissionsSource cuando Authorization:PermissionsSource=
-        // "Projection". Distinta de la proyeccion de arriba (Fase 4, fan-out de notificaciones) —
-        // ver el comentario XML de AuthzUserPermissionsProjection. La misma instancia scoped
+        // "Projection". Distinta de la proyeccion de arriba (Fase 4, fan-out de notificaciones,
+        // NotificationRecipientPermissionsProjection) — ver el comentario XML de
+        // AuthzUserPermissionsProjection. La misma instancia scoped
         // satisface el puerto local rico (para los consumers) y el puerto compartido y angosto
         // de BuildingBlocks (para la autorizacion), evitando dos lecturas separadas del mismo dato.
         services.AddScoped<AuthzUserPermissionsProjectionRepository>();

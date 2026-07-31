@@ -4,11 +4,12 @@ using TaxVision.Notification.Domain.Permissions;
 
 namespace TaxVision.Notification.Infrastructure.Persistence.Configurations;
 
-public sealed class UserPermissionsProjectionConfiguration : IEntityTypeConfiguration<UserPermissionsProjection>
+public sealed class NotificationRecipientPermissionsProjectionConfiguration
+    : IEntityTypeConfiguration<NotificationRecipientPermissionsProjection>
 {
-    public void Configure(EntityTypeBuilder<UserPermissionsProjection> builder)
+    public void Configure(EntityTypeBuilder<NotificationRecipientPermissionsProjection> builder)
     {
-        builder.ToTable("UserPermissionsProjections");
+        builder.ToTable("NotificationRecipientPermissionsProjections");
         builder.HasKey(p => p.Id);
         builder.Property(p => p.TenantId).IsRequired();
         builder.Property(p => p.UserId).IsRequired();

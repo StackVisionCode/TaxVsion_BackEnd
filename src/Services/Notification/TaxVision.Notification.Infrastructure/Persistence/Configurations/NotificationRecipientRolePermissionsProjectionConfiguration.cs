@@ -4,11 +4,12 @@ using TaxVision.Notification.Domain.Permissions;
 
 namespace TaxVision.Notification.Infrastructure.Persistence.Configurations;
 
-public sealed class RolePermissionsProjectionConfiguration : IEntityTypeConfiguration<RolePermissionsProjection>
+public sealed class NotificationRecipientRolePermissionsProjectionConfiguration
+    : IEntityTypeConfiguration<NotificationRecipientRolePermissionsProjection>
 {
-    public void Configure(EntityTypeBuilder<RolePermissionsProjection> builder)
+    public void Configure(EntityTypeBuilder<NotificationRecipientRolePermissionsProjection> builder)
     {
-        builder.ToTable("RolePermissionsProjections");
+        builder.ToTable("NotificationRecipientRolePermissionsProjections");
         // Id es el propio RoleId de Auth (clave natural) — ver comentario de la entidad.
         builder.HasKey(p => p.Id);
         builder.Property(p => p.TenantId).IsRequired();

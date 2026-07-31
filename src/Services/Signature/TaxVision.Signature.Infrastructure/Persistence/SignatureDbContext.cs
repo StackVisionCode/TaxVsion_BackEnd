@@ -50,10 +50,10 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<SignatureAuditEvent> SignatureAuditEvents => Set<SignatureAuditEvent>();
 
-    public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
+    public DbSet<SignerRoleAuditSnapshot> SignerRoleAuditSnapshots => Set<SignerRoleAuditSnapshot>();
 
     // RBAC Fase 7 — proyección de AUTORIZACIÓN (perm_v enforcement), distinta de
-    // UserPermissionsProjection de arriba (esa es de auditoría, ver docblock de
+    // SignerRoleAuditSnapshot de arriba (esa es de auditoría, ver docblock de
     // AuthzUserPermissionsProjection).
     public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections =>
         Set<AuthzUserPermissionsProjection>();

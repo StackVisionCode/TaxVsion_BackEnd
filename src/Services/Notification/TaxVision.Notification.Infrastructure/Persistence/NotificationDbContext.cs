@@ -43,16 +43,19 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     public DbSet<EmailDeliveryLog> EmailDeliveryLogs => Set<EmailDeliveryLog>();
     public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
     public DbSet<EmailCampaignRecipient> EmailCampaignRecipients => Set<EmailCampaignRecipient>();
-    public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
-    public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<NotificationRecipientPermissionsProjection> NotificationRecipientPermissionsProjections =>
+        Set<NotificationRecipientPermissionsProjection>();
+    public DbSet<NotificationRecipientRolePermissionsProjection> NotificationRecipientRolePermissionsProjections =>
+        Set<NotificationRecipientRolePermissionsProjection>();
     public DbSet<UserNotificationPreference> UserNotificationPreferences => Set<UserNotificationPreference>();
 
     // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady.
     public DbSet<OnboardingReceiptLookup> OnboardingReceiptLookups => Set<OnboardingReceiptLookup>();
 
     // RBAC Fase 7 — proyecciones locales de permisos para AUTORIZACIÓN (perm_v enforcement),
-    // distintas de UserPermissionsProjection/RolePermissionsProjection de arriba (Fase 4,
-    // fan-out de notificaciones). Ver TaxVision.Notification.Domain.Authorization.AuthzUserPermissionsProjection.
+    // distintas de NotificationRecipientPermissionsProjection/NotificationRecipientRolePermissionsProjection
+    // de arriba (Fase 4, fan-out de notificaciones). Ver
+    // TaxVision.Notification.Domain.Authorization.AuthzUserPermissionsProjection.
     public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections =>
         Set<AuthzUserPermissionsProjection>();
     public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>

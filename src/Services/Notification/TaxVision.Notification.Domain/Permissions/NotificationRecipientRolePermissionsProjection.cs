@@ -7,11 +7,12 @@ namespace TaxVision.Notification.Domain.Permissions;
 /// Cache local de permisos por rol (Fase 4, mismo propósito que el modelo homónimo agregado
 /// en Communication en la Fase 2): permite recomputar la unión de permisos de un usuario
 /// multi-rol cuando llega <c>RolePermissionsChangedIntegrationEvent</c> para SOLO uno de
-/// sus roles, sin perder los permisos heredados de sus otros roles.
+/// sus roles, sin perder los permisos heredados de sus otros roles. Distinta de
+/// <c>AuthzRolePermissionsProjection</c> (esa es de AUTORIZACIÓN de endpoints).
 /// </summary>
-public sealed class RolePermissionsProjection : TenantEntity
+public sealed class NotificationRecipientRolePermissionsProjection : TenantEntity
 {
-    private RolePermissionsProjection() { }
+    private NotificationRecipientRolePermissionsProjection() { }
 
     public string RoleName { get; private set; } = string.Empty;
     public string PermissionCodesJson { get; private set; } = "[]";
@@ -19,7 +20,7 @@ public sealed class RolePermissionsProjection : TenantEntity
     public DateTime UpdatedAtUtc { get; private set; }
 
     /// <summary>El Id es el propio RoleId de Auth — clave natural, un rol tiene una única fila.</summary>
-    public static RolePermissionsProjection Create(
+    public static NotificationRecipientRolePermissionsProjection Create(
         Guid tenantId,
         Guid roleId,
         string roleName,
@@ -27,7 +28,7 @@ public sealed class RolePermissionsProjection : TenantEntity
         IReadOnlyCollection<string> permissionCodes
     )
     {
-        var projection = new RolePermissionsProjection
+        var projection = new NotificationRecipientRolePermissionsProjection
         {
             Id = roleId,
             RoleName = roleName,
