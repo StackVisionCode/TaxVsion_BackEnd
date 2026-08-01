@@ -1,9 +1,9 @@
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.OAuth;
-using TaxVision.Connectors.Infrastructure.RateLimit;
 
 namespace TaxVision.Connectors.Tests.OAuth;
 
@@ -60,7 +60,7 @@ public class OAuthTokenManagerTests
             accountRepository,
             connectionRepository,
             new FakeOAuthProviderClientFactory(providerClient),
-            new ProviderCircuitBreakerRegistry(NullLogger<ProviderCircuitBreakerRegistry>.Instance),
+            new HttpResiliencePipelineRegistry(),
             protector,
             sharedLock ?? new InMemoryDistributedLock(),
             unitOfWork,

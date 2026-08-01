@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Shared;
@@ -18,7 +19,7 @@ public class GraphApiClientTests
             new HttpClient(handler),
             new FakeOAuthTokenManager(),
             rateLimiter ?? new NoWaitProviderRateLimiter(),
-            new ProviderCircuitBreakerRegistry(NullLogger<ProviderCircuitBreakerRegistry>.Instance),
+            new HttpResiliencePipelineRegistry(),
             NullLogger<GraphApiClient>.Instance
         );
 

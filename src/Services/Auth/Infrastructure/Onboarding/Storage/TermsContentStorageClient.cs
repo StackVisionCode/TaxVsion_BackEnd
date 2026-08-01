@@ -100,13 +100,14 @@ public sealed class TermsContentStorageClient(
 
     public async Task<Result<string>> DownloadTextAsync(Guid fileId, CancellationToken ct = default)
     {
-        var token = tokenCache.GetOrCreate(
+        var token = await tokenCache.GetOrCreateAsync(
             PlatformTenant.Id,
             ClientId,
             permissions: [DownloadPermission],
             scopes: [],
             audience: "TaxVision.Services",
-            lifetimeMinutes: 2
+            lifetimeMinutes: 2,
+            ct
         );
 
         try

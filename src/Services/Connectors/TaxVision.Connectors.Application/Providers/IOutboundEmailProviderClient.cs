@@ -22,7 +22,7 @@ public sealed class OutboundEmailSendException(
 /// <see cref="IEmailProviderClient"/> tiene un contrato explícito de solo-lectura (D3 §3.1); envío es
 /// una responsabilidad distinta. <c>GmailApiClient</c>/<c>GraphApiClient</c> implementan ambas
 /// interfaces sobre la misma instancia (reusan <c>HttpClient</c>/<c>IOAuthTokenManager</c>/
-/// <c>ProviderCircuitBreakerRegistry</c> ya inyectados). <c>ImapClient</c> no la implementa — IMAP no
+/// <c>HttpResiliencePipelineRegistry</c> ya inyectados). <c>ImapClient</c> no la implementa — IMAP no
 /// envía correo (eso es SMTP manual, D1 de Postmaster, fuera de alcance acá).
 /// </summary>
 public interface IOutboundEmailProviderClient

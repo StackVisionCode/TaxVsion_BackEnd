@@ -1,32 +1,33 @@
 using Polly;
 using Polly.CircuitBreaker;
 using Polly.Retry;
-using TaxVision.Connectors.Infrastructure.Observability;
 
-namespace TaxVision.Connectors.Infrastructure.RateLimit;
+namespace BuildingBlocks.Infrastructure.Resilience;
 
 /// <summary>
-/// Retry + circuit breaker Polly por provider (Fase 10 — retries centralizados). El pipeline reintenta
-/// primero (backoff exponencial + jitter, hasta <see cref="maxRetryAttempts"/> veces) fallos
-/// transitorios de red (<see cref="HttpRequestException"/>, <see cref="TaskCanceledException"/> por
-/// timeout); si los reintentos se agotan, el circuit breaker cuenta el fallo y abre tras
-/// <see cref="minimumThroughput"/> fallos consecutivos (FailureRatio 1.0), quedando abierto
-/// <see cref="breakDuration"/>. Solo cuenta fallos que el operation envuelto señala lanzando una
-/// excepción (ver OAuthProviderException/EmailProviderException) — nunca por un Result.Failure
-/// devuelto sin excepción. El 429-con-Retry-After de Gmail/Graph se maneja aparte (es información de
-/// proveedor, no un fallo transitorio genérico) — ver GmailApiClient/GraphApiClient.
+/// Retry + circuit breaker Polly compartido (F24 — extraído de las 3 copias que existían en
+/// Auth/Connectors/Postmaster). El pipeline reintenta primero (backoff exponencial + jitter, hasta
+/// <paramref name="maxRetryAttempts"/> veces) fallos transitorios de red (<see cref="HttpRequestException"/>,
+/// <see cref="TaskCanceledException"/> por timeout); si los reintentos se agotan, el circuit breaker
+/// cuenta el fallo y abre tras <paramref name="minimumThroughput"/> fallos consecutivos (FailureRatio
+/// 1.0), quedando abierto <paramref name="breakDuration"/>. Solo cuenta fallos que el operation
+/// envuelto señala lanzando una excepción, nunca por un Result.Failure devuelto sin excepción.
+/// <paramref name="onRetry"/>/<paramref name="onOpened"/> son ganchos opcionales para que cada
+/// servicio emita bajo su propio Meter/clase de métricas estática — el pipeline no asume ningún
+/// Meter compartido.
 /// </summary>
-public sealed class ProviderCircuitBreaker
+public sealed class HttpResiliencePipeline
 {
     private readonly ResiliencePipeline _pipeline;
 
-    private ProviderCircuitBreaker(ResiliencePipeline pipeline) => _pipeline = pipeline;
+    private HttpResiliencePipeline(ResiliencePipeline pipeline) => _pipeline = pipeline;
 
-    public static ProviderCircuitBreaker Create(
-        string providerCode,
+    public static HttpResiliencePipeline Create(
+        string boundaryName,
         int minimumThroughput = 3,
         TimeSpan? breakDuration = null,
         int maxRetryAttempts = 2,
+        Action<string>? onRetry = null,
         Action<string>? onOpened = null
     )
     {
@@ -43,10 +44,7 @@ public sealed class ProviderCircuitBreaker
                     UseJitter = true,
                     OnRetry = _ =>
                     {
-                        ConnectorsMetrics.RetryAttempts.Add(
-                            1,
-                            new KeyValuePair<string, object?>("provider", providerCode)
-                        );
+                        onRetry?.Invoke(boundaryName);
                         return default;
                     },
                 }
@@ -60,13 +58,13 @@ public sealed class ProviderCircuitBreaker
                     BreakDuration = breakDuration ?? TimeSpan.FromSeconds(60),
                     OnOpened = _ =>
                     {
-                        onOpened?.Invoke(providerCode);
+                        onOpened?.Invoke(boundaryName);
                         return default;
                     },
                 }
             )
             .Build();
-        return new ProviderCircuitBreaker(pipeline);
+        return new HttpResiliencePipeline(pipeline);
     }
 
     /// <summary>Lanza <see cref="BrokenCircuitException"/> sin invocar <paramref name="operation"/> si el circuito está abierto.</summary>

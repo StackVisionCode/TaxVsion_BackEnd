@@ -1,14 +1,15 @@
+using BuildingBlocks.Infrastructure.Resilience;
 using Polly.CircuitBreaker;
-using TaxVision.Connectors.Infrastructure.RateLimit;
+using Xunit;
 
-namespace TaxVision.Connectors.Tests.RateLimit;
+namespace TaxVision.BuildingBlocks.Tests.Resilience;
 
-public class ProviderCircuitBreakerTests
+public class HttpResiliencePipelineTests
 {
     [Fact]
     public async Task ExecuteAsync_WithSuccessfulOperation_ReturnsResultAndStaysClosed()
     {
-        var breaker = ProviderCircuitBreaker.Create("gmail", minimumThroughput: 3);
+        var breaker = HttpResiliencePipeline.Create("gmail", minimumThroughput: 3);
 
         var result = await breaker.ExecuteAsync(_ => Task.FromResult(42));
 
@@ -18,7 +19,7 @@ public class ProviderCircuitBreakerTests
     [Fact]
     public async Task ExecuteAsync_After3ConsecutiveFailures_OpensAndSkipsSubsequentCalls()
     {
-        var breaker = ProviderCircuitBreaker.Create(
+        var breaker = HttpResiliencePipeline.Create(
             "gmail",
             minimumThroughput: 3,
             breakDuration: TimeSpan.FromSeconds(60)
@@ -53,7 +54,7 @@ public class ProviderCircuitBreakerTests
     [Fact]
     public async Task ExecuteAsync_WithTransientHttpFailureThenSuccess_RetriesAndReturnsResult()
     {
-        var breaker = ProviderCircuitBreaker.Create("gmail", minimumThroughput: 3);
+        var breaker = HttpResiliencePipeline.Create("gmail", minimumThroughput: 3);
         var attempts = 0;
 
         var result = await breaker.ExecuteAsync<int>(_ =>
@@ -71,7 +72,7 @@ public class ProviderCircuitBreakerTests
     [Fact]
     public async Task ExecuteAsync_WithNonTransientException_DoesNotRetryBeforeCountingFailure()
     {
-        var breaker = ProviderCircuitBreaker.Create(
+        var breaker = HttpResiliencePipeline.Create(
             "gmail",
             minimumThroughput: 3,
             breakDuration: TimeSpan.FromSeconds(60)
@@ -92,11 +93,9 @@ public class ProviderCircuitBreakerTests
     }
 
     [Fact]
-    public void GetOrCreate_WithSameProviderCode_ReturnsSameBreakerInstance()
+    public void GetOrCreate_WithSameKey_ReturnsSamePipelineInstance()
     {
-        var registry = new ProviderCircuitBreakerRegistry(
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ProviderCircuitBreakerRegistry>.Instance
-        );
+        var registry = new HttpResiliencePipelineRegistry();
 
         var first = registry.GetOrCreate("gmail");
         var second = registry.GetOrCreate("gmail");
@@ -105,15 +104,44 @@ public class ProviderCircuitBreakerTests
     }
 
     [Fact]
-    public void GetOrCreate_WithDifferentProviderCodes_ReturnsDistinctBreakerInstances()
+    public void GetOrCreate_WithDifferentKeys_ReturnsDistinctPipelineInstances()
     {
-        var registry = new ProviderCircuitBreakerRegistry(
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ProviderCircuitBreakerRegistry>.Instance
-        );
+        var registry = new HttpResiliencePipelineRegistry();
 
         var gmail = registry.GetOrCreate("gmail");
         var graph = registry.GetOrCreate("graph");
 
         Assert.NotSame(gmail, graph);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OnRetryAndOnOpenedCallbacks_AreInvokedWithBoundaryName()
+    {
+        var retriedKeys = new List<string>();
+        var openedKeys = new List<string>();
+        var breaker = HttpResiliencePipeline.Create(
+            "gmail",
+            minimumThroughput: 3,
+            breakDuration: TimeSpan.FromSeconds(60),
+            onRetry: key => retriedKeys.Add(key),
+            onOpened: key => openedKeys.Add(key)
+        );
+
+        await breaker
+            .ExecuteAsync<int>(_ =>
+            {
+                throw new HttpRequestException("transient");
+            })
+            .ContinueWith(_ => { }); // primer intento agota los 2 reintentos y cuenta como 1 fallo
+
+        for (var i = 0; i < 2; i++)
+        {
+            await breaker
+                .ExecuteAsync<int>(_ => throw new InvalidOperationException("non-transient"))
+                .ContinueWith(_ => { });
+        }
+
+        Assert.Contains("gmail", retriedKeys);
+        Assert.Contains("gmail", openedKeys);
     }
 }

@@ -18,6 +18,10 @@ internal sealed class FakeOnboardingMetrics : IOnboardingMetrics
     public void RecordManualReview() { }
 
     public void RecordDurationSeconds(double seconds, string outcome) { }
+
+    public void RecordHttpClientRetry(string clientName) { }
+
+    public void RecordHttpClientCircuitOpened(string clientName) { }
 }
 
 /// <summary>Fake best-effort catalog lookup. Devuelve el nombre configurado (o null si no) sin

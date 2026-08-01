@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,7 @@ public static class DependencyInjection
             ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
         );
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
+        services.AddSingleton<IRateCounter, RedisRateCounter>();
 
         services.AddSingleton<IPaymentAppMetrics, PaymentAppMetrics>();
 

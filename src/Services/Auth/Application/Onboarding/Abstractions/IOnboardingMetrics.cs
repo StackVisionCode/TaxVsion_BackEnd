@@ -11,4 +11,6 @@ public interface IOnboardingMetrics
     void RecordFailed(string step);
     void RecordManualReview();
     void RecordDurationSeconds(double seconds, string outcome);
+    void RecordHttpClientRetry(string clientName);
+    void RecordHttpClientCircuitOpened(string clientName);
 }

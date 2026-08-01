@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging;
 using MimeKit;
 using MimeKit.Utils;
@@ -12,7 +13,6 @@ using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.Observability;
-using TaxVision.Connectors.Infrastructure.RateLimit;
 
 namespace TaxVision.Connectors.Infrastructure.Providers.Gmail;
 
@@ -20,14 +20,14 @@ namespace TaxVision.Connectors.Infrastructure.Providers.Gmail;
 /// Client de Gmail API — Inbox-only forzado (D1, §34.5): history y lookups siempre filtran
 /// <c>labelId=INBOX</c>, nunca sincroniza el mailbox completo aunque la API lo permita por default.
 /// Nunca pide <c>format=full</c> acá — eso es Fase 8 (body fetch bajo demanda). Toda llamada pasa por
-/// un <see cref="ProviderCircuitBreaker"/> propio (Fase 10, clave <c>"Gmail:messages"</c> — separado del
+/// un <see cref="HttpResiliencePipeline"/> propio (F24, clave <c>"Gmail:messages"</c> — separado del
 /// breaker de OAuth refresh) que reintenta fallos de red transitorios y abre tras fallos consecutivos.
 /// </summary>
 public sealed class GmailApiClient(
     HttpClient httpClient,
     IOAuthTokenManager tokenManager,
     IProviderRateLimiter rateLimiter,
-    ProviderCircuitBreakerRegistry circuitBreakers,
+    HttpResiliencePipelineRegistry circuitBreakers,
     ILogger<GmailApiClient> logger
 ) : IEmailProviderClient, IOutboundEmailProviderClient
 {

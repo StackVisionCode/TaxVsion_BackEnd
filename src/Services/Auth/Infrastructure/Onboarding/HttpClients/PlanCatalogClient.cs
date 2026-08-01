@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// necesita token M2M. Reusa <see cref="SubscriptionClientOptions"/>, ya registrado para
 /// <c>SubscriptionActivationClient</c>.
 /// <para>
-/// Envuelto en <see cref="OnboardingHttpResiliencePipeline"/> (auditoría F14) — es un GET puramente
+/// Envuelto en <see cref="HttpResiliencePipeline"/> (auditoría F14 → F24) — es un GET puramente
 /// de lectura (sin side-effects), así que el retry es seguro sin ninguna verificación de idempotencia
 /// adicional. Antes de este fix, un solo fallo transient del catálogo mientras se procesaba el webhook
 /// de pago quedaba impreso para siempre en el recibo/email como "Selected Plan" en vez del nombre real.
@@ -20,7 +20,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// </summary>
 public sealed class PlanCatalogClient(
     HttpClient httpClient,
-    OnboardingHttpResiliencePipelineRegistry resilience,
+    HttpResiliencePipelineRegistry resilience,
     ILogger<PlanCatalogClient> logger
 ) : IPlanCatalogClient
 {

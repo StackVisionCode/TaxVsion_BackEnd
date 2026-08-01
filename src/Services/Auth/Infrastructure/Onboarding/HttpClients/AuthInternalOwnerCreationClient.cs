@@ -1,11 +1,11 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
@@ -20,7 +20,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// <c>OnboardingOptions.AuthPublicBaseUrl</c> (ya usada por Fase 11 para el link mediador de
 /// descarga del recibo) en vez de una nueva options class — es el mismo "origen público de Auth".
 /// <para>
-/// Envuelto en <see cref="OnboardingHttpResiliencePipeline"/> (auditoría F06). Verificado que el
+/// Envuelto en <see cref="HttpResiliencePipeline"/> (auditoría F06 → F24). Verificado que el
 /// retry es seguro pese a que <c>PasswordHashReference</c> es un GETDEL de un solo uso:
 /// <c>CreateTenantOwnerFromOnboardingHandler</c> chequea <c>GetByOnboardingIdAsync</c> ANTES de
 /// canjear la referencia, así que un reintento tras un éxito ya persistido devuelve
@@ -30,7 +30,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 public sealed class AuthInternalOwnerCreationClient(
     HttpClient httpClient,
     OnboardingServiceTokenCache tokenCache,
-    OnboardingHttpResiliencePipelineRegistry resilience,
+    HttpResiliencePipelineRegistry resilience,
     ILogger<AuthInternalOwnerCreationClient> logger
 ) : IAuthInternalOwnerCreationClient
 {
@@ -41,13 +41,14 @@ public sealed class AuthInternalOwnerCreationClient(
         CancellationToken ct = default
     )
     {
-        var token = tokenCache.GetOrCreate(
+        var token = await tokenCache.GetOrCreateAsync(
             PlatformTenant.Id,
             ClientId,
             permissions: [],
             scopes: [],
             audience: "TaxVision.Services",
-            lifetimeMinutes: 5
+            lifetimeMinutes: 5,
+            ct
         );
 
         try

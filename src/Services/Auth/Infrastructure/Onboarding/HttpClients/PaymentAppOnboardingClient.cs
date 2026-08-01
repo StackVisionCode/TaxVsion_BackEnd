@@ -1,12 +1,12 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
@@ -30,7 +30,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 public sealed class PaymentAppOnboardingClient(
     HttpClient httpClient,
     OnboardingServiceTokenCache tokenCache,
-    OnboardingHttpResiliencePipelineRegistry resilience,
+    HttpResiliencePipelineRegistry resilience,
     ILogger<PaymentAppOnboardingClient> logger
 ) : IPaymentAppOnboardingClient
 {
@@ -45,13 +45,14 @@ public sealed class PaymentAppOnboardingClient(
         CancellationToken ct = default
     )
     {
-        var token = tokenCache.GetOrCreate(
+        var token = await tokenCache.GetOrCreateAsync(
             PlatformTenant.Id,
             ClientId,
             permissions: [],
             scopes: [],
             audience: "TaxVision.Services",
-            lifetimeMinutes: 5
+            lifetimeMinutes: 5,
+            ct
         );
 
         try

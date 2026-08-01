@@ -1,11 +1,11 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
-using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
 
 namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
@@ -16,7 +16,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 /// JWT in-process que <see cref="ReceiptDocumentClient"/>: fire-and-forget, la Saga
 /// (<c>TenantOnboardingProcessManager</c>) no espera el <c>TenantId</c> en esta respuesta — avanza
 /// cuando le llega <c>TenantCreatedForOnboardingIntegrationEvent</c> por el bus. Envuelto en
-/// <see cref="OnboardingHttpResiliencePipeline"/> (auditoría F06) — el endpoint receptor
+/// <see cref="HttpResiliencePipeline"/> (auditoría F06 → F24) — el endpoint receptor
 /// (<c>CreateTenantFromOnboardingHandler</c>) es idempotente por <c>OnboardingId</c>, así que un
 /// retry tras un timeout/fallo transitorio es seguro. Token M2M vía
 /// <see cref="OnboardingServiceTokenCache"/> (auditoría F13) — cacheado, no mintado por request.
@@ -24,7 +24,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 public sealed class TenantProvisioningClient(
     HttpClient httpClient,
     OnboardingServiceTokenCache tokenCache,
-    OnboardingHttpResiliencePipelineRegistry resilience,
+    HttpResiliencePipelineRegistry resilience,
     ILogger<TenantProvisioningClient> logger
 ) : ITenantProvisioningClient
 {
@@ -35,13 +35,14 @@ public sealed class TenantProvisioningClient(
         CancellationToken ct = default
     )
     {
-        var token = tokenCache.GetOrCreate(
+        var token = await tokenCache.GetOrCreateAsync(
             PlatformTenant.Id,
             ClientId,
             permissions: [],
             scopes: [],
             audience: "TaxVision.Services",
-            lifetimeMinutes: 5
+            lifetimeMinutes: 5,
+            ct
         );
 
         try

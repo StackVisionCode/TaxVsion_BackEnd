@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Sessions;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,6 @@ using TaxVision.Auth.Infrastructure.Cloudflare;
 using TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 using TaxVision.Auth.Infrastructure.Onboarding.Observability;
 using TaxVision.Auth.Infrastructure.Onboarding.Persistence.Repositories;
-using TaxVision.Auth.Infrastructure.Onboarding.Resilience;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
 using TaxVision.Auth.Infrastructure.Onboarding.Storage;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -146,9 +146,16 @@ public static class DependencyInjection
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
         services.AddScoped<ITokenReferenceStore, RedisTokenReferenceStore>();
 
-        // Onboarding (PayFlow, auditoría F06) — un breaker por cliente M2M, ver
-        // OnboardingHttpResiliencePipeline para el detalle de la política.
-        services.AddSingleton<OnboardingHttpResiliencePipelineRegistry>();
+        // Onboarding (PayFlow, auditoría F06 → F24) — un breaker por cliente M2M, ver
+        // HttpResiliencePipeline (BuildingBlocks.Infrastructure) para el detalle de la política.
+        services.AddSingleton(sp =>
+        {
+            var metrics = sp.GetRequiredService<IOnboardingMetrics>();
+            return new HttpResiliencePipelineRegistry(
+                onRetry: metrics.RecordHttpClientRetry,
+                onOpened: metrics.RecordHttpClientCircuitOpened
+            );
+        });
 
         // Onboarding (PayFlow, auditoría F13) — cache singleton de tokens M2M por clientId, ver
         // OnboardingServiceTokenCache para el detalle de por qué es seguro cachear.

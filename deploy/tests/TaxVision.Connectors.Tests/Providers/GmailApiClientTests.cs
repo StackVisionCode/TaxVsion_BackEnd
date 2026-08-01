@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using MimeKit;
 using TaxVision.Connectors.Application.Providers;
@@ -20,7 +21,7 @@ public class GmailApiClientTests
             new HttpClient(handler),
             new FakeOAuthTokenManager(),
             rateLimiter ?? new NoWaitProviderRateLimiter(),
-            new ProviderCircuitBreakerRegistry(NullLogger<ProviderCircuitBreakerRegistry>.Instance),
+            new HttpResiliencePipelineRegistry(),
             NullLogger<GmailApiClient>.Instance
         );
 

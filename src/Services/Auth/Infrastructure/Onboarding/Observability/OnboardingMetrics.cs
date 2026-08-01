@@ -16,6 +16,8 @@ public sealed class OnboardingMetrics : IOnboardingMetrics, IDisposable
     private readonly Counter<long> _failedTotal;
     private readonly Counter<long> _manualReviewTotal;
     private readonly Histogram<double> _durationSeconds;
+    private readonly Counter<long> _httpClientRetryTotal;
+    private readonly Counter<long> _httpClientCircuitOpenedTotal;
 
     public OnboardingMetrics()
     {
@@ -26,6 +28,8 @@ public sealed class OnboardingMetrics : IOnboardingMetrics, IDisposable
         _failedTotal = _meter.CreateCounter<long>("onboarding.failed_total");
         _manualReviewTotal = _meter.CreateCounter<long>("onboarding.manual_review_total");
         _durationSeconds = _meter.CreateHistogram<double>("onboarding.duration_seconds", unit: "s");
+        _httpClientRetryTotal = _meter.CreateCounter<long>("onboarding.http_client_retry_total");
+        _httpClientCircuitOpenedTotal = _meter.CreateCounter<long>("onboarding.http_client_circuit_opened_total");
     }
 
     public void RecordStarted() => _startedTotal.Add(1);
@@ -38,6 +42,12 @@ public sealed class OnboardingMetrics : IOnboardingMetrics, IDisposable
 
     public void RecordDurationSeconds(double seconds, string outcome) =>
         _durationSeconds.Record(seconds, new KeyValuePair<string, object?>("outcome", outcome));
+
+    public void RecordHttpClientRetry(string clientName) =>
+        _httpClientRetryTotal.Add(1, new KeyValuePair<string, object?>("client", clientName));
+
+    public void RecordHttpClientCircuitOpened(string clientName) =>
+        _httpClientCircuitOpenedTotal.Add(1, new KeyValuePair<string, object?>("client", clientName));
 
     public void Dispose() => _meter.Dispose();
 }

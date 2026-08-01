@@ -1,3 +1,5 @@
+using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -54,7 +56,11 @@ public static class DependencyInjection
         );
         services.AddHostedService<SystemEmailProviderSeeder>();
 
-        services.AddSingleton<ProviderCircuitBreakerRegistry>();
+        services.AddSingleton(_ => new HttpResiliencePipelineRegistry(
+            minimumThroughput: 5,
+            onOpened: provider =>
+                PostmasterMetrics.CircuitBreakerOpened.Add(1, new KeyValuePair<string, object?>("provider", provider))
+        ));
         AddRateLimiting(services, configuration);
 
         AddCloudStorageAssetFetching(services, configuration);
@@ -83,6 +89,7 @@ public static class DependencyInjection
         if (!string.IsNullOrWhiteSpace(redisConnectionString))
         {
             services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+            services.AddSingleton<IRateCounter, RedisRateCounter>();
             services.AddSingleton<IEmailProviderRateLimiter, RedisEmailProviderRateLimiter>();
         }
         else

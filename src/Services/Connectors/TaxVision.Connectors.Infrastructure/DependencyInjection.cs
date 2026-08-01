@@ -1,9 +1,12 @@
+using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
@@ -16,6 +19,7 @@ using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.Jobs;
 using TaxVision.Connectors.Infrastructure.Locking;
 using TaxVision.Connectors.Infrastructure.OAuth;
+using TaxVision.Connectors.Infrastructure.Observability;
 using TaxVision.Connectors.Infrastructure.Persistence;
 using TaxVision.Connectors.Infrastructure.Persistence.Repositories;
 using TaxVision.Connectors.Infrastructure.Providers;
@@ -60,6 +64,7 @@ public static class DependencyInjection
         {
             services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
             services.AddSingleton<IDistributedLock, RedisDistributedLock>();
+            services.AddSingleton<IRateCounter, RedisRateCounter>();
             services.AddSingleton<IProviderRateLimiter, RedisProviderRateLimiter>();
         }
         else
@@ -74,7 +79,15 @@ public static class DependencyInjection
             services.AddSingleton<IOAuthConnectStateStore, InMemoryOAuthConnectStateStore>();
 
         services.Configure<ProviderRateLimiterOptions>(configuration.GetSection("Connectors:RateLimit"));
-        services.AddSingleton<ProviderCircuitBreakerRegistry>();
+        services.AddSingleton(sp => new HttpResiliencePipelineRegistry(
+            onRetry: key => ConnectorsMetrics.RetryAttempts.Add(1, new KeyValuePair<string, object?>("provider", key)),
+            onOpened: key =>
+            {
+                sp.GetRequiredService<ILogger<HttpResiliencePipelineRegistry>>()
+                    .LogWarning("Circuit breaker opened for {Key}.", key);
+                ConnectorsMetrics.CircuitBreakerOpened.Add(1, new KeyValuePair<string, object?>("provider", key));
+            }
+        ));
 
         services.Configure<GoogleOAuthOptions>(configuration.GetSection(GoogleOAuthOptions.SectionName));
         services.Configure<MicrosoftOAuthOptions>(configuration.GetSection(MicrosoftOAuthOptions.SectionName));

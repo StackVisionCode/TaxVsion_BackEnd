@@ -27,13 +27,14 @@ public sealed class TenantSubdomainAvailabilityClient(
 
     public async Task<Result<bool>> IsTakenAsync(string slug, CancellationToken ct = default)
     {
-        var token = tokenCache.GetOrCreate(
+        var token = await tokenCache.GetOrCreateAsync(
             PlatformTenant.Id,
             ClientId,
             permissions: [],
             scopes: [],
             audience: "TaxVision.Services",
-            lifetimeMinutes: 5
+            lifetimeMinutes: 5,
+            ct
         );
 
         try

@@ -4,13 +4,13 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging;
 using Polly.CircuitBreaker;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.Observability;
-using TaxVision.Connectors.Infrastructure.RateLimit;
 
 namespace TaxVision.Connectors.Infrastructure.Providers.Graph;
 
@@ -18,15 +18,15 @@ namespace TaxVision.Connectors.Infrastructure.Providers.Graph;
 /// Client de Microsoft Graph — Inbox-only forzado (D1, §34.5): el delta query siempre apunta a
 /// <c>/me/mailFolders/inbox/messages/delta</c>, nunca <c>/me/messages/delta</c> (mailbox completo).
 /// El cursor (deltaLink/nextLink) es una URL opaca completa que Graph devuelve — se persiste tal
-/// cual, sin reconstruirla. Toda llamada pasa por un <see cref="ProviderCircuitBreaker"/> propio
-/// (Fase 10, clave <c>"Graph:messages"</c>) que reintenta fallos de red transitorios y abre tras
+/// cual, sin reconstruirla. Toda llamada pasa por un <see cref="HttpResiliencePipeline"/> propio
+/// (F24, clave <c>"Graph:messages"</c>) que reintenta fallos de red transitorios y abre tras
 /// fallos consecutivos.
 /// </summary>
 public sealed class GraphApiClient(
     HttpClient httpClient,
     IOAuthTokenManager tokenManager,
     IProviderRateLimiter rateLimiter,
-    ProviderCircuitBreakerRegistry circuitBreakers,
+    HttpResiliencePipelineRegistry circuitBreakers,
     ILogger<GraphApiClient> logger
 ) : IEmailProviderClient, IOutboundEmailProviderClient
 {

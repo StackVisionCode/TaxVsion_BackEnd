@@ -72,6 +72,11 @@ OpenTelemetry.
 38. Correspondence Service (inbox del cliente final + compose/send)
 39. Soporte de logo y colores de marca para Tenant
 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
+41. Autorización por Actor Type (los 14 microservicios .NET + Communication/Node)
+42. PayFlow Fase 16 — Endpoints M2M (Tenant + Subscription)
+43. PayFlow Fase 17 — Compensaciones, ManualReview y observabilidad
+44. PayFlow Fase 18-19 — Endpoints públicos, hardening de credenciales y cierre del plan
+45. Primitivas compartidas de BuildingBlocks — resiliencia HTTP, cache de tokens M2M, rate limiting Redis
 
 ## 1. Introduccion y objetivo
 
@@ -7659,3 +7664,165 @@ esta fase; fuera de alcance cerrarlo acá).
 Medio para el plan completo hasta no correr la verificación E2E manual de 6 pasos — el build/test
 verde cubre corrección de tipos y lógica unitaria, no el camino feliz completo contra Stripe/RabbitMQ
 reales.
+
+# 45. Primitivas compartidas de BuildingBlocks — resiliencia HTTP, cache de tokens M2M, rate limiting Redis
+
+Origen: auditoría de arquitectura de PayFlow, Ronda 2 (`Implementaciones/PayFlowNew/PayFlow_Architecture_Audit.md`,
+findings F24/F25/F26). Se encontraron 3 patrones técnicos idénticos reimplementados de cero en 4+
+microservicios cada uno — nadie los había extraído nunca a `BuildingBlocks`. Ya están extraídos y
+migrados en los 17 sitios de consumo existentes. **Esta sección es obligatoria de leer antes de crear
+un microservicio nuevo o de agregar una llamada M2M/rate-limit/resiliencia HTTP a uno existente** — no
+reimplementar ninguna de las 3 primitivas de abajo; usarlas.
+
+## 45.1 Qué es la petición `POST auth/service-token` y por qué existe
+
+Cuando un microservicio necesita llamar a otro (ej. Tenant pidiéndole a CloudStorage que borre un
+logo, o PaymentApp pidiéndole a Subscription el precio de un plan), esa llamada **no** lleva el JWT
+de un usuario humano — no hay un usuario detrás, es un servicio hablándole a otro servicio
+("machine-to-machine", M2M). Para eso, cada microservicio que necesita llamar a otro tiene registrado
+en Auth un "client" M2M propio (`clientId`/`clientSecret`, análogo a OAuth2 `client_credentials`),
+configurado en `Auth`'s `ServiceAuth:Clients` (ver ejemplos de configuración en las secciones 27, 29,
+35 y 39 — cada servicio nuevo agrega su propia entrada ahí, con los permisos exactos que necesita).
+
+La petición `POST auth/service-token` es el intercambio de esas credenciales por un JWT de corta vida
+(`actor_type=Service`, scoped a los permisos declarados para ese `clientId`):
+
+```jsonc
+// Request
+POST auth/service-token
+{ "clientId": "tenant-worker", "clientSecret": "<secret>", "tenantId": "<guid>" }
+
+// Response
+{ "accessToken": "<jwt>", "expiresInSeconds": 300, "tokenType": "Bearer" }
+```
+
+El servicio llamante adjunta ese JWT como `Authorization: Bearer <accessToken>` en la llamada HTTP
+real que quería hacer (ej. `DELETE cloudstorage/files/{id}`). El middleware de autorización del lado
+receptor (`AllowActorTypes(Service)` + `[HasPermission]`) valida el JWT igual que validaría uno de
+usuario — el `actor_type=Service` es lo que distingue "esto es un microservicio hablando" de "esto es
+un humano logueado".
+
+**Por qué no se mintea un JWT nuevo en cada llamada sin más**: pedirle uno nuevo a Auth por cada
+llamada M2M agrega latencia de red (round-trip extra) y carga innecesaria a Auth bajo tráfico alto.
+El token dura 5 minutos — cachearlo hasta poco antes de expirar reduce ese tráfico a casi cero. Eso es
+exactamente lo que resuelve §45.3 de abajo (y lo que Billing tenía roto — ver F25 en el audit doc).
+
+## 45.2 `HttpResiliencePipeline` — reintento + circuit breaker
+
+`BuildingBlocks.Infrastructure.Resilience.HttpResiliencePipeline` / `HttpResiliencePipelineRegistry`.
+Envuelve cualquier llamada HTTP saliente (M2M o a un proveedor externo) con reintento exponencial +
+jitter (2 intentos) y circuit breaker (`FailureRatio=1.0`, `MinimumThroughput` configurable,
+`SamplingDuration=2min`) — Polly por debajo. Antes de esta extracción, Connectors, Postmaster y Auth
+tenían 3 copias casi idénticas de este mismo pipeline, con Auth sin ningún hook de métricas.
+
+```csharp
+// DI — una vez por servicio, con los callbacks de métricas propios del servicio
+services.AddSingleton(sp => new HttpResiliencePipelineRegistry(
+    onRetry: key => MyServiceMetrics.RetryAttempts.Add(1, new("client", key)),
+    onOpened: key => MyServiceMetrics.CircuitBreakerOpened.Add(1, new("client", key))
+));
+
+// Consumo — dentro de un HttpClient tipado
+var breaker = resilience.GetOrCreate(nameof(MyHttpClient));
+using var response = await breaker.ExecuteAsync(token => httpClient.SendAsync(request, token), ct);
+```
+
+## 45.3 `ExpiringValueCache<TKey,TValue>` — cache de tokens de servicio
+
+`BuildingBlocks.Security.ExpiringValueCache<TKey,TValue>` (core, sin deps de infraestructura) +
+`BuildingBlocks.Infrastructure.Security.ServiceTokenHttpAcquisition` (el `POST auth/service-token` de
+§45.1, extraído en un solo `RequestServiceTokenAsync` reusable). Antes de esta extracción había 10
+copias del mismo `ConcurrentDictionary<clave,(Token,ExpiresAtUtc)>` + margen de refresh — una por
+microservicio.
+
+**Patrón canónico** que todo `*ServiceTokenAcquirer` nuevo debe seguir (copiado de
+`Tenant/.../TenantServiceTokenAcquirer.cs`, el más simple de los 10):
+
+```csharp
+internal sealed class MyServiceTokenAcquirer(
+    HttpClient http,
+    IOptions<ServiceAuthClientOptions> options,
+    ILogger<MyServiceTokenAcquirer> logger
+) : IMyServiceTokenAcquirer
+{
+    private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
+
+    // static: AddHttpClient<> resuelve esta clase como Transient — un campo de INSTANCIA se
+    // recrearía vacío en cada resolución de DI y nunca cachearía nada de verdad en producción
+    // (bug real que tuvo Billing antes de esta extracción — ver F25 en el audit doc de PayFlow).
+    private static readonly ExpiringValueCache<Guid, string> _cache = new(RefreshBuffer);
+
+    public async Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var opt = options.Value;
+        if (string.IsNullOrWhiteSpace(opt.ClientId) || string.IsNullOrWhiteSpace(opt.ClientSecret))
+        {
+            logger.LogWarning("ServiceAuthClient is not configured.");
+            return null;
+        }
+        try
+        {
+            return await _cache.GetOrCreateAsync(tenantId, async innerCt =>
+            {
+                var grant = await http.RequestServiceTokenAsync(opt.ClientId, opt.ClientSecret, tenantId, innerCt);
+                return (grant.AccessToken, grant.ExpiresAtUtc);
+            }, ct);
+        }
+        catch (ServiceTokenAcquisitionException ex)
+        {
+            logger.LogWarning(ex, "Could not acquire a service token for tenant {TenantId}.", tenantId);
+            return null;
+        }
+    }
+}
+```
+
+**Regla no negociable**: el campo `ExpiringValueCache` **debe** ser `private static readonly` cuando
+la clase que lo contiene se registra vía `services.AddHttpClient<TClient, TImpl>()` — .NET resuelve
+esos tipos como **Transient** (una instancia nueva por resolución de DI), así que un campo de
+instancia nunca sobrevive entre llamadas y el "cache" queda muerto en silencio. Esto no es teórico:
+se introdujo por accidente en 9 de los 10 acquirers durante la migración inicial y se detectó/corrigió
+antes de cerrarla — ver F25 en el audit doc. Si en cambio la clase se registra como `Singleton` (como
+`OnboardingServiceTokenCache` en Auth), el campo puede ser de instancia sin problema.
+
+Si la clave de cache necesita más de un parámetro (ej. Billing: `clientName` + `tenantId`), usar una
+tupla de valor (`(string ClientName, Guid TenantId)`) o, si involucra colecciones (ej. `permissions`,
+`scopes`), pre-unirlas en un string canónico dentro de un record — los records de C# NO tienen
+igualdad estructural correcta sobre miembros `IReadOnlyCollection<T>` (ver `ServiceTokenCacheKey` en
+Auth como ejemplo).
+
+## 45.4 `IRateCounter` — contador Redis atómico para rate limiting
+
+`BuildingBlocks.Infrastructure.RateLimit.IRateCounter` / `RedisRateCounter` / `RateCounterKey` (VO).
+Un único `EVAL` Lua atómico (`INCR` + `PEXPIRE` solo en el primer incremento de la ventana) — cierra
+el hueco de las implementaciones que hacían `StringIncrementAsync` + `KeyExpireAsync` por separado
+(la clave queda sin TTL para siempre si el proceso muere entre ambas llamadas).
+
+```csharp
+// DI
+services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// Consumo — patrón "ventana fija de N segundos"
+var key = RateCounterKey.From($"myservice:ratelimit:{tenantId:N}:window:{minuteBucket}");
+var count = await rateCounter.IncrementAndGetAsync(key, TimeSpan.FromSeconds(65), ct);
+var allowed = count <= maxRequestsPerWindow;
+```
+
+Nota de implementación: la clave que `IRateCounter` escribe es un **string Redis crudo** (vía
+`INCR`), no compatible con el formato hash que `IDistributedCache`/StackExchangeRedis usa para sus
+propias claves. Si un throttler necesita leer el contador fuera de `IncrementAndGetAsync` (ej. un
+`IsThrottledAsync` que solo consulta sin incrementar), esa lectura debe hacerse con
+`IConnectionMultiplexer.GetDatabase().StringGetAsync(key)` directo — **nunca** mezclando
+`ICacheService`/`IDistributedCache` sobre la misma clave (produce `WRONGTYPE` en Redis). Ver
+`PaymentAttemptThrottle.cs` (PaymentApp) como ejemplo de este patrón mixto.
+
+## 45.5 Checklist para un microservicio nuevo
+
+- ¿Necesita llamar a otro microservicio (M2M)? → usar `ServiceTokenHttpAcquisition` +
+  `ExpiringValueCache` siguiendo el patrón de §45.3, nunca un `ConcurrentDictionary` propio.
+- ¿Esa llamada M2M (o cualquier llamada HTTP saliente a un proveedor externo) puede fallar
+  transitoriamente? → envolverla con `HttpResiliencePipelineRegistry` (§45.2).
+- ¿Necesita throttling/rate-limiting respaldado por Redis? → `IRateCounter` (§45.4), nunca
+  `StringIncrementAsync`+`KeyExpireAsync` sueltos ni `ICacheService` GET+SET para contadores.
+- Las 3 primitivas viven en `BuildingBlocks.Security`/`BuildingBlocks.Infrastructure.{Security,Resilience,RateLimit}`
+  — agregar la `ProjectReference` a `BuildingBlocks.Infrastructure` si el servicio nuevo todavía no la tiene.

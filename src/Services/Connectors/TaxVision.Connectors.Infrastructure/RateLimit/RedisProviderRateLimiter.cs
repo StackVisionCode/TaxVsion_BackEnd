@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.RateLimit;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.Connectors.Application.Providers;
@@ -8,12 +9,16 @@ namespace TaxVision.Connectors.Infrastructure.RateLimit;
 
 /// <summary>
 /// Rate limiter con Redis para que N réplicas compartan el mismo presupuesto por provider.
-/// Ventana fija de 1 segundo (INCR + EXPIRE) más un cooldown explícito activado por 429 real
-/// (<see cref="RecordRateLimitedAsync"/>) — otros nodos lo ven de inmediato sin tener que
-/// descubrir el 429 ellos mismos.
+/// Ventana fija de 1 segundo (vía <see cref="IRateCounter"/>) más un cooldown explícito activado
+/// por 429 real (<see cref="RecordRateLimitedAsync"/>) — otros nodos lo ven de inmediato sin tener
+/// que descubrir el 429 ellos mismos. El cooldown es un mecanismo distinto (flag booleano de TTL,
+/// no un contador) y sigue usando <see cref="IConnectionMultiplexer"/> directo.
 /// </summary>
-public sealed class RedisProviderRateLimiter(IConnectionMultiplexer redis, IOptions<ProviderRateLimiterOptions> options)
-    : IProviderRateLimiter
+public sealed class RedisProviderRateLimiter(
+    IConnectionMultiplexer redis,
+    IRateCounter rateCounter,
+    IOptions<ProviderRateLimiterOptions> options
+) : IProviderRateLimiter
 {
     private static readonly TimeSpan MaxCooldown = TimeSpan.FromSeconds(60);
 
@@ -21,7 +26,7 @@ public sealed class RedisProviderRateLimiter(IConnectionMultiplexer redis, IOpti
     {
         var db = redis.GetDatabase();
         await WaitOutCooldownAsync(db, providerCode, ct);
-        await WaitForWindowSlotAsync(db, providerCode, ct);
+        await WaitForWindowSlotAsync(providerCode, ct);
     }
 
     public async Task RecordRateLimitedAsync(
@@ -42,14 +47,12 @@ public sealed class RedisProviderRateLimiter(IConnectionMultiplexer redis, IOpti
             await Task.Delay(ttl, ct);
     }
 
-    private async Task WaitForWindowSlotAsync(IDatabase db, ProviderCode providerCode, CancellationToken ct)
+    private async Task WaitForWindowSlotAsync(ProviderCode providerCode, CancellationToken ct)
     {
         while (true)
         {
             var windowKey = WindowKey(providerCode, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            var count = await db.StringIncrementAsync(windowKey);
-            if (count == 1)
-                await db.KeyExpireAsync(windowKey, TimeSpan.FromSeconds(2));
+            var count = await rateCounter.IncrementAndGetAsync(windowKey, TimeSpan.FromSeconds(2), ct);
 
             if (count <= options.Value.MaxRequestsPerSecond)
                 return;
@@ -61,6 +64,6 @@ public sealed class RedisProviderRateLimiter(IConnectionMultiplexer redis, IOpti
 
     private static string CooldownKey(ProviderCode providerCode) => $"connectors:ratelimit:{providerCode}:cooldown";
 
-    private static string WindowKey(ProviderCode providerCode, long unixSecond) =>
-        $"connectors:ratelimit:{providerCode}:window:{unixSecond}";
+    private static RateCounterKey WindowKey(ProviderCode providerCode, long unixSecond) =>
+        RateCounterKey.From($"connectors:ratelimit:{providerCode}:window:{unixSecond}");
 }
