@@ -52,6 +52,24 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 
+// RateLimit Fase 2 — quotas tier-aware por PlanCode. Flag OFF por default (fail-open a la cuota
+// base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado, mismo criterio que Customer/Tenant. Los
+// lectores concretos (EfTenantPlanCodeReader/HttpPlanRateLimitReader) y el consumer que mantiene
+// la proyección local al día se registran siempre en AddAuthInfrastructure
+// (AddRateLimitTierQuotas); acá solo se decide si RateLimitQuotaResolver los usa.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+
 // Rate limiting tiered por tenant/usuario (Fase 4.12 del plan) — Auth ya tenía
 // IConnectionMultiplexer/IRateCounter registrados desde Fase 0.1 (LoginThrottler), así que
 // solo hace falta conectar el evaluador; mismo [RateLimit]/[RateLimitExempt] que el resto

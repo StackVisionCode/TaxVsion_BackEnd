@@ -89,6 +89,22 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     )
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// RateLimit Fase 2 — mismo patrón que Connectors (ITenantPlanCodeReader-only, Growth tampoco tiene
+// acquirer de token M2M saliente propio; ver el comentario en
+// GrowthInfrastructure.DependencyInjection.AddRateLimitTierQuotas). Flag OFF por default (fail-open
+// a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado. IPlanRateLimitReader queda sin override —
+// TryAddSingleton de AddTieredRateLimiting() cae en NullPlanRateLimitReader (degradado pero
+// seguro) si este flag se activara sin antes construir un acquirer M2M para Growth.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+}
+
 builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(

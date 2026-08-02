@@ -93,6 +93,27 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     )
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// RateLimit Fase 2 — mismo piloto que Customer (Fase 6)/Tenant (Fase 2.1)/Connectors. Flag OFF
+// por default (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/
+// NullPlanRateLimitReader de AddTieredRateLimiting) hasta rollout coordinado. Solo se registra
+// ITenantPlanCodeReader: Subscription es quien PUBLICA TenantEntitlementsChangedIntegrationEvent
+// y expone subscriptions/internal/plan-rate-limits (el endpoint que HttpPlanRateLimitReader
+// llama en los demás servicios) — apuntar HttpPlanRateLimitReader a sí mismo sería un round-trip
+// HTTP + M2M circular para leer un dato que ya está en el mismo proceso vía
+// IPlanRateLimitRepository. Escribir un adaptador local dedicado (IPlanRateLimitReader sin HTTP)
+// queda fuera del alcance mecánico de esta sub-fase — no hay ningún precedente exacto de esa
+// pieza en el resto de la flota (ver el comentario de AddRateLimitTierQuotas en
+// SubscriptionInfrastructure.DependencyInjection). Si este flag se activa acá sin cerrar antes
+// esa brecha, TryAddSingleton de AddTieredRateLimiting() cae en NullPlanRateLimitReader
+// (degradado pero seguro, no un crash).
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+}
 builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(

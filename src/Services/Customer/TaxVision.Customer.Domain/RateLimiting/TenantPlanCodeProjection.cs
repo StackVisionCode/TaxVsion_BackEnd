@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using BuildingBlocks.RateLimiting;
 
 namespace TaxVision.Customer.Domain.RateLimiting;
 
@@ -8,9 +9,11 @@ namespace TaxVision.Customer.Domain.RateLimiting;
 /// vía <c>EfTenantPlanCodeReader</c> (Infrastructure). Mismo patrón de proyección idempotente
 /// por versión monotónica que <c>UserPermissionsProjection</c> — <c>RevisionNumber</c> viene de
 /// <c>TenantEntitlementsChangedIntegrationEvent.RevisionNumber</c>, eventos fuera de orden se
-/// ignoran.
+/// ignoran. Implementa <see cref="ITenantPlanCodeProjection"/> (RateLimit Fase 1) para que el
+/// handler de consumer compartido de BuildingBlocks pueda operar sobre ella genéricamente — la
+/// tabla en sí sigue siendo propiedad exclusiva de Customer.
 /// </summary>
-public sealed class TenantPlanCodeProjection : TenantEntity
+public sealed class TenantPlanCodeProjection : TenantEntity, ITenantPlanCodeProjection
 {
     private TenantPlanCodeProjection() { }
 

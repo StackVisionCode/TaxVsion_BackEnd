@@ -97,6 +97,21 @@ builder.Services.AddRateLimiter(options =>
     );
 });
 
+// RateLimit Fase 2 — piloto Customer (Fase 6) extendido a PaymentApp. Flag OFF por default
+// (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+
 // Rate limiting tiered por tenant/usuario (Fase 4.13 del plan) — IConnectionMultiplexer/IRateCounter
 // ya estaban registrados desde F26.4 (PaymentAttemptThrottle), solo hace falta conectar el
 // evaluador; mismo [RateLimit]/[RateLimitExempt] que el resto del monorepo desde Fase 3/4.2. No
@@ -139,6 +154,12 @@ builder.Host.UseWolverine(options =>
     // a los de Subscription, que sí discovery-ean solos — este include fuerza su registro.
     options.Discovery.IncludeType(typeof(UserRolesChangedPermissionsProjectionConsumer));
     options.Discovery.IncludeType(typeof(RolePermissionsChangedPermissionsProjectionConsumer));
+    // RateLimit Fase 2 — mismo motivo que los 2 consumers de arriba: fuerza el registro explícito
+    // del consumer de TenantEntitlementsChangedIntegrationEvent por si la discovery convencional
+    // tampoco lo engancha en este servicio.
+    options.Discovery.IncludeType(
+        typeof(TaxVision.PaymentApp.Application.RateLimiting.Consumers.TenantPlanCodeProjectionConsumer)
+    );
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

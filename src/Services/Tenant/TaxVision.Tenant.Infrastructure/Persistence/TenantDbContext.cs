@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tenant.Domain.Permissions;
+using TaxVision.Tenant.Domain.RateLimiting;
 using DomainTenant = TaxVision.Tenant.Domain.Tenant;
 
 namespace TaxVision.Tenant.Infrastructure.Persistence;
@@ -13,6 +14,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<DomainTenant> Tenants => Set<DomainTenant>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

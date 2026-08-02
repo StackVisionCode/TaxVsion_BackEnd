@@ -364,7 +364,7 @@ async function wireSocket(
       scope: CommunicationRateLimitPolicyNames.ChatSend,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.chatSend.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.chatSend.maxPerWindow),
       windowSeconds: config.rateLimit.chatSend.windowSeconds,
     });
     if (!allowed) {
@@ -414,7 +414,7 @@ async function wireSocket(
       scope: CommunicationRateLimitPolicyNames.ChatEdit,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.chatEdit.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.chatEdit.maxPerWindow),
       windowSeconds: config.rateLimit.chatEdit.windowSeconds,
     });
     if (!allowed) {
@@ -526,7 +526,7 @@ async function wireSocket(
       scope: CommunicationRateLimitPolicyNames.ChatTyping,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.chatTyping.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.chatTyping.maxPerWindow),
       windowSeconds: config.rateLimit.chatTyping.windowSeconds,
     });
     if (!allowed) return;

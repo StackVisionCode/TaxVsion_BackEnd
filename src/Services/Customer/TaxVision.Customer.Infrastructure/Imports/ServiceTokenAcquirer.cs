@@ -15,11 +15,6 @@ public sealed class ServiceAuthClientOptions
     public string ClientSecret { get; set; } = string.Empty;
 }
 
-internal interface IServiceTokenAcquirer
-{
-    Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default);
-}
-
 /// <summary>
 /// Obtiene tokens de servicio (M2M) de Auth (grant client-credentials) para un tenant y los
 /// cachea hasta poco antes de expirar. Usado por el worker de import para autenticar contra
@@ -29,7 +24,7 @@ internal sealed class ServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<ServiceTokenAcquirer> logger
-) : IServiceTokenAcquirer
+) : IServiceTokenAcquirer /* BuildingBlocks.Infrastructure.Security — RateLimit Fase 1 */
 {
     private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
 

@@ -35,6 +35,10 @@ import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
 import { ServiceTokenClient } from './auth/service-token-client.js';
 import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage-metadata-client.js';
+import { CachedPlanCodeReader } from './rate-limit/cached-plan-code-reader.js';
+import { HttpPlanRateLimitReader } from './rate-limit/http-plan-rate-limit-reader.js';
+import { TierAwareQuotaResolver } from './rate-limit/tier-aware-quota-resolver.js';
+import { config } from './config.js';
 import type { ConversationRepository } from '../application/ports/conversation-repository.js';
 import type { MessageRepository } from '../application/ports/message-repository.js';
 import type { IntegrationEventPublisher } from '../application/ports/integration-event-publisher.js';
@@ -86,6 +90,8 @@ export interface AppContainer {
   readonly dominantSpeakerThrottle: DominantSpeakerThrottle;
   readonly rateLimiter: SocketRateLimiter;
   readonly httpRateLimiter: HttpRateLimiter;
+  readonly tierAwareQuota: TierAwareQuotaResolver;
+  readonly planCodeCache: CachedPlanCodeReader;
   readonly distributedLock: RedisDistributedLock;
   readonly notifications: NotificationRepository;
   readonly processedEvents: ProcessedEventStore;
@@ -121,6 +127,9 @@ export interface AppContainer {
 
 export function buildContainer(): AppContainer {
   const serviceTokens = new ServiceTokenClient();
+  const limitsRepository = new PrismaLimitsRepository(prisma);
+  const planCodeCache = new CachedPlanCodeReader(limitsRepository);
+  const planRateLimitReader = new HttpPlanRateLimitReader(serviceTokens);
   return {
     conversations: new PrismaConversationRepository(prisma),
     messages: new PrismaMessageRepository(prisma),
@@ -135,6 +144,8 @@ export function buildContainer(): AppContainer {
     dominantSpeakerThrottle: new DominantSpeakerThrottle(redis),
     rateLimiter: new SocketRateLimiter(redis),
     httpRateLimiter: new HttpRateLimiter(redis),
+    tierAwareQuota: new TierAwareQuotaResolver(planCodeCache, planRateLimitReader, config.rateLimit.enforceTierQuotas),
+    planCodeCache,
     distributedLock: new RedisDistributedLock(redis),
     notifications: new PrismaNotificationRepository(prisma),
     processedEvents: new PrismaProcessedEventStore(prisma),
@@ -149,7 +160,7 @@ export function buildContainer(): AppContainer {
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
     tenantSettings: new PrismaSettingsRepository(prisma),
-    limits: new PrismaLimitsRepository(prisma),
+    limits: limitsRepository,
     analytics: new PrismaAnalyticsRepository(prisma),
     sfu: new MediasoupSfuService(),
     recordingSessions: new PrismaRecordingSessionRepository(prisma),

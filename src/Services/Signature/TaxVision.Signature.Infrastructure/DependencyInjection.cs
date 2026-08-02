@@ -1,18 +1,22 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Minio;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.RateLimiting.Abstractions;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
 using TaxVision.Signature.Infrastructure.Locking;
 using TaxVision.Signature.Infrastructure.Persistence;
 using TaxVision.Signature.Infrastructure.Persistence.Queries;
 using TaxVision.Signature.Infrastructure.Persistence.Repositories;
+using TaxVision.Signature.Infrastructure.RateLimiting;
 using TaxVision.Signature.Infrastructure.Scheduling;
 using TaxVision.Signature.Infrastructure.Sealing;
 using TaxVision.Signature.Infrastructure.Sealing.Cms;
@@ -166,6 +170,8 @@ public static class DependencyInjection
             }
         );
 
+        AddRateLimitTierQuotas(services, configuration);
+
         // Fase D1 — cliente MinIO propio de Signature, credenciales scoped (IAM
         // signature-source, ver deploy/docker/minio/policies/signature-source.json),
         // nunca las root de CloudStorage. Solo para el UploadAsync del sellado; el
@@ -191,6 +197,45 @@ public static class DependencyInjection
         );
 
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El
+    // mapeo a ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver
+    // realmente consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en
+    // Program.cs, ANTES de AddTieredRateLimiting().
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
+    {
+        // HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) depende del
+        // contrato compartido; SignatureServiceTokenAcquirer ya lo implementa (F25 + Fase 2), solo
+        // falta el forwarding.
+        services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+            (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)
+                sp.GetRequiredService<ISignatureServiceTokenAcquirer>()
+        );
+
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services
+            .AddOptions<SubscriptionClientOptions>()
+            .Bind(configuration.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

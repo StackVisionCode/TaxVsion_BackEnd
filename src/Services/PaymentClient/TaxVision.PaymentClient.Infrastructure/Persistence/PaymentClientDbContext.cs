@@ -12,6 +12,7 @@ using TaxVision.PaymentClient.Domain.Payables;
 using TaxVision.PaymentClient.Domain.PaymentLinks;
 using TaxVision.PaymentClient.Domain.Payouts;
 using TaxVision.PaymentClient.Domain.Permissions;
+using TaxVision.PaymentClient.Domain.RateLimiting;
 using TaxVision.PaymentClient.Domain.Recurring;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
 using TaxVision.PaymentClient.Domain.TenantPayments;
@@ -43,6 +44,7 @@ public sealed class PaymentClientDbContext(
     public DbSet<TenantRecurringPayment> TenantRecurringPayments => Set<TenantRecurringPayment>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

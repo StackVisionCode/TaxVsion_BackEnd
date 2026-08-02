@@ -262,6 +262,34 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                     b.ToTable("AuthzUserPermissionsProjections", "documents");
                 });
 
+            modelBuilder.Entity("TaxVision.Documents.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", "documents");
+                });
+
             modelBuilder.Entity("TaxVision.Documents.Domain.Generations.DocumentGeneration", b =>
                 {
                     b.OwnsOne("TaxVision.Documents.Domain.ValueObjects.GenerationOwner", "Owner", b1 =>

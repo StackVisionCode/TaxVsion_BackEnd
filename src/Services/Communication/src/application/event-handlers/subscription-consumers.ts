@@ -18,7 +18,7 @@ import { applyLimitsUpdate } from '../use-cases/settings-use-cases.js';
  */
 export function bindSubscriptionConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
-  deps: { limits: LimitsRepository },
+  deps: { limits: LimitsRepository; planCodeCache?: { invalidate(tenantId: string): void } },
 ): void {
   register('subscription.entitlements_changed.v1', async (env) => {
     const snapshot = extractLimitsSnapshot(env);

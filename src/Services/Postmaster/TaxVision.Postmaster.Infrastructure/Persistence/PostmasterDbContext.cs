@@ -10,6 +10,7 @@ using TaxVision.Postmaster.Domain.Idempotency;
 using TaxVision.Postmaster.Domain.Permissions;
 using TaxVision.Postmaster.Domain.Projections;
 using TaxVision.Postmaster.Domain.Providers;
+using TaxVision.Postmaster.Domain.RateLimiting;
 using TaxVision.Postmaster.Domain.Sending;
 using TaxVision.Postmaster.Domain.Suppression;
 
@@ -39,6 +40,7 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
     public DbSet<TenantOAuthAccount> TenantOAuthAccounts => Set<TenantOAuthAccount>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,8 +63,8 @@ public sealed class PostmasterDbContext(DbContextOptions<PostmasterDbContext> op
     /// el tenant del actor autenticado. Fail-closed — sin tenant en contexto, compara contra
     /// <see cref="Guid.Empty"/> (0 filas). Alcanza <c>SentMessage</c>/<c>SentMessageRecipient</c>/
     /// <c>SentMessageEvent</c>/<c>TenantEmailProvider</c> y, vía <c>TenantEntity</c>, también
-    /// <c>UserPermissionsProjection</c>/<c>RolePermissionsProjection</c> — los 6
-    /// <see cref="ITenantOwned"/> reales de este contexto. Todos sus repos filtran por tenant
+    /// <c>UserPermissionsProjection</c>/<c>RolePermissionsProjection</c>/<c>TenantPlanCodeProjection</c>
+    /// (RateLimit Fase 2) — los 7 <see cref="ITenantOwned"/> reales de este contexto. Todos sus repos filtran por tenant
     /// explícito; los métodos invocados desde handlers Wolverine (sin <c>TenantContext</c>
     /// ambiente confiable, ver <c>LocalCommandTenantMiddleware</c>) llevan
     /// <c>IgnoreQueryFilters()</c> explícito.

@@ -15,6 +15,7 @@ using TaxVision.Auth.Domain.Onboarding.EmailVerification;
 using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 using TaxVision.Auth.Domain.Onboarding.TermsVersions;
+using TaxVision.Auth.Domain.RateLimiting;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
@@ -67,6 +68,9 @@ public sealed class AuthDbContext(
     public DbSet<EmailVerificationChallenge> EmailVerificationChallenges => Set<EmailVerificationChallenge>();
     public DbSet<TermsVersion> TermsVersions => Set<TermsVersion>();
     public DbSet<TenantOnboardingProcessManager> OnboardingSagas => Set<TenantOnboardingProcessManager>();
+
+    // RateLimit Fase 2 — proyección local de PlanCode por tenant (ver TaxVision.Auth.Domain.RateLimiting).
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

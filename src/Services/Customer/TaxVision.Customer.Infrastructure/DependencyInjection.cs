@@ -1,6 +1,8 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -110,7 +112,10 @@ public static class InfrastructureRegistration
             sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
             sp.GetRequiredService<EfTenantPlanCodeReader>()
         ));
-        services.AddScoped<ITenantPlanCodeCacheInvalidator, TenantPlanCodeCacheInvalidator>();
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
 
         services.AddOptions<SubscriptionClientOptions>().Bind(config.GetSection(SubscriptionClientOptions.SectionName));
         services.AddHttpClient<HttpPlanRateLimitReader>(
@@ -118,6 +123,7 @@ public static class InfrastructureRegistration
             {
                 var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
 

@@ -19,13 +19,18 @@ public sealed class ServiceAuthClientOptions
 /// <summary>
 /// Obtiene tokens de servicio (M2M) del Auth (grant client-credentials) para un tenant y los cachea
 /// hasta poco antes de expirar. Usado por el worker de sincronización para autenticar contra CloudStorage
-/// sin contexto de usuario.
+/// sin contexto de usuario. Implementa tanto el puerto local de Application (dueño del contrato para
+/// los consumers internos de Notification) como <see cref="BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer"/>
+/// — RateLimit Fase 2 lo necesita para que <c>HttpPlanRateLimitReader</c> (compartido) pueda
+/// consumir este mismo acquirer sin que Notification duplique la lógica de cache+retry.
 /// </summary>
 public sealed class ServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<ServiceTokenAcquirer> logger
-) : IServiceTokenAcquirer
+)
+    : TaxVision.Notification.Application.Abstractions.IServiceTokenAcquirer,
+        BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
     private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
 

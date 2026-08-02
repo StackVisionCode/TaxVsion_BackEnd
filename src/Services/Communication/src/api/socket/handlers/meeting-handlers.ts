@@ -822,7 +822,7 @@ function wireMeetingSocket(
       scope: CommunicationRateLimitPolicyNames.MeetingChatSend,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.meetingChatSend.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.meetingChatSend.maxPerWindow),
       windowSeconds: config.rateLimit.meetingChatSend.windowSeconds,
     });
     if (!allowed) {

@@ -13,6 +13,7 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Invitations.Commands;
 using TaxVision.Auth.Application.Onboarding;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Application.RateLimiting.Abstractions;
 using TaxVision.Auth.Application.ServiceTokens;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.Terms;
@@ -24,6 +25,7 @@ using TaxVision.Auth.Infrastructure.Onboarding.Security;
 using TaxVision.Auth.Infrastructure.Onboarding.Storage;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Persistence.Repositories;
+using TaxVision.Auth.Infrastructure.RateLimiting;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Infrastructure.Tenancy;
 
@@ -247,6 +249,62 @@ public static class DependencyInjection
             }
         );
 
+        AddRateLimitTierQuotas(services, configuration);
+
         return services;
     }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (TenantPlanCodeProjectionConsumer, mantiene la proyección al día incluso con el flag
+    // apagado) y los lectores concretos de la proyección local, más HttpPlanRateLimitReader (el
+    // catálogo global de PlanRateLimits). El mapeo a ITenantPlanCodeReader/IPlanRateLimitReader
+    // (los que RateLimitQuotaResolver realmente consume) es condicional al flag
+    // RateLimit:EnforceTierQuotas — decidido en Program.cs, ANTES de AddTieredRateLimiting(),
+    // igual que Customer/Tenant.
+    //
+    // A diferencia de CloudStorage (que nunca tuvo un IServiceTokenAcquirer M2M propio porque es
+    // un servicio de recursos al que los demás llaman, no un llamador, y por eso solo wireó la
+    // mitad local de este mecanismo), Auth SÍ tiene un mecanismo M2M saliente propio desde PayFlow
+    // Fase 13/25: OnboardingServiceTokenCache mintea tokens de servicio en proceso (sin HTTP hacia
+    // sí mismo) para llamar a Subscription/PaymentApp/Tenant/Documents/CloudStorage. Auth es la
+    // fuente de los tokens M2M, no necesita pedirle uno a sí mismo por HTTP — por eso
+    // AuthServiceTokenAcquirer adapta ese mecanismo existente a IServiceTokenAcquirer en vez de
+    // inventar un cliente HTTP nuevo, y por eso acá SÍ se wirea el par completo
+    // (ITenantPlanCodeReader + IPlanRateLimitReader), a diferencia de CloudStorage/Connectors.
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration config)
+    {
+        services.AddSingleton<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer, AuthServiceTokenAcquirer>();
+
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+                sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+                sp.GetRequiredService<EfTenantPlanCodeReader>()
+            )
+        );
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        // Nombre ambiguo con TaxVision.Auth.Infrastructure.Onboarding.HttpClients.SubscriptionClientOptions
+        // (sección "Auth:Subscription", ya usada por SubscriptionActivationClient/PlanCatalogClient) —
+        // este es el tipo compartido de BuildingBlocks (sección "SubscriptionClient") que
+        // HttpPlanRateLimitReader exige por firma, deben calificarse ambos por completo.
+        services
+            .AddOptions<BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions>()
+            .Bind(config.GetSection(BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<BuildingBlocks.Infrastructure.RateLimiting.HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<
+                    IOptions<BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions>
+                >().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+            }
+        );
+    }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

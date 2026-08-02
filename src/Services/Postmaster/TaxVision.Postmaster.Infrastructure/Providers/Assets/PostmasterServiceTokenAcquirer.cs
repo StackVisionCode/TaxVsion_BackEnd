@@ -11,11 +11,17 @@ public interface IPostmasterServiceTokenAcquirer
     Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default);
 }
 
+// RateLimit Fase 2 — implementa además BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
+// (mismo shape: Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default)) para que
+// HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) pueda reusar este mismo
+// acquirer M2M ya existente sin duplicar lógica de adquisición/caché de tokens. La interfaz local
+// IPostmasterServiceTokenAcquirer permanece intacta — solo se agrega la interfaz compartida a la
+// lista de implementación de esta clase concreta de Infrastructure.
 public sealed class PostmasterServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<PostmasterServiceTokenAcquirer> logger
-) : IPostmasterServiceTokenAcquirer
+) : IPostmasterServiceTokenAcquirer, BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
     private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
 

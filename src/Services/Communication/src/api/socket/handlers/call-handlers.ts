@@ -122,7 +122,7 @@ function wireCallSocket(
       scope: CommunicationRateLimitPolicyNames.CallInitiate,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.callInitiate.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.callInitiate.maxPerWindow),
       windowSeconds: config.rateLimit.callInitiate.windowSeconds,
     });
     if (!allowed) {
@@ -297,7 +297,7 @@ function wireCallSocket(
       scope: CommunicationRateLimitPolicyNames.CallSignal,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.callSignal.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.callSignal.maxPerWindow),
       windowSeconds: config.rateLimit.callSignal.windowSeconds,
     });
     if (!allowed) {

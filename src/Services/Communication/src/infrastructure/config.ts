@@ -118,6 +118,16 @@ const rawEnv = z
     COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: z.string().min(1),
     COMMUNICATION_AUTH_BASE_URL: z.string().url().default('http://localhost:5124'),
     COMMUNICATION_CLOUDSTORAGE_BASE_URL: z.string().url().default('http://localhost:5330'),
+
+    // RateLimit Fase 6 (port a Node) — catalogo de multiplicadores por plan, mismo servicio y
+    // mismo M2M client que ya usa CloudStorage metadata. Flag OFF por default, mismo criterio que
+    // los 17 servicios .NET (RateLimit:EnforceTierQuotas): el mecanismo esta construido pero
+    // inerte hasta que se decida activarlo.
+    COMMUNICATION_SUBSCRIPTION_BASE_URL: z.string().url().default('http://localhost:5360'),
+    COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   .parse(process.env);
 
@@ -243,6 +253,7 @@ export const config = {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS,
     },
+    enforceTierQuotas: rawEnv.COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS,
   },
 
   platformTenantId: rawEnv.COMMUNICATION_PLATFORM_TENANT_ID.toLowerCase(),
@@ -260,6 +271,9 @@ export const config = {
   },
   cloudStorage: {
     baseUrl: rawEnv.COMMUNICATION_CLOUDSTORAGE_BASE_URL,
+  },
+  subscription: {
+    baseUrl: rawEnv.COMMUNICATION_SUBSCRIPTION_BASE_URL,
   },
 } as const;
 

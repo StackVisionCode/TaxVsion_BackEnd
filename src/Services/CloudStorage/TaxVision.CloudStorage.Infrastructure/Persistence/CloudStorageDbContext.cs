@@ -12,6 +12,7 @@ using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Legal;
 using TaxVision.CloudStorage.Domain.Permissions;
 using TaxVision.CloudStorage.Domain.Quotas;
+using TaxVision.CloudStorage.Domain.RateLimiting;
 using TaxVision.CloudStorage.Domain.Sharing;
 
 namespace TaxVision.CloudStorage.Infrastructure.Persistence;
@@ -33,6 +34,10 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     public DbSet<DmcaNotice> DmcaNotices => Set<DmcaNotice>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de "¿qué PlanCode tiene este tenant hoy?", mantenida por
+    // TenantPlanCodeProjectionConsumer.
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

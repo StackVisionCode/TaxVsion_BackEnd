@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Audit;
 using TaxVision.Connectors.Domain.Permissions;
+using TaxVision.Connectors.Domain.RateLimiting;
 using TaxVision.Connectors.Domain.Sync;
 using TaxVision.Connectors.Domain.Watch;
 
@@ -35,6 +36,7 @@ public sealed class ConnectorsDbContext(DbContextOptions<ConnectorsDbContext> op
     public DbSet<ProviderConnectionAuditLog> ProviderConnectionAuditLogs => Set<ProviderConnectionAuditLog>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

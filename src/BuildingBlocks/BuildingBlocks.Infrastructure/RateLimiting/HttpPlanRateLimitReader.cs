@@ -1,11 +1,12 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using BuildingBlocks.Caching;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.RateLimiting;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
-using TaxVision.Customer.Infrastructure.Imports;
 
-namespace TaxVision.Customer.Infrastructure.RateLimiting;
+namespace BuildingBlocks.Infrastructure.RateLimiting;
 
 public sealed class SubscriptionClientOptions
 {
@@ -16,14 +17,15 @@ public sealed class SubscriptionClientOptions
 }
 
 /// <summary>
-/// RateLimit Fase 6 (piloto Customer) — trae el catálogo completo de PlanRateLimits desde
-/// Subscription (GET subscriptions/internal/plan-rate-limits) y lo cachea 5 min: el catálogo es
-/// global (no por-tenant), así que una sola llamada M2M cubre todos los tenants del proceso.
-/// Reusa el token acquirer M2M ya existente de Imports (customer-worker) — Subscription's
-/// ServiceOnly policy solo exige actor_type=Service, sin scopes de permiso, así que no hace
-/// falta registrar un client M2M dedicado.
+/// RateLimit Fase 6 (piloto Customer) / Fase 1 (extracción BuildingBlocks) — trae el catálogo
+/// completo de PlanRateLimits desde Subscription (GET subscriptions/internal/plan-rate-limits) y
+/// lo cachea 5 min: el catálogo es global (no por-tenant), así que una sola llamada M2M cubre
+/// todos los tenants del proceso. Depende de <see cref="IServiceTokenAcquirer"/> (contrato
+/// compartido, F25) — cada servicio inyecta su propio acquirer M2M ya existente; Subscription's
+/// ServiceOnly policy solo exige actor_type=Service, sin scopes de permiso, así que no hace falta
+/// registrar un client M2M dedicado.
 /// </summary>
-internal sealed class HttpPlanRateLimitReader(
+public sealed class HttpPlanRateLimitReader(
     HttpClient http,
     IServiceTokenAcquirer tokenAcquirer,
     ICacheService cache,
@@ -40,18 +42,25 @@ internal sealed class HttpPlanRateLimitReader(
     )
     {
         var catalog = await cache.GetOrCreateAsync(CatalogCacheKey, FetchCatalogAsync, CatalogTtl, ct);
-        return catalog.TryGetValue((planCode, category), out var snapshot) ? snapshot : null;
+        return catalog.TryGetValue(CatalogKey(planCode, category), out var snapshot) ? snapshot : null;
     }
 
-    private async Task<
-        IReadOnlyDictionary<(string PlanCode, RateLimitCategory Category), PlanRateLimitSnapshot>
-    > FetchCatalogAsync(CancellationToken ct)
-    {
-        var empty = new Dictionary<(string, RateLimitCategory), PlanRateLimitSnapshot>();
+    // Clave compuesta serializada a string: un Dictionary con ValueTuple como clave no es
+    // serializable por System.Text.Json (bug real encontrado en la verificación de Fase 0 — nunca
+    // se había ejercitado antes porque el fetch del catálogo siempre fallaba antes de llegar a
+    // cachearse, ver fix de PlatformTenant.Id más abajo).
+    private static string CatalogKey(string planCode, RateLimitCategory category) => $"{planCode}:{category}";
 
-        // El catálogo es global, no por-tenant — Guid.Empty es el sentinel ya establecido en el
-        // repo para llamadas M2M sin tenant real (ver PayFlow Fase 8, PaymentApp checkout).
-        var token = await tokenAcquirer.GetTokenAsync(Guid.Empty, ct);
+    private async Task<IReadOnlyDictionary<string, PlanRateLimitSnapshot>> FetchCatalogAsync(CancellationToken ct)
+    {
+        var empty = new Dictionary<string, PlanRateLimitSnapshot>();
+
+        // El catálogo es global, no por-tenant — PlatformTenant.Id es el sentinel real para
+        // llamadas M2M sin tenant real (Guid.Empty NO sirve: IssueServiceTokenHandler en Auth lo
+        // rechaza incondicionalmente con Auth.InvalidClient/401 antes de validar el cliente, bug
+        // real encontrado en la verificación de Fase 0 — el catálogo nunca se resolvía y el
+        // resolver caía siempre a BaseQuota vía fail-open, sin importar el plan del tenant).
+        var token = await tokenAcquirer.GetTokenAsync(PlatformTenant.Id, ct);
         if (token is null)
         {
             logger.LogWarning("Could not acquire a service token to fetch the plan rate limits catalog; failing open.");
@@ -73,12 +82,12 @@ internal sealed class HttpPlanRateLimitReader(
 
         var rows = await response.Content.ReadFromJsonAsync<List<PlanRateLimitRow>>(cancellationToken: ct) ?? [];
 
-        var catalog = new Dictionary<(string, RateLimitCategory), PlanRateLimitSnapshot>();
+        var catalog = new Dictionary<string, PlanRateLimitSnapshot>();
         foreach (var row in rows)
         {
             if (!Enum.TryParse<RateLimitCategory>(row.Category, out var category))
                 continue;
-            catalog[(row.PlanCode, category)] = new PlanRateLimitSnapshot(
+            catalog[CatalogKey(row.PlanCode, category)] = new PlanRateLimitSnapshot(
                 row.MultiplierOverride,
                 row.HardOverridePerMinute
             );

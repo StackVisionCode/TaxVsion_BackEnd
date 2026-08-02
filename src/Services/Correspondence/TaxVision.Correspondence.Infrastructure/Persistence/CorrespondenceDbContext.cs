@@ -12,6 +12,7 @@ using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.Permissions;
 using TaxVision.Correspondence.Domain.Projections;
+using TaxVision.Correspondence.Domain.RateLimiting;
 
 namespace TaxVision.Correspondence.Infrastructure.Persistence;
 
@@ -53,6 +54,7 @@ public sealed class CorrespondenceDbContext(
     public DbSet<CorrespondenceAuditLog> CorrespondenceAuditLogs => Set<CorrespondenceAuditLog>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -11,8 +11,11 @@ using TaxVision.Growth.Infrastructure.Payments;
 using TaxVision.Growth.Infrastructure.Persistence;
 using TaxVision.Growth.Infrastructure.Persistence.Permissions.Abstractions;
 using TaxVision.Growth.Infrastructure.Persistence.Permissions.Repositories;
+using TaxVision.Growth.Infrastructure.Persistence.RateLimiting.Abstractions;
+using TaxVision.Growth.Infrastructure.Persistence.RateLimiting.Repositories;
 using TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 using TaxVision.Growth.Infrastructure.Persistence.Repositories.Referrals;
+using TaxVision.Growth.Infrastructure.RateLimiting;
 using TaxVision.Growth.Infrastructure.Security;
 using TaxVision.Referrals.Application.Abstractions;
 
@@ -70,6 +73,8 @@ public static class DependencyInjection
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
+        AddRateLimitTierQuotas(services);
+
         services
             .AddOptions<CodeTokenHashingOptions>()
             .Bind(configuration.GetSection(CodeTokenHashingOptions.SectionName))
@@ -100,5 +105,36 @@ public static class DependencyInjection
             .ValidateOnStart();
 
         return services;
+    }
+
+    // RateLimit Fase 2 — mismo patrón que Connectors: el consumer del evento de Subscription
+    // (TenantPlanCodeProjectionConsumer, en Persistence/RateLimiting/Consumers) mantiene la
+    // proyección local al día incluso con el flag apagado. Solo se registra ITenantPlanCodeReader
+    // (100% local, IgnoreQueryFilters() sobre esta misma DB) — NO se registra
+    // IPlanRateLimitReader/HttpPlanRateLimitReader porque, a diferencia de
+    // Customer/Tenant/Signature/Scribe/Correspondence/Notification/Postmaster/PaymentApp/
+    // Subscription/Billing, Growth no tiene NINGUNA infraestructura de token M2M saliente propia
+    // (verificado: sin IServiceTokenAcquirer, sin AddHttpClient de ningún tipo en este servicio) —
+    // Growth solo RECIBE llamadas M2M (endpoints /internal/*), nunca las hace. Sin ese acquirer no
+    // hay forma de autenticar la llamada a Subscription's "GET subscriptions/internal/plan-rate-limits"
+    // sin inventar un cliente M2M nuevo fuera de alcance de esta sub-fase (ver
+    // feedback_no_speculative_vendor_coupling). Efecto: si algún día se activa
+    // RateLimit:EnforceTierQuotas acá, TieredRateLimitingRegistration.AddTieredRateLimiting() sigue
+    // registrando NullPlanRateLimitReader vía TryAddSingleton (fail-open a la cuota base sin
+    // escalar por plan) — degradado pero seguro, no un crash.
+    private static void AddRateLimitTierQuotas(IServiceCollection services)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+                sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+                sp.GetRequiredService<EfTenantPlanCodeReader>()
+            )
+        );
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
     }
 }

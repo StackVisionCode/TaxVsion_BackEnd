@@ -6,12 +6,20 @@ using TaxVision.Scribe.Application.Abstractions;
 
 namespace TaxVision.Scribe.Infrastructure.Storage;
 
-/// <summary>M2M puro (sin forward de bearer de usuario): el renderer de Scribe corre siempre en background.</summary>
+/// <summary>
+/// M2M puro (sin forward de bearer de usuario): el renderer de Scribe corre siempre en background.
+/// Implementa tanto el puerto local de Application (dueño del contrato para los consumers internos
+/// de Scribe) como <see cref="BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer"/> —
+/// RateLimit Fase 2 lo necesita para que <c>HttpPlanRateLimitReader</c> (compartido) pueda
+/// consumir este mismo acquirer sin que Scribe duplique la lógica de cache+retry.
+/// </summary>
 public sealed class ServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<ServiceTokenAcquirer> logger
-) : IServiceTokenAcquirer
+)
+    : TaxVision.Scribe.Application.Abstractions.IServiceTokenAcquirer,
+        BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
     private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
 

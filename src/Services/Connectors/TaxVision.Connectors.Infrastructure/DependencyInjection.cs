@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -13,6 +14,7 @@ using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Providers;
+using TaxVision.Connectors.Application.RateLimiting.Abstractions;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Shared;
@@ -30,6 +32,7 @@ using TaxVision.Connectors.Infrastructure.Providers.Manual;
 using TaxVision.Connectors.Infrastructure.Providers.OAuth;
 using TaxVision.Connectors.Infrastructure.Providers.Watch;
 using TaxVision.Connectors.Infrastructure.RateLimit;
+using TaxVision.Connectors.Infrastructure.RateLimiting;
 using TaxVision.Connectors.Infrastructure.Security;
 using TaxVision.Connectors.Infrastructure.Watch;
 
@@ -176,6 +179,38 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddRateLimitTierQuotas(services);
         return services;
+    }
+
+    // RateLimit Fase 2 — mismo patrón que Customer (Fase 6) y Tenant (Fase 2.1): el consumer del
+    // evento de Subscription mantiene la proyección local al día incluso con el flag apagado. Solo
+    // se registra ITenantPlanCodeReader (100% local, IgnoreQueryFilters() sobre esta misma DB) —
+    // NO se registra IPlanRateLimitReader/HttpPlanRateLimitReader porque, a diferencia de
+    // Customer/Tenant/Signature/Scribe/Correspondence/Notification/Postmaster/PaymentApp/
+    // Subscription/Billing, Connectors todavía no tiene NINGUNA infraestructura de token M2M
+    // saliente (sin ServiceAuthClient config, sin ServiceTokenHttpAcquisition/ExpiringValueCache
+    // compuesto) — Connectors hoy solo RECIBE llamadas M2M (MessagesController), nunca las hace.
+    // Sin ese acquirer no hay forma de autenticar la llamada a Subscription's
+    // "GET subscriptions/internal/plan-rate-limits" sin inventar un cliente M2M nuevo fuera de
+    // alcance de esta sub-fase. Efecto: si algún día se activa RateLimit:EnforceTierQuotas acá,
+    // TieredRateLimitingRegistration.AddTieredRateLimiting() sigue registrando
+    // NullPlanRateLimitReader vía TryAddSingleton (fail-open a la cuota base sin escalar por
+    // plan) — degradado pero seguro, no un crash. Ver reporte de esta sub-fase para la
+    // recomendación de construir el acquirer M2M de Connectors como prerequisito de un cierre
+    // completo.
+    private static void AddRateLimitTierQuotas(IServiceCollection services)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
     }
 }

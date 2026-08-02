@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -6,10 +7,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.RateLimiting.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Infrastructure.Growth;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using TaxVision.Subscription.Infrastructure.Persistence.Repositories;
+using TaxVision.Subscription.Infrastructure.RateLimiting;
 using TaxVision.Subscription.Infrastructure.Scheduling;
 
 namespace TaxVision.Subscription.Infrastructure;
@@ -83,7 +86,49 @@ public static class DependencyInjection
             }
         );
 
+        AddRateLimitTierQuotas(services);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento
+    // TenantEntitlementsChangedIntegrationEvent (que este mismo servicio publica; ver remarks en
+    // TenantPlanCodeProjection) mantiene la proyección local al día incluso con el flag apagado,
+    // y los lectores concretos de esa proyección. NO se registra acá el mapeo a
+    // BuildingBlocks.RateLimiting.ITenantPlanCodeReader (eso vive en Program.cs, condicional al
+    // flag RateLimit:EnforceTierQuotas, como en Customer/Tenant/Connectors).
+    //
+    // Caso especial de Subscription para IPlanRateLimitReader/HttpPlanRateLimitReader: este
+    // servicio ES el dueño de la tabla PlanRateLimits y expone el propio endpoint M2M
+    // (GET subscriptions/internal/plan-rate-limits) que HttpPlanRateLimitReader llama en TODOS
+    // los demás servicios. Apuntar HttpPlanRateLimitReader a sí mismo implicaría un round-trip
+    // HTTP + adquisición de token M2M (vía IGrowthServiceTokenAcquirer, que sí existe acá pero
+    // está atado al BaseUrl de Auth para llamar a Growth, no es un acquirer genérico) para leer un
+    // dato que ya está disponible en el mismo proceso vía IPlanRateLimitRepository/
+    // GetPlanRateLimitsHandler (subscriptions/internal/plan-rate-limits ya delega en él) —
+    // circular y más lento que una lectura directa, sin ningún beneficio de desacople porque no
+    // hay otro servicio de por medio. Escribir un adaptador NUEVO tipo
+    // "DirectPlanRateLimitReader" sobre IPlanRateLimitRepository (mismo shape que
+    // HttpPlanRateLimitReader.FetchCatalogAsync pero sin HTTP) es técnicamente sencillo, pero no
+    // existe ningún precedente de un IPlanRateLimitReader en memoria/DB local en el resto de la
+    // flota (todos los demás servicios son consumidores HTTP) — sin ese precedente exacto para
+    // replicar, inventar esa pieza queda fuera del alcance mecánico de esta sub-fase (ver
+    // guardrails del plan RateLimit Fase 2 / feedback_no_speculative_vendor_coupling). Se deja
+    // como gap documentado, igual que CloudStorage/Connectors: si RateLimit:EnforceTierQuotas se
+    // activa acá sin cerrar este gap, TieredRateLimitingRegistration.AddTieredRateLimiting() cae
+    // en NullPlanRateLimitReader vía TryAddSingleton (fail-open a la cuota base sin escalar por
+    // plan) — degradado pero seguro, nunca un crash.
+    private static void AddRateLimitTierQuotas(IServiceCollection services)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

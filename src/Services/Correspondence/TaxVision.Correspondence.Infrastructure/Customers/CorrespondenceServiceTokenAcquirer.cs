@@ -18,11 +18,15 @@ internal interface ICorrespondenceServiceTokenAcquirer
     Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default);
 }
 
+// RateLimit Fase 2 — implementa también el contrato compartido de BuildingBlocks
+// (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer, mismo shape exacto) para que
+// HttpPlanRateLimitReader pueda consumir este mismo acquirer M2M vía un forwarding registration en
+// DependencyInjection.cs, sin duplicar la lógica de caché/adquisición.
 internal sealed class CorrespondenceServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<CorrespondenceServiceTokenAcquirer> logger
-) : ICorrespondenceServiceTokenAcquirer
+) : ICorrespondenceServiceTokenAcquirer, BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
     private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
 

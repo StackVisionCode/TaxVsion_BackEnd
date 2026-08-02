@@ -133,7 +133,10 @@ export class PlanGuard {
  */
 export async function applyLimitsUpdate(
   snapshot: TenantCommunicationLimitsSnapshot,
-  deps: { limits: LimitsRepository },
+  deps: { limits: LimitsRepository; planCodeCache?: { invalidate(tenantId: string): void } },
 ): Promise<void> {
   await deps.limits.upsert(snapshot);
+  // RateLimit Fase 6 (port a Node) — invalida al vuelo en vez de esperar el TTL de 5 min del
+  // cache de planCode, mismo criterio que CachedTenantPlanCodeReader.InvalidateAsync (.NET).
+  deps.planCodeCache?.invalidate(snapshot.tenantId);
 }

@@ -80,6 +80,21 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     )
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// RateLimit Fase 2 — piloto Customer (Fase 6) extendido a Notification. Flag OFF por default
+// (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
 builder.Services.AddTieredRateLimiting();
 
 // Cliente HTTP a CloudStorage (plantillas/layouts). El token del usuario se reenvía en contexto request;
@@ -104,6 +119,12 @@ builder.Services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
         var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
         client.BaseAddress = new Uri(options.AuthBaseUrl);
     }
+);
+
+// RateLimit Fase 2 — HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) depende
+// del contrato compartido; ServiceTokenAcquirer ya lo implementa, solo falta el forwarding.
+builder.Services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+    (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)sp.GetRequiredService<IServiceTokenAcquirer>()
 );
 
 // Fase 8: cliente HTTP a Scribe (render de emails) — reusa el mismo IServiceTokenAcquirer M2M ya

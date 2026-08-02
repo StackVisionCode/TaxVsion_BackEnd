@@ -7851,8 +7851,18 @@ resumen ejecutivo.
 1. **Global infra** (Gateway, `LoadSheddingMiddleware`, Fase 5) — última red de seguridad por p99+5xx,
    independiente de tenant.
 2. **Per-tenant** — partición primaria de la mayoría de categorías, escala con el plan tier del tenant
-   (`IRateLimitQuotaResolver`, Fase 6 — piloto activo en Customer, resto de servicios en cuota base sin
-   escalar por tier, ver nota de negocio en el plan doc).
+   (`IRateLimitQuotaResolver`, Fase 6). Mecanismo instalado en los 17 servicios .NET + Communication
+   (Node); 9 .NET con wiring completo (proyección local + `HttpPlanRateLimitReader` M2M real: Tenant,
+   Notification, Postmaster, Scribe, Signature, Correspondence, Customer, PaymentApp, Billing), 6 con
+   solo `ITenantPlanCodeReader` local por no tener acquirer M2M saliente utilizable (CloudStorage,
+   Connectors, PaymentClient, Growth, Documents, Subscription — decisión deliberada, no deuda, ver el
+   plan doc). **Flag `EnforceTierQuotas`/`COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS` en `false` por
+   default en los 17 + Communication** — la cuota efectiva hoy es siempre la base Standard, el
+   multiplicador por plan tier existe en código pero no se aplica hasta activar el flag por entorno.
+   Verificado en vivo (2026-08-02) contra la flota completa corriendo: 429 real confirmado en 5
+   servicios (Customer, Auth, CloudStorage, Subscription, Signature) usando la cuota base — ver adenda
+   al final de Fase 9 en el plan doc. El flip a `true` con multiplicador real aplicado sigue sin
+   verificación E2E.
 3. **Per-user** — overlay dentro del tenant, evita que un solo usuario/script tóxico apague la cuota de
    toda su empresa.
 4. **Per-endpoint** — cap propio para operaciones caras (búsqueda, bulk, rendering) — categorías H/I/J.

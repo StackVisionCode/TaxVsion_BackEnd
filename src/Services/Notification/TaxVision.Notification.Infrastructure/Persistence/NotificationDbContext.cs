@@ -16,6 +16,7 @@ using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Onboarding;
 using TaxVision.Notification.Domain.Permissions;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Domain.RateLimiting;
 
 namespace TaxVision.Notification.Infrastructure.Persistence;
 
@@ -60,6 +61,11 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
         Set<AuthzUserPermissionsProjection>();
     public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
         Set<AuthzRolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de "¿qué PlanCode tiene este tenant hoy?", mantenida
+    // por TenantPlanCodeProjectionConsumer (evento de Subscription), consultada por
+    // EfTenantPlanCodeReader para el rate limiting tiered. Ver TenantPlanCodeProjection.
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

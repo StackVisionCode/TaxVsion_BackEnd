@@ -1,8 +1,7 @@
-using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace TaxVision.Customer.Infrastructure.RateLimiting;
+namespace BuildingBlocks.Infrastructure.RateLimiting;
 
 /// <summary>
 /// <c>RateLimitQuotaResolver</c> se registra Singleton pero sus lectores reales dependen de

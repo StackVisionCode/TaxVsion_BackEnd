@@ -1,18 +1,22 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Authorization.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Email.Sending;
+using TaxVision.Notification.Application.RateLimiting.Abstractions;
 using TaxVision.Notification.Infrastructure.Email;
 using TaxVision.Notification.Infrastructure.Permissions;
 using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Persistence.Repositories;
 using TaxVision.Notification.Infrastructure.Push;
+using TaxVision.Notification.Infrastructure.RateLimiting;
 using TaxVision.Notification.Infrastructure.Sms;
 using TaxVision.Notification.Infrastructure.Storage;
 using TaxVision.Notification.Infrastructure.Templates;
@@ -182,6 +186,40 @@ public static class DependencyInjection
         // Módulo de campañas.
         services.AddScoped<IEmailCampaignRepository, EmailCampaignRepository>();
 
+        AddRateLimitTierQuotas(services, configuration);
+
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El
+    // mapeo a ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver
+    // realmente consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en
+    // Program.cs, ANTES de AddTieredRateLimiting(). El forwarding de
+    // BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer ya existe en Program.cs (no se
+    // duplica acá).
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration config)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services.AddOptions<SubscriptionClientOptions>().Bind(config.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                var baseUrl = opt.BaseUrl.EndsWith('/') ? opt.BaseUrl : opt.BaseUrl + "/";
+                http.BaseAddress = new Uri(baseUrl);
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
 }

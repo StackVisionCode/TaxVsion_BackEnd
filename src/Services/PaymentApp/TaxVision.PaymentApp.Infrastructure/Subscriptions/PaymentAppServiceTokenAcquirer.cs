@@ -11,12 +11,15 @@ internal interface IPaymentAppServiceTokenAcquirer
 }
 
 /// <summary>Obtiene tokens de servicio (M2M) de Auth (client-credentials) y los cachea hasta poco
-/// antes de expirar. Mismo patrón que TenantServiceTokenAcquirer/CustomerServiceTokenAcquirer/etc.</summary>
+/// antes de expirar. Mismo patrón que TenantServiceTokenAcquirer/CustomerServiceTokenAcquirer/etc.
+/// Implementa también <see cref="BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer"/>
+/// (RateLimit Fase 2) para que <c>HttpPlanRateLimitReader</c> (compartido) pueda consumir este
+/// mismo acquirer.</summary>
 internal sealed class PaymentAppServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<PaymentAppServiceTokenAcquirer> logger
-) : IPaymentAppServiceTokenAcquirer
+) : IPaymentAppServiceTokenAcquirer, BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
     private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
 

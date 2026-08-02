@@ -60,6 +60,11 @@ public sealed class GrowthDbContext(
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
 
+    // RateLimit Fase 2 — proyección local de "¿qué PlanCode tiene este tenant hoy?", mantenida por
+    // TenantPlanCodeProjectionConsumer.
+    public DbSet<TaxVision.Growth.Infrastructure.Persistence.RateLimiting.TenantPlanCodeProjection> TenantPlanCodeProjections =>
+        Set<TaxVision.Growth.Infrastructure.Persistence.RateLimiting.TenantPlanCodeProjection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());

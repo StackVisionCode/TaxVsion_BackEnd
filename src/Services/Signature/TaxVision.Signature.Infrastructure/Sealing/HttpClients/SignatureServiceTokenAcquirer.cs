@@ -15,11 +15,16 @@ internal interface ISignatureServiceTokenAcquirer
     Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default);
 }
 
+// RateLimit Fase 2 — implementa también el contrato compartido de BuildingBlocks
+// (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer) directamente sobre esta misma
+// clase, para que HttpPlanRateLimitReader pueda reusar el acquirer M2M ya existente de Signature
+// (F25) sin duplicar lógica de adquisición/caché de tokens. El forwarding de DI vive en
+// DependencyInjection.cs (AddRateLimitTierQuotas).
 internal sealed class SignatureServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<SignatureServiceTokenAcquirer> logger
-) : ISignatureServiceTokenAcquirer
+) : ISignatureServiceTokenAcquirer, BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
     private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
 

@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.Permissions;
 using TaxVision.PaymentApp.Domain.ProviderCustomers;
+using TaxVision.PaymentApp.Domain.RateLimiting;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.Tenants;
 using TaxVision.PaymentApp.Domain.Webhooks;
@@ -33,6 +34,7 @@ public sealed class PaymentAppDbContext(DbContextOptions<PaymentAppDbContext> op
     public DbSet<TenantProviderCustomer> TenantProviderCustomers => Set<TenantProviderCustomer>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

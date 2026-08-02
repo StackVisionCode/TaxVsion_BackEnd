@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
 using BuildingBlocks.Infrastructure.RateLimit;
@@ -36,6 +37,13 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
 builder.Services.AddBillingInfrastructure(builder.Configuration);
+
+// RateLimit Fase 2 — CachedTenantPlanCodeReader (5 min TTL) y HttpPlanRateLimitReader (catálogo
+// de Subscription, cacheado 5 min) dependen de ICacheService. Billing ya requiere
+// ConnectionStrings:Redis para IRateCounter (línea abajo); AddRedisCache reutiliza esa misma
+// conexión para el ICacheService compartido, mismo patrón que Tenant/Customer.
+builder.Services.AddRedisCache(builder.Configuration);
+
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "billing-service", BillingMetrics.MeterName);
 
@@ -56,6 +64,21 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     )
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// RateLimit Fase 2 — piloto Tenant/Customer extendido a Billing. Flag OFF por default (fail-open
+// a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
 builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(

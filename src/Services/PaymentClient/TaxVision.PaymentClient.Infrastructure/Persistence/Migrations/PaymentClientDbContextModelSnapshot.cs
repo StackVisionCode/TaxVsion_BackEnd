@@ -401,6 +401,34 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                     b.ToTable("UserPermissionsProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.PaymentClient.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.PaymentClient.Domain.Recurring.RecurringPaymentExecution", b =>
                 {
                     b.Property<Guid>("Id")

@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,7 @@ using Minio;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Backfill;
 using TaxVision.Correspondence.Application.Ingest;
+using TaxVision.Correspondence.Application.RateLimiting.Abstractions;
 using TaxVision.Correspondence.Application.Reconciliation;
 using TaxVision.Correspondence.Infrastructure.CloudStorage;
 using TaxVision.Correspondence.Infrastructure.Connectors;
@@ -16,6 +18,7 @@ using TaxVision.Correspondence.Infrastructure.Jobs;
 using TaxVision.Correspondence.Infrastructure.Persistence;
 using TaxVision.Correspondence.Infrastructure.Persistence.Repositories;
 using TaxVision.Correspondence.Infrastructure.Postmaster;
+using TaxVision.Correspondence.Infrastructure.RateLimiting;
 
 namespace TaxVision.Correspondence.Infrastructure;
 
@@ -172,7 +175,46 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddRateLimitTierQuotas(services, configuration);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El
+    // mapeo a ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver
+    // realmente consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en
+    // Program.cs, ANTES de AddTieredRateLimiting().
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration config)
+    {
+        // HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) depende del
+        // contrato compartido; CorrespondenceServiceTokenAcquirer ya lo implementa, solo falta el
+        // forwarding.
+        services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+            (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)
+                sp.GetRequiredService<ICorrespondenceServiceTokenAcquirer>()
+        );
+
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services.AddOptions<SubscriptionClientOptions>().Bind(config.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

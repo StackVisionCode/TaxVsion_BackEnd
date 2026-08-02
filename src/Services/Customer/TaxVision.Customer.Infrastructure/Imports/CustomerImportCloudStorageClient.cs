@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;

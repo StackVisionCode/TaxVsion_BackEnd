@@ -41,6 +41,7 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<PlanRateLimit> PlanRateLimits => Set<PlanRateLimit>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

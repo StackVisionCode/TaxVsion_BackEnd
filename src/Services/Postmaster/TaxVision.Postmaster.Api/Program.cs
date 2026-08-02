@@ -61,6 +61,21 @@ if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
 else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
+// RateLimit Fase 2 — piloto Customer (Fase 6) extendido a Postmaster. Flag OFF por default
+// (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+
 // Fase 4.4 del plan de rate limiting — IConnectionMultiplexer/IRateCounter ya están registrados en
 // AddPostmasterInfrastructure (F26, sostienen RedisEmailProviderRateLimiter/postmaster.k.dispatch),
 // así que acá solo se conecta el evaluador de políticas [RateLimit] para la capa HTTP.

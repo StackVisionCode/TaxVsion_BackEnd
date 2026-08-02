@@ -11,6 +11,7 @@ using TaxVision.Signature.Domain.Audit;
 using TaxVision.Signature.Domain.Consents;
 using TaxVision.Signature.Domain.Permissions;
 using TaxVision.Signature.Domain.Projections;
+using TaxVision.Signature.Domain.RateLimiting;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Settings;
 using TaxVision.Signature.Domain.Templates;
@@ -60,6 +61,11 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
     public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
         Set<AuthzRolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de "¿qué PlanCode tiene este tenant hoy?", mantenida por
+    // TenantPlanCodeProjectionConsumer (BuildingBlocks.Messaging.SubscriptionIntegrationEvents.
+    // TenantEntitlementsChangedIntegrationEvent). Consultada por EfTenantPlanCodeReader.
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

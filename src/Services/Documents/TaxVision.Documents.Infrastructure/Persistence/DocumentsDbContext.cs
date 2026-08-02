@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Documents.Domain.Branding;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.Permissions;
+using TaxVision.Documents.Domain.RateLimiting;
 using Wolverine;
 
 namespace TaxVision.Documents.Infrastructure.Persistence;
@@ -38,6 +39,9 @@ public sealed class DocumentsDbContext(
         Set<AuthzUserPermissionsProjection>();
     public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
         Set<AuthzRolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de PlanCode por tenant (ver TenantPlanCodeProjectionConsumer).
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -114,7 +114,10 @@ async function main(): Promise<void> {
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
   });
-  bindSubscriptionConsumers(consumers.register.bind(consumers), { limits: container.limits });
+  bindSubscriptionConsumers(consumers.register.bind(consumers), {
+    limits: container.limits,
+    planCodeCache: container.planCodeCache,
+  });
   bindCloudStorageConsumers(consumers.register.bind(consumers), {
     attachmentTracking: container.attachmentTracking,
     notifications: container.notifications,

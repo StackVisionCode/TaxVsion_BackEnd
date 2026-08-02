@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -7,12 +8,14 @@ using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Application.RateLimiting.Abstractions;
 using TaxVision.PaymentApp.Infrastructure.Observability;
 using TaxVision.PaymentApp.Infrastructure.Persistence;
 using TaxVision.PaymentApp.Infrastructure.Persistence.Repositories;
 using TaxVision.PaymentApp.Infrastructure.Providers;
 using TaxVision.PaymentApp.Infrastructure.Providers.Intellipay;
 using TaxVision.PaymentApp.Infrastructure.Providers.Stripe;
+using TaxVision.PaymentApp.Infrastructure.RateLimiting;
 using TaxVision.PaymentApp.Infrastructure.Scheduling;
 using TaxVision.PaymentApp.Infrastructure.Security;
 using TaxVision.PaymentApp.Infrastructure.Subscriptions;
@@ -72,7 +75,45 @@ public static class DependencyInjection
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
         AddSubscriptionClient(services, configuration);
+        AddRateLimitTierQuotas(services, configuration);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El
+    // mapeo a ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver
+    // realmente consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en
+    // Program.cs, ANTES de AddTieredRateLimiting().
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration config)
+    {
+        // HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) depende del
+        // contrato compartido; PaymentAppServiceTokenAcquirer ya lo implementa (ver
+        // AddSubscriptionClient), solo falta el forwarding.
+        services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+            (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)
+                sp.GetRequiredService<IPaymentAppServiceTokenAcquirer>()
+        );
+
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TaxVision.PaymentApp.Infrastructure.Subscriptions.SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
 
     /// <summary>PayFlow (Fase 16) — cierra el price-trust gap: resuelve el precio real de un plan
@@ -80,7 +121,13 @@ public static class DependencyInjection
     private static void AddSubscriptionClient(IServiceCollection services, IConfiguration config)
     {
         services.AddOptions<ServiceAuthClientOptions>().Bind(config.GetSection(ServiceAuthClientOptions.SectionName));
-        services.AddOptions<SubscriptionClientOptions>().Bind(config.GetSection(SubscriptionClientOptions.SectionName));
+        services
+            .AddOptions<TaxVision.PaymentApp.Infrastructure.Subscriptions.SubscriptionClientOptions>()
+            .Bind(
+                config.GetSection(
+                    TaxVision.PaymentApp.Infrastructure.Subscriptions.SubscriptionClientOptions.SectionName
+                )
+            );
 
         services.AddHttpClient<IPaymentAppServiceTokenAcquirer, PaymentAppServiceTokenAcquirer>(
             (sp, http) =>
@@ -96,7 +143,7 @@ public static class DependencyInjection
             (sp, http) =>
             {
                 var opt =
-                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SubscriptionClientOptions>>().Value;
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TaxVision.PaymentApp.Infrastructure.Subscriptions.SubscriptionClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
             }

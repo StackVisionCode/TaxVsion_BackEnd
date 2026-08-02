@@ -8,8 +8,10 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 using TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
+using TaxVision.CloudStorage.Infrastructure.RateLimiting;
 using TaxVision.CloudStorage.Infrastructure.Security;
 using TaxVision.CloudStorage.Infrastructure.Storage;
 using TaxVision.CloudStorage.Infrastructure.Time;
@@ -156,6 +158,38 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddRateLimitTierQuotas(services);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (TenantPlanCodeProjectionConsumer, mantiene la proyección al día incluso con el flag
+    // apagado) y los lectores concretos de la proyección local. NO se registra acá el mapeo a
+    // BuildingBlocks.RateLimiting.ITenantPlanCodeReader/IPlanRateLimitReader que
+    // RateLimitQuotaResolver realmente consume (eso vive en Program.cs, condicional al flag
+    // RateLimit:EnforceTierQuotas, como en Customer/Tenant) NI el registro de
+    // HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting): a diferencia de
+    // Customer/Tenant/Scribe/Signature/Correspondence/Notification/Postmaster/Subscription/
+    // PaymentApp (F25), CloudStorage nunca tuvo un IServiceTokenAcquirer M2M propio — es un
+    // servicio de recursos al que los demás llaman, no un llamador. Añadir uno solo para este
+    // wiring sería inventar infraestructura M2M nueva sin que el producto la haya pedido (ver
+    // feedback_no_speculative_vendor_coupling) — queda documentado como gap explícito, no resuelto
+    // acá. Mientras tanto AddTieredRateLimiting() sigue cayendo a NullTenantPlanCodeReader/
+    // NullPlanRateLimitReader (fail-open a BaseQuota), exactamente igual que hoy.
+    private static void AddRateLimitTierQuotas(IServiceCollection services)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+                sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+                sp.GetRequiredService<EfTenantPlanCodeReader>()
+            )
+        );
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
     }
 }

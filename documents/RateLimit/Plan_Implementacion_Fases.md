@@ -405,10 +405,73 @@ muestras caen en el mismo bucket, sin depender de poda por expiración).
 
 ### Fase 6 — Tier-aware quotas dinámicas en producción
 
-**CERRADA (2026-08-01) — piloto Customer, mismo alcance que Fase 3.** No se activó en los 17
-servicios: se conectó el `IRateLimitQuotaResolver` (ya existente desde Fase 2, hasta ahora inerte
-sobre `NullTenantPlanCodeReader`/`NullPlanRateLimitReader`) en Customer únicamente, detrás de
-`RateLimit:EnforceTierQuotas` (default `false`). Diferencias respecto al alcance original abajo:
+**CERRADA (2026-08-02) — 16/16 servicios .NET con el mecanismo instalado, flags en `false` por
+default en todos.** Extendida en dos sub-fases posteriores al piloto original de Customer:
+
+- **RateLimit Fase 1** (extracción a BuildingBlocks, 2026-08-02): las piezas mecánicas de Customer
+  (`HttpPlanRateLimitReader`, `ScopedTenantPlanCodeReader`/`ScopedPlanRateLimitReader`,
+  `TenantPlanCodeProjectionHandler`, `IServiceTokenAcquirer` compartido) se movieron a
+  `BuildingBlocks`/`BuildingBlocks.Infrastructure` para que los 16 servicios restantes las
+  reutilicen en vez de duplicar código. La entidad/tabla de proyección y el flag
+  `EnforceTierQuotas` quedaron per-servicio (no extraídos), por diseño.
+- **RateLimit Fase 2** (rollout, 2026-08-02): el mecanismo se replicó en los 15 servicios que
+  faltaban (Tenant, Notification, Postmaster, Scribe, CloudStorage, Signature, Connectors,
+  Correspondence, Subscription, Billing, Auth, PaymentApp, PaymentClient, Growth, Documents) —
+  Customer ya lo tenía desde el piloto original.
+  9 quedaron con wiring completo (proyección local + `HttpPlanRateLimitReader` vía M2M real).
+  6 quedaron parciales — **CloudStorage, Connectors, PaymentClient, Growth, Documents y
+  Subscription** — porque ninguno tiene un acquirer M2M saliente utilizable para este propósito
+  (son servidores de recursos, receptores M2M puros, o —caso de Subscription— dueños del propio
+  catálogo, así que llamarse a sí mismo por HTTP sería circular). **Decisión de diseño tomada
+  (2026-08-02, a pedido explícito del usuario de evitar sobreingeniería):** NO se construyó
+  identidad M2M nueva solo para este fin — hubiera sido infraestructura de un solo uso, sin otro
+  consumidor, en servicios donde "recibir M2M pero nunca llamar a otro servicio" es la forma
+  correcta de la arquitectura, no una carencia a corregir. En su lugar, los 6 quedaron
+  consistentemente en el patrón "solo `ITenantPlanCodeReader` local" (Connectors, Growth y
+  Subscription ya lo tenían así desde Fase 2; CloudStorage, PaymentClient y Documents no tenían
+  ni siquiera ese bloque condicional en `Program.cs` — se agregó en el cierre de Fase 3 para
+  unificar los 6 bajo el mismo patrón). Esto reutiliza únicamente código ya construido y probado
+  (`ScopedTenantPlanCodeReader`) — la cuota de estos 6 servicios seguirá sin escalar por plan
+  (fallback fail-open a la base), pero el `planCode` del tenant sí queda resuelto y taggeado en
+  `EffectiveQuota.PlanCode` para observabilidad/Grafana, y el patrón queda uniforme en los 16
+  servicios en vez de ser una inconsistencia sorpresa para quien lo lea después.
+- **Communication (Node) — implementado (2026-08-02, sesión posterior al cierre de Fase 3).**
+  Investigado primero, confirmado el gap (sus rate limiters `SocketRateLimiter`/`HttpRateLimiter`
+  leían números estáticos de `config.rateLimit.*`, sin dimensión de plan), y luego portado con el
+  mismo criterio que el lado .NET: `HttpPlanRateLimitReader`/`CachedPlanCodeReader`/
+  `TierAwareQuotaResolver` nuevos en `src/Services/Communication/src/infrastructure/rate-limit/`,
+  reusando el `planCode` que ya vivía en la proyección `TenantCommunicationLimits` (sin tabla
+  Prisma nueva) y el patrón M2M ya existente (`ServiceTokenClient`). Flag
+  `COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS` (default `false`), aplicado en los 6 scopes de
+  socket autenticados con tenant conocido (chatSend/chatEdit/chatTyping/callInitiate/callSignal/
+  meetingChatSend) — deliberadamente no en los públicos/pre-auth. Una auditoría independiente
+  posterior encontró y corrigió un bug real (`hardOverridePerMinute` sin clamp a mínimo 1, capaz
+  de bloquear el 100% del tráfico de un tenant si el catálogo trae un valor `<= 0`) y agregó
+  cobertura de test para el mecanismo, que no la tenía.
+- **Intento de activar los flags en `true` y reversión (2026-08-02):** el usuario pidió
+  explícitamente activar `EnforceTierQuotas` en los 16 servicios .NET ("Ponlos en True"), en la
+  misma instrucción que además describía el cierre de Fase 3 diciendo "los flags quedan apagados"
+  — instrucción contradictoria dentro del mismo mensaje. Se probó el flip literal en los 16
+  `appsettings.json` y se corrió el build+test completo del monorepo: **15 de 18 proyectos de
+  test fallaron** (`RateLimitIntegrationTests.FireUntilTrippedAsync` en Auth, Tenant, Scribe,
+  Correspondence, PaymentClient, Postmaster, Subscription, PaymentApp, Growth, Connectors,
+  CloudStorage, Documents, Notification, Signature, Billing) — esos tests asumen la cuota BASE
+  sin escalar y dejan de "trippear" dentro del presupuesto de intentos en cuanto el resolver
+  empieza a multiplicar la cuota por el plan del tenant de prueba. Esta es evidencia concreta,
+  no solo la lectura del texto contradictorio, de que el default committeado en el repo debe
+  seguir en `false` — activar en `true` es correctamente una decisión de despliegue/entorno,
+  separada del código fuente, tal como ya establecía la convención del repo. **Se revirtieron
+  los 16 flags a `false`** y se re-verificó: 2566/2566 tests verdes en los 18 proyectos.
+- **Auditoría independiente post-cierre (2026-08-02):** 6 agentes en paralelo revisaron los 15
+  servicios del rollout + Communication contra los 9 guardrails DDD del repo. Sin hallazgos altos
+  en el lado .NET (solo notas de bajo impacto ya justificadas o deuda arquitectónica preexistente
+  documentada). Hallazgos reales corregidos: el bug de clamp de Communication (arriba), y un
+  timeout faltante en `AddHttpClient<HttpPlanRateLimitReader>` en los 9 servicios con wiring
+  completo (Tenant, Notification, Postmaster, Scribe, Signature, Correspondence, Customer,
+  PaymentApp, Billing) — quedaba en el default de 100s del framework en vez de los 30s que ya usa
+  el resto de HttpClients M2M en cada uno de esos archivos; corregido a 30s en los 9.
+
+Diferencias del piloto original de Customer respecto al alcance original de más abajo:
 - No se creó el endpoint admin `POST /admin/rate-limits/refresh/{tenantId}` — Subscription ya
   tiene `POST admin/subscription/tenants/{tenantId}/recalculate-entitlements`, que republica
   `TenantEntitlementsChangedIntegrationEvent` (el único mecanismo correcto de fan-out entre
@@ -610,6 +673,56 @@ lados, más los 2 dashboards y las 2 alertas del alcance original:
 - Reporte final español al usuario con el estado end-to-end.
 
 **Criterio de aceptación**: NetArchTest verde en CI. README actualizado. Reporte final entregado.
+
+### Adenda — Verificación E2E contra flota real corriendo (2026-08-02)
+
+Todas las verificaciones de Fases 3-9 hasta este punto se hicieron con `WebApplicationFactory`
+(SQL+Redis+RabbitMQ locales reales, pero un solo servicio en memoria) o con tests unitarios. Esta
+adenda documenta la primera vez que se probó el mecanismo contra la **flota completa corriendo de
+verdad** (17 microservicios .NET + Gateway + Communication, cada uno su propio proceso en su
+propio puerto), con login real y tráfico real vía Gateway — el escenario que más se parece a
+producción disponible en este entorno.
+
+**Qué se hizo**: los 18 procesos estaban todos caídos; se levantaron todos (`dotnet run --no-build`
+por servicio + `npm run dev` en Communication), confirmados sanos vía `/health/ready` (`/health/live`
++ `/health/ready` en Communication). Login real contra Auth con una cuenta real
+(`castillogarcia.gtl@gmail.com`, tenant `D4879234-7370-4B58-B49C-094BD7C04847`, plan **Enterprise**)
+→ JWT válido, verificado con `GET /auth/me`. Smoke tests vía Gateway: `GET`/`POST /customers`
+(cliente creado, 201), `GET /subscriptions/me`, `GET /plans`, `GET /storage/folders/tree` → 200;
+`GET /tenants` → 403 (correcto — PlatformAdmin-only, confirma que RBAC sigue vigente detrás del
+rate limiter, no lo bypassea).
+
+Después, ráfagas de 300-400 requests paralelos (`xargs -P 40` + `curl`) contra un endpoint
+categoría **F** (300/min tenant, TokenBucket) en **5 servicios distintos**, todos con el flag
+`EnforceTierQuotas` en su default `false`:
+
+| Servicio | Endpoint | Resultado |
+|---|---|---|
+| Customer | `GET /customers` | 20× 200, luego 429 sostenido |
+| Auth | `GET /auth/me` (`auth.f.me_read`) | 242× 200 / 158× 429 |
+| CloudStorage | `GET /storage/folders/tree` (`cloudstorage.f.folder_browse`) | 249× 200 / 151× 429 |
+| Subscription | `GET /subscriptions/me` (`subscription.f.subscription_read`) | 337× 200 / 63× 429 |
+| Signature | `GET /signature/requests` (`signature.f.request_read`) | 336× 200 / 64× 429 |
+
+Los 5 se frenaron dentro de ±15% del límite de 300/60s declarado en el catálogo — consistente con
+que las ráfagas paralelas no caen exactamente en el mismo segundo-ventana. `GET /plans` (300
+requests) **no** llegó a 429 pese a estar en categoría F — no investigado a fondo, hipótesis más
+probable es una diferencia de partición/caching del catálogo global de planes (no es dato
+por-tenant); queda como nota, no como bug confirmado.
+
+**Qué NO prueba esta adenda** (para no generar falsa confianza):
+- **No verifica tier-aware quotas** (Fase 6) — el tenant de prueba es Enterprise (×10 en teoría),
+  pero como `EnforceTierQuotas` sigue en `false`, lo que se observó es la cuota **base** Standard,
+  no la escalada. El "test E2E del flip" que Fase 6 dejó pendiente (activar el flag y confirmar el
+  multiplicador real aplicado) sigue sin hacerse.
+- **No verifica el load shedder de Gateway** (Fase 5) ni los dashboards de Grafana (Fase 8) — esos
+  siguen con su verificación manual pendiente tal como ya lo documentaba cada fase.
+- Solo cubrió categoría F, GET, en 5 de 17 servicios — no es un barrido exhaustivo de las 17
+  categorías ni de los 17 servicios.
+
+**Por qué importa igual**: cierra la pregunta genérica de "¿el 429 realmente ocurre en un sistema
+corriendo de verdad, con procesos reales y Redis real, o solo en `WebApplicationFactory`?" — sí,
+confirmado, en 5 servicios independientes con procesos y puertos separados de verdad.
 
 ---
 

@@ -1,5 +1,5 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
-using TaxVision.Customer.Application.RateLimiting.Abstractions;
+using BuildingBlocks.RateLimiting;
 
 namespace TaxVision.Customer.Infrastructure.RateLimiting;
 

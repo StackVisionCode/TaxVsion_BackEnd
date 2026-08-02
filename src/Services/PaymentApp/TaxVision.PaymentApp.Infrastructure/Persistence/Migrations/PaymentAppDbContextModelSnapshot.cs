@@ -251,6 +251,34 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantSavedPaymentMethods", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.PaymentApp.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.SaaSPayments.RefundLine", b =>
                 {
                     b.Property<Guid>("Id")
