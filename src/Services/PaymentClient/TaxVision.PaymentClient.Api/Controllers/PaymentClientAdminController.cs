@@ -3,6 +3,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Csv;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +26,7 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("payments")]
+    [RateLimit("payment_client.f.admin_read")]
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [ProducesResponseType<IReadOnlyList<TenantPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchAllTenants(
@@ -37,6 +39,7 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
     ) => Search(tenantId: null, status, from, to, page, pageSize, ct);
 
     [HttpGet("tenants/{tenantId:guid}/payments")]
+    [RateLimit("payment_client.f.admin_read")]
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [ProducesResponseType<IReadOnlyList<TenantPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchForTenant(
@@ -55,6 +58,7 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
     /// paginación (capado a <see cref="ExportMaxRows"/>; para volúmenes mayores el reporte
     /// debería moverse a un job async, fuera de scope de J.3).</summary>
     [HttpGet("payments/export")]
+    [RateLimit("payment_client.h.admin_export")]
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [Produces("text/csv")]
     public async Task<IActionResult> ExportCsv(

@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,9 @@ namespace TaxVision.Auth.Api.Controllers;
 public sealed class InternalOnboardingTokensController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("{reference:guid}/raw")]
+    [RateLimitExempt(
+        "M2M ServiceOnly (Fase 9) — invocado por Notification vía Scribe, nunca expuesto al Gateway público."
+    )]
     [ProducesResponseType<ResolveRegistrationTokenReferenceResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetRaw(Guid reference, CancellationToken ct)
     {

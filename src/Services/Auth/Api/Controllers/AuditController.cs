@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
@@ -22,6 +23,7 @@ public sealed class AuditController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Devuelve los eventos de auditoría paginados, con filtros opcionales por usuario, acción y rango de fechas.</summary>
     [HttpGet]
+    [RateLimit("auth.h.audit_read")]
     [ProducesResponseType<PagedResult<AuditLogResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAuditLogs(
         [FromQuery] Guid? userId = null,

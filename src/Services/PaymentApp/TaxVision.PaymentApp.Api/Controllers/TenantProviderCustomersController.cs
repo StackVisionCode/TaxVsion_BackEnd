@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,7 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
 {
     [HttpGet("{provider}")]
     [HasPermission(PaymentAppPermissions.ProviderCustomerRead)]
+    [RateLimit("payment_app.f.provider_customer_read")]
     [ProducesResponseType<TenantProviderCustomerResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(PaymentProviderCode provider, CancellationToken ct)
@@ -43,6 +45,7 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
     /// el pm resultante se envía luego a POST {provider}/methods.</summary>
     [HttpPost("{provider}/setup-intent")]
     [HasPermission(PaymentAppPermissions.ProviderCustomerManage)]
+    [RateLimit("payment_app.l.provider_customer_write")]
     [ProducesResponseType<SetupIntentResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateSetupIntent(PaymentProviderCode provider, CancellationToken ct)
     {
@@ -63,6 +66,7 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
     /// endpoint solo recibe la referencia opaca resultante, nunca datos crudos de tarjeta.</summary>
     [HttpPost("{provider}/methods")]
     [HasPermission(PaymentAppPermissions.ProviderCustomerManage)]
+    [RateLimit("payment_app.l.provider_customer_write")]
     [ProducesResponseType<Guid>(StatusCodes.Status200OK)]
     public async Task<IActionResult> AttachMethod(
         PaymentProviderCode provider,
@@ -89,6 +93,7 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
 
     [HttpDelete("{tenantProviderCustomerId:guid}/methods/{methodId:guid}")]
     [HasPermission(PaymentAppPermissions.ProviderCustomerManage)]
+    [RateLimit("payment_app.l.provider_customer_write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> DetachMethod(Guid tenantProviderCustomerId, Guid methodId, CancellationToken ct)
     {
@@ -105,6 +110,7 @@ public sealed class TenantProviderCustomersController(IMessageBus bus) : Control
 
     [HttpPost("{tenantProviderCustomerId:guid}/methods/{methodId:guid}/default")]
     [HasPermission(PaymentAppPermissions.ProviderCustomerManage)]
+    [RateLimit("payment_app.g.provider_customer_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetDefaultMethod(
         Guid tenantProviderCustomerId,

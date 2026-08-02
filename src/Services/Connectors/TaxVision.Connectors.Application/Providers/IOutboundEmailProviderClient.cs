@@ -32,13 +32,15 @@ public interface IOutboundEmailProviderClient
     /// <summary>
     /// Envía <paramref name="message"/> desde la cuenta <paramref name="accountId"/>. El caller (el
     /// handler, que ya cargó el <c>TenantEmailAccount</c> para verificar tenant) provee
-    /// <paramref name="fromAddress"/>/<paramref name="fromDisplayName"/> — el client nunca resuelve la
-    /// cuenta por su cuenta, solo sabe hablar con el proveedor. Lanza
+    /// <paramref name="fromAddress"/>/<paramref name="fromDisplayName"/>/<paramref name="tenantId"/>
+    /// (Rate Limit Fase 0.3, para el cupo per-tenant de <see cref="IProviderRateLimiter"/>) — el
+    /// client nunca resuelve la cuenta por su cuenta, solo sabe hablar con el proveedor. Lanza
     /// <see cref="OutboundEmailSendException"/> en cualquier fallo — nunca devuelve un resultado que
     /// represente un envío fallido.
     /// </summary>
     Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string fromAddress,
         string? fromDisplayName,
         OutboundMessage message,

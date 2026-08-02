@@ -2,9 +2,9 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Tenant.Api.Common;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Application.Tenants.Queries;
@@ -33,7 +33,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [HttpPut]
     [HasPermission(TenantBrandingPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [EnableRateLimiting("tenant-logo-upload")]
+    [RateLimit("tenant.i.logo_upload")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(TaxVision.Tenant.Domain.Tenant.MaxLogoSizeBytes)]
     [ProducesResponseType<UploadTenantLogoResponse>(StatusCodes.Status202Accepted)]
@@ -84,6 +84,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [HttpDelete]
     [HasPermission(TenantBrandingPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("tenant.g.branding_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> Remove(Guid tenantId, CancellationToken ct)
@@ -104,6 +105,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("tenant.f.branding_read")]
     [ProducesResponseType<TenantLogoResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -125,6 +127,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("tenant.f.branding_read")]
     [ProducesResponseType<TenantBrandingColorsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -143,6 +146,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [HttpPut("/tenants/{tenantId:guid}/branding/colors")]
     [HasPermission(TenantBrandingPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("tenant.g.branding_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -171,6 +175,7 @@ public sealed class TenantBrandingController(IMessageBus bus) : ControllerBase
     [HttpDelete("/tenants/{tenantId:guid}/branding/colors")]
     [HasPermission(TenantBrandingPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("tenant.g.branding_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ResetColors(Guid tenantId, CancellationToken ct)

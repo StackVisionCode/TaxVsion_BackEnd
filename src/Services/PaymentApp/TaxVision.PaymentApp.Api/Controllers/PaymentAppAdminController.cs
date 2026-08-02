@@ -3,6 +3,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Csv;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +28,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("payments")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.f.admin_read")]
     [ProducesResponseType<IReadOnlyList<SaaSPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchAllTenants(
         [FromQuery] PaymentStatus? status,
@@ -40,6 +42,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
 
     [HttpGet("tenants/{tenantId:guid}/payments")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.f.admin_read")]
     [ProducesResponseType<IReadOnlyList<SaaSPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchForTenant(
         Guid tenantId,
@@ -59,6 +62,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
     /// reenvía la notificación downstream.</summary>
     [HttpPost("payments/{id:guid}/republish-onboarding-result")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.g.admin_manage")]
     public async Task<IActionResult> RepublishOnboardingResult(Guid id, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new RepublishOnboardingPaymentResultCommand(id), ct);
@@ -72,6 +76,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
     /// debería moverse a un job async, fuera de scope de J.3).</summary>
     [HttpGet("payments/export")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.h.admin_export")]
     [Produces("text/csv")]
     public async Task<IActionResult> ExportCsv(
         [FromQuery] Guid? tenantId,

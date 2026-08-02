@@ -46,7 +46,12 @@ public sealed class GraphApiClient(
 
     public ProviderCode ProviderCode => ProviderCode.Graph;
 
-    public async Task<HistoryPage> GetHistoryAsync(Guid accountId, string? sinceCursor, CancellationToken ct = default)
+    public async Task<HistoryPage> GetHistoryAsync(
+        Guid accountId,
+        Guid tenantId,
+        string? sinceCursor,
+        CancellationToken ct = default
+    )
     {
         var messageIds = new List<string>();
         var url = sinceCursor ?? InboxDeltaBaseUrl;
@@ -55,7 +60,7 @@ public sealed class GraphApiClient(
 
         for (var page = 0; page < MaxDeltaPages; page++)
         {
-            var payload = await SendAsync<GraphDeltaResponse>(accountId, url, ct);
+            var payload = await SendAsync<GraphDeltaResponse>(accountId, tenantId, url, ct);
             messageIds.AddRange((payload.Value ?? []).Select(m => m.Id));
 
             if (!string.IsNullOrEmpty(payload.DeltaLink))
@@ -76,6 +81,7 @@ public sealed class GraphApiClient(
 
     public async Task<RawMessage> GetMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         CancellationToken ct = default
     )
@@ -83,10 +89,12 @@ public sealed class GraphApiClient(
         var url =
             $"{BaseUrl}/messages/{providerMessageId}"
             + "?$select=id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,hasAttachments,internetMessageId,internetMessageHeaders,bodyPreview";
-        var message = await SendAsync<GraphMessage>(accountId, url, ct);
+        var message = await SendAsync<GraphMessage>(accountId, tenantId, url, ct);
 
         var attachments =
-            message.HasAttachments == true ? await GetAttachmentMetadataAsync(accountId, providerMessageId, ct) : [];
+            message.HasAttachments == true
+                ? await GetAttachmentMetadataAsync(accountId, tenantId, providerMessageId, ct)
+                : [];
 
         string? Header(string name) =>
             (message.InternetMessageHeaders ?? [])
@@ -123,19 +131,22 @@ public sealed class GraphApiClient(
     /// </summary>
     public async Task<MessageBody> GetMessageBodyAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         CancellationToken ct = default
     )
     {
         var url = $"{BaseUrl}/messages/{providerMessageId}?$select=id,body,internetMessageHeaders,hasAttachments";
-        var message = await SendAsync<GraphFullMessage>(accountId, url, ct);
+        var message = await SendAsync<GraphFullMessage>(accountId, tenantId, url, ct);
 
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var header in message.InternetMessageHeaders ?? [])
             headers.TryAdd(header.Name, header.Value);
 
         var attachments =
-            message.HasAttachments == true ? await GetAttachmentMetadataAsync(accountId, providerMessageId, ct) : [];
+            message.HasAttachments == true
+                ? await GetAttachmentMetadataAsync(accountId, tenantId, providerMessageId, ct)
+                : [];
 
         var isHtml = string.Equals(message.Body?.ContentType, "html", StringComparison.OrdinalIgnoreCase);
         var content = message.Body?.Content;
@@ -146,25 +157,27 @@ public sealed class GraphApiClient(
 
     public async Task<Stream> GetAttachmentAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         string attachmentId,
         CancellationToken ct = default
     )
     {
         var url = $"{BaseUrl}/messages/{providerMessageId}/attachments/{attachmentId}";
-        var payload = await SendAsync<GraphAttachment>(accountId, url, ct);
+        var payload = await SendAsync<GraphAttachment>(accountId, tenantId, url, ct);
         var bytes = Convert.FromBase64String(payload.ContentBytes ?? string.Empty);
         return new MemoryStream(bytes, writable: false);
     }
 
     private async Task<IReadOnlyList<RawMessageAttachment>> GetAttachmentMetadataAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         CancellationToken ct
     )
     {
         var url = $"{BaseUrl}/messages/{providerMessageId}/attachments?$select=id,name,contentType,size";
-        var payload = await SendAsync<GraphAttachmentListResponse>(accountId, url, ct);
+        var payload = await SendAsync<GraphAttachmentListResponse>(accountId, tenantId, url, ct);
         return (payload.Value ?? [])
             .Select(a => new RawMessageAttachment(
                 a.Id,
@@ -185,6 +198,7 @@ public sealed class GraphApiClient(
     /// </summary>
     public async Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string fromAddress,
         string? fromDisplayName,
         OutboundMessage message,
@@ -209,7 +223,7 @@ public sealed class GraphApiClient(
             ? BuildSendMailRequest(message)
             : BuildReplyRequest(message);
 
-        var response = await SendWriteRequestAsync(accountId, url, requestBody, extraHeaders, ct);
+        var response = await SendWriteRequestAsync(accountId, tenantId, url, requestBody, extraHeaders, ct);
         if (!response.IsSuccessStatusCode)
         {
             var exception = BuildSendException(response);
@@ -303,13 +317,14 @@ public sealed class GraphApiClient(
     /// <summary>Mismo pipeline rate-limit+token+breaker que <see cref="SendAsync{T}"/>, pero para el path de envío — lanza <see cref="OutboundEmailSendException"/> en vez de <see cref="EmailProviderException"/> (D3 §8).</summary>
     private async Task<HttpResponseMessage> SendWriteRequestAsync(
         Guid accountId,
+        Guid tenantId,
         string url,
         string jsonBody,
         IReadOnlyDictionary<string, string>? extraHeaders,
         CancellationToken ct
     )
     {
-        await rateLimiter.WaitForSlotAsync(ProviderCode, ct);
+        await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
         var tokenResult = await tokenManager.GetValidAccessTokenAsync(accountId, ct);
         if (tokenResult.IsFailure)
@@ -345,9 +360,9 @@ public sealed class GraphApiClient(
         }
     }
 
-    private async Task<T> SendAsync<T>(Guid accountId, string url, CancellationToken ct)
+    private async Task<T> SendAsync<T>(Guid accountId, Guid tenantId, string url, CancellationToken ct)
     {
-        await rateLimiter.WaitForSlotAsync(ProviderCode, ct);
+        await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
         var tokenResult = await tokenManager.GetValidAccessTokenAsync(accountId, ct);
         if (tokenResult.IsFailure)

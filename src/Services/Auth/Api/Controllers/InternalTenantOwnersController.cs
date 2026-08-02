@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,9 @@ public sealed class InternalTenantOwnersController(IMessageBus bus) : Controller
     );
 
     [HttpPost]
+    [RateLimitExempt(
+        "M2M ServiceOnly (Fase 16) — invocado por la Saga de onboarding, nunca expuesto al Gateway público."
+    )]
     public async Task<IActionResult> Create(Guid tenantId, [FromBody] CreateOwnerRequest request, CancellationToken ct)
     {
         var command = new CreateTenantOwnerFromOnboardingCommand(

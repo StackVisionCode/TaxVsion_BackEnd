@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Onboarding.Admin.Commands;
 using TaxVision.Auth.Application.Onboarding.Sagas.Commands;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 using TaxVision.Auth.Tests.Application;
 using TaxVision.Auth.Tests.Onboarding;
@@ -198,17 +199,23 @@ public sealed class OnboardingAdminCommandsTests
         var repo = new FakeTenantOnboardingRepository { Existing = onboarding };
         var bus = new FakeMessageBus();
 
+        var auditWriter = new FakeAuthAuditWriter();
+        var adminUserId = Guid.NewGuid();
+
         var result = await CancelAndRefundOnboardingAdminHandler.Handle(
             new CancelAndRefundOnboardingAdminCommand(
                 onboarding.Id,
                 "Customer requested a refund after repeated failures.",
-                "I understand this is irreversible"
+                "I understand this is irreversible",
+                adminUserId
             ),
             repo,
             new FakeUnitOfWork(),
             bus,
             new FakeCorrelationContext(),
             new FakeOnboardingMetrics(),
+            auditWriter,
+            new FakeRequestContext(),
             CancellationToken.None
         );
 
@@ -217,6 +224,9 @@ public sealed class OnboardingAdminCommandsTests
         Assert.Equal(2, bus.Published.Count);
         Assert.Contains(bus.Published, m => m is OnboardingRefundRequestedIntegrationEvent);
         Assert.Contains(bus.Published, m => m is OnboardingCancelRequestedIntegrationEvent);
+        Assert.NotNull(auditWriter.Written);
+        Assert.Equal(AuthAuditAction.OnboardingAdminCancelledAndRefunded, auditWriter.Written!.Action);
+        Assert.Equal(adminUserId, auditWriter.Written.UserId);
     }
 
     [Fact]
@@ -226,12 +236,14 @@ public sealed class OnboardingAdminCommandsTests
         var repo = new FakeTenantOnboardingRepository { Existing = onboarding };
 
         var result = await CancelAndRefundOnboardingAdminHandler.Handle(
-            new CancelAndRefundOnboardingAdminCommand(onboarding.Id, "reason", "sure, why not"),
+            new CancelAndRefundOnboardingAdminCommand(onboarding.Id, "reason", "sure, why not", Guid.NewGuid()),
             repo,
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             new FakeOnboardingMetrics(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
             CancellationToken.None
         );
 
@@ -248,12 +260,19 @@ public sealed class OnboardingAdminCommandsTests
         var repo = new FakeTenantOnboardingRepository { Existing = onboarding };
 
         var result = await CancelAndRefundOnboardingAdminHandler.Handle(
-            new CancelAndRefundOnboardingAdminCommand(onboarding.Id, "reason", "I understand this is irreversible"),
+            new CancelAndRefundOnboardingAdminCommand(
+                onboarding.Id,
+                "reason",
+                "I understand this is irreversible",
+                Guid.NewGuid()
+            ),
             repo,
             new FakeUnitOfWork(),
             new FakeMessageBus(),
             new FakeCorrelationContext(),
             new FakeOnboardingMetrics(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
             CancellationToken.None
         );
 

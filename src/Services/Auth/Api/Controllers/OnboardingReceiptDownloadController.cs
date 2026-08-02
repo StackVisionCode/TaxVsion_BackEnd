@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,9 @@ public sealed class OnboardingReceiptDownloadController(IMessageBus bus) : Contr
     [HttpGet("{fileId:guid}/download")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-receipt-download")]
+    [RateLimitExempt(
+        "Anónimo (Fase 11) — conserva el limiter nativo onboarding-receipt-download, sin JWT que particionar."
+    )]
     public async Task<IActionResult> Download(Guid fileId, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<Uri>>(new GetOnboardingReceiptDownloadRedirectQuery(fileId), ct);

@@ -1,10 +1,29 @@
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Onboarding.EmailVerification;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 
 namespace TaxVision.Auth.Tests.Onboarding;
+
+internal sealed class FakeAuthAuditWriter : IAuthAuditWriter
+{
+    public AuthAuditLog? Written { get; private set; }
+
+    public Task AddAsync(AuthAuditLog log, CancellationToken ct = default)
+    {
+        Written = log;
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class FakeRequestContext : IRequestContext
+{
+    public string? IpAddress => "203.0.113.10";
+    public string? UserAgent => "test-agent";
+}
 
 /// <summary>Test doubles for PayFlow's Onboarding module, shared across the Fase 9 handler/consumer tests.</summary>
 internal sealed class FakeOnboardingMetrics : IOnboardingMetrics

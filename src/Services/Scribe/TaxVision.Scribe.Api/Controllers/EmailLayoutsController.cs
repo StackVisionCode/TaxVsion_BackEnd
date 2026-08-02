@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -33,6 +34,7 @@ public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [HasPermission(ScribePermissions.LayoutsWrite)]
+    [RateLimit("scribe.g.layout_manage")]
     [ProducesResponseType<EmailLayoutResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateEmailLayoutRequest request, CancellationToken ct)
     {
@@ -55,6 +57,7 @@ public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/versions")]
     [HasPermission(ScribePermissions.LayoutsWrite)]
+    [RateLimit("scribe.g.layout_manage")]
     [ProducesResponseType<EmailLayoutVersionResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddDraftVersion(
         Guid id,
@@ -80,6 +83,7 @@ public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/versions/{versionId:guid}/publish")]
     [HasPermission(ScribePermissions.LayoutsWrite)]
+    [RateLimit("scribe.g.layout_manage")]
     [ProducesResponseType<EmailLayoutVersionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> PublishVersion(Guid id, Guid versionId, CancellationToken ct)
     {

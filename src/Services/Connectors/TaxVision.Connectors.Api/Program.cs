@@ -4,6 +4,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Middleware;
@@ -11,6 +12,7 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -99,6 +101,12 @@ builder.Services.AddRateLimiter(options =>
         }
     );
 });
+
+// Rate limiting por tenant/usuario (Fase 4.8 del plan) — arrancaba en cero salvo el limiter
+// nativo "connectors-webhook" de arriba (que se deja intacto, protege los 2 webhooks
+// publicos). IConnectionMultiplexer/IRateCounter ya registrados en Connectors.Infrastructure
+// (RedisProviderRateLimiter/D3 Fase 5) — no se duplican acá.
+builder.Services.AddTieredRateLimiting();
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -191,3 +199,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

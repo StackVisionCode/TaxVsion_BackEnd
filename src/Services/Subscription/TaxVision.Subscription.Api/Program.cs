@@ -3,17 +3,20 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
 using TaxVision.Subscription.Infrastructure.Persistence;
@@ -76,6 +79,21 @@ if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
     builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
 else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+
+// Rate limiting por tenant/usuario (Fase 4.10 del plan) — arrancaba en cero, Subscription no
+// tenia ningun AddRateLimiter/EnableRateLimiting nativo que preservar (los 5 endpoints exentos
+// son D-category publicos sin limiter previo o M2M-only, ver doc-comment de
+// RateLimitPolicyCatalog). AddRedisCache ya registra IDistributedCache pero no
+// IConnectionMultiplexer — IRateCounter lo necesita directo, mismo patron que
+// Signature/Correspondence.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
@@ -182,3 +200,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Postmaster.Application.Sending.Queries.GetSentMessageWithEvents;
@@ -15,6 +16,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("{id:guid}/events")]
     [HasPermission(PostmasterPermissions.MessagesRead)]
+    [RateLimit("postmaster.f.messages_read")]
     public async Task<IActionResult> GetEvents(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))

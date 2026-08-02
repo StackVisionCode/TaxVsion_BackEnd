@@ -104,6 +104,16 @@ public static class AuthAuditAction
     public const string TenantDomainProvisioningFailed = "tenantdomain.provisioning_failed";
     public const string TenantSubdomainChanged = "tenantdomain.subdomain_changed";
 
+    // Auditoría independiente post-Fase-9 del plan de rate limiting: CancelAndRefund
+    // (OnboardingAdminController) dispara un reembolso Stripe real y no tenía ningún registro de
+    // auditoría — TargetType="TenantOnboarding", TargetId=onboarding.Id.
+    public const string OnboardingAdminCancelledAndRefunded = "auth.onboarding_admin.cancelled_and_refunded";
+
+    // Invariante §4 del plan de rate limiting — categoría M exige rastro incluso al 429 (ver
+    // AuthAuditLogRateLimitAuditSink). Success=false siempre; TargetType="RateLimitPolicy",
+    // DetailsJson lleva el nombre de la política bloqueada.
+    public const string RateLimitBlocked = "auth.ratelimit.blocked";
+
     /// <summary>
     /// Solo se registra en falla (Host Header Injection / subdominio desconocido). Los
     /// éxitos NO se auditan uno por uno — inundarían la tabla en tráfico normal; ver

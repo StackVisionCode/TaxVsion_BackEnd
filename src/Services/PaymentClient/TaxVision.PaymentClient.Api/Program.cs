@@ -4,11 +4,13 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -56,6 +58,14 @@ builder.Services.AddTaxVisionOpenTelemetry(
     PaymentClientMetrics.MeterName
 );
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Rate limiting tiered por tenant/usuario (Fase 4.14 del plan). IConnectionMultiplexer ya está
+// registrado desde Infrastructure/DependencyInjection.cs (RedisDistributedLockFactory) — a
+// diferencia de PaymentApp/Auth, PaymentClient no tenía IRateCounter registrado por ninguna
+// fase previa, así que se agrega acá igual que Tenant/Billing/Correspondence/Notification/
+// Customer/CloudStorage/Subscription/Scribe/Signature (Fase 3/4.x del plan).
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 // Autorización por permiso ([HasPermission("payment_client.*")]); los admins pasan siempre.
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
@@ -231,3 +241,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
         services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
         services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
+        services.AddScoped<IPlanRateLimitRepository, PlanRateLimitRepository>();
         services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>

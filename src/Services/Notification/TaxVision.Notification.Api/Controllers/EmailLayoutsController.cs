@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -42,6 +43,7 @@ public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [HasPermission(NotificationPermissions.LayoutManage)]
+    [RateLimit("notification.g.layout_manage")]
     [ProducesResponseType<EmailLayoutResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateEmailLayoutRequest request, CancellationToken ct)
     {
@@ -65,6 +67,7 @@ public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 
     [HttpGet]
     [HasPermission(NotificationPermissions.TemplateView)]
+    [RateLimit("notification.f.layout_list")]
     [ProducesResponseType<IReadOnlyList<EmailLayoutResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
@@ -78,6 +81,7 @@ public sealed class EmailLayoutsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/set-default")]
     [HasPermission(NotificationPermissions.LayoutManage)]
+    [RateLimit("notification.g.layout_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetDefault(Guid id, CancellationToken ct)
     {

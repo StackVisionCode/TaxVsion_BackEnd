@@ -9,6 +9,7 @@ import type {
 } from '../../../infrastructure/socket/build-io.js';
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import { resolveDisplayName } from './resolve-display-name.js';
+import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
 import { initiateCall } from '../../../application/use-cases/initiate-call.js';
 import { respondToCall } from '../../../application/use-cases/respond-to-call.js';
 import { endCall } from '../../../application/use-cases/end-call.js';
@@ -118,7 +119,7 @@ function wireCallSocket(
       return;
     }
     const allowed = await container.rateLimiter.allow({
-      scope: 'call.initiate',
+      scope: CommunicationRateLimitPolicyNames.CallInitiate,
       tenantId,
       userId,
       maxPerWindow: config.rateLimit.callInitiate.maxPerWindow,
@@ -293,7 +294,7 @@ function wireCallSocket(
       return;
     }
     const allowed = await container.rateLimiter.allow({
-      scope: 'call.signal',
+      scope: CommunicationRateLimitPolicyNames.CallSignal,
       tenantId,
       userId,
       maxPerWindow: config.rateLimit.callSignal.maxPerWindow,

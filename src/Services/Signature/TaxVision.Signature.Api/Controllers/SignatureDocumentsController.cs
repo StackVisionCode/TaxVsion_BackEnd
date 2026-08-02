@@ -2,6 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -29,6 +30,7 @@ public sealed class SignatureDocumentsController(IMessageBus bus) : ControllerBa
     // ---------- POST /signature/documents/validate ----------
     [HttpPost("validate")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.i.document_validate")]
     [RequestSizeLimit(MaxRequestBytes)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType<ValidateDocumentResponse>(StatusCodes.Status200OK)]

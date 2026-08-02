@@ -2,15 +2,18 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Billing.Api.Common;
 using TaxVision.Billing.Infrastructure;
 using TaxVision.Billing.Infrastructure.Observability;
@@ -40,6 +43,20 @@ builder.Services.Configure<AuthorizationOptions>(options =>
 {
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
 });
+
+// Rate limiting por tenant/usuario (Fase 4.11 del plan) — arrancaba en cero, Billing no tenia
+// ningun AddRateLimiter/EnableRateLimiting nativo ni Redis/IConnectionMultiplexer que
+// preservar (los 7 endpoints son todos staff-only autenticados, sin M2M/publico/webhook).
+// Mismo [RateLimit]/IRateCounter tiered que ya corre en el resto del monorepo desde Fase
+// 3/4.2, mismo patron de wiring que Correspondence Fase 4.9/Subscription Fase 4.10.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")

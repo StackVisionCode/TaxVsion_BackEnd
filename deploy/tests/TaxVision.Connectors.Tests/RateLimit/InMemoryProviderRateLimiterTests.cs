@@ -14,7 +14,7 @@ public class InMemoryProviderRateLimiterTests
         );
 
         var start = DateTime.UtcNow;
-        await limiter.WaitForSlotAsync(ProviderCode.Gmail);
+        await limiter.WaitForSlotAsync(ProviderCode.Gmail, Guid.NewGuid());
         var elapsed = DateTime.UtcNow - start;
 
         Assert.True(elapsed < TimeSpan.FromMilliseconds(200));
@@ -28,11 +28,11 @@ public class InMemoryProviderRateLimiterTests
         );
 
         // Consume el budget del segundo actual.
-        await limiter.WaitForSlotAsync(ProviderCode.Gmail);
-        await limiter.WaitForSlotAsync(ProviderCode.Gmail);
+        await limiter.WaitForSlotAsync(ProviderCode.Gmail, Guid.NewGuid());
+        await limiter.WaitForSlotAsync(ProviderCode.Gmail, Guid.NewGuid());
 
         var start = DateTime.UtcNow;
-        await limiter.WaitForSlotAsync(ProviderCode.Gmail);
+        await limiter.WaitForSlotAsync(ProviderCode.Gmail, Guid.NewGuid());
         var elapsed = DateTime.UtcNow - start;
 
         // Debe haber esperado al próximo segundo — no instantáneo, pero acotado.
@@ -50,7 +50,7 @@ public class InMemoryProviderRateLimiterTests
         await limiter.RecordRateLimitedAsync(ProviderCode.Graph, TimeSpan.FromMilliseconds(150));
 
         var start = DateTime.UtcNow;
-        await limiter.WaitForSlotAsync(ProviderCode.Graph);
+        await limiter.WaitForSlotAsync(ProviderCode.Graph, Guid.NewGuid());
         var elapsed = DateTime.UtcNow - start;
 
         Assert.True(elapsed >= TimeSpan.FromMilliseconds(120));
@@ -66,7 +66,7 @@ public class InMemoryProviderRateLimiterTests
         await limiter.RecordRateLimitedAsync(ProviderCode.Gmail, TimeSpan.FromSeconds(5));
 
         var start = DateTime.UtcNow;
-        await limiter.WaitForSlotAsync(ProviderCode.Graph);
+        await limiter.WaitForSlotAsync(ProviderCode.Graph, Guid.NewGuid());
         var elapsed = DateTime.UtcNow - start;
 
         Assert.True(elapsed < TimeSpan.FromMilliseconds(200));

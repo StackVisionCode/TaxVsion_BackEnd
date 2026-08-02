@@ -50,7 +50,12 @@ public static class GetMessageBodyHandler
             // CancellationTokenSource local acá; `ct` solo. Si el HttpClient corta por timeout,
             // lanza OperationCanceledException con `ct` sin cancelar — el catch de abajo lo sigue
             // distinguiendo de una cancelación real del caller.
-            body = await clientResult.Value.GetMessageBodyAsync(account.Id, query.ProviderMessageId, ct);
+            body = await clientResult.Value.GetMessageBodyAsync(
+                account.Id,
+                account.TenantId,
+                query.ProviderMessageId,
+                ct
+            );
         }
         catch (EmailProviderException ex)
         {

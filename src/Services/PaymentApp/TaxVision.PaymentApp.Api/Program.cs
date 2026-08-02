@@ -11,6 +11,7 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +19,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using TaxVision.PaymentApp.Api.Common;
+using TaxVision.PaymentApp.Api.RateLimiting;
 using TaxVision.PaymentApp.Application.Consumers;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
 using TaxVision.PaymentApp.Infrastructure;
@@ -94,6 +96,18 @@ builder.Services.AddRateLimiter(options =>
         }
     );
 });
+
+// Rate limiting tiered por tenant/usuario (Fase 4.13 del plan) — IConnectionMultiplexer/IRateCounter
+// ya estaban registrados desde F26.4 (PaymentAttemptThrottle), solo hace falta conectar el
+// evaluador; mismo [RateLimit]/[RateLimitExempt] que el resto del monorepo desde Fase 3/4.2. No
+// reemplaza el limiter nativo "webhooks" de arriba (categoría D/E, StripeWebhookController queda
+// [RateLimitExempt]).
+builder.Services.AddTieredRateLimiting();
+
+// Auditoría independiente post-Fase-9 (invariante §4, categoría M) — PaymentApp es el otro de los
+// 2 servicios con al menos una política M (payment_app.m.refund). Debe registrarse DESPUÉS de
+// AddTieredRateLimiting() para ganar sobre el NoOp default (last-registration-wins).
+builder.Services.AddScoped<IRateLimitAuditSink, PaymentAuditLogRateLimitAuditSink>();
 
 // Resuelve pagos atascados en Processing tras una caída a mitad de cobro (§B.6).
 builder.Services.AddHostedService<PendingChargeReconciliationJob>();
@@ -214,3 +228,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

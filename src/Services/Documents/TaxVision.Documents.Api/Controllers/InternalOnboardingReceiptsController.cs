@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +28,7 @@ public sealed class InternalOnboardingReceiptsController(IMessageBus bus) : Cont
     );
 
     [HttpPost]
+    [RateLimit("documents.j.onboarding_receipt_generate")]
     [ProducesResponseType<GenerateOnboardingReceiptDocumentResult>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> Generate(
         GenerateOnboardingReceiptRequest request,

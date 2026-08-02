@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +22,9 @@ public sealed class OnboardingChallengesController(IMessageBus bus) : Controller
     [HttpPost]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-email-challenge")]
+    [RateLimitExempt(
+        "Anónimo (F22) — conserva el limiter nativo onboarding-email-challenge + ILoginThrottler.AuthorizeOnboardingChallengeCreationAsync (dominio), sin JWT que particionar."
+    )]
     [ProducesResponseType(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(
         CreateChallengeRequest request,
@@ -45,6 +49,7 @@ public sealed class OnboardingChallengesController(IMessageBus bus) : Controller
     [HttpPost("{challengeId:guid}/verify")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-email-challenge")]
+    [RateLimitExempt("Anónimo (F22) — conserva el limiter nativo onboarding-email-challenge, sin JWT que particionar.")]
     public async Task<IActionResult> Verify(Guid challengeId, VerifyChallengeRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new VerifyEmailChallengeCommand(challengeId, request.Code), ct);
@@ -54,6 +59,9 @@ public sealed class OnboardingChallengesController(IMessageBus bus) : Controller
     [HttpPost("{challengeId:guid}/resend")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-email-challenge")]
+    [RateLimitExempt(
+        "Anónimo (F22) — conserva el limiter nativo onboarding-email-challenge + ILoginThrottler.AuthorizeOnboardingResendAsync (dominio), sin JWT que particionar."
+    )]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> Resend(Guid challengeId, CancellationToken ct)
     {

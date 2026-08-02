@@ -11,6 +11,7 @@ using TaxVision.Subscription.Domain.Audit;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Permissions;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.RateLimiting;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -39,6 +40,7 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     public DbSet<SubscriptionAuditLog> AuditLogs => Set<SubscriptionAuditLog>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<PlanRateLimit> PlanRateLimits => Set<PlanRateLimit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

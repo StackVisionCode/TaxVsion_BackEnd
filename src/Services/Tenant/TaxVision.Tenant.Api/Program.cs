@@ -1,10 +1,10 @@
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -14,12 +14,13 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Tenant.Api.Common;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Infrastructure;
@@ -97,41 +98,20 @@ builder
     // (GET tenants/internal/subdomain-available) durante el registro post-pago.
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-
-    options.AddPolicy(
-        "tenant-registration",
-        context =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 5,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                }
-            )
-    );
-
-    // Tenant_Service_LogoSupport_Plan.md §10 — 10 uploads/hora, particionado por tenant (no por IP,
-    // a diferencia de tenant-registration) para que un tenant ruidoso no consuma el cupo de otro
-    // detrás del mismo NAT/proxy corporativo.
-    options.AddPolicy(
-        "tenant-logo-upload",
-        context =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                context.User.TryGetTenantId(out var tid) ? tid.ToString() : "anonymous",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 10,
-                    Window = TimeSpan.FromHours(1),
-                    QueueLimit = 0,
-                }
-            )
-    );
-});
+// Rate limiting por tenant/usuario (Fase 4.2 del plan) — reemplaza el AddRateLimiter nativo de
+// ASP.NET Core que tenía este servicio (una sola policy, "tenant-logo-upload") por el mismo
+// [RateLimit]/IRateCounter tiered que ya corre en Customer desde Fase 3. La policy
+// "tenant-registration" (IP, 5/min sobre POST /tenants) sigue sin existir acá — Fase 0.5 la dejó
+// solo en el Gateway (RateLimitingRegistration.cs), ver el [RateLimitExempt] de
+// TenantController.Create.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 var tenantRabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
@@ -223,8 +203,9 @@ app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
-app.UseRateLimiter();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapControllers();
 app.Run();
+
+public partial class Program;

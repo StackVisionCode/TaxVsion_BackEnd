@@ -1,0 +1,134 @@
+{
+  "title": "TaxVision — Rate Limit Overview",
+  "uid": "taxvision-ratelimit-overview",
+  "tags": ["taxvision", "ratelimit"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Evaluados (rate 5m, toda la flota)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(ratelimit_evaluated_total[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Bloqueados 429 (rate 5m, toda la flota)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(ratelimit_blocked_total[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Fallback-open (rate 5m — Redis caído / plan sin resolver)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(ratelimit_fallback_open_total[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Tasa global de 429 (%)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum(rate(ratelimit_blocked_total[5m])) / sum(rate(ratelimit_evaluated_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Evaluados vs bloqueados por policy (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(ratelimit_evaluated_total[5m])) by (policy)", "legendFormat": "evaluados — {{policy}}", "refId": "A" },
+        { "expr": "sum(rate(ratelimit_blocked_total[5m])) by (policy)", "legendFormat": "bloqueados — {{policy}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Breakdown por categoría (evaluados, req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (category) (label_replace(rate(ratelimit_evaluated_total[5m]), \"category\", \"$1\", \"policy\", \"^[a-z0-9_]+\\\\.([a-z])\\\\..*$\"))",
+          "legendFormat": "categoría {{category}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Top 10 tenants por consumo (24h)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "topk(10, sum(increase(ratelimit_evaluated_total[24h])) by (tenant_id))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Tasa de 429 por endpoint/policy (top 10, req/s)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "topk(10, sum(rate(ratelimit_blocked_total[5m])) by (policy))",
+          "legendFormat": "{{policy}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Fallback-open por razón (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(ratelimit_fallback_open_total[5m])) by (reason)",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Load shedder de flota (Gateway, Fase 5)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(gateway_load_shedding_activated_total[5m]))", "legendFormat": "activado", "refId": "A" },
+        { "expr": "sum(rate(gateway_requests_shed_total[5m]))", "legendFormat": "requests rechazados", "refId": "B" }
+      ]
+    }
+  ]
+}

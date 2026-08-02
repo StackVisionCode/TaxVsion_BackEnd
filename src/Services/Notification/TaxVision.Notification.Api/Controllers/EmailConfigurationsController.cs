@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -73,6 +74,7 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
 
     [HttpPost]
     [HasPermission(NotificationPermissions.SettingsManage)]
+    [RateLimit("notification.g.configuration_manage")]
     [ProducesResponseType<EmailConfigurationResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateEmailConfigurationRequest request, CancellationToken ct)
     {
@@ -108,6 +110,7 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
 
     [HttpGet]
     [HasPermission(NotificationPermissions.SettingsManage)]
+    [RateLimit("notification.f.configuration_read")]
     [ProducesResponseType<IReadOnlyList<EmailConfigurationResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
@@ -121,6 +124,7 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
 
     [HttpGet("{id:guid}")]
     [HasPermission(NotificationPermissions.SettingsManage)]
+    [RateLimit("notification.f.configuration_read")]
     [ProducesResponseType<EmailConfigurationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
@@ -134,6 +138,7 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
 
     [HttpPut("{id:guid}")]
     [HasPermission(NotificationPermissions.SettingsManage)]
+    [RateLimit("notification.g.configuration_manage")]
     [ProducesResponseType<EmailConfigurationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(
         Guid id,
@@ -166,6 +171,7 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
 
     [HttpPost("{id:guid}/set-default")]
     [HasPermission(NotificationPermissions.SettingsManage)]
+    [RateLimit("notification.g.configuration_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetDefault(Guid id, CancellationToken ct)
     {
@@ -179,6 +185,7 @@ public sealed class EmailConfigurationsController(IMessageBus bus) : ControllerB
 
     [HttpPost("{id:guid}/test")]
     [HasPermission(NotificationPermissions.SettingsManage)]
+    [RateLimit("notification.i.configuration_test")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Test(
         Guid id,

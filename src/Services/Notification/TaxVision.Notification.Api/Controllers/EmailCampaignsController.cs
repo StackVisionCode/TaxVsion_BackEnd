@@ -2,6 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -38,6 +39,7 @@ public sealed class EmailCampaignsController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [HasPermission(NotificationPermissions.CampaignManage)]
+    [RateLimit("notification.g.campaign_manage")]
     [ProducesResponseType<EmailCampaignResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateCampaignRequest request, CancellationToken ct)
     {
@@ -60,6 +62,7 @@ public sealed class EmailCampaignsController(IMessageBus bus) : ControllerBase
 
     [HttpGet]
     [HasPermission(NotificationPermissions.CampaignView)]
+    [RateLimit("notification.f.campaign_read")]
     [ProducesResponseType<PagedResult<EmailCampaignResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] CampaignStatus? status = null,
@@ -80,6 +83,7 @@ public sealed class EmailCampaignsController(IMessageBus bus) : ControllerBase
 
     [HttpGet("{id:guid}")]
     [HasPermission(NotificationPermissions.CampaignView)]
+    [RateLimit("notification.f.campaign_read")]
     [ProducesResponseType<EmailCampaignResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
@@ -95,6 +99,7 @@ public sealed class EmailCampaignsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/schedule")]
     [HasPermission(NotificationPermissions.CampaignManage)]
+    [RateLimit("notification.g.campaign_manage")]
     [ProducesResponseType<EmailCampaignResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Schedule(Guid id, [FromBody] ScheduleCampaignRequest request, CancellationToken ct)
     {
@@ -110,6 +115,7 @@ public sealed class EmailCampaignsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/send-test")]
     [HasPermission(NotificationPermissions.CampaignManage)]
+    [RateLimit("notification.g.campaign_manage")]
     [ProducesResponseType<OutboundEmailResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> SendTest(Guid id, [FromBody] SendTestRequest request, CancellationToken ct)
     {
@@ -125,6 +131,7 @@ public sealed class EmailCampaignsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/cancel")]
     [HasPermission(NotificationPermissions.CampaignManage)]
+    [RateLimit("notification.g.campaign_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
     {

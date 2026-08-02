@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,6 +38,7 @@ public sealed class EventTemplateMappingsController(IMessageBus bus) : Controlle
 
     [HttpPost]
     [HasPermission(ScribePermissions.EventMappingsWrite)]
+    [RateLimit("scribe.g.event_mapping_manage")]
     [ProducesResponseType<EventTemplateMappingResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateEventTemplateMappingRequest request, CancellationToken ct)
     {
@@ -58,6 +60,7 @@ public sealed class EventTemplateMappingsController(IMessageBus bus) : Controlle
 
     [HttpGet]
     [HasPermission(ScribePermissions.EventMappingsRead)]
+    [RateLimit("scribe.f.event_mapping_read")]
     [ProducesResponseType<IReadOnlyList<EventTemplateMappingResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
@@ -71,6 +74,7 @@ public sealed class EventTemplateMappingsController(IMessageBus bus) : Controlle
 
     [HttpGet("{id:guid}")]
     [HasPermission(ScribePermissions.EventMappingsRead)]
+    [RateLimit("scribe.f.event_mapping_read")]
     [ProducesResponseType<EventTemplateMappingResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
@@ -84,6 +88,7 @@ public sealed class EventTemplateMappingsController(IMessageBus bus) : Controlle
 
     [HttpPut("{id:guid}")]
     [HasPermission(ScribePermissions.EventMappingsWrite)]
+    [RateLimit("scribe.g.event_mapping_manage")]
     [ProducesResponseType<EventTemplateMappingResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(
         Guid id,
@@ -106,6 +111,7 @@ public sealed class EventTemplateMappingsController(IMessageBus bus) : Controlle
 
     [HttpDelete("{id:guid}")]
     [HasPermission(ScribePermissions.EventMappingsWrite)]
+    [RateLimit("scribe.g.event_mapping_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

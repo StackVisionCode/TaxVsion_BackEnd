@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Customer.Application.Customers;
@@ -29,6 +30,9 @@ namespace TaxVision.Customer.Api.Controllers;
 public sealed class InternalCustomersController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("list")]
+    [RateLimitExempt(
+        "M2M interno entre microservicios (actor_type=Service), nunca expuesto en el Gateway público — no aplica el mismo cupo per-user/tenant que un endpoint humano."
+    )]
     [ProducesResponseType<PagedResult<CustomerSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] string? term = null,

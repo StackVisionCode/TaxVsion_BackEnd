@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,10 @@ public sealed class InternalPayablesController(IMessageBus bus, IOptions<Payment
     public sealed record EnsureInvoicePayableApiResponse(Guid PayableId, string Reference, string CheckoutUrl);
 
     [HttpPost("invoices")]
+    // M2M ServiceOnly, pero el JWT de servicio SÍ trae TenantId (JwtTokenGenerator.
+    // GenerateScopedServiceToken lo setea siempre) — la exención previa asumía que un JWT M2M
+    // no tenía identidad para particionar, lo cual es falso. Categoría J (M2M-friendly).
+    [RateLimit("payment_client.j.ensure_invoice")]
     [ProducesResponseType<EnsureInvoicePayableApiResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> EnsureInvoice(EnsureInvoicePayableRequest request, CancellationToken ct)
     {

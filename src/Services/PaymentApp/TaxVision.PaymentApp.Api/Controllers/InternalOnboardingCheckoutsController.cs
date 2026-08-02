@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,9 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
     );
 
     [HttpPost("checkout")]
+    [RateLimitExempt(
+        "M2M ServiceOnly (Fase 8) — invocado por la Saga de onboarding de Auth (Fase 15), nunca expuesto al Gateway público."
+    )]
     [ProducesResponseType<OnboardingCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateCheckout(CreateOnboardingCheckoutRequest request, CancellationToken ct)
     {

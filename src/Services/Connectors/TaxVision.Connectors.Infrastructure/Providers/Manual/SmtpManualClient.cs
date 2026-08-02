@@ -32,6 +32,7 @@ public sealed class SmtpManualClient(
 
     public async Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string fromAddress,
         string? fromDisplayName,
         OutboundMessage message,

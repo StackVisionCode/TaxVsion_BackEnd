@@ -20,4 +20,9 @@ public enum PaymentAuditAction
     PaymentMethodAttached = 13,
     PaymentMethodDetached = 14,
     PaymentMethodSetDefault = 15,
+
+    // Invariante §4 del plan de rate limiting — categoría M exige rastro incluso al 429 (ver
+    // PaymentAuditLogRateLimitAuditSink). Sin aggregate real (bloqueado antes de resolver el
+    // SaaSPayment) — AggregateType="RateLimitPolicy", AggregateId=Guid.Empty.
+    RateLimitBlocked = 16,
 }

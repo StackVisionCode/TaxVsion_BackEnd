@@ -2,6 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,10 +21,16 @@ namespace TaxVision.Subscription.Api.Controllers;
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class AddOnsController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>Catálogo público de add-ons.</summary>
+    /// <summary>
+    /// Catálogo público de add-ons. Fase 4.10 (rate limiting) — D-category exempt: mismo criterio
+    /// que <see cref="PlansController.GetPlans"/>.
+    /// </summary>
     [HttpGet]
     [AllowAnonymous]
     [ResponseCache(Duration = 300)]
+    [RateLimitExempt(
+        "Public add-on catalog — no JWT, no pre-existing native limiter; adding new protection is out of scope for a migration phase."
+    )]
     [ProducesResponseType<IReadOnlyList<AddOnDefinitionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetCatalog(CancellationToken ct)
     {
@@ -37,6 +44,7 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Add-ons vigentes del tenant autenticado.</summary>
     [HttpGet("tenant")]
+    [RateLimit("subscription.f.addon_read")]
     [ProducesResponseType<IReadOnlyList<AddOnResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTenantAddOns(CancellationToken ct)
     {
@@ -56,6 +64,7 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
     [HttpPost]
     [HasPermission(SubscriptionPermissions.AddOnsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.addon_manage")]
     [ProducesResponseType<Guid>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Purchase(PurchaseAddOnRequest request, CancellationToken ct)
     {
@@ -77,6 +86,7 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/cancel")]
     [HasPermission(SubscriptionPermissions.AddOnsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.addon_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Cancel(Guid id, CancelAddOnRequest request, CancellationToken ct)
     {
@@ -92,6 +102,7 @@ public sealed class AddOnsController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/renew")]
     [HasPermission(SubscriptionPermissions.AddOnsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.addon_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Renew(Guid id, CancellationToken ct)
     {

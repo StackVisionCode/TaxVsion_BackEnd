@@ -3,6 +3,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using BuildingBlocks.Middleware;
@@ -10,6 +11,7 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -62,6 +64,12 @@ if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
     builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
 else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+
+// Fase 4.5 del plan de rate limiting — IConnectionMultiplexer ya está registrado en
+// AddScribeInfrastructure (RedisTemplateSourceCache); acá solo se agrega IRateCounter + el
+// evaluador de políticas [RateLimit] para la capa HTTP.
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 // Sube y publica los layouts base system-base/tenant-base (Fase 4.6) si todavía no existen.
 builder.Services.AddHostedService<ScribeBaseLayoutSeeder>();
@@ -179,3 +187,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

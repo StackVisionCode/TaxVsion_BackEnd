@@ -1,6 +1,7 @@
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.RateLimiting;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -153,4 +154,12 @@ public interface ITenantEntitlementSnapshotRepository
 {
     Task<TenantEntitlementSnapshot?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task UpsertAsync(TenantEntitlementSnapshot snapshot, CancellationToken ct = default);
+}
+
+/// <summary>RateLimit Fase 6 — catálogo completo, consultado por otros servicios vía
+/// GET subscriptions/internal/plan-rate-limits (mismo patrón de exposición M2M de datos
+/// globales de Subscription que GetInternalPlanPricingHandler).</summary>
+public interface IPlanRateLimitRepository
+{
+    Task<IReadOnlyList<PlanRateLimit>> GetAllAsync(CancellationToken ct = default);
 }

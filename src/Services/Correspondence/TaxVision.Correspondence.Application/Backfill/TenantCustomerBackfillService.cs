@@ -47,6 +47,13 @@ public sealed class TenantCustomerBackfillService(
     /// <summary>Pagina hasta agotar el listado. Devuelve false si una página falló (red/HTTP).</summary>
     private async Task<bool> SeedAllCustomersAsync(Guid tenantId, CancellationToken ct)
     {
+        // Bug real corregido: dos customers activos del mismo tenant pueden compartir email
+        // (mismo caso ya contemplado en CustomerCreatedConsumer.UpsertProjection). Todo este
+        // método corre bajo un único SaveChangesAsync al final de EnsureBackfilledAsync, así
+        // que un segundo AddAsync ya en el change tracker (sin persistir todavía) no lo ve
+        // FindActiveByAddressAsync — de ahí el set en memoria, además del chequeo por DB para
+        // emails que ya pertenecían a un customer de una corrida anterior fallida.
+        var seenEmails = new HashSet<string>(StringComparer.Ordinal);
         var page = 1;
         while (true)
         {
@@ -62,7 +69,7 @@ public sealed class TenantCustomerBackfillService(
             }
 
             foreach (var customer in result.Items)
-                await SeedCustomerAsync(tenantId, customer, ct);
+                await SeedCustomerAsync(tenantId, customer, seenEmails, ct);
 
             if (!result.HasMore)
                 return true;
@@ -70,7 +77,12 @@ public sealed class TenantCustomerBackfillService(
         }
     }
 
-    private async Task SeedCustomerAsync(Guid tenantId, RemoteCustomerSummary customer, CancellationToken ct)
+    private async Task SeedCustomerAsync(
+        Guid tenantId,
+        RemoteCustomerSummary customer,
+        HashSet<string> seenEmails,
+        CancellationToken ct
+    )
     {
         // El listado ya pide status=Active del lado de Customer.Api — este chequeo es
         // defensa en profundidad, no el filtro principal.
@@ -91,6 +103,37 @@ public sealed class TenantCustomerBackfillService(
         var existing = await emailRepository.GetByCustomerIdAsync(tenantId, customer.Id, ct);
         if (existing is not null)
             return;
+
+        // Mismo criterio que CustomerCreatedConsumer.UpsertProjection: un email activo ya
+        // reclamado por otro customer del tenant no debe tumbar el backfill entero — se
+        // omite esa proyección y se sigue con el resto de la página.
+        if (!seenEmails.Add(emailResult.Value.NormalizedValue))
+        {
+            logger.LogWarning(
+                "Customer {CustomerId} for tenant {TenantId} shares email {Email} with another customer already seeded in this backfill pass; skipped.",
+                customer.Id,
+                tenantId,
+                emailResult.Value.NormalizedValue
+            );
+            return;
+        }
+
+        var emailOwner = await emailRepository.FindActiveByAddressAsync(
+            tenantId,
+            emailResult.Value.NormalizedValue,
+            ct
+        );
+        if (emailOwner is not null && emailOwner.CustomerId != customer.Id)
+        {
+            logger.LogWarning(
+                "Customer {CustomerId} for tenant {TenantId} shares email {Email} with existing customer {ExistingCustomerId}; skipped in backfill.",
+                customer.Id,
+                tenantId,
+                emailResult.Value.NormalizedValue,
+                emailOwner.CustomerId
+            );
+            return;
+        }
 
         var projection = CustomerEmailAddress.Create(tenantId, customer.Id, emailResult.Value);
         await emailRepository.AddAsync(projection, ct);

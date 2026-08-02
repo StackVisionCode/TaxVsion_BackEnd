@@ -3,10 +3,10 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Customers.Commands.Activate;
@@ -48,6 +48,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.create")]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateCustomerRequest body, CancellationToken ct)
@@ -88,6 +89,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpGet]
     [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.h.search")]
     [ProducesResponseType<PagedResult<CustomerSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<CustomerSummaryResponse>>> Search(
         [FromQuery] string? term = null,
@@ -111,6 +113,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpGet("check-exists")]
     [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.f.check_exists")]
     [ProducesResponseType<CustomerExistsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CheckExists(
@@ -136,6 +139,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpGet("{id:guid}")]
     [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.f.get")]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -156,6 +160,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPatch("{id:guid}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCustomerRequest body, CancellationToken ct)
     {
@@ -199,6 +204,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/addresses")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType<AddressResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddAddress(Guid id, [FromBody] AddAddressRequest body, CancellationToken ct)
     {
@@ -229,6 +235,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPatch("{id:guid}/addresses/{addressId:guid}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateAddress(
@@ -267,6 +274,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpDelete("{id:guid}/addresses/{addressId:guid}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveAddress(Guid id, Guid addressId, CancellationToken ct)
@@ -288,6 +296,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/contact-points")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType<ContactPointResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddContactPoint(
         Guid id,
@@ -310,6 +319,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPatch("{id:guid}/contact-points/{contactPointId:guid}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateContactPoint(
@@ -344,6 +354,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpDelete("{id:guid}/contact-points/{contactPointId:guid}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveContactPoint(Guid id, Guid contactPointId, CancellationToken ct)
@@ -368,6 +379,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/relations")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType<RelationResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddRelation(Guid id, [FromBody] AddRelationRequest body, CancellationToken ct)
     {
@@ -406,6 +418,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPatch("{id:guid}/relations/{relationId:guid}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateRelation(
@@ -452,6 +465,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpDelete("{id:guid}/relations/{relationId:guid}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveRelation(Guid id, Guid relationId, CancellationToken ct)
@@ -473,6 +487,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/archive")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {
@@ -491,6 +506,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/reactivate")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -511,6 +527,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/deactivate")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -531,6 +548,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/activate")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -553,6 +571,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPut("{id:guid}/preparer")]
     [HasPermission(CustomersPermissions.PreparerManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -580,6 +599,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpDelete("{id:guid}/preparer")]
     [HasPermission(CustomersPermissions.PreparerManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -599,13 +619,20 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
 
     // ============== Bulk status transitions ==============
 
-    [HttpPost("bulk/{action}")]
+    // "{statusAction}", no "{action}" — el token "action" es un route value reservado por MVC
+    // para selección de acción (se auto-puebla con el nombre del método C#, "BulkStatusChange",
+    // en vez de bindear al parámetro homónimo del método), así que ninguna URL real
+    // ("bulk/activate", "bulk/archive"...) matcheaba nunca esta ruta — bug real pre-existente,
+    // encontrado al escribir el test de integración de Fase 4.1 (nunca se pudo invocar este
+    // endpoint desde que se implementó). Renombrar el token rompe la colisión con la convención.
+    [HttpPost("bulk/{statusAction}")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.i.bulk_status_change")]
     [ProducesResponseType<BulkStatusActionResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> BulkStatusChange(
-        string action,
+        string statusAction,
         [FromBody] BulkStatusActionRequest body,
         CancellationToken ct
     )
@@ -613,11 +640,11 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        if (!Enum.TryParse<BulkStatusAction>(action, ignoreCase: true, out var parsedAction))
+        if (!Enum.TryParse<BulkStatusAction>(statusAction, ignoreCase: true, out var parsedAction))
             return BadRequest(
                 new Error(
                     "Bulk.UnknownAction",
-                    $"Action must be one of: archive, reactivate, activate, deactivate. Got '{action}'."
+                    $"Action must be one of: archive, reactivate, activate, deactivate. Got '{statusAction}'."
                 )
             );
 
@@ -636,6 +663,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/portal-invitations")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType<RequestPortalInvitationResponse>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -659,6 +687,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPut("{id:guid}/fiscal-profile")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType<CustomerFiscalProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -699,7 +728,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpGet("{id:guid}/fiscal-profile/tax-identifier")]
     [HasPermission(CustomersPermissions.FiscalProfileReveal)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-    [EnableRateLimiting("fiscal-reveal")]
+    [RateLimit("customer.n.fiscal_reveal")]
     [ProducesResponseType<RevealedTaxIdentifierResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RevealTaxIdentifier(Guid id, CancellationToken ct)
@@ -727,6 +756,7 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HttpPut("{id:guid}/relations/{relationId:guid}/fiscal-profile")]
     [HasPermission(CustomersPermissions.Manage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
     [ProducesResponseType<RelationFiscalProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]

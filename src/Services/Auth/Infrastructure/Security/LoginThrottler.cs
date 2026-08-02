@@ -1,21 +1,37 @@
-using BuildingBlocks.Caching;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Results;
+using StackExchange.Redis;
 using TaxVision.Auth.Application.Abstractions;
 
 namespace TaxVision.Auth.Infrastructure.Security;
 
 /// <summary>
-/// Throttling complementario respaldado por Redis (vía ICacheService).
-/// El lockout autoritativo por cuenta vive en User (FailedLoginCount/LockoutEndUtc);
-/// esto añade defensa por IP y control de reenvío de OTP. El contador no es
-/// estrictamente atómico, lo cual es aceptable para este propósito.
+/// Throttling complementario respaldado por Redis. El lockout autoritativo por cuenta vive en
+/// User (FailedLoginCount/LockoutEndUtc); esto añade defensa por IP y control de reenvío de OTP.
+/// <para>
+/// Rate Limit Fase 0.1 — el incremento de los 9 contadores ahora es atómico vía
+/// <see cref="IRateCounter"/> (antes: GET+SET no atómico sobre <c>ICacheService</c>, con
+/// lost-updates reales bajo concurrencia — mismo bug de origen que F26 cerró en Connectors/
+/// Postmaster/PaymentApp). Dos cambios de comportamiento derivados de esto, ambos aceptados,
+/// mismo criterio que <c>PaymentAttemptThrottle</c>:
+/// <list type="bullet">
+/// <item>Las ventanas pasan de deslizantes (cada intento reseteaba el TTL completo) a fijas (el
+/// TTL se fija solo en el primer incremento del ciclo).</item>
+/// <item>El check-then-register entre los métodos <c>Get*RetryAfterAsync</c>/<c>Is*ThrottledAsync</c>
+/// y sus <c>Register*Async</c> sigue siendo un TOCTOU no atómico — limitación pre-existente
+/// conocida, documentada igual desde F08.</item>
+/// </list>
+/// La lectura de contadores usa <see cref="IConnectionMultiplexer"/> directo (no <c>ICacheService</c>):
+/// <see cref="IRateCounter"/> escribe un string Redis crudo vía <c>INCR</c>, formato incompatible
+/// con el hash que <c>IDistributedCache</c> espera para sus propias claves.
+/// </para>
 /// <para>
 /// Auditoría F08 — los métodos <c>AuthorizeOnboarding*</c> vinieron de <c>RedisOnboardingOtpThrottler</c>
 /// (eliminado); mismas claves Redis (<c>auth:onboarding:otp-create:*</c>/<c>auth:onboarding:otp-resend:*</c>)
 /// para no invalidar cooldowns en vuelo al desplegar este cambio.
 /// </para>
 /// </summary>
-public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
+public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter rateCounter) : ILoginThrottler
 {
     private const int MaxIpFailures = 20;
     private const int MaxPasswordResetRequestsPerEmail = 3;
@@ -36,25 +52,20 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
         if (string.IsNullOrWhiteSpace(ipAddress))
             return null;
 
-        var count = await cache.GetAsync<int?>(FailureKey(ipAddress), ct);
+        var count = await GetCountAsync(FailureKey(ipAddress));
         return count >= MaxIpFailures ? FailureWindow : null;
     }
 
-    public async Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(ipAddress))
-            return;
-
-        var key = FailureKey(ipAddress);
-        var count = await cache.GetAsync<int?>(key, ct) ?? 0;
-        await cache.SetAsync(key, count + 1, FailureWindow, ct);
-    }
+    public Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default) =>
+        string.IsNullOrWhiteSpace(ipAddress)
+            ? Task.CompletedTask
+            : rateCounter.IncrementAndGetAsync(FailureKey(ipAddress), FailureWindow, ct);
 
     public async Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default) =>
-        await cache.GetAsync<bool?>(OtpKey(userId), ct) == true;
+        await GetCountAsync(OtpKey(userId)) > 0;
 
     public Task RegisterOtpSentAsync(Guid userId, CancellationToken ct = default) =>
-        cache.SetAsync(OtpKey(userId), true, OtpResendWindow, ct);
+        rateCounter.IncrementAndGetAsync(OtpKey(userId), OtpResendWindow, ct);
 
     public async Task<TimeSpan?> GetPasswordResetRetryAfterAsync(
         string email,
@@ -62,16 +73,16 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
         CancellationToken ct = default
     )
     {
-        if (await cache.GetAsync<bool?>(PasswordResetCooldownKey(email), ct) == true)
+        if (await GetCountAsync(PasswordResetCooldownKey(email)) > 0)
             return PasswordResetCooldown;
 
-        var emailCount = await cache.GetAsync<int?>(PasswordResetEmailKey(email), ct) ?? 0;
+        var emailCount = await GetCountAsync(PasswordResetEmailKey(email));
         if (emailCount >= MaxPasswordResetRequestsPerEmail)
             return PasswordResetWindow;
 
         if (!string.IsNullOrWhiteSpace(ipAddress))
         {
-            var ipCount = await cache.GetAsync<int?>(PasswordResetIpKey(ipAddress), ct) ?? 0;
+            var ipCount = await GetCountAsync(PasswordResetIpKey(ipAddress));
             if (ipCount >= MaxPasswordResetRequestsPerIp)
                 return PasswordResetWindow;
         }
@@ -81,18 +92,13 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
 
     public async Task RegisterPasswordResetRequestAsync(string email, string? ipAddress, CancellationToken ct = default)
     {
-        await cache.SetAsync(PasswordResetCooldownKey(email), true, PasswordResetCooldown, ct);
-
-        var emailKey = PasswordResetEmailKey(email);
-        var emailCount = await cache.GetAsync<int?>(emailKey, ct) ?? 0;
-        await cache.SetAsync(emailKey, emailCount + 1, PasswordResetWindow, ct);
+        await rateCounter.IncrementAndGetAsync(PasswordResetCooldownKey(email), PasswordResetCooldown, ct);
+        await rateCounter.IncrementAndGetAsync(PasswordResetEmailKey(email), PasswordResetWindow, ct);
 
         if (string.IsNullOrWhiteSpace(ipAddress))
             return;
 
-        var ipKey = PasswordResetIpKey(ipAddress);
-        var ipCount = await cache.GetAsync<int?>(ipKey, ct) ?? 0;
-        await cache.SetAsync(ipKey, ipCount + 1, PasswordResetWindow, ct);
+        await rateCounter.IncrementAndGetAsync(PasswordResetIpKey(ipAddress), PasswordResetWindow, ct);
     }
 
     public async Task<TimeSpan?> GetInvitationAcceptRetryAfterAsync(string? ipAddress, CancellationToken ct = default)
@@ -100,31 +106,33 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
         if (string.IsNullOrWhiteSpace(ipAddress))
             return null;
 
-        var count = await cache.GetAsync<int?>(InvitationAcceptKey(ipAddress), ct) ?? 0;
+        var count = await GetCountAsync(InvitationAcceptKey(ipAddress));
         return count >= MaxInvitationAcceptAttemptsPerIp ? InvitationAcceptWindow : null;
     }
 
-    public async Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(ipAddress))
-            return;
+    public Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default) =>
+        string.IsNullOrWhiteSpace(ipAddress)
+            ? Task.CompletedTask
+            : rateCounter.IncrementAndGetAsync(InvitationAcceptKey(ipAddress), InvitationAcceptWindow, ct);
 
-        var key = InvitationAcceptKey(ipAddress);
-        var count = await cache.GetAsync<int?>(key, ct) ?? 0;
-        await cache.SetAsync(key, count + 1, InvitationAcceptWindow, ct);
-    }
+    private async Task<long> GetCountAsync(RateCounterKey key) =>
+        (long)await redis.GetDatabase().StringGetAsync(key.Value);
 
-    private static string FailureKey(string ipAddress) => $"auth:failip:{ipAddress}";
+    private static RateCounterKey FailureKey(string ipAddress) => RateCounterKey.From($"auth:failip:{ipAddress}");
 
-    private static string OtpKey(Guid userId) => $"auth:otp-resend:{userId:N}";
+    private static RateCounterKey OtpKey(Guid userId) => RateCounterKey.From($"auth:otp-resend:{userId:N}");
 
-    private static string PasswordResetCooldownKey(string email) => $"auth:pwreset-cooldown:{email}";
+    private static RateCounterKey PasswordResetCooldownKey(string email) =>
+        RateCounterKey.From($"auth:pwreset-cooldown:{email}");
 
-    private static string PasswordResetEmailKey(string email) => $"auth:pwreset-email:{email}";
+    private static RateCounterKey PasswordResetEmailKey(string email) =>
+        RateCounterKey.From($"auth:pwreset-email:{email}");
 
-    private static string PasswordResetIpKey(string ipAddress) => $"auth:pwreset-ip:{ipAddress}";
+    private static RateCounterKey PasswordResetIpKey(string ipAddress) =>
+        RateCounterKey.From($"auth:pwreset-ip:{ipAddress}");
 
-    private static string InvitationAcceptKey(string ipAddress) => $"auth:invite-accept-ip:{ipAddress}";
+    private static RateCounterKey InvitationAcceptKey(string ipAddress) =>
+        RateCounterKey.From($"auth:invite-accept-ip:{ipAddress}");
 
     public async Task<Result> AuthorizeOnboardingChallengeCreationAsync(
         string email,
@@ -132,9 +140,11 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
         CancellationToken ct = default
     )
     {
-        var emailKey = OnboardingChallengeEmailKey(email);
-        var emailCount = (await cache.GetAsync<int?>(emailKey, ct) ?? 0) + 1;
-        await cache.SetAsync(emailKey, emailCount, OnboardingChallengeCreationWindow, ct);
+        var emailCount = await rateCounter.IncrementAndGetAsync(
+            OnboardingChallengeEmailKey(email),
+            OnboardingChallengeCreationWindow,
+            ct
+        );
         if (emailCount > MaxOnboardingChallengesPerEmailPerHour)
             return Result.Failure(
                 new Error(
@@ -143,9 +153,11 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
                 )
             );
 
-        var ipKey = OnboardingChallengeIpKey(ipAddress);
-        var ipCount = (await cache.GetAsync<int?>(ipKey, ct) ?? 0) + 1;
-        await cache.SetAsync(ipKey, ipCount, OnboardingChallengeCreationWindow, ct);
+        var ipCount = await rateCounter.IncrementAndGetAsync(
+            OnboardingChallengeIpKey(ipAddress),
+            OnboardingChallengeCreationWindow,
+            ct
+        );
         if (ipCount > MaxOnboardingChallengesPerIpPerHour)
             return Result.Failure(
                 new Error(
@@ -160,19 +172,22 @@ public sealed class LoginThrottler(ICacheService cache) : ILoginThrottler
     public async Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default)
     {
         var key = OnboardingResendKey(challengeId);
-        var alreadySentRecently = await cache.GetAsync<bool?>(key, ct);
-        if (alreadySentRecently == true)
+        var alreadySentRecently = await GetCountAsync(key) > 0;
+        if (alreadySentRecently)
             return Result.Failure(
                 new Error("Onboarding.ResendCooldown", "Please wait before requesting another code.")
             );
 
-        await cache.SetAsync(key, true, OnboardingResendCooldown, ct);
+        await rateCounter.IncrementAndGetAsync(key, OnboardingResendCooldown, ct);
         return Result.Success();
     }
 
-    private static string OnboardingChallengeEmailKey(string email) => $"auth:onboarding:otp-create:email:{email}";
+    private static RateCounterKey OnboardingChallengeEmailKey(string email) =>
+        RateCounterKey.From($"auth:onboarding:otp-create:email:{email}");
 
-    private static string OnboardingChallengeIpKey(string ipAddress) => $"auth:onboarding:otp-create:ip:{ipAddress}";
+    private static RateCounterKey OnboardingChallengeIpKey(string ipAddress) =>
+        RateCounterKey.From($"auth:onboarding:otp-create:ip:{ipAddress}");
 
-    private static string OnboardingResendKey(Guid challengeId) => $"auth:onboarding:otp-resend:{challengeId:N}";
+    private static RateCounterKey OnboardingResendKey(Guid challengeId) =>
+        RateCounterKey.From($"auth:onboarding:otp-resend:{challengeId:N}");
 }

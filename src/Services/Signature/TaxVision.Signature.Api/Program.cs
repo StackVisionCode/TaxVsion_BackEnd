@@ -5,6 +5,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Middleware;
@@ -12,13 +13,16 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Infrastructure;
@@ -76,14 +80,37 @@ builder.Services.AddOwnershipAuthorization<SignatureRequest>(SignaturePermission
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Auditoría post-Fase-9 (hallazgo #13a) — el limiter nativo de ASP.NET Core no emite headers
+    // en el 429 a menos que se lo pida explícito, a diferencia del evaluador tiered
+    // (RateLimitAttribute.WriteRateLimitResponseAsync, §6.3 del plan). Solo Retry-After — el
+    // resto de headers X-RateLimit-* del path tiered están atados a policy/tenant/capa,
+    // conceptos que este limiter pre-auth por-IP no tiene.
+    options.OnRejected = async (context, ct) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter = ((int)retryAfter.TotalSeconds).ToString();
+        await ValueTask.CompletedTask;
+    };
+
     options.AddPolicy(
         "public-signature",
         context =>
         {
             var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+            // Auditoría independiente post-Fase-9: la ruta CRUDA (context.Request.Path) incluye el
+            // token/id del firmante — cada valor distinto abre un bucket nuevo, así que un
+            // atacante enumerando tokens nunca reutiliza el mismo bucket y el límite de 15/min
+            // jamás se dispara. El patrón de ruta (ej. "/public/signature/{token}") sí es estable
+            // por endpoint — mismo criterio recomendado por Microsoft para rate limiting
+            // por-endpoint. Fallback a la ruta cruda solo si el endpoint no resolvió (no debería
+            // pasar acá — UseRateLimiter corre después del routing implícito).
+            var routeKey =
+                (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
+                ?? context.Request.Path.Value?.ToLowerInvariant()
+                ?? string.Empty;
             return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: $"{client}:{path}",
+                partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 15,
@@ -95,6 +122,19 @@ builder.Services.AddRateLimiter(options =>
         }
     );
 });
+
+// Rate limiting por tenant/usuario (Fase 4.7 del plan) — arrancaba en cero salvo el limiter
+// nativo "public-signature" de arriba (que se deja intacto, protege el unico endpoint
+// genuinamente anonimo del servicio). Mismo [RateLimit]/IRateCounter tiered que ya corre en
+// el resto del monorepo desde Fase 3/4.2.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "signature-service");
@@ -198,3 +238,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -84,6 +85,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests ----------
     [HttpPost]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_create")]
     [ProducesResponseType<SignatureRequestResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateSignatureRequestBody body, CancellationToken ct)
@@ -113,6 +115,7 @@ public sealed class SignatureRequestsController(
     // ---------- GET /signature/requests ----------
     [HttpGet]
     [HasPermission(SignaturePermissions.RequestRead)]
+    [RateLimit("signature.f.request_read")]
     [ProducesResponseType<ListSignatureRequestsResult>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ListSignatureRequestsResult>> List(
         [FromQuery] SignatureRequestStatus? status = null,
@@ -135,6 +138,7 @@ public sealed class SignatureRequestsController(
     // ---------- GET /signature/requests/{id} ----------
     [HttpGet("{id:guid}")]
     [HasPermission(SignaturePermissions.RequestRead)]
+    [RateLimit("signature.f.request_read")]
     [ProducesResponseType<SignatureRequestResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
@@ -152,6 +156,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/signers ----------
     [HttpPost("{id:guid}/signers")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType<SignerResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -170,6 +175,7 @@ public sealed class SignatureRequestsController(
     // ---------- DELETE /signature/requests/{id}/signers/{signerId} ----------
     [HttpDelete("{id:guid}/signers/{signerId:guid}")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -185,6 +191,7 @@ public sealed class SignatureRequestsController(
     // ---------- PUT /signature/requests/{id}/signers/order ----------
     [HttpPut("{id:guid}/signers/order")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ReorderSigners(
@@ -203,6 +210,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/fields ----------
     [HttpPost("{id:guid}/fields")]
     [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType<SignatureFieldResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> PlaceField(
@@ -236,6 +244,7 @@ public sealed class SignatureRequestsController(
     // ---------- DELETE /signature/requests/{id}/signers/{signerId}/fields/{fieldId} ----------
     [HttpDelete("{id:guid}/signers/{signerId:guid}/fields/{fieldId:guid}")]
     [HasPermission(SignaturePermissions.DocumentPrepare)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RemoveField(
@@ -255,6 +264,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/send ----------
     [HttpPost("{id:guid}/send")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_send")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Send([FromRoute] Guid id, CancellationToken ct)
@@ -273,6 +283,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/cancel ----------
     [HttpPost("{id:guid}/cancel")]
     [HasPermission(SignaturePermissions.RequestCancel)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Cancel(
@@ -298,6 +309,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/extend-expiration ----------
     [HttpPost("{id:guid}/extend-expiration")]
     [HasPermission(SignaturePermissions.RequestResend)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ExtendExpiration(
@@ -323,6 +335,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/signers/{signerId}/resend ----------
     [HttpPost("{id:guid}/signers/{signerId:guid}/resend")]
     [HasPermission(SignaturePermissions.RequestResend)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ResendSignerInvitation(
@@ -341,6 +354,7 @@ public sealed class SignatureRequestsController(
     // ---------- PUT /signature/requests/{id}/practitioner-pin ----------
     [HttpPut("{id:guid}/practitioner-pin")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SetPractitionerPin(
@@ -359,6 +373,7 @@ public sealed class SignatureRequestsController(
     // ---------- DELETE /signature/requests/{id}/practitioner-pin ----------
     [HttpDelete("{id:guid}/practitioner-pin")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ClearPractitionerPin([FromRoute] Guid id, CancellationToken ct)
@@ -373,6 +388,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/legal-hold ----------
     [HttpPost("{id:guid}/legal-hold")]
     [HasPermission(SignaturePermissions.DocumentAuditRead)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> PlaceLegalHold(
@@ -391,6 +407,7 @@ public sealed class SignatureRequestsController(
     // ---------- DELETE /signature/requests/{id}/legal-hold ----------
     [HttpDelete("{id:guid}/legal-hold")]
     [HasPermission(SignaturePermissions.DocumentAuditRead)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> LiftLegalHold([FromRoute] Guid id, CancellationToken ct)
@@ -405,6 +422,7 @@ public sealed class SignatureRequestsController(
     // ---------- PUT /signature/requests/{id}/preparer ----------
     [HttpPut("{id:guid}/preparer")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SetPreparer(
@@ -426,6 +444,7 @@ public sealed class SignatureRequestsController(
     // ---------- DELETE /signature/requests/{id}/preparer ----------
     [HttpDelete("{id:guid}/preparer")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ClearPreparer([FromRoute] Guid id, CancellationToken ct)
@@ -440,6 +459,7 @@ public sealed class SignatureRequestsController(
     // ---------- POST /signature/requests/{id}/preparer/sign ----------
     [HttpPost("{id:guid}/preparer/sign")]
     [HasPermission(SignaturePermissions.DocumentSign)]
+    [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SignAsPreparer([FromRoute] Guid id, CancellationToken ct)

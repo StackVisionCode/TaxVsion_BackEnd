@@ -36,7 +36,12 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
     public HashSet<string> ThrowOnGetMessageFor { get; } = [];
     public List<string?> ReceivedCursors { get; } = [];
 
-    public Task<HistoryPage> GetHistoryAsync(Guid accountId, string? sinceCursor, CancellationToken ct = default)
+    public Task<HistoryPage> GetHistoryAsync(
+        Guid accountId,
+        Guid tenantId,
+        string? sinceCursor,
+        CancellationToken ct = default
+    )
     {
         ReceivedCursors.Add(sinceCursor);
         if (ThrowOnGetHistory is not null)
@@ -45,7 +50,12 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
         return Task.FromResult(OnGetHistory?.Invoke(accountId, sinceCursor) ?? new HistoryPage([], sinceCursor, false));
     }
 
-    public Task<RawMessage> GetMessageAsync(Guid accountId, string providerMessageId, CancellationToken ct = default)
+    public Task<RawMessage> GetMessageAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    )
     {
         if (ThrowOnGetMessageFor.Contains(providerMessageId))
             throw new EmailProviderException($"Could not fetch {providerMessageId}.");
@@ -76,6 +86,7 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
 
     public Task<MessageBody> GetMessageBodyAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         CancellationToken ct = default
     )
@@ -94,6 +105,7 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
 
     public Task<Stream> GetAttachmentAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         string attachmentId,
         CancellationToken ct = default

@@ -9,6 +9,7 @@ using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -59,6 +60,11 @@ if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
     builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
 else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+
+// Fase 4.4 del plan de rate limiting — IConnectionMultiplexer/IRateCounter ya están registrados en
+// AddPostmasterInfrastructure (F26, sostienen RedisEmailProviderRateLimiter/postmaster.k.dispatch),
+// así que acá solo se conecta el evaluador de políticas [RateLimit] para la capa HTTP.
+builder.Services.AddTieredRateLimiting();
 
 // M2M interno (D3 Compose Fase 5) — solo Correspondence (u otro microservicio backend), nunca un
 // usuario humano. Mismo patrón que Connectors (claim actor_type=Service emitido por Auth vía
@@ -168,3 +174,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

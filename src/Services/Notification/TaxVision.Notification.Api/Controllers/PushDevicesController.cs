@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +26,7 @@ public sealed class PushDevicesController(IMessageBus bus) : ControllerBase
     public sealed record RegisterRequest(PushPlatform Platform, string Token, string? DeviceId = null);
 
     [HttpPost]
+    [RateLimit("notification.g.push_device")]
     [ProducesResponseType<RegisterPushDeviceTokenResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
@@ -43,6 +45,7 @@ public sealed class PushDevicesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpDelete("{tokenId:guid}")]
+    [RateLimit("notification.g.push_device")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Revoke(Guid tokenId, CancellationToken ct)
     {

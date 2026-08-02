@@ -2,6 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -41,6 +42,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- POST /signature/templates ----------
     [HttpPost]
     [HasPermission(SignaturePermissions.TemplateCreate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType<SignatureTemplateResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateTemplateBody body, CancellationToken ct)
@@ -68,6 +70,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- GET /signature/templates ----------
     [HttpGet]
     [HasPermission(SignaturePermissions.TemplateCreate)]
+    [RateLimit("signature.f.template_read")]
     [ProducesResponseType<ListTemplatesResult>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ListTemplatesResult>> List(
         [FromQuery] SignatureTemplateStatus? status = null,
@@ -90,6 +93,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- GET /signature/templates/{id} ----------
     [HttpGet("{id:guid}")]
     [HasPermission(SignaturePermissions.TemplateCreate)]
+    [RateLimit("signature.f.template_read")]
     [ProducesResponseType<SignatureTemplateResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
@@ -104,6 +108,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- PUT /signature/templates/{id}/metadata ----------
     [HttpPut("{id:guid}/metadata")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpdateMetadata(
@@ -125,6 +130,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- PUT /signature/templates/{id}/defaults ----------
     [HttpPut("{id:guid}/defaults")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpdateDefaults(
@@ -153,6 +159,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- POST /signature/templates/{id}/slots ----------
     [HttpPost("{id:guid}/slots")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType<TemplateSlotCreatedResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> AddSlot(
@@ -176,6 +183,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- DELETE /signature/templates/{id}/slots/{slotOrder} ----------
     [HttpDelete("{id:guid}/slots/{slotOrder:int}")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RemoveSlot([FromRoute] Guid id, [FromRoute] int slotOrder, CancellationToken ct)
@@ -190,6 +198,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- POST /signature/templates/{id}/fields ----------
     [HttpPost("{id:guid}/fields")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType<TemplateFieldCreatedResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> PlaceField(
@@ -223,6 +232,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- DELETE /signature/templates/{id}/fields/{fieldId} ----------
     [HttpDelete("{id:guid}/fields/{fieldId:guid}")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RemoveField([FromRoute] Guid id, [FromRoute] Guid fieldId, CancellationToken ct)
@@ -237,6 +247,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- POST /signature/templates/{id}/publish ----------
     [HttpPost("{id:guid}/publish")]
     [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Publish([FromRoute] Guid id, CancellationToken ct)
@@ -251,6 +262,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- POST /signature/templates/{id}/archive ----------
     [HttpPost("{id:guid}/archive")]
     [HasPermission(SignaturePermissions.TemplateDelete)]
+    [RateLimit("signature.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Archive([FromRoute] Guid id, CancellationToken ct)
@@ -265,6 +277,7 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
     // ---------- POST /signature/templates/{id}/instantiate ----------
     [HttpPost("{id:guid}/instantiate")]
     [HasPermission(SignaturePermissions.RequestCreate)]
+    [RateLimit("signature.g.request_create")]
     [ProducesResponseType<SignatureRequestResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Instantiate(

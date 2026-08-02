@@ -5,6 +5,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -14,6 +15,7 @@ using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.RateLimiting;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -25,6 +27,7 @@ using TaxVision.Auth.Api.Bootstrap;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Api.Jobs;
 using TaxVision.Auth.Api.Middleware;
+using TaxVision.Auth.Api.RateLimiting;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Infrastructure;
@@ -48,6 +51,17 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
+
+// Rate limiting tiered por tenant/usuario (Fase 4.12 del plan) — Auth ya tenía
+// IConnectionMultiplexer/IRateCounter registrados desde Fase 0.1 (LoginThrottler), así que
+// solo hace falta conectar el evaluador; mismo [RateLimit]/[RateLimitExempt] que el resto
+// del monorepo desde Fase 3/4.2.
+builder.Services.AddTieredRateLimiting();
+
+// Auditoría independiente post-Fase-9 (invariante §4, categoría M) — Auth es uno de los 2
+// servicios con al menos una política M (auth.m.onboarding_admin_cancel_refund). Debe registrarse
+// DESPUÉS de AddTieredRateLimiting() para ganar sobre el NoOp default (last-registration-wins).
+builder.Services.AddScoped<IRateLimitAuditSink, AuthAuditLogRateLimitAuditSink>();
 
 // RBAC Fase 6 — flag para SessionDenylistMiddleware (BuildingBlocks.Web.Session); el reader en sí
 // (IAccessTokenDenylist/ISessionDenylistReader) ya se registra en AddAuthInfrastructure.
@@ -115,6 +129,19 @@ builder.Services.AddTaxVisionOpenTelemetry(
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Auditoría post-Fase-9 (hallazgo #13a) — el limiter nativo de ASP.NET Core no emite
+    // ningún header en el 429 a menos que se lo pida explícito, a diferencia del evaluador
+    // tiered (RateLimitAttribute.WriteRateLimitResponseAsync, §6.3 del plan). Solo se agrega
+    // Retry-After acá (universalmente respetado por HTTP clients/proxies) — el resto de headers
+    // X-RateLimit-* del path tiered están atados a policy/tenant/capa, conceptos que estos
+    // limiters pre-auth por-IP no tienen; forzar esos headers acá sería inventar semántica.
+    options.OnRejected = async (context, ct) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter = ((int)retryAfter.TotalSeconds).ToString();
+        await ValueTask.CompletedTask;
+    };
 
     options.AddPolicy(
         "tenant-lookup",
@@ -554,3 +581,5 @@ app.MapHealthChecks(
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

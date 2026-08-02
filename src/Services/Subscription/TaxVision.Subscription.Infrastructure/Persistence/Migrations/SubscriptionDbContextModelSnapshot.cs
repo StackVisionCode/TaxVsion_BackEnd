@@ -693,6 +693,247 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.ToTable("SubscriptionPlanVersions", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.RateLimiting.PlanRateLimit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(1)
+                        .HasColumnType("nvarchar(1)");
+
+                    b.Property<int?>("HardOverridePerMinute")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MultiplierOverride")
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanCode", "Category")
+                        .IsUnique();
+
+                    b.ToTable("PlanRateLimits", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000000"),
+                            Category = "F",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000001"),
+                            Category = "G",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000002"),
+                            Category = "H",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000003"),
+                            Category = "I",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000004"),
+                            Category = "J",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000005"),
+                            Category = "K",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000006"),
+                            Category = "L",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000007"),
+                            Category = "M",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000008"),
+                            Category = "N",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000009"),
+                            Category = "O",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "starter"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000010"),
+                            Category = "F",
+                            MultiplierOverride = 3.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000011"),
+                            Category = "G",
+                            MultiplierOverride = 3.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000012"),
+                            Category = "H",
+                            MultiplierOverride = 3.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000013"),
+                            Category = "I",
+                            MultiplierOverride = 5.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000014"),
+                            Category = "J",
+                            MultiplierOverride = 5.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000015"),
+                            Category = "K",
+                            MultiplierOverride = 3.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000016"),
+                            Category = "L",
+                            MultiplierOverride = 3.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000017"),
+                            Category = "M",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000018"),
+                            Category = "N",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000019"),
+                            Category = "O",
+                            MultiplierOverride = 3.0m,
+                            PlanCode = "pro"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000020"),
+                            Category = "F",
+                            MultiplierOverride = 10.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000021"),
+                            Category = "G",
+                            MultiplierOverride = 10.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000022"),
+                            Category = "H",
+                            MultiplierOverride = 15.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000023"),
+                            Category = "I",
+                            MultiplierOverride = 10.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000024"),
+                            Category = "J",
+                            MultiplierOverride = 10.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000025"),
+                            Category = "K",
+                            MultiplierOverride = 20.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000026"),
+                            Category = "L",
+                            MultiplierOverride = 10.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000027"),
+                            Category = "M",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000028"),
+                            Category = "N",
+                            MultiplierOverride = 1.0m,
+                            PlanCode = "enterprise"
+                        },
+                        new
+                        {
+                            Id = new Guid("c3000000-0000-0000-0000-000000000029"),
+                            Category = "O",
+                            MultiplierOverride = 10.0m,
+                            PlanCode = "enterprise"
+                        });
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SubscriptionSeat", b =>
                 {
                     b.Property<Guid>("Id")

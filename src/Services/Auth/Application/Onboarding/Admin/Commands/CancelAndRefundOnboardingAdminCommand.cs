@@ -2,12 +2,20 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Domain.Audit;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Onboarding.Admin.Commands;
 
-public sealed record CancelAndRefundOnboardingAdminCommand(Guid OnboardingId, string Reason, string Confirmation);
+public sealed record CancelAndRefundOnboardingAdminCommand(
+    Guid OnboardingId,
+    string Reason,
+    string Confirmation,
+    Guid AdminUserId
+);
 
 /// <summary>PayFlow (Fase 17) — receptor de <c>POST /auth/onboarding/admin/{id}/cancel-and-refund</c>.
 /// Exige el texto de confirmación exacto (plan Fase 17) — evita un refund accidental por un click
@@ -33,6 +41,8 @@ public static class CancelAndRefundOnboardingAdminHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         IOnboardingMetrics metrics,
+        IAuthAuditWriter audit,
+        IRequestContext request,
         CancellationToken ct
     )
     {
@@ -88,6 +98,25 @@ public static class CancelAndRefundOnboardingAdminHandler
                 }
             );
         }
+
+        // Categoría M — la acción dispara un reembolso Stripe real, invariante §4 del plan de rate
+        // limiting exige rastro de auditoría. onboarding.TenantId puede ser null (onboarding
+        // cancelado antes de que el tenant llegara a existir) — se usa el sentinel PlatformTenant
+        // (Guid.Empty) ya establecido para este mismo caso en el resto del módulo Onboarding.
+        await audit.AddAsync(
+            AuthAuditLog.Record(
+                onboarding.TenantId ?? Guid.Empty,
+                command.AdminUserId,
+                AuthAuditAction.OnboardingAdminCancelledAndRefunded,
+                true,
+                request.IpAddress,
+                request.UserAgent,
+                correlation.CorrelationId,
+                targetType: "TenantOnboarding",
+                targetId: onboarding.Id
+            ),
+            ct
+        );
 
         await unitOfWork.SaveChangesAsync(ct);
 

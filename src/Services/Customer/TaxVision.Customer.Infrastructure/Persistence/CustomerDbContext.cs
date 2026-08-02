@@ -14,6 +14,7 @@ using TaxVision.Customer.Domain.Employees;
 using TaxVision.Customer.Domain.FiscalProfiles;
 using TaxVision.Customer.Domain.Imports;
 using TaxVision.Customer.Domain.Permissions;
+using TaxVision.Customer.Domain.RateLimiting;
 using TaxVision.Customer.Domain.Relations;
 using DomainCustomer = TaxVision.Customer.Domain.Customers.Customer;
 
@@ -74,6 +75,7 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
     public DbSet<TenantEmployeeDirectoryEntry> TenantEmployeeDirectoryEntries => Set<TenantEmployeeDirectoryEntry>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     /// <summary>
     /// Construye el modelo de EF Core aplicando las configuraciones de entidades declaradas

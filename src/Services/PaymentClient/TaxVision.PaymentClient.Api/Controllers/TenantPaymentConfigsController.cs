@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,7 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
 {
     /// <summary>Fase 2B: lista TODOS los métodos de pago del tenant (activos e inactivos) para settings.</summary>
     [HttpGet]
+    [RateLimit("payment_client.f.config_read")]
     [HasPermission(PaymentClientPermissions.ConfigRead)]
     [ProducesResponseType<IReadOnlyList<TenantPaymentConfigResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -40,6 +42,7 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
     }
 
     [HttpGet("{provider}")]
+    [RateLimit("payment_client.f.config_read")]
     [HasPermission(PaymentClientPermissions.ConfigRead)]
     [ProducesResponseType<TenantPaymentConfigResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -64,6 +67,7 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
     );
 
     [HttpPost]
+    [RateLimit("payment_client.g.config_manage")]
     [HasPermission(PaymentClientPermissions.ConfigManage)]
     [ProducesResponseType<Guid>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create(CreateConfigRequest request, CancellationToken ct)
@@ -91,6 +95,7 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
     /// <summary>El secreto llega en texto plano SOLO en este request HTTPS — el handler lo
     /// cifra con <c>ISecretProtector</c> antes de persistirlo, nunca se loguea.</summary>
     [HttpPut("{provider}/secrets")]
+    [RateLimit("payment_client.g.config_manage")]
     [HasPermission(PaymentClientPermissions.ConfigManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> UpdateSecrets(
@@ -119,6 +124,7 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
     public sealed record DeactivateConfigRequest(string Reason);
 
     [HttpPost("{provider}/deactivate")]
+    [RateLimit("payment_client.g.config_manage")]
     [HasPermission(PaymentClientPermissions.ConfigManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Deactivate(
@@ -141,6 +147,7 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
     /// <summary>Fase 2B: activa (habilita) el método de pago para ese proveedor. En DirectApiKeys exige
     /// que los secretos ya estén cargados (PUT {provider}/secrets primero).</summary>
     [HttpPost("{provider}/activate")]
+    [RateLimit("payment_client.g.config_manage")]
     [HasPermission(PaymentClientPermissions.ConfigManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Activate(PaymentProviderCode provider, CancellationToken ct)

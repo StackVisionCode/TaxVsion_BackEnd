@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
@@ -16,6 +17,7 @@ namespace TaxVision.Auth.Api.Controllers;
 public sealed class TermsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("status")]
+    [RateLimit("auth.f.terms_read")]
     [ProducesResponseType<TermsAcceptanceStatusResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Status(CancellationToken ct)
     {
@@ -30,6 +32,7 @@ public sealed class TermsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("accept")]
+    [RateLimit("auth.g.terms_accept")]
     [ProducesResponseType<TermsAcceptanceResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Accept(CancellationToken ct)
     {

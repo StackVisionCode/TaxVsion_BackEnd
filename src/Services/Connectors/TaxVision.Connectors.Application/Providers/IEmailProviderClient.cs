@@ -15,16 +15,34 @@ public interface IEmailProviderClient
 {
     ProviderCode ProviderCode { get; }
 
+    /// <param name="accountId">Cuenta del provider a consultar.</param>
+    /// <param name="tenantId">Rate Limit Fase 0.3 — dueño de <paramref name="accountId"/>, para el cupo per-tenant de <see cref="IProviderRateLimiter"/> (el caller ya lo tiene, cargó la cuenta para verificar tenant).</param>
     /// <param name="sinceCursor">HistoryId (Gmail) o deltaLink (Graph) opaco — null para el primer sync.</param>
-    Task<HistoryPage> GetHistoryAsync(Guid accountId, string? sinceCursor, CancellationToken ct = default);
+    Task<HistoryPage> GetHistoryAsync(
+        Guid accountId,
+        Guid tenantId,
+        string? sinceCursor,
+        CancellationToken ct = default
+    );
 
-    Task<RawMessage> GetMessageAsync(Guid accountId, string providerMessageId, CancellationToken ct = default);
+    Task<RawMessage> GetMessageAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    );
 
     /// <summary>Fetch completo bajo demanda (Fase 8, format=full/body select) — nunca se llama desde el pipeline de webhooks (metadata-first), solo desde el endpoint M2M de body fetch.</summary>
-    Task<MessageBody> GetMessageBodyAsync(Guid accountId, string providerMessageId, CancellationToken ct = default);
+    Task<MessageBody> GetMessageBodyAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    );
 
     Task<Stream> GetAttachmentAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         string attachmentId,
         CancellationToken ct = default

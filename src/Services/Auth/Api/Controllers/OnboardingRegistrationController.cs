@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +22,9 @@ public sealed class OnboardingRegistrationController(IMessageBus bus) : Controll
     [HttpPost("preview")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-registration-preview")]
+    [RateLimitExempt(
+        "Anónimo (Fase 13) — conserva el limiter nativo onboarding-registration-preview, sin JWT que particionar."
+    )]
     [ProducesResponseType<PreviewRegistrationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Preview(PreviewRequest request, CancellationToken ct)
     {
@@ -44,6 +48,9 @@ public sealed class OnboardingRegistrationController(IMessageBus bus) : Controll
     [HttpPost("complete")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-registration-complete")]
+    [RateLimitExempt(
+        "Anónimo (Fase 13) — conserva el limiter nativo onboarding-registration-complete, sin JWT que particionar."
+    )]
     [ProducesResponseType<CompleteOnboardingRegistrationResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> Complete(CompleteRequest request, CancellationToken ct)
     {

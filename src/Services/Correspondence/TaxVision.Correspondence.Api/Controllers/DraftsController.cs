@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -76,6 +77,7 @@ public sealed class DraftsController(
     /// </summary>
     [HttpGet]
     [HasPermission(CorrespondencePermissions.Compose)]
+    [RateLimit("correspondence.f.draft_read")]
     public async Task<IActionResult> List(
         [FromQuery] Guid customerId,
         [FromQuery] int page,
@@ -95,6 +97,7 @@ public sealed class DraftsController(
 
     [HttpPost]
     [HasPermission(CorrespondencePermissions.Compose)]
+    [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> Create([FromBody] CreateDraftBody body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
@@ -111,6 +114,7 @@ public sealed class DraftsController(
 
     [HttpGet("{id:guid}")]
     [HasPermission(CorrespondencePermissions.Compose)]
+    [RateLimit("correspondence.f.draft_read")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -123,6 +127,7 @@ public sealed class DraftsController(
     /// <summary>204, sin body — mismo criterio que no hay precedente PATCH previo en este servicio, así que se elige la convención más estándar para un PATCH que no tiene nada útil que devolver.</summary>
     [HttpPatch("{id:guid}")]
     [HasPermission(CorrespondencePermissions.Compose)]
+    [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> AutoSave(Guid id, [FromBody] AutoSaveDraftBody body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -138,6 +143,7 @@ public sealed class DraftsController(
 
     [HttpDelete("{id:guid}")]
     [HasPermission(CorrespondencePermissions.Compose)]
+    [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> Discard(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -154,6 +160,7 @@ public sealed class DraftsController(
     /// <summary>204, sin body — mismo criterio que <see cref="AutoSave"/>.</summary>
     [HttpPost("{id:guid}/attachments")]
     [HasPermission(CorrespondencePermissions.Compose)]
+    [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> AttachFile(Guid id, [FromBody] AttachFileToDraftBody body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -177,6 +184,7 @@ public sealed class DraftsController(
 
     [HttpDelete("{id:guid}/attachments/{fileId:guid}")]
     [HasPermission(CorrespondencePermissions.Compose)]
+    [RateLimit("correspondence.g.draft_manage")]
     public async Task<IActionResult> RemoveAttachment(Guid id, Guid fileId, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -198,6 +206,7 @@ public sealed class DraftsController(
     /// </summary>
     [HttpPost("{id:guid}/send")]
     [HasPermission(CorrespondencePermissions.Send)]
+    [RateLimit("correspondence.l.draft_send")]
     public async Task<IActionResult> Send(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))

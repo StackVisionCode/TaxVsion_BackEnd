@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +29,9 @@ public sealed class TermsVersionsController(IMessageBus bus) : ControllerBase
 
     [HttpGet("current")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Catálogo público cacheable (versión vigente de ToS/Privacy), sin JWT, sin limiter nativo previo — agregar protección nueva queda fuera de alcance de esta migración, mismo criterio que PlansController.GetPlans de Subscription en Fase 4.10."
+    )]
     [ProducesResponseType<TermsVersionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetCurrent(
         [FromQuery] TermsKind kind,
@@ -49,6 +53,7 @@ public sealed class TermsVersionsController(IMessageBus bus) : ControllerBase
     [HttpGet("{termsVersionId:guid}/content")]
     [AllowAnonymous]
     [EnableRateLimiting("terms-content-download")]
+    [RateLimitExempt("Anónimo — conserva el limiter nativo terms-content-download, sin JWT que particionar.")]
     public async Task<IActionResult> GetContent(Guid termsVersionId, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<string>>(new GetTermsContentQuery(termsVersionId), ct);
@@ -62,6 +67,7 @@ public sealed class TermsVersionsController(IMessageBus bus) : ControllerBase
     [Authorize]
     [AllowActorTypes(ActorType.PlatformAdmin)]
     [RequestSizeLimit(5 * 1024 * 1024)]
+    [RateLimit("auth.g.terms_version_publish")]
     [ProducesResponseType<TermsVersionResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Publish([FromForm] PublishTermsVersionRequest request, CancellationToken ct)
     {

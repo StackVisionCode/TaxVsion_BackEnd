@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -33,6 +34,7 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [HasPermission(ScribePermissions.Render)]
+    [RateLimit("scribe.j.render")]
     [ProducesResponseType<RenderedContent>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Render([FromBody] RenderHttpRequest request, CancellationToken ct)
     {

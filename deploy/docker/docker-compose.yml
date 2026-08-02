@@ -525,6 +525,9 @@ services:
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${CUSTOMER_SERVICE_CLIENT_ID:-customer-worker}
       ServiceAuthClient__ClientSecret: ${CUSTOMER_SERVICE_CLIENT_SECRET:-}
+      # RateLimit Fase 6 (piloto) — catálogo de multiplicadores por plan, flag OFF por default.
+      RateLimit__EnforceTierQuotas: ${CUSTOMER_ENFORCE_TIER_QUOTAS:-false}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Credenciales MinIO propias para el archivo de import (IAM scoped a
       # taxvision-temp/customer/*, ver deploy/docker/minio/policies/customer-source.json +
       # provision-service-accounts.sh). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -1189,6 +1192,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${BILLING_DB_CONNECTION:?Set BILLING_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
@@ -1230,6 +1234,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${DOCUMENTS_DB_CONNECTION:?Set DOCUMENTS_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
@@ -1259,6 +1264,8 @@ services:
       sqlserver:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       otel-collector:
         condition: service_started

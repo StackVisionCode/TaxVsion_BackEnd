@@ -2,6 +2,7 @@ using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +29,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
     [HttpPost]
     [ConfigurableImportSizeLimit] // limite de tamano tomado de CustomerImportOptions; el handler tambien valida
     [Consumes("multipart/form-data")]
+    [RateLimit("customer.i.imports")]
     [ProducesResponseType<CustomerImportAttemptResponse>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
@@ -85,6 +87,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 
     // ---------- GET /customers/imports/{id} ----------
     [HttpGet("{id:guid}")]
+    [RateLimit("customer.f.imports_get")]
     [ProducesResponseType<CustomerImportAttemptResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -105,6 +108,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 
     // ---------- GET /customers/imports ----------
     [HttpGet]
+    [RateLimit("customer.f.imports_list")]
     [ProducesResponseType<IReadOnlyList<CustomerImportAttemptResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
         [FromQuery] int page = 1,
@@ -124,6 +128,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 
     // ---------- POST /customers/imports/{id}/cancel ----------
     [HttpPost("{id:guid}/cancel")]
+    [RateLimit("customer.g.imports_cancel")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
@@ -144,6 +149,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 
     // ---------- GET /customers/imports/{id}/report?format=csv ----------
     [HttpGet("{id:guid}/report")]
+    [RateLimit("customer.h.imports_report")]
     [Produces("text/csv", "application/json")]
     public async Task GetReport(
         Guid id,
@@ -203,6 +209,7 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
 
     // ---------- GET /customers/imports/template ----------
     [HttpGet("template")]
+    [RateLimitExempt("Contenido estático (plantilla CSV fija) sin cómputo ni lectura por tenant.")]
     [Produces("text/csv")]
     public IActionResult GetTemplate()
     {

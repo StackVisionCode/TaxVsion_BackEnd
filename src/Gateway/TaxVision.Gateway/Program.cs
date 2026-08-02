@@ -7,6 +7,7 @@ using BuildingBlocks.Security;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
+using TaxVision.Gateway.LoadShedding;
 using TaxVision.Gateway.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +31,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionGatewayRateLimiting();
+builder.Services.AddLoadShedding(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "gateway");
 builder.Services.AddHttpClient("taxvision-health", client => client.Timeout = TimeSpan.FromSeconds(5));
 
@@ -103,6 +105,10 @@ app.UseCors("spa");
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
+// Capa 1 (Fase 5 del plan de rate limiting) — después de auth para poder leer tenant_id del JWT
+// ya validado; antes de la Capa 3 (TenantPropagationMiddleware) y del ruteo a health checks/YARP.
+// La propia excluye /health/* de la medición y del shedding.
+app.UseMiddleware<LoadSheddingMiddleware>();
 app.UseMiddleware<TenantPropagationMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });

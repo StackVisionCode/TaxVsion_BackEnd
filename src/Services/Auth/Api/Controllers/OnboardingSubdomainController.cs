@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,9 @@ public sealed class OnboardingSubdomainController(IMessageBus bus) : ControllerB
     [HttpPost("check")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-subdomain-check")]
+    [RateLimitExempt(
+        "Anónimo (Fase 14) — conserva el limiter nativo onboarding-subdomain-check, sin JWT que particionar."
+    )]
     [ProducesResponseType<SubdomainReservationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Check(CheckSubdomainRequest request, CancellationToken ct)
     {

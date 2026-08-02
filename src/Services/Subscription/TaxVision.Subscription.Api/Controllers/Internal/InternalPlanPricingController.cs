@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,7 +18,12 @@ namespace TaxVision.Subscription.Api.Controllers.Internal;
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalPlanPricingController(IMessageBus bus) : ControllerBase
 {
+    /// <summary>Fase 4.10 (rate limiting) — M2M-only, mismo criterio que
+    /// <see cref="InternalSubscriptionActivationController"/>.</summary>
     [HttpGet("{planId:guid}/pricing")]
+    [RateLimitExempt(
+        "M2M-only endpoint queried by PaymentApp to resolve plan pricing server-side — never exposed to the Gateway."
+    )]
     [ProducesResponseType<InternalPlanPricingResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPricing(Guid planId, CancellationToken ct)
     {

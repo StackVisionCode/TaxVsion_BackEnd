@@ -2,6 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -45,6 +46,7 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
 
     [HttpPost("send")]
     [HasPermission(NotificationPermissions.EmailSend)]
+    [RateLimit("notification.g.email_send")]
     [ProducesResponseType<OutboundEmailResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> Send([FromBody] SendEmailRequest request, CancellationToken ct)
     {
@@ -68,6 +70,7 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
 
     [HttpGet("messages")]
     [HasPermission(NotificationPermissions.EmailView)]
+    [RateLimit("notification.f.email_read")]
     [ProducesResponseType<PagedResult<OutboundEmailResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] EmailStatus? status = null,
@@ -88,6 +91,7 @@ public sealed class EmailSendController(IMessageBus bus) : ControllerBase
 
     [HttpGet("messages/{id:guid}")]
     [HasPermission(NotificationPermissions.EmailView)]
+    [RateLimit("notification.f.email_read")]
     [ProducesResponseType<OutboundEmailResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {

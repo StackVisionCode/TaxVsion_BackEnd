@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -23,6 +24,12 @@ namespace TaxVision.PaymentClient.Api.Public;
 public sealed class HostedCheckoutController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
+    [RateLimitExempt(
+        "Endpoint público sin JWT (linkToken en el path es la única prueba de posesión) — TieredRateLimitEvaluator "
+            + "solo soporta partición por Tenant/User, así que [RateLimit] fallaría abierto acá. La protección real "
+            + "la da el limiter nativo [EnableRateLimiting(\"public\")] (1000 req/min/IP, ver doc-comment de la "
+            + "clase), que se deja intacto."
+    )]
     [ProducesResponseType<PaymentLinkCheckoutResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Get(string linkToken, CancellationToken ct)
@@ -45,6 +52,12 @@ public sealed class HostedCheckoutController(IMessageBus bus) : ControllerBase
     /// Elements) — este endpoint solo recibe la referencia opaca resultante + qué proveedor eligió el
     /// taxpayer, nunca datos crudos de tarjeta.</summary>
     [HttpPost("pay")]
+    [RateLimitExempt(
+        "Endpoint público sin JWT (linkToken en el path es la única prueba de posesión) — TieredRateLimitEvaluator "
+            + "solo soporta partición por Tenant/User, así que [RateLimit] fallaría abierto acá. La protección real "
+            + "la da el limiter nativo [EnableRateLimiting(\"public\")] (1000 req/min/IP, ver doc-comment de la "
+            + "clase), que se deja intacto."
+    )]
     [ProducesResponseType<RedeemPaymentLinkResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Pay(string linkToken, PayRequest request, CancellationToken ct)

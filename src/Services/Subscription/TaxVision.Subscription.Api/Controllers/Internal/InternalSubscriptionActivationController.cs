@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +19,10 @@ public sealed class InternalSubscriptionActivationController(IMessageBus bus) : 
 {
     public sealed record ActivateFromOnboardingRequest(Guid OnboardingId, Guid TenantId, Guid PlanId);
 
+    /// <summary>Fase 4.10 (rate limiting) — M2M-only ([AllowActorTypes(ActorType.Service)],
+    /// nunca expuesto al Gateway), mismo patrón que Postmaster Fase 4.4/Connectors Fase 4.8.</summary>
     [HttpPost("activate-from-onboarding")]
+    [RateLimitExempt("M2M-only endpoint invoked by Auth's onboarding Saga — never exposed to the Gateway.")]
     public async Task<IActionResult> ActivateFromOnboarding(
         [FromBody] ActivateFromOnboardingRequest request,
         CancellationToken ct

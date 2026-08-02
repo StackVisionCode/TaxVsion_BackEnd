@@ -5,6 +5,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
@@ -12,12 +13,15 @@ using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Domain.Sharing;
 using TaxVision.CloudStorage.Infrastructure;
@@ -81,9 +85,19 @@ builder.Services.AddRateLimiter(options =>
         context =>
         {
             var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+            // Auditoría independiente post-Fase-9: la ruta CRUDA (context.Request.Path) incluye el
+            // token del ShareLink — cada valor distinto abre un bucket nuevo, así que un atacante
+            // enumerando tokens nunca reutiliza el mismo bucket y el límite de 20/min jamás se
+            // dispara. El patrón de ruta (ej. "/storage/shares/{token}") sí es estable por endpoint
+            // — mismo criterio recomendado por Microsoft para rate limiting por-endpoint. Fallback
+            // a la ruta cruda solo si el endpoint no resolvió (no debería pasar acá —
+            // UseRateLimiter corre después del routing implícito).
+            var routeKey =
+                (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText
+                ?? context.Request.Path.Value?.ToLowerInvariant()
+                ?? string.Empty;
             return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: $"{client}:{path}",
+                partitionKey: $"{client}:{routeKey}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 20,
@@ -94,30 +108,21 @@ builder.Services.AddRateLimiter(options =>
             );
         }
     );
-    // Fase B2 — 5 req/min por usuario: un ZIP puede agregar hasta 500 archivos/500MB
-    // (ver CloudStorageOptions), asi que el costo por request es mucho mayor que un
-    // download de un solo archivo — el limite es deliberadamente mas estricto.
-    options.AddPolicy(
-        "zip-download",
-        context =>
-        {
-            var actorId =
-                context.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value
-                ?? context.Connection.RemoteIpAddress?.ToString()
-                ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: $"zip:{actorId}",
-                factory: _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 5,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                    AutoReplenishment = true,
-                }
-            );
-        }
-    );
 });
+
+// Rate limiting por tenant/usuario (Fase 4.6 del plan) — la politica nativa "zip-download" de
+// arriba migro a [RateLimit("cloudstorage.i.zip_download")] via el evaluador tiered (mismo
+// costo de 5/min, ver RateLimitPolicyCatalog); "share-public" queda intacta arriba porque
+// protege un endpoint [AllowAnonymous] sin JWT, algo que el evaluador tiered no puede cubrir
+// (ver RateLimitExempt en PublicShareController).
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")

@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,6 +36,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.f.folder_browse")]
     [ProducesResponseType<FolderContentsResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Contents(
         [FromQuery] Guid? parentFolderId,
@@ -66,6 +68,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.f.folder_browse")]
     [ProducesResponseType<IReadOnlyList<FolderTreeNode>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Tree(
         [FromQuery] OwnerType? ownerType,
@@ -94,6 +97,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     [HttpPost]
     [HasPermission(CloudStoragePermissions.FolderManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.folder_manage")]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateFolderRequest request, CancellationToken ct)
     {
@@ -123,6 +127,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     [HttpPut("{folderId:guid}/rename")]
     [HasPermission(CloudStoragePermissions.FolderManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.folder_manage")]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Rename(Guid folderId, RenameFolderRequest request, CancellationToken ct)
     {
@@ -141,6 +146,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     [HttpPut("{folderId:guid}/move")]
     [HasPermission(CloudStoragePermissions.FolderManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.folder_manage")]
     [ProducesResponseType<FolderResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Move(Guid folderId, MoveFolderRequest request, CancellationToken ct)
     {
@@ -158,6 +164,7 @@ public sealed class FoldersController(IMessageBus bus) : ControllerBase
     [HttpDelete("{folderId:guid}")]
     [HasPermission(CloudStoragePermissions.FolderManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.folder_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid folderId, CancellationToken ct)
     {

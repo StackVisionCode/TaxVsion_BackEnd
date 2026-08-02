@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -7,9 +8,11 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
+using TaxVision.Customer.Application.RateLimiting.Abstractions;
 using TaxVision.Customer.Infrastructure.Imports;
 using TaxVision.Customer.Infrastructure.Persistence;
 using TaxVision.Customer.Infrastructure.Persistence.Repositories;
+using TaxVision.Customer.Infrastructure.RateLimiting;
 using TaxVision.Customer.Infrastructure.Security;
 
 namespace TaxVision.Customer.Infrastructure;
@@ -94,6 +97,30 @@ public static class InfrastructureRegistration
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        // RateLimit Fase 6 (piloto Customer) — piezas siempre registradas: el consumer del
+        // evento de Subscription (mantiene la proyección al día incluso con el flag apagado, así
+        // no hay que esperar backfill cuando se lo prenda) y los lectores concretos. El mapeo a
+        // ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver realmente
+        // consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en Program.cs,
+        // ANTES de AddTieredRateLimiting() (TryAddSingleton respeta el primero que gane).
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<ITenantPlanCodeCacheInvalidator, TenantPlanCodeCacheInvalidator>();
+
+        services.AddOptions<SubscriptionClientOptions>().Bind(config.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+            }
+        );
+
         return services;
     }
 

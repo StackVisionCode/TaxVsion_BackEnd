@@ -3,17 +3,20 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Api.Jobs;
 using TaxVision.Notification.Application.Abstractions;
@@ -66,6 +69,18 @@ if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
     builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
 else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+
+// Rate limiting por tenant/usuario (Fase 4.3 del plan) — arrancaba en cero (sin AddRateLimiter ni
+// ninguna política previa), mismo [RateLimit]/IRateCounter tiered que ya corre en
+// Customer/Tenant desde Fase 3/4.2.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 // Cliente HTTP a CloudStorage (plantillas/layouts). El token del usuario se reenvía en contexto request;
 // en background (sync) se usa un token de servicio M2M del Auth.
@@ -221,3 +236,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

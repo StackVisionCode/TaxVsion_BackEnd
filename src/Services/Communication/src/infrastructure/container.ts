@@ -30,6 +30,7 @@ import { HmacTurnCredentialFactory } from './turn/hmac-turn-credential-factory.j
 import { Argon2PasscodeHasher } from './security/argon2-passcode-hasher.js';
 import { DominantSpeakerThrottle } from './redis/dominant-speaker-throttle.js';
 import { SocketRateLimiter } from './redis/socket-rate-limiter.js';
+import { HttpRateLimiter } from './redis/http-rate-limiter.js';
 import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
 import { ServiceTokenClient } from './auth/service-token-client.js';
@@ -84,6 +85,7 @@ export interface AppContainer {
   readonly passcodes: PasscodeHasher;
   readonly dominantSpeakerThrottle: DominantSpeakerThrottle;
   readonly rateLimiter: SocketRateLimiter;
+  readonly httpRateLimiter: HttpRateLimiter;
   readonly distributedLock: RedisDistributedLock;
   readonly notifications: NotificationRepository;
   readonly processedEvents: ProcessedEventStore;
@@ -132,6 +134,7 @@ export function buildContainer(): AppContainer {
     passcodes: new Argon2PasscodeHasher(),
     dominantSpeakerThrottle: new DominantSpeakerThrottle(redis),
     rateLimiter: new SocketRateLimiter(redis),
+    httpRateLimiter: new HttpRateLimiter(redis),
     distributedLock: new RedisDistributedLock(redis),
     notifications: new PrismaNotificationRepository(prisma),
     processedEvents: new PrismaProcessedEventStore(prisma),

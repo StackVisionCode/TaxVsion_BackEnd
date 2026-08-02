@@ -54,7 +54,12 @@ public sealed class GmailApiClient(
 
     public ProviderCode ProviderCode => ProviderCode.Gmail;
 
-    public async Task<HistoryPage> GetHistoryAsync(Guid accountId, string? sinceCursor, CancellationToken ct = default)
+    public async Task<HistoryPage> GetHistoryAsync(
+        Guid accountId,
+        Guid tenantId,
+        string? sinceCursor,
+        CancellationToken ct = default
+    )
     {
         var messageIds = new List<string>();
         var pageToken = (string?)null;
@@ -68,7 +73,7 @@ public sealed class GmailApiClient(
                 + (sinceCursor is not null ? $"&startHistoryId={Uri.EscapeDataString(sinceCursor)}" : string.Empty)
                 + (pageToken is not null ? $"&pageToken={Uri.EscapeDataString(pageToken)}" : string.Empty);
 
-            var payload = await SendAsync<GmailHistoryResponse>(accountId, url, ct);
+            var payload = await SendAsync<GmailHistoryResponse>(accountId, tenantId, url, ct);
             if (payload.History is not null)
             {
                 foreach (var record in payload.History)
@@ -94,13 +99,14 @@ public sealed class GmailApiClient(
 
     public async Task<RawMessage> GetMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         CancellationToken ct = default
     )
     {
         var headerQuery = string.Join("&", MetadataHeaders.Select(h => $"metadataHeaders={Uri.EscapeDataString(h)}"));
         var url = $"{BaseUrl}/messages/{providerMessageId}?format=metadata&{headerQuery}";
-        var payload = await SendAsync<GmailMessageResponse>(accountId, url, ct);
+        var payload = await SendAsync<GmailMessageResponse>(accountId, tenantId, url, ct);
 
         var headers = payload.Payload?.Headers ?? [];
         string? Header(string name) =>
@@ -141,12 +147,13 @@ public sealed class GmailApiClient(
     /// <summary>Fetch completo (Fase 8) — a diferencia de GetMessageAsync, acá SÍ se pide format=full y se camina el árbol MIME para extraer html/text (nunca bytes de attachments, esos quedan solo como metadata).</summary>
     public async Task<MessageBody> GetMessageBodyAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         CancellationToken ct = default
     )
     {
         var url = $"{BaseUrl}/messages/{providerMessageId}?format=full";
-        var payload = await SendAsync<GmailFullMessageResponse>(accountId, url, ct);
+        var payload = await SendAsync<GmailFullMessageResponse>(accountId, tenantId, url, ct);
 
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var header in payload.Payload?.Headers ?? [])
@@ -209,13 +216,14 @@ public sealed class GmailApiClient(
 
     public async Task<Stream> GetAttachmentAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         string attachmentId,
         CancellationToken ct = default
     )
     {
         var url = $"{BaseUrl}/messages/{providerMessageId}/attachments/{attachmentId}";
-        var payload = await SendAsync<GmailAttachmentResponse>(accountId, url, ct);
+        var payload = await SendAsync<GmailAttachmentResponse>(accountId, tenantId, url, ct);
         var bytes = Convert.FromBase64String(Base64UrlToBase64(payload.Data ?? string.Empty));
         return new MemoryStream(bytes, writable: false);
     }
@@ -223,17 +231,18 @@ public sealed class GmailApiClient(
     /// <summary>D3 §3.4 — arma un MIME real (MimeKit), resuelve threadId cuando es un reply, y comparte el mismo breaker "Gmail:messages" que el read path (mismo cupo real de Google, D3 §2.1).</summary>
     public async Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string fromAddress,
         string? fromDisplayName,
         OutboundMessage message,
         CancellationToken ct = default
     )
     {
-        var threadId = await ResolveThreadIdAsync(accountId, message.ReplyToProviderMessageId, ct);
+        var threadId = await ResolveThreadIdAsync(accountId, tenantId, message.ReplyToProviderMessageId, ct);
         var raw = BuildRawMimeBase64Url(fromAddress, fromDisplayName, message);
         var requestBody = JsonSerializer.Serialize(new GmailSendRequest(raw, threadId), SendRequestJsonOptions);
 
-        var response = await SendWriteRequestAsync(accountId, $"{BaseUrl}/messages/send", requestBody, ct);
+        var response = await SendWriteRequestAsync(accountId, tenantId, $"{BaseUrl}/messages/send", requestBody, ct);
         if (!response.IsSuccessStatusCode)
         {
             var exception = await BuildSendExceptionAsync(response, ct);
@@ -265,6 +274,7 @@ public sealed class GmailApiClient(
     /// <summary>Gmail requiere threadId + headers References/In-Reply-To juntos para threadear (D3 §6.1) — ninguno solo alcanza.</summary>
     private async Task<string?> ResolveThreadIdAsync(
         Guid accountId,
+        Guid tenantId,
         string? replyToProviderMessageId,
         CancellationToken ct
     )
@@ -274,7 +284,7 @@ public sealed class GmailApiClient(
 
         try
         {
-            var original = await GetMessageAsync(accountId, replyToProviderMessageId, ct);
+            var original = await GetMessageAsync(accountId, tenantId, replyToProviderMessageId, ct);
             return original.ProviderThreadId;
         }
         catch (EmailProviderException ex)
@@ -387,9 +397,9 @@ public sealed class GmailApiClient(
         }
     }
 
-    private async Task<T> SendAsync<T>(Guid accountId, string url, CancellationToken ct)
+    private async Task<T> SendAsync<T>(Guid accountId, Guid tenantId, string url, CancellationToken ct)
     {
-        await rateLimiter.WaitForSlotAsync(ProviderCode, ct);
+        await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
         var tokenResult = await tokenManager.GetValidAccessTokenAsync(accountId, ct);
         if (tokenResult.IsFailure)
@@ -426,12 +436,13 @@ public sealed class GmailApiClient(
     /// <summary>Mismo pipeline rate-limit+token+breaker que <see cref="SendAsync{T}"/>, pero para el path de envío — lanza <see cref="OutboundEmailSendException"/> en vez de <see cref="EmailProviderException"/> (D3 §8, el caller necesita saber la razón normalizada, no solo que algo falló).</summary>
     private async Task<HttpResponseMessage> SendWriteRequestAsync(
         Guid accountId,
+        Guid tenantId,
         string url,
         string jsonBody,
         CancellationToken ct
     )
     {
-        await rateLimiter.WaitForSlotAsync(ProviderCode, ct);
+        await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
         var tokenResult = await tokenManager.GetValidAccessTokenAsync(accountId, ct);
         if (tokenResult.IsFailure)

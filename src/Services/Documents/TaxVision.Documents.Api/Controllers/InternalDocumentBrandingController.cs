@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Documents.Application.Branding;
@@ -33,6 +34,7 @@ public sealed class InternalDocumentBrandingController(IMessageBus bus) : Contro
     );
 
     [HttpGet]
+    [RateLimit("documents.f.branding_read")]
     [HasPermission(DocumentsPermissions.BrandingManage)]
     [ProducesResponseType<DocumentBrandingDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -49,6 +51,7 @@ public sealed class InternalDocumentBrandingController(IMessageBus bus) : Contro
     }
 
     [HttpPut]
+    [RateLimit("documents.g.branding_upsert")]
     [HasPermission(DocumentsPermissions.BrandingManage)]
     [ProducesResponseType<DocumentBrandingDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Upsert(UpsertBrandingRequest request, CancellationToken ct)

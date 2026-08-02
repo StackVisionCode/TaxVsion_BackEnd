@@ -2110,9 +2110,14 @@ para que el UI sugiera "abrir el customer existente" en lugar de crear duplicado
 
 #### 25.16.5 Bulk status operations
 
-POST `/customers/bulk/{action}` con `action` en `archive`, `reactivate`, `activate`,
-`deactivate`. Util para fin de campana fiscal (archivar 100 customers que ya filtraron)
-o reapertura de temporada (reactivar masivamente).
+POST `/customers/bulk/{statusAction}` con `statusAction` en `archive`, `reactivate`,
+`activate`, `deactivate`. Util para fin de campana fiscal (archivar 100 customers que ya
+filtraron) o reapertura de temporada (reactivar masivamente).
+
+> Nota: el token de ruta se renombro de `{action}` a `{statusAction}` en Fase 4.1 del
+> rate limiting — `action` colisiona con el route-value reservado de ASP.NET Core MVC
+> para seleccion de accion, lo que hacia que esta ruta nunca matcheara ninguna URL real
+> (bug pre-existente, encontrado y corregido en esa fase).
 
 | Limite | Valor |
 | --- | --- |
@@ -6432,9 +6437,14 @@ correlación natural.
 
 | Método | Ruta | Permiso | Rate limit | Notas |
 | --- | --- | --- | --- | --- |
-| `PUT` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant-logo-upload`: 10/hora por tenant | `multipart/form-data`, campo `file`. 202 Accepted — asíncrono, ver 39.1 |
-| `GET` | `/tenants/{tenantId}/logo` | solo autenticación | — | 404 (`Tenant.Logo.NotFound`) si no hay logo confirmado |
-| `DELETE` | `/tenants/{tenantId}/logo` | `branding.manage` | — | Idempotente, 204 |
+| `PUT` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant.i.logo_upload`: 10/hora por tenant | `multipart/form-data`, campo `file`. 202 Accepted — asíncrono, ver 39.1 |
+| `GET` | `/tenants/{tenantId}/logo` | solo autenticación | `tenant.f.branding_read`: 300/min | 404 (`Tenant.Logo.NotFound`) si no hay logo confirmado |
+| `DELETE` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant.g.branding_manage`: 60/min | Idempotente, 204 |
+
+> Fase 4.2 del plan de rate limiting migró `tenant-logo-upload` (policy nativa de ASP.NET Core)
+> a `tenant.i.logo_upload` del catálogo unificado ([`RateLimitPolicyCatalog`](src/BuildingBlocks/RateLimiting/RateLimitPolicyCatalog.cs))
+> — mismo cupo y misma partición exclusiva por tenant, solo cambia el nombre de la policy. GET y
+> DELETE ganaron rate limit por primera vez en esa fase (antes no tenían ninguno).
 
 `TryResolveTenantId` (privado, mismo patrón que Postmaster `ProvidersController`): PlatformAdmin
 opera sobre cualquier tenant; el resto solo sobre el propio (`{tenantId}` de la ruta debe
@@ -7826,3 +7836,75 @@ propias claves. Si un throttler necesita leer el contador fuera de `IncrementAnd
   `StringIncrementAsync`+`KeyExpireAsync` sueltos ni `ICacheService` GET+SET para contadores.
 - Las 3 primitivas viven en `BuildingBlocks.Security`/`BuildingBlocks.Infrastructure.{Security,Resilience,RateLimit}`
   — agregar la `ProjectReference` a `BuildingBlocks.Infrastructure` si el servicio nuevo todavía no la tiene.
+
+# 46. Rate Limiting Multi-Capa por Tenant (plan de 9 fases, CERRADO)
+
+Ver `documents/architecture/ADR_017_RateLimit_Layers.md` (decisión + contexto) y
+`documents/RateLimit/Plan_Implementacion_Fases.md` (las 9 fases, cada una con su nota de cierre real).
+**Si vas a agregar un endpoint HTTP nuevo, leé primero
+`documents/RateLimit/Guia_Nuevos_Servicios_Endpoints.md`** — es la guía operativa día a día (árbol de
+decisión de categoría, snippets .NET/Node, anti-patrones, checklist de PR). Esta sección es solo el
+resumen ejecutivo.
+
+## 46.1 El modelo — 4 capas, evaluadas en orden
+
+1. **Global infra** (Gateway, `LoadSheddingMiddleware`, Fase 5) — última red de seguridad por p99+5xx,
+   independiente de tenant.
+2. **Per-tenant** — partición primaria de la mayoría de categorías, escala con el plan tier del tenant
+   (`IRateLimitQuotaResolver`, Fase 6 — piloto activo en Customer, resto de servicios en cuota base sin
+   escalar por tier, ver nota de negocio en el plan doc).
+3. **Per-user** — overlay dentro del tenant, evita que un solo usuario/script tóxico apague la cuota de
+   toda su empresa.
+4. **Per-endpoint** — cap propio para operaciones caras (búsqueda, bulk, rendering) — categorías H/I/J.
+
+17 categorías (A-Q) cubren pre-auth, público-con-token, webhooks, CRUD normal, búsqueda/bulk,
+rendering, envío externo, financiero, PII sensible, realtime socket y health/infra — tabla completa en
+la Guía §3.
+
+## 46.2 Cómo se aplica — resumen
+
+```csharp
+using BuildingBlocks.Web.RateLimiting;
+
+[HttpPost]
+[RateLimit("customer.g.create")]              // ← política del catálogo, nunca un string ad-hoc
+public async Task<IActionResult> Create(...) { ... }
+
+[HttpGet("/health")]
+[RateLimitExempt("health-check")]              // ← razón obligatoria, o el fitness test de CI falla
+public IActionResult Health() => Ok();
+```
+
+Políticas en `BuildingBlocks.RateLimiting.RateLimitPolicyCatalog`. Evaluador genérico
+`TieredRateLimitEvaluator` (capas 2+3, `BuildingBlocks.Infrastructure.RateLimiting`) — construye claves
+`RateCounterKey` con formato canónico `<svc>:rl:<policy>:<parts>`. Node (Communication) espeja los
+mismos nombres canónicos en `domain/rate-limit/rate-limit-policies.ts` para correlacionar en Grafana.
+
+## 46.3 Observabilidad (Fase 8)
+
+`RateLimitMetrics` (.NET, Meter `TaxVision.RateLimit`) y su espejo OTel en Node emiten:
+
+- `ratelimit.evaluated_total{policy,layer,tenant_id,plan}`
+- `ratelimit.blocked_total{policy,layer,tenant_id,plan}`
+- `ratelimit.fallback_open_total{policy,reason}` — Redis caído o plan sin resolver (.NET es fail-open
+  real; Node hoy es fail-**cerrado** — gap documentado, no corregido, ver el memo de cierre de Fase 8)
+
+Dashboards Grafana `deploy/observability/grafana/provisioning/dashboards/ratelimit-{overview,by-tenant}.json`
++ 2 alertas nativas en `.../alerting/ratelimit-alerts.yml` (tenant >90% cuota sostenido 5min, load
+shedder de flota disparando).
+
+## 46.4 Invariantes verificados por fitness function (Fase 9)
+
+`TaxVision.BuildingBlocks.Tests.RateLimit.RateLimitFitnessFunctionsTests` + un test por servicio en
+cada `*ArchitectureTests.cs`:
+
+1. Todo endpoint público `[HttpXxx]` tiene `[RateLimit]` o `[RateLimitExempt("razón")]` — sin excepción.
+2. `TieredRateLimitEvaluator` construye siempre claves `<svc>:rl:<policy>:...` (los 4 limiters
+   pre-Fase-3 — Auth `LoginThrottler`, Connectors, Postmaster, PaymentApp F26 — usan sus propios
+   formatos legacy sembrados antes de que este formato existiera; migrarlos resetearía contadores Redis
+   en producción, fuera de alcance, documentado no "arreglado").
+3. `IDatabase.StringIncrementAsync` no aparece fuera de `RedisRateCounter.cs`.
+4. `AddRateLimiter` nativo de ASP.NET Core solo aparece en la allowlist congelada de 7 servicios
+   (Auth, Growth, CloudStorage, Connectors, PaymentApp, Signature, PaymentClient) — todos endpoints
+   pre-auth/público/webhook sin tenant_id/user_id que particionar, verificados uno por uno. Cualquier
+   `AddRateLimiter` nuevo fuera de esa lista rompe el build.

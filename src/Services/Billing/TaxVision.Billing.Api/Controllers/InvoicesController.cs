@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,6 +31,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     );
 
     [HttpPost]
+    [RateLimit("billing.g.invoice_manage")]
     [ProducesResponseType<CreateInvoiceDraftResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateDraft(CreateInvoiceDraftRequest request, CancellationToken ct)
     {
@@ -53,6 +55,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{invoiceId:guid}/issue")]
+    [RateLimit("billing.g.invoice_issue")]
     [ProducesResponseType<IssueInvoiceResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Issue(Guid invoiceId, CancellationToken ct)
     {
@@ -68,6 +71,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet]
+    [RateLimit("billing.f.invoice_read")]
     [ProducesResponseType<IReadOnlyList<InvoiceSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] int take, CancellationToken ct)
     {
@@ -86,6 +90,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     /// <summary>Registra un pago manual/offline (efectivo, cheque, transferencia…) — marca la factura Paid.</summary>
     [HttpPost("{invoiceId:guid}/record-payment")]
+    [RateLimit("billing.g.invoice_manage")]
     [ProducesResponseType<RecordManualPaymentResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> RecordManualPayment(
         Guid invoiceId,
@@ -112,6 +117,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("{invoiceId:guid}")]
+    [RateLimit("billing.f.invoice_read")]
     [ProducesResponseType<InvoiceSummaryResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid invoiceId, CancellationToken ct)
     {

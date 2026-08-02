@@ -1,6 +1,7 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -43,6 +44,9 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
 
     [HttpPost("qualifications")]
     [HasServiceScope(GrowthServiceScopes.ReferralsQualify)]
+    // El JWT de servicio SÍ trae TenantId (JwtTokenGenerator.GenerateScopedServiceToken lo setea
+    // siempre) — el [RateLimitExempt] previo asumía lo contrario.
+    [RateLimit("growth.j.referrals_manage")]
     [ProducesResponseType<QualifyReferralResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Qualify(
         QualifyReferralRequest request,
@@ -75,6 +79,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
 
     [HttpPost("grants/{grantId:guid}/confirm")]
     [HasServiceScope(GrowthServiceScopes.ReferralsRewardConfirm)]
+    [RateLimit("growth.j.referrals_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ConfirmGrant(
         Guid grantId,
@@ -103,6 +108,7 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
 
     [HttpPost("grants/{grantId:guid}/clawbacks/confirm")]
     [HasServiceScope(GrowthServiceScopes.ReferralsRewardConfirm)]
+    [RateLimit("growth.j.referrals_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ConfirmClawback(
         Guid grantId,

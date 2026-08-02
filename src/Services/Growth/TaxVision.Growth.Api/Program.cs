@@ -1,24 +1,24 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
-using TaxVision.Growth.Api.RateLimiting;
 using TaxVision.Growth.Infrastructure;
 using TaxVision.Growth.Infrastructure.Observability;
 using TaxVision.Growth.Infrastructure.Persistence;
@@ -72,53 +72,24 @@ else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
 
 // Rate limiting propio de Growth (B-02): el Gateway solo limita /auth/* y /storage/*, así que
-// /growth/* y los endpoints M2M /internal/* quedaban sin tope. Sin esto, la atribución pública
-// permite brute-force/enumeración de códigos de referido (oráculo Invalid-vs-NotFound).
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+// /growth/* y los endpoints M2M /internal/* quedaban sin tope. Toda la superficie de Growth
+// (incluido Quote/ReserveBenefitGift, ex-limiter nativo "growth-code-quote") vive hoy en el
+// sistema tiered ([RateLimit], ver RateLimitPolicyCatalog growth.*) — auditoría independiente
+// post-Fase 9 cerró el último gap M2M (la premisa "JWT de servicio sin user_id" era falsa, el
+// JWT siempre trae TenantId). Growth ya no registra ningún limiter nativo ASP.NET Core.
 
-    options.AddPolicy(
-        GrowthRateLimitPolicies.ReferralAttribution,
-        context =>
-        {
-            // Particiona por tenant (identidad validada) para que rotar de IP no evada el tope;
-            // fallback a IP si el claim no está presente.
-            var partition =
-                context.User.FindFirst("tenant_id")?.Value
-                ?? context.Connection.RemoteIpAddress?.ToString()
-                ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: $"referral-attribution:{partition}",
-                factory: _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 30,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                    AutoReplenishment = true,
-                }
-            );
-        }
-    );
-
-    options.AddPolicy(
-        GrowthRateLimitPolicies.CodeQuote,
-        context =>
-        {
-            var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: $"code-quote:{client}",
-                factory: _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 1000,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                    AutoReplenishment = true,
-                }
-            );
-        }
-    );
-});
+// Rate limiting tiered por tenant/usuario (Fase 4.15 del plan). IConnectionMultiplexer/
+// IRateCounter no estaban registrados por ninguna fase previa de Growth (a diferencia de
+// PaymentApp/Auth), así que se agregan acá — mismo patrón que Tenant/Billing/Correspondence/
+// Notification/Customer/CloudStorage/Subscription/Scribe/Signature/PaymentClient.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
@@ -189,7 +160,6 @@ app.UseAuthentication();
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseMiddleware<JwtTenantContextMiddleware>();
 app.UseAuthorization();
-app.UseRateLimiter();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") })

@@ -2,6 +2,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -64,6 +65,7 @@ public sealed class CodesController(
     }
 
     [HttpPost]
+    [RateLimit("growth.g.codes_create")]
     [HasPermission(GrowthPermissions.CodesManage)]
     [ProducesResponseType<CreateCodeDefinitionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create(
@@ -110,6 +112,7 @@ public sealed class CodesController(
     }
 
     [HttpGet("{codeDefinitionId:guid}")]
+    [RateLimit("growth.f.codes_read")]
     [HasPermission(GrowthPermissions.CodesRead)]
     [ProducesResponseType<CodeDefinitionDetailsResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -127,6 +130,7 @@ public sealed class CodesController(
     }
 
     [HttpPost("{codeDefinitionId:guid}/activate")]
+    [RateLimit("growth.g.codes_activate")]
     [HasPermission(GrowthPermissions.CodesActivate)]
     [ProducesResponseType<CodeDefinitionStateResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Activate(
@@ -146,6 +150,7 @@ public sealed class CodesController(
     }
 
     [HttpPost("{codeDefinitionId:guid}/revoke")]
+    [RateLimit("growth.g.codes_revoke")]
     [HasPermission(GrowthPermissions.CodesRevoke)]
     [ProducesResponseType<CodeDefinitionStateResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Revoke(

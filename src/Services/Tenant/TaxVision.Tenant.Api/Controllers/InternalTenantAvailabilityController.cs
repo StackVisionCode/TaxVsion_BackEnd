@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Tenant.Application.Tenants.Queries;
@@ -15,6 +16,7 @@ namespace TaxVision.Tenant.Api.Controllers;
 public sealed class InternalTenantAvailabilityController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("subdomain-available")]
+    [RateLimitExempt("M2M interno (actor_type=Service), nunca expuesto en el Gateway público.")]
     [ProducesResponseType<SubdomainAvailabilityResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CheckSubdomainAvailable([FromQuery] string slug, CancellationToken ct)
     {

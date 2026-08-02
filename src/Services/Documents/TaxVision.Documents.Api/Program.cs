@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
@@ -10,10 +11,12 @@ using BuildingBlocks.Middleware;
 using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Documents.Api.Common;
 using TaxVision.Documents.Infrastructure;
 using TaxVision.Documents.Infrastructure.Observability;
@@ -60,6 +63,18 @@ if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
     builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
 else
     builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+
+// Rate limiting tiered (Fase 4.16 del plan). Documents no tenía ningún rate limiting propio antes
+// de esta fase — se agrega IConnectionMultiplexer/IRateCounter desde cero, mismo patrón que
+// Growth/PaymentClient/Tenant/etc.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")

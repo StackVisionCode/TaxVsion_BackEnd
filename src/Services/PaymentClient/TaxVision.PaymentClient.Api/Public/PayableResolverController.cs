@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -24,6 +25,12 @@ public sealed class PayableResolverController(IMessageBus bus, IOptions<PaymentC
     : ControllerBase
 {
     [HttpGet]
+    [RateLimitExempt(
+        "Endpoint público sin JWT (reference en el path es la única prueba de posesión) — TieredRateLimitEvaluator "
+            + "solo soporta partición por Tenant/User, así que [RateLimit] fallaría abierto acá. La protección real "
+            + "la da el limiter nativo [EnableRateLimiting(\"public\")] (ver doc-comment de la clase), que se deja "
+            + "intacto."
+    )]
     [ProducesResponseType(StatusCodes.Status302Found)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Resolve(string reference, CancellationToken ct)

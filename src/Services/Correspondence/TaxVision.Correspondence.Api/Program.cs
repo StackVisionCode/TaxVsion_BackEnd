@@ -3,6 +3,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Middleware;
@@ -11,11 +12,13 @@ using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Security;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Correspondence.Application;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Infrastructure;
@@ -67,6 +70,19 @@ else
 // ShareLink/SignatureRequest) — el plan no lo pidió para Correspondence.
 builder.Services.AddResourceOwnershipOptions(builder.Configuration);
 builder.Services.AddOwnershipAuthorization<Draft>();
+
+// Rate limiting por tenant/usuario (Fase 4.9 del plan) — arrancaba en cero, Correspondence no
+// tenia ningun AddRateLimiter/EnableRateLimiting nativo que preservar (los 19 endpoints son
+// todos alcanzables por un empleado humano real, sin M2M/publico/webhook). Mismo
+// [RateLimit]/IRateCounter tiered que ya corre en el resto del monorepo desde Fase 3/4.2.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+builder.Services.AddTieredRateLimiting();
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -153,3 +169,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

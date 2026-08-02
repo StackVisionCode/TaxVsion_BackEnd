@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,9 @@ namespace TaxVision.Auth.Api.Controllers;
 public sealed class InternalInvitationTokenReferencesController(IMessageBus bus) : ControllerBase
 {
     [HttpPost]
+    [RateLimitExempt(
+        "M2M ServiceOnly (Fase 18) — tráfico servicio-a-servicio desde Tenant, nunca expuesto al Gateway público."
+    )]
     [ProducesResponseType<StoreInvitationTokenReferenceResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Store(StoreInvitationTokenReferenceCommand command, CancellationToken ct)
     {

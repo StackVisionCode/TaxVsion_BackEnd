@@ -1,7 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
-import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
@@ -56,10 +55,26 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
     },
     credentials: true,
   });
-  await app.register(rateLimit, {
-    max: config.rateLimit.httpGlobal.maxPerWindow,
-    timeWindow: `${config.rateLimit.httpGlobal.windowSeconds} seconds`,
-    keyGenerator: (req) => (req.headers['x-real-ip'] as string) ?? req.ip,
+  // RateLimit Fase 7 — reemplaza @fastify/rate-limit (in-memory, contado
+  // por-instancia) por el mismo contador atomico Redis que ya usan los sockets
+  // desde Fase 0.4 (ver HttpRateLimiter). onRequest corre antes que cualquier
+  // preHandler de ruta, asi que las 2 rutas publicas (join-by-token/by-code)
+  // pasan primero por este gate generico por IP y despues por su propio gate
+  // mas estricto por token/shortCode (meeting-invitations.route.ts).
+  app.addHook('onRequest', async (req, reply) => {
+    const ip = (req.headers['x-real-ip'] as string) ?? req.ip;
+    const allowed = await container.httpRateLimiter.allow({
+      key: `comm:rl:http.global:${ip}`,
+      policy: 'communication.global_http_ip',
+      maxPerWindow: config.rateLimit.httpGlobal.maxPerWindow,
+      windowSeconds: config.rateLimit.httpGlobal.windowSeconds,
+    });
+    if (!allowed) {
+      reply
+        .code(429)
+        .header('Retry-After', String(config.rateLimit.httpGlobal.windowSeconds))
+        .send({ code: 'RateLimit.Exceeded', message: 'Too many requests.' });
+    }
   });
 
   // Fase Backend 11 — metricas OTel reales (prom-client, antes instalado sin

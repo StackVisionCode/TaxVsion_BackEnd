@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Postmaster.Api.Requests;
@@ -19,6 +20,7 @@ public sealed class SuppressionController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
     [HasPermission(PostmasterPermissions.SuppressionRead)]
+    [RateLimit("postmaster.f.suppression_list")]
     public async Task<IActionResult> List(
         [FromQuery] string? address,
         [FromQuery] SuppressionReason? reason,
@@ -38,6 +40,7 @@ public sealed class SuppressionController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [HasPermission(PostmasterPermissions.SuppressionWrite)]
+    [RateLimit("postmaster.g.suppression_manage")]
     public async Task<IActionResult> Add([FromBody] AddSuppressionEntryRequest body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -51,6 +54,7 @@ public sealed class SuppressionController(IMessageBus bus) : ControllerBase
 
     [HttpDelete("{address}")]
     [HasPermission(PostmasterPermissions.SuppressionWrite)]
+    [RateLimit("postmaster.g.suppression_manage")]
     public async Task<IActionResult> Remove(string address, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))

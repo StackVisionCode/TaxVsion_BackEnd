@@ -1,9 +1,9 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Codes.Application.Compensations.CompensateRedemption;
 using TaxVision.Codes.Application.Quotes.CreateQuote;
 using TaxVision.Codes.Application.Quotes.CreateSystemQuote;
@@ -15,7 +15,6 @@ using TaxVision.Codes.Domain.Compensations;
 using TaxVision.Codes.Domain.ValueObjects;
 using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
-using TaxVision.Growth.Api.RateLimiting;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
 using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
@@ -113,7 +112,10 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("quotes")]
     [HasServiceScope(GrowthServiceScopes.CodesQuote)]
-    [EnableRateLimiting(GrowthRateLimitPolicies.CodeQuote)]
+    // El JWT de servicio SÍ trae TenantId (JwtTokenGenerator.GenerateScopedServiceToken lo setea
+    // siempre) — el [RateLimitExempt] previo asumía lo contrario. Reemplaza también el limiter
+    // nativo "growth-code-quote" (particionaba por IP, insuficiente en multi-tenant).
+    [RateLimit("growth.j.codes_quote")]
     [ProducesResponseType<CreateQuoteResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Quote(
         CreateQuoteRequest request,
@@ -152,7 +154,8 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
     /// the whole call safely re-plays both steps without double-reserving.</summary>
     [HttpPost("benefit-gifts/reserve")]
     [HasServiceScope(GrowthServiceScopes.CodesReserveBenefitGift)]
-    [EnableRateLimiting(GrowthRateLimitPolicies.CodeQuote)]
+    // Mismo criterio que Quote (arriba): JWT de servicio SÍ trae TenantId.
+    [RateLimit("growth.j.codes_quote")]
     [ProducesResponseType<ReserveBenefitGiftResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ReserveBenefitGift(
         ReserveBenefitGiftRequest request,
@@ -215,6 +218,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("reservations")]
     [HasServiceScope(GrowthServiceScopes.CodesReserve)]
+    [RateLimit("growth.j.codes_reservation_manage")]
     [ProducesResponseType<ReserveCodeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Reserve(
         ReserveCodeRequest request,
@@ -241,6 +245,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("reservations/{reservationId:guid}/commit")]
     [HasServiceScope(GrowthServiceScopes.CodesCommit)]
+    [RateLimit("growth.j.codes_reservation_manage")]
     [ProducesResponseType<CommitReservationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Commit(
         Guid reservationId,
@@ -269,6 +274,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("reservations/{reservationId:guid}/cancel")]
     [HasServiceScope(GrowthServiceScopes.CodesCancel)]
+    [RateLimit("growth.j.codes_reservation_manage")]
     [ProducesResponseType<CancelReservationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Cancel(
         Guid reservationId,
@@ -296,6 +302,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("reservations/{reservationId:guid}/expire")]
     [HasServiceScope(GrowthServiceScopes.CodesCancel)]
+    [RateLimit("growth.j.codes_reservation_manage")]
     [ProducesResponseType<ExpireReservationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Expire(
         Guid reservationId,
@@ -315,6 +322,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("redemptions/{redemptionId:guid}/compensate")]
     [HasServiceScope(GrowthServiceScopes.CodesCompensate)]
+    [RateLimit("growth.j.codes_reservation_manage")]
     [ProducesResponseType<CompensateRedemptionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Compensate(
         Guid redemptionId,

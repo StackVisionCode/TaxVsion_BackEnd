@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ public sealed class OnboardingStatusController(IMessageBus bus) : ControllerBase
     [HttpGet]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-status")]
+    [RateLimitExempt("Anónimo (Fase 13) — conserva el limiter nativo onboarding-status, sin JWT que particionar.")]
     [ProducesResponseType<OnboardingStatusResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get([FromQuery] string token, CancellationToken ct)
     {

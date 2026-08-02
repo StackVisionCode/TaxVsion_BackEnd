@@ -1,6 +1,8 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { config } from '../config.js';
@@ -24,6 +26,15 @@ export function startTelemetry(): void {
     }),
     traceExporter: new OTLPTraceExporter({
       url: `${config.otel.endpoint}/v1/traces`,
+    }),
+    // RateLimit Fase 8 — antes de esta fase Communication solo exportaba trazas via OTLP;
+    // las metricas propias vivian aparte en prom-client (`/metrics`, sin scrape target real —
+    // ver rate-limit-metrics.ts). Un MeterProvider real acá es lo que permite que
+    // `metrics.getMeter('TaxVision.RateLimit')` deje de ser el no-op de @opentelemetry/api.
+    metricReader: new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: `${config.otel.endpoint}/v1/metrics`,
+      }),
     }),
     instrumentations: [
       getNodeAutoInstrumentations({

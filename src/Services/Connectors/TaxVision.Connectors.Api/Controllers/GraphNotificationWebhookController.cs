@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -30,6 +31,12 @@ public sealed class GraphNotificationWebhookController(
 ) : ControllerBase
 {
     [HttpPost("graph-notification")]
+    [RateLimitExempt(
+        "Endpoint anonimo (sin JWT, autenticado por clientState compartido) — TieredRateLimitEvaluator "
+            + "solo soporta particion por Tenant/User, asi que [RateLimit] fallaria abierto aqui. La "
+            + "proteccion real la da el limiter nativo [EnableRateLimiting(\"connectors-webhook\")] "
+            + "(IP, 100/min FixedWindow), que se deja intacto."
+    )]
     public async Task<IActionResult> HandleNotification([FromQuery] string? validationToken, CancellationToken ct)
     {
         if (!string.IsNullOrEmpty(validationToken))

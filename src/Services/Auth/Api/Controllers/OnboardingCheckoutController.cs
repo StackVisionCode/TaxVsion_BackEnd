@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +28,9 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
     [HttpPost]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-checkout-create")]
+    [RateLimitExempt(
+        "Anónimo (Fase 9) — conserva el limiter nativo onboarding-checkout-create, sin JWT que particionar."
+    )]
     [ProducesResponseType<CreateOnboardingResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateOnboardingRequest request, CancellationToken ct)
     {
@@ -58,6 +62,9 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
     [HttpPost("checkout")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-checkout-create")]
+    [RateLimitExempt(
+        "Anónimo (Fase 9) — conserva el limiter nativo onboarding-checkout-create, sin JWT que particionar."
+    )]
     [ProducesResponseType<StartOnboardingCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Checkout(StartCheckoutRequest request, CancellationToken ct)
     {

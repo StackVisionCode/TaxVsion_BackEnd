@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -32,6 +33,7 @@ public sealed class InternalDocumentGenerationsController(IMessageBus bus) : Con
 
     /// <summary>Registra una solicitud de generación y devuelve 202 — la generación real es asíncrona.</summary>
     [HttpPost("invoices")]
+    [RateLimit("documents.j.invoice_generate")]
     [ProducesResponseType<GenerateInvoiceDocumentResult>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> GenerateInvoice(
         GenerateInvoiceRequest request,

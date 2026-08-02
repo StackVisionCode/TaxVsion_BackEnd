@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +22,7 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 public sealed class PayoutsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
+    [RateLimit("payment_client.f.payout_read")]
     [HasPermission(PaymentClientPermissions.PayoutRead)]
     [ProducesResponseType<PayoutScheduleResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -37,6 +39,7 @@ public sealed class PayoutsController(IMessageBus bus) : ControllerBase
     public sealed record UpsertScheduleRequest(PayoutFrequency Frequency, int? Anchor, string Currency);
 
     [HttpPut]
+    [RateLimit("payment_client.g.payout_manage")]
     [HasPermission(PaymentClientPermissions.PayoutManage)]
     [ProducesResponseType<Guid>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Upsert(UpsertScheduleRequest request, CancellationToken ct)

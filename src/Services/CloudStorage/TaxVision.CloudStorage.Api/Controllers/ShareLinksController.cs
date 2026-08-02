@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -80,6 +81,7 @@ public sealed class ShareLinksController(
     [HttpPost("files/{fileId:guid}/shares")]
     [HasPermission(CloudStoragePermissions.ShareCreate)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.share_manage")]
     [ProducesResponseType<CreatedShareLinkResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(Guid fileId, CreateShareLinkRequest request, CancellationToken ct)
     {
@@ -118,6 +120,7 @@ public sealed class ShareLinksController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.f.share_read")]
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListForFile(Guid fileId, CancellationToken ct)
     {
@@ -148,6 +151,7 @@ public sealed class ShareLinksController(
     [HttpPost("folders/{folderId:guid}/shares")]
     [HasPermission(CloudStoragePermissions.ShareCreate)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.share_manage")]
     [ProducesResponseType<CreatedShareLinkResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateForFolder(
         Guid folderId,
@@ -192,6 +196,7 @@ public sealed class ShareLinksController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.f.share_read")]
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListForFolder(Guid folderId, CancellationToken ct)
     {
@@ -213,6 +218,7 @@ public sealed class ShareLinksController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.f.share_read")]
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SharedWithMe(
         [FromQuery] int skip = 0,
@@ -233,6 +239,7 @@ public sealed class ShareLinksController(
     [HttpDelete("shares/{shareLinkId:guid}")]
     [HasPermission(CloudStoragePermissions.ShareRevoke)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.share_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Revoke(Guid shareLinkId, CancellationToken ct)
     {
@@ -255,6 +262,7 @@ public sealed class ShareLinksController(
     [HttpPut("shares/{shareLinkId:guid}/expiration")]
     [HasPermission(CloudStoragePermissions.ShareManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.share_manage")]
     [ProducesResponseType<ShareLinkResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateExpiration(
         Guid shareLinkId,
@@ -288,6 +296,7 @@ public sealed class ShareLinksController(
     [HttpPut("shares/{shareLinkId:guid}/permission")]
     [HasPermission(CloudStoragePermissions.ShareManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.share_manage")]
     [ProducesResponseType<ShareLinkResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ChangePermission(
         Guid shareLinkId,

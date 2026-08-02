@@ -2,6 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Postmaster.Api.Requests;
@@ -21,6 +22,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("providers/status")]
     [HasPermission(PostmasterPermissions.ProvidersRead)]
+    [RateLimit("postmaster.f.providers_read")]
     public async Task<IActionResult> GetStatus([FromQuery] Guid? tenantId, CancellationToken ct)
     {
         if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
@@ -32,6 +34,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
 
     [HttpGet("tenants/{tenantId:guid}/provider")]
     [HasPermission(PostmasterPermissions.ProvidersRead)]
+    [RateLimit("postmaster.f.providers_read")]
     public async Task<IActionResult> GetProvider(Guid tenantId, [FromQuery] string providerCode, CancellationToken ct)
     {
         if (!this.TryResolveTenantId(tenantId, out var resolvedTenantId))
@@ -46,6 +49,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
 
     [HttpPost("tenants/{tenantId:guid}/provider")]
     [HasPermission(PostmasterPermissions.ProvidersWrite)]
+    [RateLimit("postmaster.g.providers_manage")]
     public Task<IActionResult> CreateProvider(
         Guid tenantId,
         [FromBody] UpsertTenantEmailProviderRequest body,
@@ -54,6 +58,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
 
     [HttpPut("tenants/{tenantId:guid}/provider")]
     [HasPermission(PostmasterPermissions.ProvidersWrite)]
+    [RateLimit("postmaster.g.providers_manage")]
     public Task<IActionResult> UpdateProvider(
         Guid tenantId,
         [FromBody] UpsertTenantEmailProviderRequest body,
@@ -62,6 +67,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
 
     [HttpDelete("tenants/{tenantId:guid}/provider")]
     [HasPermission(PostmasterPermissions.ProvidersWrite)]
+    [RateLimit("postmaster.g.providers_manage")]
     public async Task<IActionResult> DisableProvider(
         Guid tenantId,
         [FromQuery] string providerCode,
@@ -82,6 +88,7 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
     [HttpPut("system/provider/{providerCode}")]
     [HasPermission(PostmasterPermissions.ProvidersWrite)]
     [AllowActorTypes(ActorType.PlatformAdmin)]
+    [RateLimit("postmaster.g.providers_manage")]
     public async Task<IActionResult> UpsertSystemProvider(
         string providerCode,
         [FromBody] UpsertSystemEmailProviderRequest body,

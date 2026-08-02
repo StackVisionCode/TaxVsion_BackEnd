@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,7 @@ namespace TaxVision.Billing.Api.Controllers;
 public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
+    [RateLimit("billing.f.issuer_profile_read")]
     [ProducesResponseType<IssuerProfileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
@@ -40,6 +42,7 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
     );
 
     [HttpPut]
+    [RateLimit("billing.g.issuer_profile_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Upsert(UpsertIssuerProfileRequest request, CancellationToken ct)
     {

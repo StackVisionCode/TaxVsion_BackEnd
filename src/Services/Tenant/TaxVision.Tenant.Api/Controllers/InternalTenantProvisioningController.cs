@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +26,7 @@ public sealed class InternalTenantProvisioningController(IMessageBus bus) : Cont
     );
 
     [HttpPost("from-onboarding")]
+    [RateLimitExempt("M2M interno (actor_type=Service), nunca expuesto en el Gateway público.")]
     public async Task<IActionResult> CreateFromOnboarding(
         [FromBody] CreateFromOnboardingRequest request,
         CancellationToken ct

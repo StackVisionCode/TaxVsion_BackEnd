@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Sessions;
@@ -145,6 +146,10 @@ public static class DependencyInjection
         var redisConnectionString = configuration.GetConnectionString("Redis") ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
         services.AddScoped<ITokenReferenceStore, RedisTokenReferenceStore>();
+
+        // Rate Limit Fase 0.1 — contador atómico compartido entre réplicas para LoginThrottler
+        // (antes GET+SET no atómico sobre ICacheService, ver doc-comment de LoginThrottler.cs).
+        services.AddSingleton<IRateCounter, RedisRateCounter>();
 
         // Onboarding (PayFlow, auditoría F06 → F24) — un breaker por cliente M2M, ver
         // HttpResiliencePipeline (BuildingBlocks.Infrastructure) para el detalle de la política.

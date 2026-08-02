@@ -2,6 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,6 +32,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     /// <summary>Suscripción base del tenant autenticado (plan, límites, renovación, estado).
     /// Los asientos (seats) se consultan por separado — ver /seats.</summary>
     [HttpGet("me")]
+    [RateLimit("subscription.f.subscription_read")]
     [ProducesResponseType<MySubscriptionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetMySubscription(CancellationToken ct)
     {
@@ -55,6 +57,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPost("change-plan")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.plan_change")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ChangePlanResponse>(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ChangePlan(ChangePlanRequest request, CancellationToken ct)
@@ -86,6 +89,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPost("activate")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.subscription_activate")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Activate([FromBody] ActivateRequest? request, CancellationToken ct)
     {
@@ -102,6 +106,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Cambio de plan pendiente (diferido a fin de período), si existe alguno.</summary>
     [HttpGet("plan-change")]
+    [RateLimit("subscription.f.subscription_read")]
     [ProducesResponseType<PendingPlanChangeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPendingPlanChange(CancellationToken ct)
     {
@@ -119,6 +124,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPost("plan-change/cancel")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.subscription_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> CancelPendingPlanChange(CancellationToken ct)
     {
@@ -135,6 +141,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPost("cancel")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.subscription_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Cancel(CancelRequest request, CancellationToken ct)
     {
@@ -152,6 +159,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPatch("{tenantId:guid}/suspend")]
     [HasPermission(SubscriptionPermissions.Suspend)]
     [AllowActorTypes(ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Suspend(Guid tenantId, SuspendRequest request, CancellationToken ct)
     {
@@ -169,6 +177,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPatch("{tenantId:guid}/reactivate")]
     [HasPermission(SubscriptionPermissions.Reactivate)]
     [AllowActorTypes(ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reactivate(Guid tenantId, CancellationToken ct)
     {
@@ -184,6 +193,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     [HttpPost("{tenantId:guid}/renew")]
     [HasPermission(SubscriptionPermissions.Renew)]
     [AllowActorTypes(ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Renew(Guid tenantId, CancellationToken ct)
     {

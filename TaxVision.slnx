@@ -132,6 +132,7 @@
     <Project Path="deploy/tests/TaxVision.Documents.Tests/TaxVision.Documents.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Gateway.Tests/TaxVision.Gateway.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Growth.Tests/TaxVision.Growth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentApp.Tests/TaxVision.PaymentApp.Tests.csproj" />

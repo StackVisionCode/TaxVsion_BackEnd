@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,6 +31,7 @@ public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
     );
 
     [HttpPost]
+    [RateLimit("payment_client.g.payment_link_manage")]
     [HasPermission(PaymentClientPermissions.PaymentLinkManage)]
     [ProducesResponseType<CreatePaymentLinkResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create(CreatePaymentLinkRequest request, CancellationToken ct)
@@ -55,6 +57,7 @@ public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet]
+    [RateLimit("payment_client.f.payment_link_read")]
     [HasPermission(PaymentClientPermissions.PaymentLinkRead)]
     [ProducesResponseType<IReadOnlyList<PaymentLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
@@ -78,6 +81,7 @@ public sealed class PaymentLinksController(IMessageBus bus) : ControllerBase
     public sealed record RevokePaymentLinkRequest(string Reason);
 
     [HttpPost("{paymentLinkId:guid}/revoke")]
+    [RateLimit("payment_client.g.payment_link_manage")]
     [HasPermission(PaymentClientPermissions.PaymentLinkManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Revoke(Guid paymentLinkId, RevokePaymentLinkRequest request, CancellationToken ct)

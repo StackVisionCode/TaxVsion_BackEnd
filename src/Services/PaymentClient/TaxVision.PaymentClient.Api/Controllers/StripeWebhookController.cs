@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -23,6 +24,9 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 public sealed class StripeWebhookController(IMessageBus bus) : ControllerBase
 {
     [HttpPost]
+    [RateLimitExempt(
+        "Anónimo — conserva el limiter nativo \"webhooks\" (1000 req/min/IP), verificado contra el WebhookSecretEncrypted per-tenant dentro de ProcessTenantWebhookHandler."
+    )]
     public async Task<IActionResult> Receive(Guid tenantId, CancellationToken ct)
     {
         string rawPayload;
