@@ -36,6 +36,15 @@ public sealed class SystemEmailProvider : BaseEntity
     public string FromAddressDefault { get; private set; } = default!;
     public string? FromDisplayNameDefault { get; private set; }
     public int RateLimitPerMinute { get; private set; }
+
+    /// <summary>
+    /// Cupo por-minuto de la partición <see cref="Sending.EmailStream.Bulk"/> (envíos masivos, ej.
+    /// campañas) — separado de <see cref="RateLimitPerMinute"/> (partición Transactional) para que un
+    /// stream nunca compita por la cuota del otro. Null hasta que un admin lo configure explícitamente
+    /// — mientras esté null, cualquier envío Bulk falla como no-configurado en vez de compartir
+    /// presupuesto en silencio con el tráfico transaccional.
+    /// </summary>
+    public int? BulkRateLimitPerMinute { get; private set; }
     public bool Enabled { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? UpdatedAtUtc { get; private set; }
@@ -52,7 +61,8 @@ public sealed class SystemEmailProvider : BaseEntity
         string? username,
         string? passwordCipher,
         int rateLimitPerMinute,
-        DateTime createdAtUtc
+        DateTime createdAtUtc,
+        int? bulkRateLimitPerMinute = null
     )
     {
         if (string.IsNullOrWhiteSpace(providerCode) || providerCode.Length > 50)
@@ -80,6 +90,14 @@ public sealed class SystemEmailProvider : BaseEntity
                 new Error("SystemEmailProvider.RateLimitPerMinute", "RateLimitPerMinute must be greater than zero.")
             );
 
+        if (bulkRateLimitPerMinute is <= 0)
+            return Result.Failure<SystemEmailProvider>(
+                new Error(
+                    "SystemEmailProvider.BulkRateLimitPerMinute",
+                    "BulkRateLimitPerMinute must be greater than zero when provided."
+                )
+            );
+
         var secretResult = ToEncryptedSecret(passwordCipher);
         if (secretResult.IsFailure)
             return Result.Failure<SystemEmailProvider>(secretResult.Error);
@@ -98,6 +116,7 @@ public sealed class SystemEmailProvider : BaseEntity
             Username = username,
             PasswordCipher = secretResult.Value,
             RateLimitPerMinute = rateLimitPerMinute,
+            BulkRateLimitPerMinute = bulkRateLimitPerMinute,
             Enabled = true,
             CreatedAtUtc = createdAtUtc,
         };
@@ -114,7 +133,8 @@ public sealed class SystemEmailProvider : BaseEntity
         string fromAddressDefault,
         string? fromDisplayNameDefault,
         int rateLimitPerMinute,
-        DateTime updatedAtUtc
+        DateTime updatedAtUtc,
+        int? bulkRateLimitPerMinute = null
     )
     {
         if (ProviderType == EmailProviderType.Smtp && string.IsNullOrWhiteSpace(host))
@@ -130,6 +150,14 @@ public sealed class SystemEmailProvider : BaseEntity
                 new Error("SystemEmailProvider.RateLimitPerMinute", "RateLimitPerMinute must be greater than zero.")
             );
 
+        if (bulkRateLimitPerMinute is <= 0)
+            return Result.Failure(
+                new Error(
+                    "SystemEmailProvider.BulkRateLimitPerMinute",
+                    "BulkRateLimitPerMinute must be greater than zero when provided."
+                )
+            );
+
         var secretResult = ToEncryptedSecret(passwordCipher);
         if (secretResult.IsFailure)
             return Result.Failure(secretResult.Error);
@@ -142,6 +170,7 @@ public sealed class SystemEmailProvider : BaseEntity
         FromAddressDefault = fromAddressDefault.Trim().ToLowerInvariant();
         FromDisplayNameDefault = fromDisplayNameDefault;
         RateLimitPerMinute = rateLimitPerMinute;
+        BulkRateLimitPerMinute = bulkRateLimitPerMinute;
         UpdatedAtUtc = updatedAtUtc;
         return Result.Success();
     }

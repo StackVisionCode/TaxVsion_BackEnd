@@ -14,5 +14,6 @@ public sealed record UpsertTenantEmailProviderRequest(
     bool UseTls,
     string? Username,
     string? Password,
-    int RateLimitPerMinute
+    int RateLimitPerMinute,
+    int? BulkRateLimitPerMinute = null
 );

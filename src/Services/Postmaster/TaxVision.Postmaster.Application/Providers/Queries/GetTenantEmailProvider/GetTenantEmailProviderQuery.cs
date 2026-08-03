@@ -15,6 +15,7 @@ public sealed record TenantEmailProviderDto(
     string FromAddressDefault,
     string? FromDisplayNameDefault,
     int RateLimitPerMinute,
+    int? BulkRateLimitPerMinute,
     bool Enabled,
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc

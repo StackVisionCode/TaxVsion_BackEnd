@@ -277,6 +277,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 DispatchAttemptId = evt.DispatchAttemptId,
                 SentMessageId = message.Id,
                 SuppressionReason = "All recipients are in the suppression list.",
+                CampaignId = evt.CampaignId,
                 EventAtUtc = now,
             }
         );
@@ -284,9 +285,13 @@ public static class NotificationsEmailSendRequestedConsumer
     }
 
     /// <summary>
-    /// Cupo por (ProviderCode, TenantId) — <c>provider.RateLimitPerMinute</c> ya viene resuelto (Fase 3/3.5).
-    /// Si se agota, el mensaje va directo a Failed (terminal, sin reintento automático de Postmaster —
-    /// el reintento real depende de que Notification vuelva a publicar el evento).
+    /// Cupo por (ProviderCode, TenantId, Stream) — <c>provider.RateLimitPerMinute</c>/
+    /// <c>BulkRateLimitPerMinute</c> ya vienen resueltos (Fase 3/3.5, Bulk-quota-isolation). Bulk y
+    /// Transactional se parten en baldes de Redis separados (ver <see cref="IEmailProviderRateLimiter"/>)
+    /// para que una ráfaga de campaña nunca demore un email transaccional del mismo tenant. Si el
+    /// stream es Bulk y el provider no tiene <c>BulkRateLimitPerMinute</c> configurado, o si el cupo
+    /// resuelto se agota, el mensaje va directo a Failed (terminal, sin reintento automático de
+    /// Postmaster — el reintento real depende de que el originador vuelva a publicar el evento).
     /// </summary>
     private static async Task<bool> ApplyRateLimitAsync(
         SentMessage message,
@@ -299,23 +304,56 @@ public static class NotificationsEmailSendRequestedConsumer
         CancellationToken ct
     )
     {
+        var quota = ResolveStreamQuota(message.Stream, provider);
+        if (quota is null)
+        {
+            await FailAndPublishAsync(
+                message,
+                evt,
+                $"BulkRateLimitNotConfigured: provider '{provider.ProviderCode}' has no BulkRateLimitPerMinute configured for the Bulk stream.",
+                idempotencyGuard,
+                unitOfWork,
+                bus,
+                ct
+            );
+            return true;
+        }
+
         var decision = await rateLimiter.AcquireAsync(
             provider.ProviderCode,
             evt.TenantId,
-            provider.RateLimitPerMinute,
+            message.Stream,
+            quota.Value,
             ct
         );
         if (decision.Allowed)
             return false;
 
-        var now = DateTime.UtcNow;
         var reason =
             $"RateLimited: retry after {(int)(decision.RetryAfter ?? TimeSpan.FromSeconds(60)).TotalSeconds}s.";
+        await FailAndPublishAsync(message, evt, reason, idempotencyGuard, unitOfWork, bus, ct);
+        return true;
+    }
+
+    /// <summary>Bulk nunca cae al cupo Transactional por defecto — null hasta que un admin lo configure explícitamente.</summary>
+    private static int? ResolveStreamQuota(EmailStream stream, ResolvedEmailProvider provider) =>
+        stream == EmailStream.Bulk ? provider.BulkRateLimitPerMinute : provider.RateLimitPerMinute;
+
+    private static async Task FailAndPublishAsync(
+        SentMessage message,
+        NotificationsEmailSendRequestedIntegrationEvent evt,
+        string reason,
+        IIdempotencyGuard idempotencyGuard,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        var now = DateTime.UtcNow;
         message.MarkAsFailed(reason, now);
         await idempotencyGuard.CompleteAsync(evt.TenantId, evt.IdempotencyKey, message.Id, ct);
         await unitOfWork.SaveChangesAsync(ct);
         await PublishFailedAsync(bus, evt, message.Id, providerMessageId: null, reason, now, ct);
-        return true;
     }
 
     private static async Task<SentMessage> QueueAndPersistAsync(
@@ -339,7 +377,11 @@ public static class NotificationsEmailSendRequestedConsumer
             replyTo: null,
             evt.TemplateKey,
             DateTime.UtcNow,
-            ParseProviderScope(evt.RequiredProviderScope)
+            ParseProviderScope(evt.RequiredProviderScope),
+            correspondenceDraftId: null,
+            inReplyToInternetMessageId: null,
+            references: null,
+            campaignId: evt.CampaignId
         );
         if (queueResult.IsFailure)
             throw new InvalidOperationException(
@@ -375,7 +417,8 @@ public static class NotificationsEmailSendRequestedConsumer
             replyTo: null,
             evt.TemplateKey,
             DateTime.UtcNow,
-            ProviderScope.TenantOAuth
+            ProviderScope.TenantOAuth,
+            campaignId: evt.CampaignId
         );
         if (queueResult.IsFailure)
             throw new InvalidOperationException(
@@ -447,6 +490,7 @@ public static class NotificationsEmailSendRequestedConsumer
                     CorrelationId = evt.CorrelationId,
                     NotificationLogId = evt.NotificationLogId,
                     DispatchAttemptId = evt.DispatchAttemptId,
+                    CampaignId = evt.CampaignId,
                     EventAtUtc = now,
                 }
             );
@@ -470,6 +514,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 DispatchAttemptId = evt.DispatchAttemptId,
                 SentMessageId = Guid.Empty,
                 Reason = reason,
+                CampaignId = evt.CampaignId,
                 EventAtUtc = now,
             }
         );
@@ -494,6 +539,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 CorrelationId = evt.CorrelationId,
                 NotificationLogId = evt.NotificationLogId,
                 DispatchAttemptId = evt.DispatchAttemptId,
+                CampaignId = evt.CampaignId,
                 EventAtUtc = DateTime.UtcNow,
             }
         );
@@ -700,6 +746,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 DispatchAttemptId = evt.DispatchAttemptId,
                 SentMessageId = sentMessageId,
                 ProviderMessageId = providerMessageId,
+                CampaignId = evt.CampaignId,
                 EventAtUtc = DateTime.UtcNow,
             }
         );
@@ -723,6 +770,7 @@ public static class NotificationsEmailSendRequestedConsumer
                 SentMessageId = sentMessageId,
                 ProviderMessageId = providerMessageId,
                 Reason = reason,
+                CampaignId = evt.CampaignId,
                 EventAtUtc = eventAtUtc,
             }
         );

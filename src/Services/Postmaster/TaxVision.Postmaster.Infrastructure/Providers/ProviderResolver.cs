@@ -81,7 +81,8 @@ public sealed class ProviderResolver(
             DecryptOrNull(provider.PasswordCipher),
             provider.FromAddressDefault,
             provider.FromDisplayNameDefault,
-            provider.RateLimitPerMinute
+            provider.RateLimitPerMinute,
+            provider.BulkRateLimitPerMinute
         );
 
     private ResolvedEmailProvider ToResolvedTenantProvider(TenantEmailProvider provider) =>
@@ -94,7 +95,8 @@ public sealed class ProviderResolver(
             DecryptOrNull(provider.PasswordCipher),
             provider.FromAddressDefault,
             provider.FromDisplayNameDefault,
-            provider.RateLimitPerMinute
+            provider.RateLimitPerMinute,
+            provider.BulkRateLimitPerMinute
         );
 
     private string? DecryptOrNull(Domain.ValueObjects.EncryptedSecret? secret) =>

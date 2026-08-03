@@ -26,6 +26,15 @@ public sealed record NotificationsEmailSendRequestedIntegrationEvent : Integrati
 {
     public required Guid NotificationLogId { get; init; }
     public required Guid DispatchAttemptId { get; init; }
+
+    /// <summary>
+    /// Correlación opaca hacia el microservicio de Campaña que originó este envío (null para el canal
+    /// existente de notificaciones automáticas de Notification) — Postmaster solo la transporta de ida
+    /// y de vuelta en los callbacks de resultado, nunca la interpreta. Mismo patrón que
+    /// <see cref="NotificationLogId"/>/<c>CorrespondenceDraftId</c> (Sending.SentMessage): un campo
+    /// nullable por cada origen distinto, en vez de un `Metadata` genérico.
+    /// </summary>
+    public Guid? CampaignId { get; init; }
     public required string IdempotencyKey { get; init; }
     public required string To { get; init; }
     public required string Subject { get; init; }
@@ -91,6 +100,9 @@ public sealed record PostmasterEmailDeliverySucceededIntegrationEvent : Integrat
     /// <summary>Id devuelto por el proveedor SMTP (message-id header, útil para tracking).</summary>
     public string? ProviderMessageId { get; init; }
 
+    /// <summary>Correlación de vuelta hacia Campaña — ver <see cref="NotificationsEmailSendRequestedIntegrationEvent.CampaignId"/>.</summary>
+    public Guid? CampaignId { get; init; }
+
     public required DateTime EventAtUtc { get; init; }
 }
 
@@ -103,6 +115,10 @@ public sealed record PostmasterEmailDeliveryFailedIntegrationEvent : Integration
     public required Guid SentMessageId { get; init; }
     public string? ProviderMessageId { get; init; }
     public required string Reason { get; init; }
+
+    /// <summary>Correlación de vuelta hacia Campaña — ver <see cref="NotificationsEmailSendRequestedIntegrationEvent.CampaignId"/>.</summary>
+    public Guid? CampaignId { get; init; }
+
     public required DateTime EventAtUtc { get; init; }
 }
 
@@ -116,6 +132,10 @@ public sealed record PostmasterEmailDeliveryBouncedIntegrationEvent : Integratio
     public string? ProviderMessageId { get; init; }
     public required string BounceType { get; init; }
     public required string Reason { get; init; }
+
+    /// <summary>Correlación de vuelta hacia Campaña — ver <see cref="NotificationsEmailSendRequestedIntegrationEvent.CampaignId"/>.</summary>
+    public Guid? CampaignId { get; init; }
+
     public required DateTime EventAtUtc { get; init; }
 }
 
@@ -127,6 +147,10 @@ public sealed record PostmasterEmailDeliverySuppressedIntegrationEvent : Integra
     public required Guid DispatchAttemptId { get; init; }
     public required Guid SentMessageId { get; init; }
     public required string SuppressionReason { get; init; }
+
+    /// <summary>Correlación de vuelta hacia Campaña — ver <see cref="NotificationsEmailSendRequestedIntegrationEvent.CampaignId"/>.</summary>
+    public Guid? CampaignId { get; init; }
+
     public required DateTime EventAtUtc { get; init; }
 }
 
@@ -140,5 +164,9 @@ public sealed record PostmasterEmailDeliveryProviderNotConfiguredIntegrationEven
 {
     public required Guid NotificationLogId { get; init; }
     public required Guid DispatchAttemptId { get; init; }
+
+    /// <summary>Correlación de vuelta hacia Campaña — ver <see cref="NotificationsEmailSendRequestedIntegrationEvent.CampaignId"/>.</summary>
+    public Guid? CampaignId { get; init; }
+
     public required DateTime EventAtUtc { get; init; }
 }

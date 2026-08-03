@@ -32,6 +32,7 @@ public sealed class SystemEmailProviderConfiguration : IEntityTypeConfiguration<
         builder.Property(p => p.FromAddressDefault).HasMaxLength(320).IsRequired();
         builder.Property(p => p.FromDisplayNameDefault).HasMaxLength(100);
         builder.Property(p => p.RateLimitPerMinute).IsRequired();
+        builder.Property(p => p.BulkRateLimitPerMinute);
         builder.Property(p => p.Enabled).IsRequired();
         builder.Property(p => p.CreatedAtUtc).IsRequired();
         builder.Property(p => p.UpdatedAtUtc);

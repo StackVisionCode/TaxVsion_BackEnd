@@ -87,6 +87,7 @@ public sealed class PostmasterEmailDeliveryServiceTests
         Assert.Equal("Transactional", evt.Stream);
         Assert.Null(evt.Cc);
         Assert.Null(evt.Bcc);
+        Assert.Null(evt.CampaignId);
         Assert.Equal(1, uow.SaveCount);
     }
 
@@ -111,6 +112,7 @@ public sealed class PostmasterEmailDeliveryServiceTests
         var evt = Assert.IsType<NotificationsEmailSendRequestedIntegrationEvent>(Assert.Single(publisher.Published));
         Assert.Equal("Bulk", evt.Stream);
         Assert.Equal("notification.campaign_email", evt.TemplateKey);
+        Assert.Equal(campaignId, evt.CampaignId);
     }
 
     /// <summary>

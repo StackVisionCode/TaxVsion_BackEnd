@@ -14,5 +14,6 @@ public sealed record ResolvedEmailProvider(
     string? Password,
     string FromAddress,
     string? FromDisplayName,
-    int RateLimitPerMinute
+    int RateLimitPerMinute,
+    int? BulkRateLimitPerMinute = null
 );

@@ -241,7 +241,7 @@ OpenTelemetry.
 
 ### Gateway
 
-- expone `http://localhost:5047`;
+- expone `http://localhost:<GATEWAY_PORT>`;
 - enruta `/auth/*` y `/tenants/*`;
 - valida JWT;
 - elimina `X-Tenant-Id` del cliente;
@@ -482,6 +482,33 @@ PATCH /tenants/{id}/status
 
 ## 8. Configuracion y secretos
 
+### Puertos de referencia (desarrollo local)
+
+Los ejemplos de este documento (curl, PowerShell, `dotnet user-secrets`, snippets
+de configuracion) usan los placeholders de abajo en vez de numeros de puerto fijos.
+Sustituyalos por el puerto real que cada servicio expone en su `launchSettings.json`
+o variable de entorno local — no son valores productivos, cada entorno (local,
+staging, produccion) puede asignarlos distinto.
+
+| Placeholder | Servicio / recurso |
+|---|---|
+| `<GATEWAY_PORT>` | Gateway (YARP) |
+| `<AUTH_PORT>` | Auth |
+| `<CUSTOMER_PORT>` | Customer |
+| `<CLOUDSTORAGE_PORT>` | CloudStorage |
+| `<SCRIBE_PORT>` | Scribe |
+| `<CONNECTORS_PORT>` | Connectors |
+| `<PAYMENTAPP_PORT>` | PaymentApp |
+| `<DOCUMENTS_PORT>` | Documents |
+| `<FRONTEND_PORT>` | Frontend (Vite dev server) |
+| `<REDIS_PORT>` | Redis |
+| `<RABBITMQ_PORT>` | RabbitMQ (AMQP) |
+| `<RABBITMQ_MGMT_PORT>` | RabbitMQ (consola de administracion) |
+| `<MINIO_PORT>` | MinIO (S3 API) |
+| `<GRAFANA_PORT>` | Grafana |
+| `<PROMETHEUS_PORT>` | Prometheus |
+| `<SMTP_DEV_PORT>` | Servidor SMTP de desarrollo (placeholder del seeder) |
+
 La configuracion local de Docker vive exclusivamente en `.env`. El archivo esta
 ignorado por Git y debe protegerse como secreto del entorno; no se mantiene una
 copia de ejemplo en el repositorio.
@@ -514,9 +541,9 @@ Auth:
 ```powershell
 dotnet user-secrets set "ConnectionStrings:Default" "<AUTH_CONNECTION>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
-dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:<REDIS_PORT>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
-dotnet user-secrets set "RabbitMq:Uri" "amqp://user:password@localhost:5672" `
+dotnet user-secrets set "RabbitMq:Uri" "amqp://user:password@localhost:<RABBITMQ_PORT>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
 dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
@@ -627,7 +654,7 @@ OpenTelemetry agrega `taxvision.correlation_id` como tag y baggage de la Activit
 ```powershell
 curl.exe -i `
   -H "X-Correlation-Id: taxvision-check-001" `
-  http://localhost:5047/health/live
+  http://localhost:<GATEWAY_PORT>/health/live
 ```
 
 En Grafana:
@@ -680,8 +707,8 @@ Grafana consulta los tres backends.
 
 | Componente | URL | Uso |
 | --- | --- | --- |
-| Grafana | `http://localhost:3000` | interfaz principal |
-| Prometheus | `http://localhost:9090` | consultas PromQL |
+| Grafana | `http://localhost:<GRAFANA_PORT>` | interfaz principal |
+| Prometheus | `http://localhost:<PROMETHEUS_PORT>` | consultas PromQL |
 | Loki | interno `loki:3100` | logs |
 | Tempo | interno `tempo:3200` | trazas |
 | OTel Collector | `4317`, `4318` | recepcion OTLP |
@@ -696,7 +723,7 @@ Los datasources se aprovisionan automaticamente:
 
 Uso:
 
-1. Abra `http://localhost:3000`.
+1. Abra `http://localhost:<GRAFANA_PORT>`.
 2. Ingrese credenciales `GRAFANA_ADMIN_*`.
 3. Abra **Explore**.
 4. Seleccione Loki para logs.
@@ -1010,7 +1037,7 @@ PBKDF2, tokens de invitacion, JWT y refresh tokens.
 Base:
 
 ```text
-http://localhost:5047
+http://localhost:<GATEWAY_PORT>
 ```
 
 ### Crear tenant
@@ -1255,13 +1282,13 @@ Internet :80/:443 -> caddy (TLS WILDCARD automatico via Let's Encrypt, DNS-01/Cl
 
 **Fase X1 (completitud del plan de subdominios de tenant, ver `Auth_y_CloudStorage_Plan_
 Completitud_v2.md`)** — el `Caddyfile` (`deploy/docker/caddy/Caddyfile`) usa un site block
-**wildcard** sobre `{$TAXVISION_BASE_DOMAIN:taxprocore.com}, *.{$TAXVISION_BASE_DOMAIN}`, con
+**wildcard** sobre `{$TAXVISION_BASE_DOMAIN:tudominio.com}, *.{$TAXVISION_BASE_DOMAIN}`, con
 `caddy` construido desde un `Dockerfile` propio (`deploy/docker/caddy/Dockerfile`, no la imagen
 `caddy:2-alpine` estandar) que agrega el plugin `caddy-dns/cloudflare`. Esto es necesario porque
 Let's Encrypt solo emite certificados wildcard via desafio **DNS-01** (crear un registro TXT de
 validacion) — el HTTP-01 automatico que usaba el `Caddyfile` anterior (single-domain) no puede
 emitir para un Host que Caddy no conoce de antemano, asi que nunca iba a poder cubrir subdominios
-de tenant dinamicos (`oficina1.taxprocore.com`, `oficina2.taxprocore.com`, ...). Requiere:
+de tenant dinamicos (`oficina1.tudominio.com`, `oficina2.tudominio.com`, ...). Requiere:
 
 - DNS wildcard (`CNAME *` o `A *`) apuntando a este server, ya configurado antes del primer arranque.
 - `CLOUDFLARE_DNS_API_TOKEN` en `.env` — token de Cloudflare con permiso **Zone:DNS:Edit** sobre
@@ -1269,7 +1296,7 @@ de tenant dinamicos (`oficina1.taxprocore.com`, `oficina2.taxprocore.com`, ...).
   en `auth-api`, con permisos Zone:DNS:Edit + Zone:SSL:Edit) — no reusar el mismo token entre los
   dos usos aunque compartan la misma cuenta de Cloudflare.
 - `TAXVISION_DOMAIN` (el host que usan hoy `MINIO_PUBLIC_ENDPOINT`/el healthcheck del workflow de
-  deploy, ej. `api.taxprocore.com`) sigue funcionando sin cambios — como es un subdominio de
+  deploy, ej. `api.tudominio.com`) sigue funcionando sin cambios — como es un subdominio de
   `TAXVISION_BASE_DOMAIN`, el mismo certificado wildcard ya lo cubre, no hace falta nada mas.
 
 La regla de MinIO existe porque las URLs presignadas que CloudStorage entrega al cliente apuntan
@@ -1341,22 +1368,22 @@ sin tocar Cloudflare ni Caddy en ningun entorno:
 
 **Local (recomendado — sin instalar nada):** Chrome/Edge resuelven **cualquier** subdominio de
 `*.localhost` a `127.0.0.1` de forma nativa, sin tocar el archivo hosts. Corriendo Auth con
-`dotnet run` (`http://localhost:5124` por defecto, ver `launchSettings.json`), un tenant sembrado
-con `TenantDomain.Host = "oficina1.localhost:5124"` ya resuelve pegandole a
-`http://oficina1.localhost:5124/...` — no hace falta HTTPS ni certificados para probar la
+`dotnet run` (`http://localhost:<AUTH_PORT>` por defecto, ver `launchSettings.json`), un tenant sembrado
+con `TenantDomain.Host = "oficina1.localhost:<AUTH_PORT>"` ya resuelve pegandole a
+`http://oficina1.localhost:<AUTH_PORT>/...` — no hace falta HTTPS ni certificados para probar la
 resolucion en si. Para otros navegadores (o si se necesita HTTPS local): agregar entradas al
-archivo hosts (`127.0.0.1 oficina1.taxprocore.test`, una por tenant de prueba) y generar un
+archivo hosts (`127.0.0.1 oficina1.tudominio.test`, una por tenant de prueba) y generar un
 certificado wildcard local con **mkcert**:
 ```
 mkcert -install
-mkcert "*.taxprocore.test" taxprocore.test localhost 127.0.0.1
+mkcert "*.tudominio.test" tudominio.test localhost 127.0.0.1
 ```
 y servirlo con Kestrel (`Kestrel:Certificates:Default:Path` en `appsettings.Development.json`) o
 con una segunda instancia local de Caddy apuntando al `.pfx` generado. Evitar el TLD `.dev`
 (Chrome lo fuerza a HSTS/HTTPS via preload list) y `.local` (reservado para mDNS).
 
 **Staging:** misma estrategia que produccion pero en una zona separada — `TAXVISION_BASE_DOMAIN=
-staging.taxprocore.com` (o el subdominio que se use como raiz de staging) con su propio wildcard
+staging.tudominio.com` (o el subdominio que se use como raiz de staging) con su propio wildcard
 DNS y su propio `CLOUDFLARE_DNS_API_TOKEN`/despliegue de `caddy`, para que un certificado o un
 tenant de prueba en staging nunca comparta nada con produccion. El codigo de resolucion de tenant
 no cambia entre entornos — solo la config (`TenantDomainOptions`/`TAXVISION_BASE_DOMAIN`).
@@ -1366,8 +1393,8 @@ no cambia entre entornos — solo la config (`TenantDomainOptions`/`TAXVISION_BA
 ### Health
 
 ```powershell
-curl.exe -i http://localhost:5047/health/live
-curl.exe -i http://localhost:5047/health/ready
+curl.exe -i http://localhost:<GATEWAY_PORT>/health/live
+curl.exe -i http://localhost:<GATEWAY_PORT>/health/ready
 ```
 
 ### Logs Docker
@@ -1381,7 +1408,7 @@ docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f otel-
 
 ### RabbitMQ
 
-Abra `http://localhost:15672` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD`.
+Abra `http://localhost:<RABBITMQ_MGMT_PORT>` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD`.
 
 Revise:
 
@@ -1900,9 +1927,9 @@ Para `TaxVision.Customer.Api`:
 ```powershell
 dotnet user-secrets set "ConnectionStrings:Default" "<CUSTOMER_CONNECTION>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:<REDIS_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:5672" `
+dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:<RABBITMQ_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
   --project src\Services\Customer\TaxVision.Customer.Api
@@ -1933,15 +1960,15 @@ Credenciales para que el archivo de import hable con CloudStorage (sec 25.10.1a
 — mismo patron que `Signature:ServiceAuth`, ver sec 27):
 
 ```powershell
-dotnet user-secrets set "ServiceAuthClient:AuthBaseUrl" "http://localhost:5124" `
+dotnet user-secrets set "ServiceAuthClient:AuthBaseUrl" "http://localhost:<AUTH_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "ServiceAuthClient:ClientId" "customer-worker" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "ServiceAuthClient:ClientSecret" "<mismo valor que ServiceAuth:Clients:3:Secret en Auth>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "CloudStorageClient:BaseUrl" "http://localhost:5330" `
+dotnet user-secrets set "CloudStorageClient:BaseUrl" "http://localhost:<CLOUDSTORAGE_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "Customer:Minio:Endpoint" "localhost:9000" `
+dotnet user-secrets set "Customer:Minio:Endpoint" "localhost:<MINIO_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "Customer:Minio:AccessKey" "customer-worker" `
   --project src\Services\Customer\TaxVision.Customer.Api
@@ -1962,7 +1989,7 @@ En produccion el master key va a Key Vault o equivalente; nunca al repo ni al
 ### 25.13 Gateway
 
 Ruta YARP `/customers/{**catch-all}` enrutada al cluster `customer` en
-`http://localhost:5263/`. Health check `customer-api` agregado al endpoint
+`http://localhost:<CUSTOMER_PORT>/`. Health check `customer-api` agregado al endpoint
 `/health/ready` del Gateway.
 
 ### 25.14 Aplicar migraciones
@@ -2583,23 +2610,23 @@ dotnet ef database update `
 
 ```powershell
 # 1. Crear tenant (dispara suscripcion trial + invitacion + limites)
-$tenant = Invoke-RestMethod -Method Post -Uri http://localhost:5047/tenants -ContentType application/json -Body (@{
+$tenant = Invoke-RestMethod -Method Post -Uri http://localhost:<GATEWAY_PORT>/tenants -ContentType application/json -Body (@{
   name = "Oficina Demo"; subdomain = "demo1"; adminEmail = "admin@demo.com"; defaultTimeZoneId = "America/New_York"
 } | ConvertTo-Json)
 
 # 2. Aceptar invitacion y login
-Invoke-RestMethod -Method Post -Uri http://localhost:5047/auth/invitations/accept -ContentType application/json -Body (@{
+Invoke-RestMethod -Method Post -Uri http://localhost:<GATEWAY_PORT>/auth/invitations/accept -ContentType application/json -Body (@{
   invitationToken = $tenant.adminActivationToken; name = "Admin"; lastName = "Demo"; password = "MiClaveSegura2026!"
 } | ConvertTo-Json)
-$login = Invoke-RestMethod -Method Post -Uri http://localhost:5047/auth/login -ContentType application/json -Body (@{
+$login = Invoke-RestMethod -Method Post -Uri http://localhost:<GATEWAY_PORT>/auth/login -ContentType application/json -Body (@{
   tenantId = $tenant.id; email = "admin@demo.com"; password = "MiClaveSegura2026!"
 } | ConvertTo-Json)
 $headers = @{ Authorization = "Bearer $($login.tokens.accessToken)" }
 
 # 3. Identidad, plan y limites (los 3 servicios juntos)
-Invoke-RestMethod http://localhost:5047/auth/me -Headers $headers
-Invoke-RestMethod http://localhost:5047/subscriptions/me -Headers $headers
-Invoke-RestMethod http://localhost:5047/auth/tenants/limits -Headers $headers
+Invoke-RestMethod http://localhost:<GATEWAY_PORT>/auth/me -Headers $headers
+Invoke-RestMethod http://localhost:<GATEWAY_PORT>/subscriptions/me -Headers $headers
+Invoke-RestMethod http://localhost:<GATEWAY_PORT>/auth/tenants/limits -Headers $headers
 ```
 
 ## 26.10 Documentacion del codigo
@@ -3309,7 +3336,7 @@ Correspondence/Connectors/Scribe/Postmaster/Notification.
 
 ## 28.2 Endpoints
 
-Todos bajo el Gateway (`http://localhost:5047`), prefijo `/notifications/email`.
+Todos bajo el Gateway (`http://localhost:<GATEWAY_PORT>`), prefijo `/notifications/email`.
 
 ```text
 # Configuracion SMTP/API (permiso notification.settings.manage)
@@ -3382,7 +3409,7 @@ Notification requiere dos claves adicionales (ver `appsettings.json` y el
 # Cifrado de secretos del modulo email (base64 de 32 bytes). En Docker: ENCRYPTION_MASTER_KEY.
 Encryption__MasterKey=<BASE64_32_BYTES>
 # Microservicio CloudStorage para plantillas/layouts. En Docker: http://cloudstorage-api:8080.
-CloudStorageClient__BaseUrl=http://localhost:5330
+CloudStorageClient__BaseUrl=http://localhost:<CLOUDSTORAGE_PORT>
 ```
 
 Generar la clave (PowerShell):
@@ -3528,7 +3555,7 @@ Las plantillas/config con `scope=System` solo las gestiona un `PlatformAdmin`.
 
 En Grafana/Loki, filtra por `service_name="notification-service"` y sigue el
 `CorrelationId` para ver la cadena `EmailSendRequested → EmailDeliverySucceeded/Failed`.
-En RabbitMQ (`http://localhost:15672`) revisa la cola `notification-events`.
+En RabbitMQ (`http://localhost:<RABBITMQ_MGMT_PORT>`) revisa la cola `notification-events`.
 
 ## 28.7 Webhooks y fan-out por lotes
 
@@ -4009,10 +4036,10 @@ Requeridos para `TaxVision.Signature.Api`:
 dotnet user-secrets set "ConnectionStrings:Default" "<SIGNATURE_CONNECTION>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:<REDIS_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:5672" `
+dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:<RABBITMQ_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
 dotnet user-secrets set "Jwt:Secret" "<SAME_HS256_SECRET>" `
@@ -4046,14 +4073,14 @@ dotnet user-secrets set "Signature:Sealing:Tsa:Endpoint" "https://freetsa.org/ts
 # El prefijo correcto es Signature:ServiceAuth (no ServiceAuthClient, que era
 # un bug historico). Auth service debe tener el cliente signature-worker
 # registrado en ServiceAuth:Clients con los permisos correspondientes.
-dotnet user-secrets set "Signature:ServiceAuth:AuthBaseUrl" "http://localhost:5124" `
+dotnet user-secrets set "Signature:ServiceAuth:AuthBaseUrl" "http://localhost:<AUTH_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 dotnet user-secrets set "Signature:ServiceAuth:ClientId" "signature-worker" `
   --project src\Services\Signature\TaxVision.Signature.Api
 dotnet user-secrets set "Signature:ServiceAuth:ClientSecret" "<secret-fuerte>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-dotnet user-secrets set "Signature:CloudStorage:BaseUrl" "http://localhost:5330" `
+dotnet user-secrets set "Signature:CloudStorage:BaseUrl" "http://localhost:<CLOUDSTORAGE_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
 # --- Clave RSA persistente para tokens del firmante externo ---
@@ -4105,7 +4132,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberatio
 ## 29.13 Gateway
 
 Ruta YARP `/signature/{**catch-all}` enrutada al cluster `signature` en
-`http://localhost:5340/`. Health check `signature-api` agregado a `/health/ready`
+`http://localhost:<SCRIBE_PORT>/`. Health check `signature-api` agregado a `/health/ready`
 del Gateway. Rate limiting adicional en el Gateway sobre los publicos:
 
 - `POST /signature/public/{token}/challenge` — reto (respalda cooldown de 30s del aggregate)
@@ -4415,7 +4442,7 @@ COMMUNICATION_JWKS_URI=http://auth-api:8080/auth/.well-known/jwks.json
 COMMUNICATION_TURN_URL=turn:turn:3478
 COMMUNICATION_TURN_STATIC_AUTH_SECRET=...
 COMMUNICATION_PLATFORM_TENANT_ID=8f58a521-4c25-4d91-9f4e-7ad5df14c001
-COMMUNICATION_CORS_ORIGINS=http://localhost:5173
+COMMUNICATION_CORS_ORIGINS=http://localhost:<FRONTEND_PORT>
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 # Rate limiting — todos con default = el literal hardcodeado original, cero
@@ -4845,7 +4872,7 @@ Gateway (ruta relativa desde `src/Gateway/TaxVision.Gateway/`):
 ```
 
 Communication Node.js NO necesita configuracion adicional: lee la clave publica directamente
-desde el JWKS endpoint de Auth (`COMMUNICATION_JWKS_URI=http://localhost:5124/auth/.well-known/jwks.json`).
+desde el JWKS endpoint de Auth (`COMMUNICATION_JWKS_URI=http://localhost:<AUTH_PORT>/auth/.well-known/jwks.json`).
 
 ## 31.5 Como funciona en runtime
 
@@ -4970,7 +4997,7 @@ Subscription:
 
 ## 32.4 Endpoints HTTP
 
-Todos bajo el Gateway (`http://localhost:5047`), salvo el interno. `TenantAdmin`
+Todos bajo el Gateway (`http://localhost:<GATEWAY_PORT>`), salvo el interno. `TenantAdmin`
 para mutaciones del propio tenant, `PlatformAdmin` para operaciones cross-tenant.
 
 | Recurso | Endpoints |
@@ -5162,7 +5189,7 @@ resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
 
 Esta seccion documenta el trabajo de las fases A3-A7 (julio 2026): Auth se
 convierte en el dueno del ciclo de vida completo de los dominios de un tenant —
-tanto el subdominio de plataforma (`oficina1.taxprocore.com`) como un dominio
+tanto el subdominio de plataforma (`oficina1.tudominio.com`) como un dominio
 propio opcional (`archivos.suoficina.com`). El diseno completo vive en el
 documento externo `Auth_y_CloudStorage_Plan_Completitud_v2.md` §9-11. No se creo
 un microservicio nuevo: se quedo en Auth porque ya es el dueno de la identidad y
@@ -5177,7 +5204,7 @@ sincronica extra en el path critico de cada request (resolver el Host).
   (solo subdominios, unico filtrado), `Status`
   (`Pending -> Provisioning -> Active -> Disabled | Failed`), `IsPrimary`.
   - `CreateSubdomain(...)`: arranca directo en `Active` — el certificado wildcard
-    de Cloudflare ya cubre `*.taxprocore.com`, no hay paso de provisioning.
+    de Cloudflare ya cubre `*.tudominio.com`, no hay paso de provisioning.
   - `CreateCustomHostname(...)`: arranca en `Pending` hasta que se dispara el
     provisioning en Cloudflare (§33.5).
   - `MarkProvisioning`, `MarkActive`, `MarkFailed`, `Disable`, `ChangeSubdomain`
@@ -5234,7 +5261,7 @@ sincronica extra en el path critico de cada request (resolver el Host).
 - **`EffectiveLoginTenantResolver`** (`Api/Common/`, Fase A6, revisado en la
   iteracion F11 QA): el gap real que hace efectivo el aislamiento de login.
   Antes de Fase A6, `LoginCommand`/`ForgotPasswordCommand` tomaban el
-  `TenantId` directo del body — un cliente en `tenantB.taxprocore.com` podia
+  `TenantId` directo del body — un cliente en `tenantB.tudominio.com` podia
   mandar el `TenantId` de otro tenant y el subdominio no importaba nada. Con
   `EnforceHostResolution=true` (staging/produccion) el `TenantId` del body se
   **descarta siempre**: solo cuenta el que el middleware resolvio del Host
@@ -5364,7 +5391,7 @@ puro, porque un slug liberado (expirado o consumido) puede reservarse de nuevo.
 
 ```json
 "TenantDomains": {
-  "BaseDomain": "taxprocore.com",
+  "BaseDomain": "tudominio.com",
   "EnforceHostResolution": true,
   "SubdomainReservationTtlMinutes": 15
 },
@@ -5417,13 +5444,13 @@ resuelve a ningun `TenantDomain`.
 1. **DNS gratis**: `*.localhost` resuelve a `127.0.0.1`/`::1` sin tocar el
    archivo hosts — tanto Windows como los navegadores basados en Chromium lo
    implementan nativo (RFC 6761 §6.3, dominio `.localhost` reservado para
-   loopback). Confirmado navegando a `http://demo.localhost:5047/health/live`
+   loopback). Confirmado navegando a `http://demo.localhost:<GATEWAY_PORT>/health/live`
    sin ninguna configuracion previa. Si tu entorno no lo soporta, agrega
    `127.0.0.1 demo.localhost` al hosts file a mano.
 2. **Registrar el subdominio en `TenantDomains`** apuntando al tenant que
    queres usar para probar (no hay comando/endpoint que acepte un
    `BaseDomain` custom como `localhost` — `TenantDomain.CreateSubdomain` solo
-   se invoca con el `BaseDomain` de config, `taxprocore.com` — asi que el seed
+   se invoca con el `BaseDomain` de config, `tudominio.com` — asi que el seed
    es un INSERT directo, sin domain events. Aceptable porque es tooling de
    dev, no un flujo de producto):
    ```sql
@@ -5431,22 +5458,22 @@ resuelve a ningun `TenantDomain`.
    VALUES (NEWID(), 'Subdomain', 'demo.localhost', 'demo', 'Active', 0, '<un-user-id-existente>', SYSUTCDATETIME(), '<tenant-id>');
    ```
    `IsPrimary=0` para no pisar el dominio primario real del tenant
-   (`oficina.taxprocore.com`, backfileado por `TenantDomainBackfillService`) —
+   (`oficina.tudominio.com`, backfileado por `TenantDomainBackfillService`) —
    podes tener los dos apuntando al mismo tenant sin problema, `Host` es lo
    unico que tiene que ser unico.
 3. **Por que no hace falta tocar CORS**: el Gateway rutea `/auth/{**catch-all}`
    con el transform `RequestHeaderOriginalHost: true`
    (`Gateway/TaxVision.Gateway/appsettings.json`) — esto hace que YARP
-   preserve el Host *original* de la request (`demo.localhost:5047`) en vez
-   de reescribirlo al destino (`localhost:5124`), asi que Auth ve el Host real
+   preserve el Host *original* de la request (`demo.localhost:<GATEWAY_PORT>`) en vez
+   de reescribirlo al destino (`localhost:<AUTH_PORT>`), asi que Auth ve el Host real
    directo en `HttpContext.Request.Host`, sin pasar por
    `ForwardedHeadersMiddleware`/`ReverseProxyTrust` (§33.2's nota de
    `ITenantResolver`) — CORS es sobre el `Origin` del navegador
-   (`http://localhost:5173`, la pagina del frontend, que **no cambia**), no
+   (`http://localhost:<FRONTEND_PORT>`, la pagina del frontend, que **no cambia**), no
    sobre el Host al que apunta la request. Alcanza con cambiar
-   `VITE_GATEWAY_URL=http://demo.localhost:5047` en el `.env` del frontend
+   `VITE_GATEWAY_URL=http://demo.localhost:<GATEWAY_PORT>` en el `.env` del frontend
    (§30.8-equivalente del lado frontend) — la pagina se sigue sirviendo desde
-   `localhost:5173` sin tocar nada mas.
+   `localhost:<FRONTEND_PORT>` sin tocar nada mas.
 4. **Cache**: invalidar `taxvision:tenant-resolution:host:demo.localhost` en
    Redis si cambiaste el `TenantId` del seed despues de haber probado una vez
    (TTL 5 min, ver §33.2).
@@ -5617,7 +5644,7 @@ verificar (Postmaster nunca necesita saber renderizar nada).
 
 El provider "default" de plataforma (el que usa `RequiredProviderScope=System` cuando
 un tenant no configuro el suyo propio) se seedea al arrancar con credenciales
-placeholder (`SystemEmailProviderSeeder`, `localhost:1025`) — el seeder solo corre si
+placeholder (`SystemEmailProviderSeeder`, `localhost:<SMTP_DEV_PORT>`) — el seeder solo corre si
 `ProviderCode="smtp-default"` no existe todavia, asi que nunca pisa una config real.
 Para cargar credenciales SMTP reales:
 
@@ -5728,7 +5755,7 @@ notificaciones transaccionales desde esa cuenta en vez de SMTP. Diseno completo 
   identificadores nativos del proveedor para responder un hilo existente — mismo
   criterio de incrementalidad que los inline assets en Fase 3.5.
 - **Config nueva**: `Postmaster:Connectors:BaseUrl` (default local
-  `http://localhost:5390`, docker-compose `http://connectors-api:8080`).
+  `http://localhost:<CONNECTORS_PORT>`, docker-compose `http://connectors-api:8080`).
 
 **Cross-referencia (Fase 16 de Correspondence, verificado):** además del consumer de
 Notification (35.2), Postmaster expone `POST /postmaster/correspondence-messages`
@@ -5835,7 +5862,7 @@ consumiendolo por el nombre completo del tipo CLR (`consumer-runtime.ts`,
   `Redis` (cache L2 de templates parseados), `CloudStorage:BaseUrl` +
   `ServiceAuthClient:*` (M2M contra Auth), `Scribe:Retention:Enabled/RetentionDays/BatchSize`
   (36.7).
-- Notification: `ScribeClient:BaseUrl` (default `http://localhost:5340`, en Docker
+- Notification: `ScribeClient:BaseUrl` (default `http://localhost:<SCRIBE_PORT>`, en Docker
   `http://scribe-api:8080`) — reusa el `IServiceTokenAcquirer`/`ServiceAuthClient:*` ya
   configurado para CloudStorage (el token M2M no esta atado a un downstream especifico).
 - Auth: el cliente M2M `notification-service` necesita el permiso `scribe.render`
@@ -6039,7 +6066,7 @@ job, que filtra solo por `Timestamp` sin `AccountId`), `AddTenantEmailAccountSta
    consentimiento — Google/Microsoft redirigen a `GET /connectors/oauth/callback/{gmail,graph}`,
    que a su vez redirige al frontend con `?connectors_connected=true&accountId=...`.
    Verificar `GET /health/ready` y `GET /connectors/accounts` (la cuenta debe listar `Status: Active`).
-3. Simular un push: `curl -X POST http://localhost:5390/connectors/webhooks/gmail-push`
+3. Simular un push: `curl -X POST http://localhost:<CONNECTORS_PORT>/connectors/webhooks/gmail-push`
    con un JWT valido de Google en `Authorization: Bearer` → verificar
    `connectors.raw_message_received.v1` publicado (RabbitMQ management UI).
 4. `dotnet test deploy/tests/TaxVision.Connectors.Tests/` — incluye los 7 tests de
@@ -7611,15 +7638,15 @@ de alcance** — el plan lo marca explícito, no es deuda de esta fase.
 ```json
 // Auth
 "Onboarding": {
-  "RegistrationUrlBase": "http://localhost:5173",
-  "AuthPublicBaseUrl": "http://localhost:5124",
-  "TenantBaseDomain": "taxprocore.com"
+  "RegistrationUrlBase": "http://localhost:<FRONTEND_PORT>",
+  "AuthPublicBaseUrl": "http://localhost:<AUTH_PORT>",
+  "TenantBaseDomain": "tudominio.com"
 },
 "Terms": { "CurrentVersion": "2026-07-14" },
 "Auth": {
-  "PaymentApp": { "BaseUrl": "http://localhost:5430" },
-  "Documents": { "BaseUrl": "http://localhost:5450" },
-  "CloudStorage": { "BaseUrl": "http://localhost:5330" }
+  "PaymentApp": { "BaseUrl": "http://localhost:<PAYMENTAPP_PORT>" },
+  "Documents": { "BaseUrl": "http://localhost:<DOCUMENTS_PORT>" },
+  "CloudStorage": { "BaseUrl": "http://localhost:<CLOUDSTORAGE_PORT>" }
 }
 
 // PaymentApp

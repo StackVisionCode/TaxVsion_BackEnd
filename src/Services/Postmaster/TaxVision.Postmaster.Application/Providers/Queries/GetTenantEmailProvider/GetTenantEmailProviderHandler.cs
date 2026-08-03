@@ -29,6 +29,7 @@ public static class GetTenantEmailProviderHandler
                 provider.FromAddressDefault,
                 provider.FromDisplayNameDefault,
                 provider.RateLimitPerMinute,
+                provider.BulkRateLimitPerMinute,
                 provider.Enabled,
                 provider.CreatedAtUtc,
                 provider.UpdatedAtUtc

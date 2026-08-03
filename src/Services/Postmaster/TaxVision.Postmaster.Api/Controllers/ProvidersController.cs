@@ -109,7 +109,8 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
             body.UseTls,
             body.Username,
             body.Password,
-            body.RateLimitPerMinute
+            body.RateLimitPerMinute,
+            body.BulkRateLimitPerMinute
         );
         var result = await bus.InvokeAsync<Result>(cmd, ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -140,7 +141,8 @@ public sealed class ProvidersController(IMessageBus bus) : ControllerBase
             body.UseTls,
             body.Username,
             body.Password,
-            body.RateLimitPerMinute
+            body.RateLimitPerMinute,
+            body.BulkRateLimitPerMinute
         );
         var result = await bus.InvokeAsync<Result>(cmd, ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

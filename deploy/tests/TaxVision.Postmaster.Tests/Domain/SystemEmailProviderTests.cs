@@ -147,4 +147,60 @@ public sealed class SystemEmailProviderTests
         provider.Enable(DateTime.UtcNow);
         Assert.True(provider.Enabled);
     }
+
+    [Fact]
+    public void Create_leaves_BulkRateLimitPerMinute_null_when_not_provided()
+    {
+        var provider = CreateValidProvider();
+
+        Assert.Null(provider.BulkRateLimitPerMinute);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Create_rejects_non_positive_bulk_rate_limit_when_provided(int invalidBulkLimit)
+    {
+        var result = SystemEmailProvider.Create(
+            providerCode: "smtp-default",
+            displayName: "Default SMTP",
+            providerType: EmailProviderType.Smtp,
+            fromAddressDefault: "no-reply@taxvision.local",
+            fromDisplayNameDefault: null,
+            host: "localhost",
+            port: 1025,
+            useTls: false,
+            username: null,
+            passwordCipher: null,
+            rateLimitPerMinute: 60,
+            createdAtUtc: DateTime.UtcNow,
+            bulkRateLimitPerMinute: invalidBulkLimit
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SystemEmailProvider.BulkRateLimitPerMinute", result.Error.Code);
+    }
+
+    [Fact]
+    public void UpdateConnection_can_set_bulk_rate_limit_independently_of_transactional()
+    {
+        var provider = CreateValidProvider();
+
+        var result = provider.UpdateConnection(
+            host: provider.Host,
+            port: provider.Port,
+            useTls: provider.UseTls,
+            username: provider.Username,
+            passwordCipher: null,
+            fromAddressDefault: provider.FromAddressDefault,
+            fromDisplayNameDefault: provider.FromDisplayNameDefault,
+            rateLimitPerMinute: 60,
+            updatedAtUtc: DateTime.UtcNow,
+            bulkRateLimitPerMinute: 10
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(60, provider.RateLimitPerMinute);
+        Assert.Equal(10, provider.BulkRateLimitPerMinute);
+    }
 }
