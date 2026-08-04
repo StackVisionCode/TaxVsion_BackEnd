@@ -11,11 +11,12 @@ import { recordEvaluated, recordBlocked, recordFallbackOpen } from '../telemetry
  * dentro de `windowSeconds`, el evento se rechaza/descarta.
  *
  * Fase 8 — emite `ratelimit.evaluated_total`/`blocked_total` etiquetados `layer: "socket"`
- * (categoria O del catalogo .NET no tiene overlay, una sola capa siempre). A diferencia del lado
- * .NET, Redis caido hoy propaga la excepcion (fail-CLOSED, no fail-open — gap preexistente, no
- * corregido en esta fase para no cambiar comportamiento de produccion fuera del alcance de
- * observabilidad) — igual se emite `fallback_open_total` con reason "redis_error" antes de
- * relanzar, para poder ver cuantas veces pasa esto en Grafana.
+ * (categoria O del catalogo .NET no tiene overlay, una sola capa siempre).
+ *
+ * Auditoria RateLimit hallazgo #3 — antes de esto, Redis caido relanzaba la excepcion (fail-CLOSED
+ * disfrazado de fail-open por el nombre de la metrica), al reves de `TieredRateLimitEvaluator`
+ * (.NET) y del ADR_017 (Redis caido nunca debe bloquear trafico). Ahora, igual que el lado .NET,
+ * se registra `fallback_open_total{reason=redis_error}` y se permite el evento.
  */
 export class SocketRateLimiter {
   constructor(private readonly redis: Redis) {}
@@ -35,7 +36,7 @@ export class SocketRateLimiter {
       count = await incrementAndGet(this.redis, key, input.windowSeconds);
     } catch (error) {
       recordFallbackOpen(input.scope, 'redis_error');
-      throw error;
+      return true;
     }
 
     const allowed = count <= input.maxPerWindow;

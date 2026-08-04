@@ -180,27 +180,18 @@ public static class DependencyInjection
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
-        AddRateLimitTierQuotas(services);
+        AddRateLimitTierQuotas(services, configuration);
         return services;
     }
 
     // RateLimit Fase 2 — mismo patrón que Customer (Fase 6) y Tenant (Fase 2.1): el consumer del
-    // evento de Subscription mantiene la proyección local al día incluso con el flag apagado. Solo
-    // se registra ITenantPlanCodeReader (100% local, IgnoreQueryFilters() sobre esta misma DB) —
-    // NO se registra IPlanRateLimitReader/HttpPlanRateLimitReader porque, a diferencia de
-    // Customer/Tenant/Signature/Scribe/Correspondence/Notification/Postmaster/PaymentApp/
-    // Subscription/Billing, Connectors todavía no tiene NINGUNA infraestructura de token M2M
-    // saliente (sin ServiceAuthClient config, sin ServiceTokenHttpAcquisition/ExpiringValueCache
-    // compuesto) — Connectors hoy solo RECIBE llamadas M2M (MessagesController), nunca las hace.
-    // Sin ese acquirer no hay forma de autenticar la llamada a Subscription's
-    // "GET subscriptions/internal/plan-rate-limits" sin inventar un cliente M2M nuevo fuera de
-    // alcance de esta sub-fase. Efecto: si algún día se activa RateLimit:EnforceTierQuotas acá,
-    // TieredRateLimitingRegistration.AddTieredRateLimiting() sigue registrando
-    // NullPlanRateLimitReader vía TryAddSingleton (fail-open a la cuota base sin escalar por
-    // plan) — degradado pero seguro, no un crash. Ver reporte de esta sub-fase para la
-    // recomendación de construir el acquirer M2M de Connectors como prerequisito de un cierre
-    // completo.
-    private static void AddRateLimitTierQuotas(IServiceCollection services)
+    // evento de Subscription mantiene la proyección local al día incluso con el flag apagado.
+    //
+    // Auditoria RateLimit hallazgo #2 — Connectors ganó su primera infraestructura de token M2M
+    // saliente (ver RateLimiting/ServiceTokenAcquirer.cs); antes solo RECIBIA llamadas M2M
+    // (MessagesController), nunca las hacía. HttpPlanRateLimitReader ahora puede leer el
+    // catálogo de Subscription, cerrando el gap documentado en Fase 2.
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
@@ -212,5 +203,36 @@ public static class DependencyInjection
             BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
             TenantPlanCodeCacheInvalidator
         >();
+
+        services
+            .AddOptions<ServiceAuthClientOptions>()
+            .Bind(configuration.GetSection(ServiceAuthClientOptions.SectionName));
+        services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+            }
+        );
+
+        services
+            .AddOptions<BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions>()
+            .Bind(
+                configuration.GetSection(
+                    BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions.SectionName
+                )
+            );
+        services.AddHttpClient<BuildingBlocks.Infrastructure.RateLimiting.HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

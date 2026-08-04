@@ -12,10 +12,20 @@ namespace BuildingBlocks.Web.RateLimiting;
 
 /// <summary>
 /// Aplica la política de rate-limit nombrada a una acción — Fase 3 del plan
-/// (Plan_Implementacion_Fases.md §8). Implementado como <see cref="IAsyncActionFilter"/> directo
+/// (Plan_Implementacion_Fases.md §8). Implementado como <see cref="IAsyncResourceFilter"/> directo
 /// sobre el atributo (mismo criterio ASP.NET Core que cualquier <c>[Authorize]</c>-like filter),
 /// no como middleware global — necesita el nombre de política resuelto por endpoint, que solo
-/// está disponible una vez que MVC ya hizo routing/model-binding.
+/// está disponible una vez que MVC ya hizo routing.
+///
+/// <para>
+/// Auditoria RateLimit hallazgo #5 — antes implementaba <c>IAsyncActionFilter</c>, que en el
+/// pipeline de MVC corre DESPUÉS del model binding (Autorización → Resource → Model Binding →
+/// Action → Result). Para categorías caras (I/J: bulk/export) eso significa que el body entero ya
+/// se deserializó antes de que el gate de rate-limit pudiera rechazar la request. Los resource
+/// filters (<c>IAsyncResourceFilter</c>) corren ANTES del model binding — mismo punto del
+/// pipeline que <c>[Authorize]</c> — así que ahora el 429 se devuelve sin gastar el costo de
+/// parsear el body de una request que de todas formas se va a rechazar.
+/// </para>
 ///
 /// <para>
 /// Resuelve tenant/user directo del <see cref="System.Security.Claims.ClaimsPrincipal"/> (no vía
@@ -26,9 +36,9 @@ namespace BuildingBlocks.Web.RateLimiting;
 /// </para>
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncActionFilter
+public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncResourceFilter
 {
-    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
     {
         var services = context.HttpContext.RequestServices;
         var registry = services.GetRequiredService<IRateLimitPolicyRegistry>();
@@ -39,6 +49,7 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncAct
 
         if (!user.TryGetTenantId(out var tenantId) || !user.TryGetUserId(out var userId))
         {
+            RecordMissingClaims(services, policyName);
             await next().ConfigureAwait(false);
             return;
         }
@@ -59,12 +70,23 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncAct
         await WriteRateLimitResponseAsync(context, policy, verdict).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Auditoria RateLimit hallazgo #6 — el fail-open sobre claims faltantes (doc-comment de la
+    /// clase) sigue siendo el comportamiento correcto para rutas anónimas protegidas por otro
+    /// mecanismo, pero antes de esto era completamente silencioso: nada distinguía "tráfico
+    /// anónimo esperado" de "endpoint autenticado mal configurado sin tenant_id/sub". Este counter
+    /// (distinto de <c>fallback_open_total</c> — no es una falla de infraestructura, es una señal
+    /// de configuración) permite alertar si un endpoint que debería tener claims deja de tenerlos.
+    /// </summary>
+    private static void RecordMissingClaims(IServiceProvider services, string policyName) =>
+        services.GetService<RateLimitMetrics>()?.RecordMissingClaims(policyName);
+
     /// <summary>Invariante §4 del plan — categoría M exige rastro de auditoría incluso al 429. Se
     /// atrapa cualquier falla del sink (no debe romper la respuesta 429 que sí importa devolver al
     /// cliente) — solo se loguea, mismo criterio de "no dejar que observabilidad tumbe una request"
     /// que ya usa <c>RateLimitMetrics</c>.</summary>
     private static async Task AuditBlockedAsync(
-        ActionExecutingContext context,
+        ResourceExecutingContext context,
         RateLimitPolicyDefinition policy,
         Guid tenantId,
         Guid userId
@@ -109,7 +131,7 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncAct
     /// NotAcceptable en vez de 429). Escribir directo evita depender de qué formatters/atributos de
     /// content-type tenga la acción.</summary>
     private static async Task WriteRateLimitResponseAsync(
-        ActionExecutingContext context,
+        ResourceExecutingContext context,
         RateLimitPolicyDefinition policy,
         RateLimitVerdict verdict
     )

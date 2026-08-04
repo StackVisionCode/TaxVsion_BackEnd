@@ -1,9 +1,11 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Abstractions.Payments;
@@ -72,25 +74,23 @@ public static class DependencyInjection
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
-        AddRateLimitTierQuotas(services);
+        AddRateLimitTierQuotas(services, configuration);
         return services;
     }
 
     // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
     // (TenantPlanCodeProjectionConsumer, mantiene la proyección al día incluso con el flag
-    // apagado) y los lectores concretos de la proyección local. NO se registra acá el mapeo a
+    // apagado) y los lectores concretos de la proyección local. El mapeo a
     // BuildingBlocks.RateLimiting.ITenantPlanCodeReader/IPlanRateLimitReader que
-    // RateLimitQuotaResolver realmente consume (eso vive en Program.cs, condicional al flag
-    // RateLimit:EnforceTierQuotas, como en Customer/Tenant) NI el registro de
-    // HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting): igual que CloudStorage,
-    // PaymentClient nunca tuvo un IServiceTokenAcquirer M2M propio — es un procesador de webhooks
-    // entrantes/receptor de llamadas M2M (InternalPayablesController, ServiceOnly), no un llamador
-    // saliente. Añadir uno solo para este wiring sería inventar infraestructura M2M nueva sin que
-    // el producto la haya pedido (ver feedback_no_speculative_vendor_coupling) — queda documentado
-    // como gap explícito, no resuelto acá. Mientras tanto AddTieredRateLimiting() sigue cayendo a
-    // NullTenantPlanCodeReader/NullPlanRateLimitReader (fail-open a BaseQuota), exactamente igual
-    // que hoy.
-    private static void AddRateLimitTierQuotas(IServiceCollection services)
+    // RateLimitQuotaResolver realmente consume vive en Program.cs, condicional al flag
+    // RateLimit:EnforceTierQuotas.
+    //
+    // Auditoria RateLimit hallazgo #2 — PaymentClient nunca tuvo un IServiceTokenAcquirer M2M
+    // propio (es un receptor M2M puro vía InternalPayablesController, no un llamador saliente);
+    // se agrega uno dedicado solo para que HttpPlanRateLimitReader pueda leer el catálogo de
+    // Subscription (ver RateLimiting/ServiceTokenAcquirer.cs), cerrando el gap documentado en
+    // Fase 2 — ya no cae a NullPlanRateLimitReader.
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
@@ -104,5 +104,30 @@ public static class DependencyInjection
             BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
             TenantPlanCodeCacheInvalidator
         >();
+
+        services
+            .AddOptions<ServiceAuthClientOptions>()
+            .Bind(configuration.GetSection(ServiceAuthClientOptions.SectionName));
+        services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+            }
+        );
+
+        services
+            .AddOptions<SubscriptionClientOptions>()
+            .Bind(configuration.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

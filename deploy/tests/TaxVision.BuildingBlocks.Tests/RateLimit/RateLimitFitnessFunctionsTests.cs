@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.RateLimiting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.RateLimit;
@@ -101,7 +102,8 @@ public sealed class RateLimitFitnessFunctionsTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(5, 60)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
         var policy = new RateLimitPolicyDefinition
         {

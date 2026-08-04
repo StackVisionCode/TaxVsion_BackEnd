@@ -1,5 +1,6 @@
 using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.RateLimiting;
+using Microsoft.Extensions.Logging;
 
 namespace BuildingBlocks.Infrastructure.RateLimiting;
 
@@ -10,8 +11,11 @@ namespace BuildingBlocks.Infrastructure.RateLimiting;
 /// <see cref="IRateLimitQuotaResolver"/> y el algoritmo declarado por
 /// <see cref="RateLimitPolicyDefinition.Algorithm"/> (vía <see cref="IRateLimitAlgorithmCounter"/>
 /// — cierra el hallazgo #8 de la auditoría post-Fase-9: antes de esto todo corría como ventana fija
-/// sin importar lo que la política declarara). Fail-open ante cualquier excepción del contador
-/// (invariante §3.3) — un Redis caído nunca debe bloquear tráfico.
+/// sin importar lo que la política declarara). Fail-open ante cualquier excepción del contador o
+/// del resolver de cuota (invariante §3.3) — un Redis caído, o un fallo al resolver la cuota por
+/// plan (caché/token M2M/HTTP a Subscription/deserialización), nunca debe bloquear tráfico ni
+/// traducirse en un 500 (auditoría hallazgo #4 — antes de esto <c>quotaResolver.ResolveAsync</c>
+/// no estaba protegido).
 ///
 /// <para>
 /// Fase 8 — emite <see cref="RateLimitMetrics"/> acá mismo (no en <c>RateLimitAttribute</c>): este
@@ -22,7 +26,8 @@ namespace BuildingBlocks.Infrastructure.RateLimiting;
 public sealed class TieredRateLimitEvaluator(
     IRateLimitAlgorithmCounter algorithmCounter,
     IRateLimitQuotaResolver quotaResolver,
-    RateLimitMetrics metrics
+    RateLimitMetrics metrics,
+    ILogger<TieredRateLimitEvaluator> logger
 ) : ITieredRateLimitEvaluator
 {
     public async Task<RateLimitVerdict> EvaluateAsync(
@@ -60,7 +65,32 @@ public sealed class TieredRateLimitEvaluator(
             }
         }
 
-        var quota = await quotaResolver.ResolveAsync(policy, tenantId, ct).ConfigureAwait(false);
+        EffectiveQuota quota;
+        try
+        {
+            quota = await quotaResolver.ResolveAsync(policy, tenantId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Fail-open — invariante §3.3. A diferencia de un contador Redis caído (capturado más
+            // abajo por política/capa), un resolver que lanza (caché de plan caída, token M2M
+            // fallido, HTTP a Subscription caído, catálogo indeserializable) nunca debe traducirse
+            // en un 500 — cae al cupo base sin escalar, igual que el camino "no se pudo resolver"
+            // que RateLimitQuotaResolver ya modela vía IsFallback.
+            logger.LogWarning(
+                ex,
+                "RateLimit quota resolution failed for policy {Policy}, tenant {TenantId} — falling back to base quota.",
+                policy.Name.Value,
+                tenantId
+            );
+            quota = new EffectiveQuota(
+                policy.BaseQuotaPerMinute,
+                policy.WindowSeconds,
+                IsFallback: true,
+                OverlayPermitCount: policy.OverlayQuotaPerMinute
+            );
+        }
+
         var plan = quota.PlanCode ?? "n/a";
 
         if (quota.IsFallback)

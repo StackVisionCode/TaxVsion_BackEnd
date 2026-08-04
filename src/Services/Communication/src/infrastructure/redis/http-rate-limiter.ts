@@ -13,8 +13,12 @@ import { recordEvaluated, recordBlocked, recordFallbackOpen } from '../telemetry
  * Fase 8 — `policy` es obligatorio para poder etiquetar `ratelimit.evaluated_total`/`blocked_total`;
  * las 2 rutas de meeting-invitations pasan su nombre canonico de `rate-limit-policies.ts`, el
  * limiter global por IP (sin politica .NET equivalente, ver ese doc-comment) pasa un literal
- * sintetico. Estas rutas son publicas/pre-auth — sin tenant conocido, se etiqueta "n/a". Mismo
- * criterio fail-closed + `fallback_open_total` que `SocketRateLimiter` (ver su doc-comment).
+ * sintetico. Estas rutas son publicas/pre-auth — sin tenant conocido, se etiqueta "n/a".
+ *
+ * Auditoria RateLimit hallazgo #3 — antes de esto, Redis caido relanzaba la excepcion (fail-CLOSED
+ * disfrazado de fail-open por el nombre de la metrica), al reves de `TieredRateLimitEvaluator`
+ * (.NET) y del ADR_017 (Redis caido nunca debe bloquear trafico). Ahora, igual que el lado .NET,
+ * se registra `fallback_open_total{reason=redis_error}` y se permite el request.
  */
 export class HttpRateLimiter {
   constructor(private readonly redis: Redis) {}
@@ -27,7 +31,7 @@ export class HttpRateLimiter {
       count = await incrementAndGet(this.redis, input.key, input.windowSeconds);
     } catch (error) {
       recordFallbackOpen(input.policy, 'redis_error');
-      throw error;
+      return true;
     }
 
     const allowed = count <= input.maxPerWindow;

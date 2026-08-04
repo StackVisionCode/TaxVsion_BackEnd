@@ -123,16 +123,19 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 
-// RateLimit Fase 2 — CloudStorage no tiene acquirer M2M saliente (nunca llama a otro
-// servicio), así que solo se registra el lector local ITenantPlanCodeReader (resuelve y
-// tagea planCode en EffectiveQuota.PlanCode para observabilidad) sin IPlanRateLimitReader —
-// la cuota nunca escala por plan acá, fallback fail-open a la base. Mismo patrón que
-// Connectors/Growth/Subscription. Ver DependencyInjection.cs AddRateLimitTierQuotas.
+// Auditoria RateLimit hallazgo #2 — CloudStorage ganó un IServiceTokenAcquirer M2M dedicado
+// (ver Infrastructure/RateLimiting/ServiceTokenAcquirer.cs) solo para que
+// HttpPlanRateLimitReader pueda leer el catálogo de Subscription; la cuota ahora sí escala
+// por plan en vez de caer siempre a NullPlanRateLimitReader/BaseQuota.
 if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
 {
     builder.Services.AddSingleton<
         BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
         BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
     >();
 }
 builder.Services.AddTieredRateLimiting();

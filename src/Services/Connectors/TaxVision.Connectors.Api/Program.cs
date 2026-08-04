@@ -104,17 +104,21 @@ builder.Services.AddRateLimiter(options =>
 
 // RateLimit Fase 2 — mismo piloto que Customer (Fase 6) y Tenant (Fase 2.1). Flag OFF por default
 // (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
-// AddTieredRateLimiting) hasta rollout coordinado. Solo se registra ITenantPlanCodeReader: a
-// diferencia de Customer/Tenant, Connectors todavía no tiene un acquirer de token M2M saliente
-// (ver el comentario en ConnectorsInfrastructure.DependencyInjection.AddRateLimitTierQuotas), así
-// que IPlanRateLimitReader queda sin override — TryAddSingleton de AddTieredRateLimiting() cae en
-// NullPlanRateLimitReader (degradado pero seguro) si este flag se llegara a activar sin cerrar
-// primero esa brecha.
+// AddTieredRateLimiting) hasta rollout coordinado.
+//
+// Auditoria RateLimit hallazgo #2 — Connectors ganó un acquirer de token M2M saliente (ver
+// ConnectorsInfrastructure.DependencyInjection.AddRateLimitTierQuotas), así que ahora también
+// registra IPlanRateLimitReader — la cuota escala por plan en vez de caer siempre a
+// NullPlanRateLimitReader.
 if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
 {
     builder.Services.AddSingleton<
         BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
         BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
     >();
 }
 

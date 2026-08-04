@@ -166,6 +166,19 @@ jobs:
           # vacio en docker-compose.yml, asi que ese M2M quedaba sin autenticar.
           PAYMENTAPP_SUBSCRIPTION_CLIENT_ID=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_ID }}
           PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET }}
+          # Auditoria RateLimit hallazgo #2 — 5 acquirers M2M nuevos (ServiceAuth__Clients__15-19
+          # en docker-compose.yml), uno por servicio que antes solo RECIBIA llamadas M2M, solo
+          # para leer el catalogo de PlanRateLimits de Subscription.
+          CLOUDSTORAGE_SERVICE_CLIENT_ID=${{ secrets.CLOUDSTORAGE_SERVICE_CLIENT_ID }}
+          CLOUDSTORAGE_SERVICE_CLIENT_SECRET=${{ secrets.CLOUDSTORAGE_SERVICE_CLIENT_SECRET }}
+          CONNECTORS_SERVICE_CLIENT_ID=${{ secrets.CONNECTORS_SERVICE_CLIENT_ID }}
+          CONNECTORS_SERVICE_CLIENT_SECRET=${{ secrets.CONNECTORS_SERVICE_CLIENT_SECRET }}
+          DOCUMENTS_SERVICE_CLIENT_ID=${{ secrets.DOCUMENTS_SERVICE_CLIENT_ID }}
+          DOCUMENTS_SERVICE_CLIENT_SECRET=${{ secrets.DOCUMENTS_SERVICE_CLIENT_SECRET }}
+          GROWTH_SERVICE_CLIENT_ID=${{ secrets.GROWTH_SERVICE_CLIENT_ID }}
+          GROWTH_SERVICE_CLIENT_SECRET=${{ secrets.GROWTH_SERVICE_CLIENT_SECRET }}
+          PAYMENTCLIENT_SERVICE_CLIENT_ID=${{ secrets.PAYMENTCLIENT_SERVICE_CLIENT_ID }}
+          PAYMENTCLIENT_SERVICE_CLIENT_SECRET=${{ secrets.PAYMENTCLIENT_SERVICE_CLIENT_SECRET }}
           # Billing -- clientes M2M hacia Documents (PDFs de factura) y hacia
           # PaymentApp/PaymentClient (Payments). Mismo gap: faltaban del todo, los
           # secrets correspondientes en docker-compose.yml tienen default vacio.

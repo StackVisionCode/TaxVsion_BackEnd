@@ -22,6 +22,7 @@ public sealed class RateLimitMetrics : IDisposable
     private readonly Counter<long> _evaluated;
     private readonly Counter<long> _blocked;
     private readonly Counter<long> _fallbackOpen;
+    private readonly Counter<long> _missingClaims;
 
     public RateLimitMetrics()
     {
@@ -36,6 +37,12 @@ public sealed class RateLimitMetrics : IDisposable
         _fallbackOpen = _meter.CreateCounter<long>(
             "ratelimit.fallback_open_total",
             description: "Fail-open events — Redis down or plan/quota unresolved (invariante §3.3/§3.5)"
+        );
+        _missingClaims = _meter.CreateCounter<long>(
+            "ratelimit.missing_claims_total",
+            description: "[RateLimit] on an authenticated endpoint whose principal has no tenant_id/sub claim — "
+                + "the request skipped counting entirely (auditoria hallazgo #6, señal de misconfiguración, "
+                + "no de infraestructura caída)"
         );
     }
 
@@ -65,6 +72,9 @@ public sealed class RateLimitMetrics : IDisposable
             new KeyValuePair<string, object?>("policy", policy),
             new KeyValuePair<string, object?>("reason", reason)
         );
+
+    public void RecordMissingClaims(string policy) =>
+        _missingClaims.Add(1, new KeyValuePair<string, object?>("policy", policy));
 
     public void Dispose() => _meter.Dispose();
 }

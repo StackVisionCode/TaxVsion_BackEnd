@@ -1,6 +1,7 @@
 using BuildingBlocks.Infrastructure.RateLimit;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.RateLimiting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.RateLimit;
@@ -18,7 +19,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(5, 60, OverlayPermitCount: 50)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
 
         var verdict = await evaluator.EvaluateAsync(Policy(), tenantId, userId);
@@ -33,7 +35,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(2, 60, OverlayPermitCount: 50)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
         var policy = Policy();
 
@@ -54,7 +57,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(1000, 60, OverlayPermitCount: 2)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
         var policy = Policy();
 
@@ -74,7 +78,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(5, 60)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
 
         var verdict = await evaluator.EvaluateAsync(Policy(), tenantId, userId);
@@ -89,12 +94,34 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             new ThrowingAlgorithmCounter(),
             new FixedQuotaResolver(new EffectiveQuota(1, 60)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
 
         var verdict = await evaluator.EvaluateAsync(Policy(), tenantId, userId);
 
         Assert.False(verdict.IsExceeded);
+    }
+
+    [Fact]
+    public async Task Fails_open_with_base_quota_when_the_quota_resolver_throws()
+    {
+        // Hallazgo #4 de la auditoría RateLimit — ResolveAsync no estaba protegido; un fallo de
+        // caché de plan/token M2M/HTTP a Subscription/deserialización debía traducirse en un 500
+        // en vez de caer al cupo base como el resto de las fuentes de fallback-open.
+        var counter = new FakeAlgorithmCounter();
+        var evaluator = new TieredRateLimitEvaluator(
+            counter,
+            new ThrowingQuotaResolver(),
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
+        );
+        var policy = Policy() with { BaseQuotaPerMinute = 3 };
+
+        var verdict = await evaluator.EvaluateAsync(policy, tenantId, userId);
+
+        Assert.False(verdict.IsExceeded);
+        Assert.Single(counter.EvaluatedKeys); // evaluó la capa primaria con la cuota base, no crasheó
     }
 
     [Fact]
@@ -104,7 +131,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(5, 60)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
         var unsupportedPolicy = Policy(RateLimitPartitionDimension.AccountOrProvider);
 
@@ -122,7 +150,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(5, 60)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
         var kPolicy = Policy(RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.AccountOrProvider);
 
@@ -137,7 +166,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(5, 60, OverlayPermitCount: 50)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
         var policy = Policy() with { OverlayLayers = [RateLimitPartitionDimension.Ip] };
 
@@ -152,7 +182,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(1000, 60, OverlayPermitCount: 1000)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
         var policy = Policy() with { EndpointCapPerWindow = 1 };
 
@@ -171,7 +202,8 @@ public sealed class TieredRateLimitEvaluatorTests
         var evaluator = new TieredRateLimitEvaluator(
             counter,
             new FixedQuotaResolver(new EffectiveQuota(5, 60)),
-            new RateLimitMetrics()
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
         );
 
         await evaluator.EvaluateAsync(Policy(), tenantId, userId);
@@ -200,6 +232,15 @@ public sealed class TieredRateLimitEvaluatorTests
             Guid tenantId,
             CancellationToken ct = default
         ) => Task.FromResult(quota);
+    }
+
+    private sealed class ThrowingQuotaResolver : IRateLimitQuotaResolver
+    {
+        public Task<EffectiveQuota> ResolveAsync(
+            RateLimitPolicyDefinition policy,
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("Subscription M2M call failed.");
     }
 
     private sealed class FakeAlgorithmCounter : IRateLimitAlgorithmCounter

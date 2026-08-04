@@ -431,6 +431,20 @@ services:
       # falta Audience/Scopes acá — mismo estilo que los clientes 0-8.
       ServiceAuth__Clients__14__ClientId: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_ID:-payment-app-subscription}
       ServiceAuth__Clients__14__Secret: ${PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET:-}
+      # Auditoria RateLimit hallazgo #2 — 5 acquirers M2M nuevos, uno por servicio que antes
+      # solo RECIBIA llamadas M2M, solo para leer el catalogo de PlanRateLimits de
+      # Subscription (HttpPlanRateLimitReader). Subscription's ServiceOnly policy solo exige
+      # actor_type=Service, sin Audience/Scopes granulares — mismo estilo que el cliente 14.
+      ServiceAuth__Clients__15__ClientId: ${CLOUDSTORAGE_SERVICE_CLIENT_ID:-cloudstorage-worker}
+      ServiceAuth__Clients__15__Secret: ${CLOUDSTORAGE_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__16__ClientId: ${CONNECTORS_SERVICE_CLIENT_ID:-connectors-worker}
+      ServiceAuth__Clients__16__Secret: ${CONNECTORS_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__17__ClientId: ${DOCUMENTS_SERVICE_CLIENT_ID:-documents-worker}
+      ServiceAuth__Clients__17__Secret: ${DOCUMENTS_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__18__ClientId: ${GROWTH_SERVICE_CLIENT_ID:-growth-worker}
+      ServiceAuth__Clients__18__Secret: ${GROWTH_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__19__ClientId: ${PAYMENTCLIENT_SERVICE_CLIENT_ID:-paymentclient-worker}
+      ServiceAuth__Clients__19__Secret: ${PAYMENTCLIENT_SERVICE_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -525,8 +539,9 @@ services:
       ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
       ServiceAuthClient__ClientId: ${CUSTOMER_SERVICE_CLIENT_ID:-customer-worker}
       ServiceAuthClient__ClientSecret: ${CUSTOMER_SERVICE_CLIENT_SECRET:-}
-      # RateLimit Fase 6 (piloto) — catálogo de multiplicadores por plan, flag OFF por default.
-      RateLimit__EnforceTierQuotas: ${CUSTOMER_ENFORCE_TIER_QUOTAS:-false}
+      # RateLimit auditoría hallazgo #1 — flag activado default en los 17 servicios (antes solo
+      # Customer lo tenía en true opcional, piloto Fase 6). Override sigue disponible por env var.
+      RateLimit__EnforceTierQuotas: ${CUSTOMER_ENFORCE_TIER_QUOTAS:-true}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
       # Credenciales MinIO propias para el archivo de import (IAM scoped a
       # taxvision-temp/customer/*, ver deploy/docker/minio/policies/customer-source.json +
@@ -847,6 +862,12 @@ services:
       # sync de IMAP. Default 15 min: prioriza que IMAP (100% dependiente de este job) tenga
       # frescura razonable sin volver a un polling agresivo por-mailbox.
       Connectors__Reconciliation__IntervalMinutes: ${CONNECTORS_RECONCILIATION_INTERVAL_MINUTES:-15}
+      # Auditoria RateLimit hallazgo #2 — acquirer M2M nuevo, solo para leer el catalogo de
+      # PlanRateLimits de Subscription (HttpPlanRateLimitReader).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${CONNECTORS_SERVICE_CLIENT_ID:-connectors-worker}
+      ServiceAuthClient__ClientSecret: ${CONNECTORS_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -958,6 +979,12 @@ services:
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Auditoria RateLimit hallazgo #2 — primer acquirer M2M saliente de CloudStorage (antes
+      # solo RECIBIA llamadas M2M), solo para leer el catalogo de PlanRateLimits de Subscription.
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${CLOUDSTORAGE_SERVICE_CLIENT_ID:-cloudstorage-worker}
+      ServiceAuthClient__ClientSecret: ${CLOUDSTORAGE_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1128,6 +1155,12 @@ services:
       Stripe__PlatformSecretKey: ${STRIPE_CONNECT_PLATFORM_SECRET_KEY:-}
       Stripe__ConnectWebhookSecret: ${STRIPE_CONNECT_WEBHOOK_SECRET:-}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Auditoria RateLimit hallazgo #2 — primer acquirer M2M saliente de PaymentClient (antes solo
+      # RECIBIA llamadas M2M), solo para leer el catalogo de PlanRateLimits de Subscription.
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${PAYMENTCLIENT_SERVICE_CLIENT_ID:-paymentclient-worker}
+      ServiceAuthClient__ClientSecret: ${PAYMENTCLIENT_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1165,6 +1198,13 @@ services:
       Growth__Codes__TokenHashing__Pepper: ${GROWTH_CODE_TOKEN_PEPPER:?Set GROWTH_CODE_TOKEN_PEPPER in .env}
       Growth__Referrals__TokenHashing__Pepper: ${GROWTH_REFERRAL_CODE_TOKEN_PEPPER:?Set GROWTH_REFERRAL_CODE_TOKEN_PEPPER in .env}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Auditoria RateLimit hallazgo #2 — primer acquirer M2M saliente de Growth (antes solo
+      # RECIBIA llamadas M2M vía /internal/*), solo para leer el catalogo de PlanRateLimits de
+      # Subscription.
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${GROWTH_SERVICE_CLIENT_ID:-growth-worker}
+      ServiceAuthClient__ClientSecret: ${GROWTH_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1257,6 +1297,12 @@ services:
       # Bulkhead de conversiones Chromium simultáneas (memoria). Ajustar según CPU/RAM del contenedor.
       Documents__Pdf__MaxConcurrency: ${DOCUMENTS_PDF_MAX_CONCURRENCY:-2}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      # Auditoria RateLimit hallazgo #2 — primer acquirer M2M saliente de Documents (antes solo
+      # RECIBIA llamadas M2M), solo para leer el catalogo de PlanRateLimits de Subscription.
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${DOCUMENTS_SERVICE_CLIENT_ID:-documents-worker}
+      ServiceAuthClient__ClientSecret: ${DOCUMENTS_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

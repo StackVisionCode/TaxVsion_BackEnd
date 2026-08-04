@@ -77,5 +77,21 @@ public sealed class RateLimitMetricsTests : IDisposable
         Assert.Equal("redis_primary", measurement.Tags["reason"]);
     }
 
+    // Auditoria RateLimit hallazgo #6 — RateLimitAttribute llama esto cuando un endpoint
+    // autenticado con [RateLimit] no puede resolver tenant_id/sub (fail-open silencioso antes de
+    // esta fase). Distinto de RecordFallbackOpen: es una señal de configuración, no de infra caída.
+    [Fact]
+    public void RecordMissingClaims_emits_with_policy_only()
+    {
+        using var metrics = new RateLimitMetrics();
+
+        metrics.RecordMissingClaims("customer.g.create");
+
+        var measurement = Assert.Single(_measurements);
+        Assert.Equal("ratelimit.missing_claims_total", measurement.Instrument);
+        Assert.Equal(1, measurement.Value);
+        Assert.Equal("customer.g.create", measurement.Tags["policy"]);
+    }
+
     public void Dispose() => _listener.Dispose();
 }

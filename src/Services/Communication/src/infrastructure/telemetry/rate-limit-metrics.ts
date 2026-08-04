@@ -33,7 +33,7 @@ function getCounters() {
         description: 'Requests rejected with 429, by layer',
       }),
       fallbackOpen: meter.createCounter('ratelimit.fallback_open_total', {
-        description: 'Redis failures on the rate-limit path (Communication es fail-closed hoy — ver doc-comment de los limiters)',
+        description: 'Redis failures on the rate-limit path — the request is allowed through (fail-open, invariant §3.3)',
       }),
     };
   }
