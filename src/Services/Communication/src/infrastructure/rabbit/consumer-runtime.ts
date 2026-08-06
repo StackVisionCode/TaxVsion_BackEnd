@@ -48,6 +48,10 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerCreatedIntegrationEvent': 'customer.created.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerUpdatedIntegrationEvent': 'customer.updated.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerDeactivatedIntegrationEvent': 'customer.deactivated.v1',
+  // 2026-08-06 (auditoria de proyecciones de customer): un cliente archivado tambien debe salir
+  // del directorio; sin esta entrada + su handler en customer-consumers.ts, un customer archivado
+  // seguia con IsActive=true y aparecia en el autocomplete de invitaciones.
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerArchivedIntegrationEvent': 'customer.archived.v1',
   // Fase B2 (chat tipado) — alimentan CustomerPreparerAssignment (ver customer-consumers.ts).
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerPreparerAssignedIntegrationEvent':
     'customer.preparer_assigned.v1',

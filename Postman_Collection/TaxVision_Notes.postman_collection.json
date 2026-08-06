@@ -1,0 +1,385 @@
+{
+	"info": {
+		"_postman_id": "5c7e2a4f-9b1d-4e6a-8c3f-2d5b7a9e1f4c",
+		"name": "TaxVision - Notes",
+		"description": "Coleccion del microservicio Notes de TaxVision (notas del staff, asociables polimorficamente a Customer/Task/Appointment/SignatureRequest/etc). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway). Dos arcos: NotesController (staff, [AllowActorTypes(TenantEmployee,TenantAdmin,PlatformAdmin)], {{accessToken}} de un login humano normal) y PortalNotesController ([AllowActorTypes(CustomerPortal)], solo lectura de notas ClientVisible, requiere un accessToken de login de portal — no incluido en este environment por default). TenantId/UserId siempre del JWT, nunca de body/query. Ver ADR_018_Notes_Bounded_Context.md y README.md #47 para el detalle completo (permisos, rate limiting, autorizacion de 5 capas, adjuntos via CloudStorage Caso B). 15 endpoints, verificados endpoint por endpoint contra los controllers reales en el cierre de Fase 10.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Notas (staff)",
+			"item": [
+				{
+					"name": "Create",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"html\": \"<p>Llamar al cliente manana para revisar documentos.</p>\",\n  \"targetType\": \"Customer\",\n  \"targetId\": \"{{customerId}}\",\n  \"visibility\": \"Team\",\n  \"colorKind\": \"FollowUp\"\n}"
+						},
+						"description": "Requiere notes.manage. TargetType=None + TargetId=null para una nota personal (my-planner). Visibilidad default del dominio es Private si se omite; el frontend sugiere Team para notas sobre un Customer. Validacion del Customer referenciado es SOFT (nunca bloquea por lag de proyeccion)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201);",
+									"if (pm.response.code === 201) {",
+									"  const body = pm.response.json();",
+									"  pm.environment.set(\"notesNoteId\", body.id);",
+									"}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetById",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}" ]
+						},
+						"description": "Requiere notes.read. Devuelve 404 uniforme tanto si la nota no existe como si existe pero no es visible para el actor (Private de otro sin notes.view_all) — nunca revela la existencia de una nota que no puede ver."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200 or 404 (cross-tenant/no-visible)\", () => [200, 404].includes(pm.response.code));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "ListByReference",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes?targetType=Customer&targetId={{customerId}}&page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes" ],
+							"query": [
+								{ "key": "targetType", "value": "Customer" },
+								{ "key": "targetId", "value": "{{customerId}}" },
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" }
+							]
+						},
+						"description": "Requiere notes.read. Filtro de visibilidad (Private ajena requiere notes.view_all) empujado a SQL, nunca filtrado en memoria post-pagina."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Mine",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/mine?page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "mine" ],
+							"query": [
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" }
+							]
+						},
+						"description": "Requiere notes.read. Sin filtro de visibilidad extra — el autor siempre ve las suyas. Rate limit notes.f.list (300/60s)."
+					},
+					"response": []
+				},
+				{
+					"name": "Search",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/search?q=cliente&page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "search" ],
+							"query": [
+								{ "key": "q", "value": "cliente" },
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" }
+							]
+						},
+						"description": "Requiere notes.read. Busqueda simple SQL sobre ContentPreview (sin full-text en v1). Rate limit notes.h.search (categoria H, 20/60s, mas estricto que un GET normal)."
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateContent",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/content",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "content" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"html\": \"<p>Llamada realizada, cliente confirmo la reunion.</p>\"\n}"
+						},
+						"description": "Requiere notes.manage. Estrictamente el autor (Capa 3b/Fase 9 defensa en profundidad via IsOwnerOrHasManageHandler<Note> cuando Authorization:ResourceOwnership:Enabled=true) — ni siquiera notes.view_all permite editar contenido ajeno. 403 (Note.Forbidden) si no es el autor."
+					},
+					"response": []
+				},
+				{
+					"name": "ChangeVisibility",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/visibility",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "visibility" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"visibility\": \"ClientVisible\"\n}"
+						},
+						"description": "Requiere notes.manage. Solo el autor. ClientVisible es la unica visibilidad que el CustomerPortal puede leer (ver PortalNotesController.ListClientVisible)."
+					},
+					"response": []
+				},
+				{
+					"name": "Pin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/pin",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "pin" ]
+						},
+						"description": "Requiere notes.manage. Solo el autor. Rate limit notes.g.write (categoria G, 60/60s)."
+					},
+					"response": []
+				},
+				{
+					"name": "Unpin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/unpin",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "unpin" ]
+						},
+						"description": "Requiere notes.manage. Solo el autor."
+					},
+					"response": []
+				},
+				{
+					"name": "SetColor",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/color",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "color" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"colorKind\": \"Important\"\n}"
+						},
+						"description": "Requiere notes.manage. Solo el autor. colorKind=null quita el color."
+					},
+					"response": []
+				},
+				{
+					"name": "Archive",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/archive",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "archive" ]
+						},
+						"description": "Requiere notes.manage a nivel de Capa 1 (la tabla del plan dice \"notes.manage o notes.view_all\" pero [HasPermission] no expresa OR); el OR real (autor o notes.view_all) se resuelve dentro del handler via NoteVisibilityPolicy.CanManage."
+					},
+					"response": []
+				},
+				{
+					"name": "Restore",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/restore",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "restore" ]
+						},
+						"description": "Requiere notes.manage (o notes.view_all via el handler, ver Archive)."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}" ]
+						},
+						"description": "Requiere notes.manage (o notes.view_all via el handler). Soft-delete terminal — status Deleted, oculto salvo governance (notes.view_all)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204 or documented error\", () => [204, 403, 404].includes(pm.response.code));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "AttachFile",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/attachments",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "attachments" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cloudStorageFileId\": \"<guid del fileId ya subido a CloudStorage por el navegador>\",\n  \"displayName\": \"contrato.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 245678\n}"
+						},
+						"description": "Requiere notes.manage. Solo el autor. Caso B (ADR-07): el navegador ya subio el archivo directo a CloudStorage con SU JWT antes de llamar este endpoint — Notes nunca habla con MinIO. El adjunto queda en estado Pending hasta que el consumer de FileAvailable/Infected/BlockedByPolicy lo mueva a Available/Rejected."
+					},
+					"response": []
+				},
+				{
+					"name": "DetachFile",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/{{notesNoteId}}/attachments/{{notesFileId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "{{notesNoteId}}", "attachments", "{{notesFileId}}" ]
+						},
+						"description": "Requiere notes.manage. Solo el autor. Soft: mueve el adjunto a Detached, no lo remueve de la coleccion. El borrado de bytes se difiere a la retencion de CloudStorage. Publica notes.attachment_detached.v1."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Portal (CustomerPortal)",
+			"item": [
+				{
+					"name": "ListClientVisible",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/notes/portal?targetType=Customer&targetId={{customerId}}&page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "notes", "portal" ],
+							"query": [
+								{ "key": "targetType", "value": "Customer" },
+								{ "key": "targetId", "value": "{{customerId}}" },
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" }
+							]
+						},
+						"description": "Requiere notes.portal.read + AllowActorTypes(CustomerPortal) — el accessToken debe venir de un login de portal, no de staff. Solo ve notas Visibility=ClientVisible; nunca Team/Private/Deleted. El portal NUNCA crea ni edita notas (403 en cualquier intento contra NotesController, que exige TenantEmployee/TenantAdmin/PlatformAdmin). Rate limit notes.f.portal_read (300/60s)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200);",
+									"if (pm.response.code === 200) {",
+									"  const body = pm.response.json();",
+									"  pm.test(\"only ClientVisible notes\", () => (body.items || []).every(n => n.visibility === 'ClientVisible'));",
+									"}"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

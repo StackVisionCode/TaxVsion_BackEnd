@@ -17,6 +17,7 @@ import { registerNotificationHandlers } from './api/socket/handlers/notification
 import { startMissedCallScheduler } from './infrastructure/schedulers/missed-call-scheduler.js';
 import { startPurgeScheduler } from './infrastructure/schedulers/purge-scheduler.js';
 import { startRecordingConsentTimeoutScheduler } from './infrastructure/schedulers/recording-consent-timeout-scheduler.js';
+import { startCustomerReconciliationScheduler } from './infrastructure/schedulers/customer-reconciliation-scheduler.js';
 import { startOutboxDrainer } from './infrastructure/rabbit/outbox-drainer.js';
 import { ConsumerRuntime } from './infrastructure/rabbit/consumer-runtime.js';
 import { bindSignatureConsumers } from './application/event-handlers/signature-consumers.js';
@@ -93,6 +94,14 @@ async function main(): Promise<void> {
       lock: container.distributedLock,
     },
   );
+  const customerReconciliation = startCustomerReconciliationScheduler(
+    { enabled: config.customerReconcile.enabled, intervalHours: config.customerReconcile.intervalHours },
+    {
+      client: container.customerReconciliation,
+      customerDirectory: container.customerDirectory,
+      lock: container.distributedLock,
+    },
+  );
 
   // Consumer runtime + registro de handlers Signature/Customer/Auth.
   const consumers = new ConsumerRuntime(container.processedEvents);
@@ -165,6 +174,7 @@ async function main(): Promise<void> {
         outbox,
         purge,
         recordingConsentTimeout,
+        customerReconciliation,
         sessionWatcher,
         presenceWatcher,
         consumers,
@@ -184,6 +194,7 @@ async function shutdown(
   outbox: ReturnType<typeof startOutboxDrainer>,
   purge: ReturnType<typeof startPurgeScheduler>,
   recordingConsentTimeout: ReturnType<typeof startRecordingConsentTimeoutScheduler>,
+  customerReconciliation: ReturnType<typeof startCustomerReconciliationScheduler>,
   sessionWatcher: ReturnType<typeof startSessionDenylistWatcher>,
   presenceWatcher: ReturnType<typeof startPresenceChangedWatcher>,
   consumers: ConsumerRuntime,
@@ -194,6 +205,7 @@ async function shutdown(
     outbox.stop();
     purge.stop();
     recordingConsentTimeout.stop();
+    customerReconciliation.stop();
     await container.sfu.stop();
     await sessionWatcher.stop();
     await presenceWatcher.stop();

@@ -75,6 +75,7 @@ jobs:
           # Corregido de paso junto con el docker-compose.yml (ver migrations service).
           BILLING_DB_CONNECTION=${{ secrets.BILLING_DB_CONNECTION }}
           DOCUMENTS_DB_CONNECTION=${{ secrets.DOCUMENTS_DB_CONNECTION }}
+          NOTES_DB_CONNECTION=${{ secrets.NOTES_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
           # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
           # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
@@ -179,6 +180,9 @@ jobs:
           GROWTH_SERVICE_CLIENT_SECRET=${{ secrets.GROWTH_SERVICE_CLIENT_SECRET }}
           PAYMENTCLIENT_SERVICE_CLIENT_ID=${{ secrets.PAYMENTCLIENT_SERVICE_CLIENT_ID }}
           PAYMENTCLIENT_SERVICE_CLIENT_SECRET=${{ secrets.PAYMENTCLIENT_SERVICE_CLIENT_SECRET }}
+          # RateLimit Fase 4 (Notes) — mismo notes-worker que Fase 4B (Customer M2M) reutilizará.
+          NOTES_SERVICE_CLIENT_ID=${{ secrets.NOTES_SERVICE_CLIENT_ID }}
+          NOTES_SERVICE_CLIENT_SECRET=${{ secrets.NOTES_SERVICE_CLIENT_SECRET }}
           # Billing -- clientes M2M hacia Documents (PDFs de factura) y hacia
           # PaymentApp/PaymentClient (Payments). Mismo gap: faltaban del todo, los
           # secrets correspondientes en docker-compose.yml tienen default vacio.
@@ -365,7 +369,7 @@ jobs:
       - name: Provision scoped MinIO service accounts
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
-      - name: Apply .NET EF Core migrations (16 servicios)
+      - name: Apply .NET EF Core migrations (17 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
 
       - name: Apply Communication Prisma migrations

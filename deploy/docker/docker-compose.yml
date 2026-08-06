@@ -445,6 +445,10 @@ services:
       ServiceAuth__Clients__18__Secret: ${GROWTH_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__19__ClientId: ${PAYMENTCLIENT_SERVICE_CLIENT_ID:-paymentclient-worker}
       ServiceAuth__Clients__19__Secret: ${PAYMENTCLIENT_SERVICE_CLIENT_SECRET:-}
+      # RateLimit Fase 4 (Notes) — misma identidad notes-worker que Fase 4B (Customer M2M)
+      # reutilizará; solo para que HttpPlanRateLimitReader lea el catálogo de Subscription.
+      ServiceAuth__Clients__20__ClientId: ${NOTES_SERVICE_CLIENT_ID:-notes-worker}
+      ServiceAuth__Clients__20__Secret: ${NOTES_SERVICE_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -937,6 +941,56 @@ services:
     networks:
       - taxvision-network
 
+  notes-api:
+    image: taxvision/notes-api:dev
+    container_name: taxvision-notes-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Notes/TaxVision.Notes.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${NOTES_DB_CONNECTION:?Set NOTES_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      # Fase 4B — proyección de Customer (CustomerDirectoryEntry): base URL de Customer.Api. El
+      # token M2M reutiliza el MISMO acquirer/identidad (notes-worker) ya registrado por
+      # ServiceAuthClient__* más abajo — un acquirer por servicio, un HttpClient tipado por
+      # destino real (mismo criterio confirmado en Correspondence).
+      Notes__Customer__BaseUrl: http://customer-api:8080
+      # Fase 7 — CloudStorage Caso B (subida directa del navegador): Notes solo consume eventos
+      # FileAvailable/FileInfectedDetected/FileBlockedByPolicy, sin MinIO ni M2M propio hacia
+      # CloudStorage. BaseUrl se conserva solo por si algún endpoint de lectura lo necesita.
+      Notes__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # RateLimit Fase 4 (de este plan) — mismo acquirer/identidad M2M (notes-worker) que la de
+      # arriba, solo para que HttpPlanRateLimitReader lea el catálogo de PlanRateLimits de
+      # Subscription — mismo patrón que CloudStorage (auditoría RateLimit hallazgo #2).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${NOTES_SERVICE_CLIENT_ID:-notes-worker}
+      ServiceAuthClient__ClientSecret: ${NOTES_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   cloudstorage-api:
     image: taxvision/cloudstorage-api:dev
     container_name: taxvision-cloudstorage-api
@@ -1038,6 +1092,12 @@ services:
       Signature__ServiceAuth__ClientId: ${SIGNATURE_SERVICE_CLIENT_ID:-signature-worker}
       Signature__ServiceAuth__ClientSecret: ${SIGNATURE_SERVICE_CLIENT_SECRET:-}
       Signature__CloudStorage__BaseUrl: http://cloudstorage-api:8080
+      # Job de reconciliación de CustomerEmailProjection (self-healing, cross-tenant M2M contra
+      # customers/internal/reconciliation con token de PlatformTenant). Reutiliza el MISMO
+      # signature-worker de arriba; solo necesita la base URL interna de Customer.Api — sin esto
+      # el CustomerClientOptions caía al default de dev (localhost:5263), inalcanzable dentro de
+      # la red de contenedores, y el barrido de 12h moría en silencio (el cliente nunca lanza).
+      Signature__Customer__BaseUrl: http://customer-api:8080
       # Fase D1 — credenciales MinIO propias para subir PDFs sellados (IAM scoped a
       # taxvision-temp/signature/*, ver deploy/docker/minio/policies/signature-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -1372,6 +1432,13 @@ services:
       # son de dev local y quedan inalcanzables desde dentro de este contenedor.
       COMMUNICATION_AUTH_BASE_URL: http://auth-api:8080
       COMMUNICATION_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      # Job de reconciliación de CustomerDirectoryEntry (self-healing, cross-tenant M2M contra
+      # customers/internal/reconciliation con token de PlatformTenant vía el mismo
+      # communication-worker de arriba). Sin esta base URL, el scheduler caía al default de dev
+      # (localhost:5263) inalcanzable dentro de la red de contenedores, y el barrido de 12h moría
+      # en silencio (el cliente devuelve null en cualquier falla). RECONCILE_ENABLED/INTERVAL_HOURS
+      # se dejan en sus defaults de config.ts (true / 12h).
+      COMMUNICATION_CUSTOMER_BASE_URL: http://customer-api:8080
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
       COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxprocore.com}
@@ -1526,6 +1593,7 @@ services:
       # servicio, no solo estos dos. Corregido de paso.
       BILLING_DB_CONNECTION: ${BILLING_DB_CONNECTION:?Set BILLING_DB_CONNECTION in .env}
       DOCUMENTS_DB_CONNECTION: ${DOCUMENTS_DB_CONNECTION:?Set DOCUMENTS_DB_CONNECTION in .env}
+      NOTES_DB_CONNECTION: ${NOTES_DB_CONNECTION:?Set NOTES_DB_CONNECTION in .env}
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -1577,6 +1645,7 @@ services:
       ReverseProxy__Clusters__growth__Destinations__growth1__Address: http://growth-api:8080/
       ReverseProxy__Clusters__billing__Destinations__billing1__Address: http://billing-api:8080/
       ReverseProxy__Clusters__documents__Destinations__documents1__Address: http://documents-api:8080/
+      ReverseProxy__Clusters__notes__Destinations__notes1__Address: http://notes-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1598,6 +1667,7 @@ services:
       - growth-api
       - billing-api
       - documents-api
+      - notes-api
       - otel-collector
     networks:
       - taxvision-network

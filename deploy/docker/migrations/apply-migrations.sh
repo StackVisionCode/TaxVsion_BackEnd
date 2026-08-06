@@ -112,4 +112,10 @@ apply_migration \
   "src/Services/Documents/TaxVision.Documents.Api/TaxVision.Documents.Api.csproj" \
   "$DOCUMENTS_DB_CONNECTION"
 
+apply_migration \
+  "Notes" \
+  "src/Services/Notes/TaxVision.Notes.Infrastructure/TaxVision.Notes.Infrastructure.csproj" \
+  "src/Services/Notes/TaxVision.Notes.Api/TaxVision.Notes.Api.csproj" \
+  "$NOTES_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

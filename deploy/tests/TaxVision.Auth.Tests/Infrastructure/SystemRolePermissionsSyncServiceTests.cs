@@ -64,7 +64,7 @@ public sealed class SystemRolePermissionsSyncServiceTests
     }
 
     [Fact]
-    public async Task Resync_removes_dangerous_permissions_from_an_existing_TenantAdmin_role_and_bumps_version()
+    public async Task Resync_keeps_dangerous_permissions_on_an_existing_TenantAdmin_role_and_bumps_version()
     {
         var (provider, bus) = BuildProvider(Guid.NewGuid().ToString());
         var tenantId = Guid.NewGuid();
@@ -74,8 +74,8 @@ public sealed class SystemRolePermissionsSyncServiceTests
         {
             var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
             var role = Role.Create(tenantId, Role.SystemTenantAdmin, null, isSystem: true).Value;
-            // Estado "viejo" pre-Fase-2: el rol quedó con roles.manage (IsDangerous ahora) como si
-            // el bundle automático se lo hubiera dado antes de que existiera el flag.
+            // Estado "viejo": el rol solo tiene roles.manage, le faltan el resto de los permisos
+            // del catalogo (ej. customers.view) — el resync debe completarlo.
             role.SetPermissions([PermissionCatalog.IdOf(PermissionCatalog.RolesManage)], seeding: true);
             roleId = role.Id;
 
@@ -92,20 +92,22 @@ public sealed class SystemRolePermissionsSyncServiceTests
             var role = await db.Roles.IgnoreQueryFilters().Include(r => r.Permissions).SingleAsync(r => r.Id == roleId);
 
             var currentIds = role.Permissions.Select(link => link.PermissionId).ToHashSet();
+            // 2026-08-06: el rol de sistema TenantAdmin usa el set que SI incluye IsDangerous — ver
+            // doc-comment de PermissionCatalog.SystemTenantAdminRootPermissions.
             var expectedIds = PermissionCatalog
-                .SystemRoleDefaults(Role.SystemTenantAdmin)
+                .SystemTenantAdminRootPermissions()
                 .Select(PermissionCatalog.IdOf)
                 .ToHashSet();
 
             Assert.Equal(expectedIds, currentIds);
-            Assert.DoesNotContain(PermissionCatalog.IdOf(PermissionCatalog.RolesManage), currentIds);
+            Assert.Contains(PermissionCatalog.IdOf(PermissionCatalog.RolesManage), currentIds);
             Assert.True(role.PermissionsVersion > 0);
         }
 
         var published = Assert.Single(bus.Published.OfType<RolePermissionsChangedIntegrationEvent>());
         Assert.Equal(roleId, published.RoleId);
         Assert.Equal(tenantId, published.TenantId);
-        Assert.DoesNotContain(PermissionCatalog.RolesManage, published.PermissionCodes);
+        Assert.Contains(PermissionCatalog.RolesManage, published.PermissionCodes);
         Assert.Contains(PermissionCatalog.CustomersView, published.PermissionCodes);
     }
 
@@ -120,7 +122,7 @@ public sealed class SystemRolePermissionsSyncServiceTests
             var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
             var role = Role.Create(tenantId, Role.SystemTenantAdmin, null, isSystem: true).Value;
             var expectedIds = PermissionCatalog
-                .SystemRoleDefaults(Role.SystemTenantAdmin)
+                .SystemTenantAdminRootPermissions()
                 .Select(PermissionCatalog.IdOf)
                 .ToList();
             role.SetPermissions(expectedIds, seeding: true);

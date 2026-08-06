@@ -7945,3 +7945,129 @@ cada `*ArchitectureTests.cs`:
    (Auth, Growth, CloudStorage, Connectors, PaymentApp, Signature, PaymentClient) — todos endpoints
    pre-auth/público/webhook sin tenant_id/user_id que particionar, verificados uno por uno. Cualquier
    `AddRateLimiter` nuevo fuera de esa lista rompe el build.
+
+# 47. Notes — Microservicio de notas del staff (plan de 11 fases, CERRADO)
+
+Microservicio independiente para notas del staff, asociables polimórficamente a cualquier entidad
+del ecosistema (Customer, Task, Appointment, SignatureRequest, etc.). DB propia, puerto dev
+**5440**, host interno `http://notes-api:8080`. Ver `ADR_018_Notes_Bounded_Context.md` (§`documents/architecture/`) para el porqué de la decisión y `Implementaciones/Notes/*.md` para el plan
+completo de 11 fases.
+
+## 47.1 Endpoints
+
+Staff (`NotesController`, `[AllowActorTypes(TenantEmployee, TenantAdmin, PlatformAdmin)]`):
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| POST | `/notes` | `notes.manage` | `notes.g.create` | |
+| GET | `/notes/mine` | `notes.read` | `notes.f.list` | |
+| GET | `/notes/search?q=` | `notes.read` | `notes.h.search` | |
+| GET | `/notes?targetType=&targetId=` | `notes.read` | `notes.f.list` | |
+| GET | `/notes/{id}` | `notes.read` | `notes.f.get` | 404 uniforme (existe-pero-no-visible == no-existe) |
+| PUT | `/notes/{id}/content` | `notes.manage` | `notes.g.write` | solo autor (Capa 3b, Fase 9) |
+| PUT | `/notes/{id}/visibility` | `notes.manage` | `notes.g.write` | solo autor |
+| POST | `/notes/{id}/pin` \| `/unpin` | `notes.manage` | `notes.g.write` | solo autor |
+| PUT | `/notes/{id}/color` | `notes.manage` | `notes.g.write` | solo autor |
+| POST | `/notes/{id}/archive` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| POST | `/notes/{id}/restore` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| DELETE | `/notes/{id}` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| POST | `/notes/{id}/attachments` | `notes.manage` | `notes.g.write` | solo autor |
+| DELETE | `/notes/{id}/attachments/{fileId}` | `notes.manage` | `notes.g.write` | solo autor |
+
+\* Capa 1 (`[HasPermission]`) solo puede expresar un permiso — el OR real (autor **o**
+`notes.view_all`) se evalúa en `NoteVisibilityPolicy.CanManage` dentro del handler; ver §47.4.
+
+CustomerPortal (`PortalNotesController`, `[AllowActorTypes(CustomerPortal)]`):
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| GET | `/notes/portal?targetType=&targetId=` | `notes.portal.read` | `notes.f.portal_read` | solo `ClientVisible`, nunca crea/edita |
+
+## 47.2 Permisos (`BuildingBlocks.Authorization.NotesPermissions`)
+
+`notes.read`, `notes.manage`, `notes.view_all` (ver todas — incl. `Private` de otros — pero no
+editar contenido ajeno), `notes.portal.read` (CustomerPortal).
+
+## 47.3 Rate limiting (catálogo `RateLimitPolicyCatalog.Notes.cs`)
+
+| Política | Categoría | Cuota (tenant, overlay) | Algoritmo |
+|---|---|---|---|
+| `notes.f.get` / `notes.f.list` / `notes.f.portal_read` | F | 300/60s (overlay 3000) | Token bucket |
+| `notes.g.create` / `notes.g.write` | G | 60/60s (overlay 600) | Token bucket |
+| `notes.h.search` | H | 20/60s (overlay 100) | Sliding window |
+
+Verificado end-to-end con `TaxVision.Notes.Tests.Integration.RateLimitIntegrationTests` (SQL
+Server/Redis/RabbitMQ locales reales, sin mocks) — confirma 429 con `Retry-After` +
+`X-RateLimit-{Policy,Layer,Limit,Remaining,Reset}` en `notes.f.list` (límite 300) y `notes.g.write`
+(límite 60).
+
+## 47.4 Autorización — 5 capas (RBAC + Fase 9)
+
+Igual al mecanismo de 5 capas del resto del monorepo (§41). La particularidad de Notes: el
+endurecimiento de Capa 3b (`IsOwnerOrHasManageHandler<Note>`, Fase 9) se conectó **solo** en los
+endpoints de edición de contenido (Update/Visibility/Pin/Unpin/Color/Attach/Detach — sin permiso de
+override, estrictamente el autor), flag `Authorization:ResourceOwnership:Enabled` (default `false`).
+Archive/Restore/Delete **no** usan ese mecanismo: como necesitan un override distinto
+(`notes.view_all`, no "sin override"), y `IsOwnerOrHasManageHandler<TResource>` solo admite un
+permiso de override por tipo de recurso aplicado a *todas* sus operaciones, el OR real vive en
+`NoteVisibilityPolicy.CanManage` (Application) — ver el doc-comment de `NotesController.cs` para el
+razonamiento completo.
+
+## 47.5 Adjuntos — CloudStorage Caso B (sin MinIO ni M2M en Notes)
+
+El navegador sube el archivo directo a CloudStorage con el JWT del usuario; Notes solo guarda la
+referencia (`fileId`) y reacciona a 4 eventos de integración (`NotesFileScanResultConsumer`):
+`FileAvailable`→`Available`, `FileInfected/BlockedByPolicy`→`Rejected` (con razón), `FileDeleted`→
+`Detached` (+ publica `notes.attachment_detached.v1`, igual que el detach manual). Cada handler
+valida `note.TenantId == evt.TenantId` post-fetch — el repo usado (`GetByAttachmentFileIdAsync`) no
+filtra por tenant porque el consumer no corre dentro de un scope HTTP.
+
+## 47.6 Proyección de Customer (`CustomerDirectoryEntry`, Fase 4B — obligatoria en v1)
+
+Único M2M saliente de Notes (lectura, hacia Customer) — usado para validar SOFT al crear una nota
+sobre un Customer y para mostrar/buscar por nombre sin N+1. Alimentada por 6 eventos granulares
+(Created/Updated/Activated/Deactivated/Archived/Reactivated) + reconciliación batched para
+importación masiva (que no trae `DisplayName`) vía `CustomerDirectoryReconciliationJob` (cada 6h).
+
+## 47.7 Configuración
+
+```jsonc
+// appsettings.json
+"Authorization": { "PermissionsSource": "Projection", "ResourceOwnership": { "Enabled": false } },
+"RateLimit": { "EnforceTierQuotas": true },
+"Notes": {
+  "Customer": { "BaseUrl": "http://localhost:5263" },
+  "CloudStorage": { "BaseUrl": "http://localhost:5330" }
+}
+```
+
+## 47.8 Verificación de cierre
+
+- `dotnet build TaxVision.slnx` + suite completa del monorepo: **verdes**, incluido el cierre de
+  Fase 10 (76/76 tests Notes: los 2 de integración real de rate limiting + 1 nuevo de regresión
+  del bug descrito abajo).
+- `NotesArchitectureTests` (NetArchTest): `[AllowActorTypes]`/`[RateLimit]` en toda acción pública +
+  Controllers sin dependencia directa de Infrastructure.
+- **Verificación E2E en vivo (completada)**: Auth + Tenant + Notes levantados localmente con
+  `dotnet run` contra SQL Server/Redis/RabbitMQ reales; tenant nuevo creado vía
+  `POST /auth/subdomains/reserve` (ticket firmado RS256) → `POST /tenants` → invitación aceptada →
+  login real como TenantAdmin (JWT emitido de verdad por Auth, no minteado a mano). Con ese JWT se
+  ejecutó el flujo completo contra Notes real: crear nota, `GetById`, `ListByReference`, `Mine`,
+  `Search`, `UpdateContent`, `ChangeVisibility`, `Pin`/`Unpin`, `SetColor`, `Archive`/`Restore`,
+  `Delete` (soft) — todos 200/204 con los datos esperados. El endpoint del portal
+  (`GET /notes/portal`, `[AllowActorTypes(CustomerPortal)]`) se verificó rechazando el JWT de staff
+  con 403 (gate de actor-type confirmado en vivo); no se probó el camino 200 porque no existía una
+  cuenta CustomerPortal local — gap disclosed, no inventado.
+- **Bug real encontrado y corregido durante esta verificación**: `ListByReferenceAsync`,
+  `ListForAuthorAsync`, `SearchAsync` y `ListClientVisibleAsync` en `NoteRepository` dependían del
+  `HasQueryFilter` global fail-closed de `NotesDbContext` (poblado por `ITenantContext`, alimentado
+  por `JwtTenantContextMiddleware`), pero ese servicio *scoped* no está garantizado poblado en el
+  scope de DI que usa Wolverine para despachar localmente estas queries — a diferencia de
+  `GetByIdAsync`, que ya usaba `IgnoreQueryFilters()` con el tenantId explícito (mismo patrón
+  documentado para otros servicios en sesiones previas: EF query filter + Wolverine scope
+  mismatch). Sin el fix, **todo endpoint de listado/búsqueda de Notes devolvía siempre 0 filas en
+  producción** pese a que la nota existía — los 75 tests previos no lo detectaban porque los tests
+  unitarios de handlers usan un repositorio fake en memoria, no el `NotesDbContext` real. Corregido
+  aplicando `IgnoreQueryFilters()` (mismo criterio que `GetByIdAsync`) a los 4 métodos, verificado
+  en vivo tras rebuild+restart, y cubierto con un test de integración nuevo contra infraestructura
+  real (`NoteListsIntegrationTests`) para que un regreso futuro vuelva a fallar aquí.

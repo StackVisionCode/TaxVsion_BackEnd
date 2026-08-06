@@ -23,6 +23,14 @@ namespace TaxVision.Auth.Api.Middleware;
 /// (Kind=TermsOfService, Locale="en-US"), ya no contra TermsOptions.CurrentVersion — ver el
 /// doc-comment de AcceptTermsHandler para el porque (TermsOptions quedo sin consumidores tras
 /// este cambio, se deja la clase intacta por si se reintroduce un config-driven override).
+///
+/// 2026-08-06 (hallazgo real, encontrado en verificacion en vivo): la misma razon que exime a
+/// ActorType.Service aplica igual a un PlatformAdmin humano — su tenant_id tambien es el sentinel
+/// de PlatformTenant.Id (ver comentario de arriba), y PlatformTenant nunca puede "aceptar" el ToS
+/// porque no es un tenant cliente real. Sin esta exencion, todo PlatformAdmin humano quedaba
+/// bloqueado con 409 en el 100% de los endpoints autenticados de Auth en cuanto existiera una
+/// TermsVersion publicada — invisible hasta ahora porque la primera verificacion de login de
+/// PlatformAdmin (Fase L1.4) corrio antes de publicar ninguna version.
 /// </summary>
 public sealed class TermsAcceptanceMiddleware(RequestDelegate next)
 {
@@ -49,7 +57,7 @@ public sealed class TermsAcceptanceMiddleware(RequestDelegate next)
         if (
             ExemptPathPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix))
             || context.User.Identity is not { IsAuthenticated: true }
-            || context.User.GetActorType() == ActorType.Service
+            || context.User.GetActorType() is ActorType.Service or ActorType.PlatformAdmin
             || !context.User.TryGetTenantId(out var tenantId)
         )
         {

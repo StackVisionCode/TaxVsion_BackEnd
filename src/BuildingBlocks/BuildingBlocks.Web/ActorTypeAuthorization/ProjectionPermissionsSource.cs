@@ -25,11 +25,25 @@ namespace BuildingBlocks.ActorTypeAuthorization;
 /// staleness-checking vía <c>perm_v</c>, así que leerlos directo del claim <c>perm</c> del token
 /// (mismo comportamiento que <see cref="JwtEmbeddedPermissionsSource"/>) es seguro y suficiente.
 /// </para>
+///
+/// <para>
+/// <b>Opción B (recuperación pull bajo demanda)</b> — un miss de proyección ya no es
+/// automáticamente definitivo: si el servicio registró <paramref name="snapshotClient"/> y
+/// <paramref name="projectionWriter"/> (ambos opcionales — parámetros con default <c>null</c>, así
+/// que un servicio que nunca los registra en DI se comporta exactamente igual que antes, fail-closed
+/// puro), se le pregunta a Auth por el snapshot real y se persiste localmente antes de decidir. Esto
+/// resuelve el caso "microservicio nuevo se suma después de que el backfill global de Auth ya corrió
+/// para todos los usuarios existentes" sin depender de volver a disparar ese backfill (que
+/// re-notificaría a los 10 servicios ya sincronizados, no solo al nuevo) — cada servicio se autorepara
+/// en su primer request real, mismo criterio que <c>TenantCustomerBackfillService</c> de Notes.
+/// </para>
 /// </summary>
 public sealed class ProjectionPermissionsSource(
     IUserPermissionsProjectionReader reader,
     IMemoryCache cache,
-    ILogger<ProjectionPermissionsSource> logger
+    ILogger<ProjectionPermissionsSource> logger,
+    IPermissionsSnapshotClient? snapshotClient = null,
+    IUserPermissionsProjectionWriter? projectionWriter = null
 ) : IUserPermissionsSource
 {
     public async Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permission, CancellationToken ct = default)
@@ -55,7 +69,28 @@ public sealed class ProjectionPermissionsSource(
                 // nunca configuró uno. No asumir nada sobre cómo el host configuró la cache compartida.
                 entry.Size = 1;
                 entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
-                return await reader.GetSnapshotAsync(tenantId, userId, ct);
+
+                var local = await reader.GetSnapshotAsync(tenantId, userId, ct);
+                if (local is not null)
+                    return local;
+
+                // Opción B — miss local: si el servicio no registró el mecanismo de recuperación
+                // pull, se comporta exactamente igual que antes (null cachea 30s, fail-closed abajo).
+                if (snapshotClient is null || projectionWriter is null)
+                    return null;
+
+                var remote = await snapshotClient.FetchSnapshotAsync(tenantId, userId, ct);
+                if (remote is null)
+                    return null;
+
+                await projectionWriter.PersistSnapshotAsync(tenantId, userId, remote, ct);
+                logger.LogInformation(
+                    "Permissions projection auto-repaired via pull recovery for user {UserId} in tenant {TenantId} (version {Version}).",
+                    userId,
+                    tenantId,
+                    remote.PermissionsVersion
+                );
+                return new UserPermissionsSnapshot(remote.PermissionsVersion, remote.PermissionCodes);
             }
         );
 
@@ -63,7 +98,9 @@ public sealed class ProjectionPermissionsSource(
         {
             // Fail-closed: un usuario nunca sincronizado (o cuyo consumer todavía no procesó su
             // primer UserRolesChangedIntegrationEvent) no tiene forma de probar qué permisos
-            // tiene realmente — se lo trata como sin acceso, no como "todo permitido".
+            // tiene realmente — se lo trata como sin acceso, no como "todo permitido". Con Opción B
+            // ya registrada, llegar acá significa que la recuperación pull también falló (Auth caído,
+            // token M2M no disponible, o el usuario realmente no existe en Auth).
             logger.LogWarning(
                 "No UserPermissionsProjection found for user {UserId} in tenant {TenantId} — failing closed.",
                 userId,

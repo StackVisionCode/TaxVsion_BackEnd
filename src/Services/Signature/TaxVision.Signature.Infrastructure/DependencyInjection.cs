@@ -159,6 +159,7 @@ public static class DependencyInjection
         services
             .AddOptions<CloudStorageClientOptions>()
             .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
+        services.AddOptions<CustomerClientOptions>().Bind(configuration.GetSection(CustomerClientOptions.SectionName));
         services.AddOptions<SignatureMinioOptions>().Bind(configuration.GetSection(SignatureMinioOptions.SectionName));
 
         services.AddHttpClient<ISignatureServiceTokenAcquirer, SignatureServiceTokenAcquirer>(
@@ -195,6 +196,19 @@ public static class DependencyInjection
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
             }
         );
+
+        // Auto-reparación de la proyección CustomerEmailProjection: cliente M2M al endpoint global de
+        // reconciliación de Customer + job periódico. Reusa el IServiceTokenAcquirer compartido (pide el
+        // token para PlatformTenant, única identidad que el gate del endpoint acepta).
+        services.AddHttpClient<ICustomerReconciliationClient, Reconciliation.SignatureCustomerReconciliationClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<CustomerClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<CustomerProjectionReconciliationJob>();
 
         return services;
     }
