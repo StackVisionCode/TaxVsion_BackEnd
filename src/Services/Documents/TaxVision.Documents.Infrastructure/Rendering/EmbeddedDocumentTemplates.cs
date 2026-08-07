@@ -151,8 +151,15 @@ internal static class EmbeddedDocumentTemplates
           <div class="totals">
             <div><span>Subtotal</span><span>{{ invoice.subtotal }} {{ invoice.currency }}</span></div>
             <div><span>Impuestos</span><span>{{ invoice.taxAmount }} {{ invoice.currency }}</span></div>
+            {% for adj in invoice.adjustments %}
+            <div><span>{{ adj.label }}</span><span>-{{ adj.amount }} {{ invoice.currency }}</span></div>
+            {% endfor %}
             <div class="grand"><span>Total</span><span>{{ invoice.total }} {{ invoice.currency }}</span></div>
           </div>
+
+          {% if invoice.settlementType == "FullyCoveredByCode" %}
+          <div class="paid-note">✓ Cubierto al 100% por código — no se requirió pago.</div>
+          {% endif %}
 
           {% if invoice.status == "Paid" %}
           <div class="paid-note">✓ Factura pagada{% if invoice.paidDate != "" %} el {{ invoice.paidDate }}{% endif %}. No se requiere ninguna acción.</div>

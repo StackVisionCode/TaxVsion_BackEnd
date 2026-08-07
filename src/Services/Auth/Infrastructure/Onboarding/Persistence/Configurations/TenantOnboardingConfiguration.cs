@@ -33,6 +33,21 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
 
         builder.Property(onboarding => onboarding.CreatedAtUtc).IsRequired();
 
+        // Gift/Referral: desglose comercial congelado + reservas de código apiladas.
+        builder.Property(onboarding => onboarding.Currency).HasMaxLength(3);
+        builder.Property(onboarding => onboarding.FullyCovered).IsRequired();
+        // Entidad NORMAL (no owned): al agregar un hijo nuevo a un agregado YA cargado, EF lo marca
+        // Added→INSERT de forma predecible. Como owned (OwnsMany) EF lo emitía como UPDATE (0 filas) →
+        // DbUpdateConcurrencyException. La config del hijo vive en OnboardingCodeReservationConfiguration.
+        builder
+            .HasMany(onboarding => onboarding.CodeReservations)
+            .WithOne()
+            .HasForeignKey(reservation => reservation.OnboardingId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(TenantOnboarding.CodeReservations))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
         builder.Property(onboarding => onboarding.CurrentStep).HasConversion<string>().HasMaxLength(24).IsRequired();
         builder.Property(onboarding => onboarding.FailedStep).HasConversion<string>().HasMaxLength(24);
         builder.Property(onboarding => onboarding.FailureCode).HasMaxLength(128);

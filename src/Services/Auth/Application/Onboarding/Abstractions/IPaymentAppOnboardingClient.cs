@@ -22,7 +22,14 @@ public sealed record PaymentAppCheckoutRequest(
     string PayerEmail,
     string SuccessUrl,
     string CancelUrl,
-    string IdempotencyKey
+    string IdempotencyKey,
+    // Gift/Referral: si un código aplicó descuento (parcial), el NETO a cobrar (override del bruto) +
+    // el resumen de la reserva para trazabilidad. Null = sin código → PaymentApp resuelve el bruto.
+    long? NetAmountCents = null,
+    long? DiscountAmountCents = null,
+    string? Currency = null,
+    Guid? CodeReservationId = null,
+    string? PromotionSnapshotHash = null
 );
 
 public sealed record PaymentAppCheckoutResult(

@@ -1,18 +1,20 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
-using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Onboarding;
 using TaxVision.Auth.Application.Onboarding.Consumers;
+using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
+using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 
-/// <summary>PayFlow Fase 9 — UoW #3: cierra el ciclo pago→token. Genera el RegistrationToken,
-/// guarda solo su hash, y publica el evento que Notification (Fase 12) consumirá.</summary>
+/// <summary>PayFlow Fase 9 — UoW #3: cierra el ciclo pago→token. Emite el RegistrationToken (vía el
+/// camino de éxito compartido), publica el evento de registro y encola el FINALIZE (Billing invoice +
+/// commit de códigos). Ya NO pide recibo a Documents (esa responsabilidad pasó a Billing).</summary>
 public sealed class OnboardingPaymentSucceededConsumerTests
 {
     private static readonly OnboardingOptions RegistrationOptions = new()
@@ -20,8 +22,20 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         RegistrationUrlBase = "https://app.example.com",
     };
 
+    private static OnboardingSuccessCompleter BuildCompleter(
+        FakeTokenReferenceStore tokenReferences,
+        FakeMessageBus bus
+    ) =>
+        new(
+            new SecureTokenService(),
+            tokenReferences,
+            Options.Create(RegistrationOptions),
+            bus,
+            NullLogger<OnboardingSuccessCompleter>.Instance
+        );
+
     [Fact]
-    public async Task Completes_payment_and_publishes_registration_ready_with_a_stored_raw_token()
+    public async Task Completes_payment_publishes_registration_ready_and_enqueues_finalize()
     {
         var now = DateTime.UtcNow;
         var onboarding = OnboardingTestFactory.NewOnboarding(now);
@@ -29,9 +43,7 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.True(onboarding.MarkPaymentProcessing(paymentId, paymentId.ToString("N")).IsSuccess);
 
         var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
-        var tokens = new SecureTokenService();
         var tokenReferences = new FakeTokenReferenceStore();
-        var receiptDocuments = new FakeReceiptDocumentClient(Result.Success());
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
         var correlation = new FakeCorrelationContext();
@@ -51,13 +63,9 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         await OnboardingPaymentSucceededConsumer.Handle(
             evt,
             onboardings,
-            tokens,
-            tokenReferences,
-            Options.Create(RegistrationOptions),
-            receiptDocuments,
+            BuildCompleter(tokenReferences, bus),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
-            bus,
             correlation,
             NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
             CancellationToken.None
@@ -67,26 +75,26 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.NotNull(tokenReferences.Stored);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 
-        var published = Assert.Single(bus.Published);
-        var ready = Assert.IsType<OnboardingRegistrationReadyIntegrationEvent>(published);
+        var ready = Assert.IsType<OnboardingRegistrationReadyIntegrationEvent>(
+            bus.Published.Single(p => p is OnboardingRegistrationReadyIntegrationEvent)
+        );
         Assert.Equal(onboarding.Id, ready.OnboardingId);
         Assert.Equal(tokenReferences.Reference, ready.TokenReference);
         Assert.Equal("49.00 USD", ready.PriceFormatted);
 
-        Assert.NotNull(receiptDocuments.LastRequest);
-        Assert.Equal(onboarding.Id, receiptDocuments.LastRequest!.OnboardingId);
-        Assert.Equal("_123", receiptDocuments.LastRequest.TransactionReferenceMask);
-        Assert.Equal("Visa •••• 4242", receiptDocuments.LastRequest.PaymentMethodMasked);
-        Assert.Equal($"onboarding-receipt-{onboarding.Id:N}", receiptDocuments.LastRequest.IdempotencyKey);
+        var finalize = Assert.IsType<OnboardingFinalizeCommand>(
+            bus.Published.Single(p => p is OnboardingFinalizeCommand)
+        );
+        Assert.Equal(onboarding.Id, finalize.OnboardingId);
+        Assert.Equal(paymentId, finalize.PaymentId);
+        Assert.Equal(4900, finalize.PaidAmountCents);
     }
 
     [Fact]
     public async Task Ignores_events_for_unknown_onboardings()
     {
         var onboardings = new FakeTenantOnboardingRepository();
-        var tokens = new SecureTokenService();
         var tokenReferences = new FakeTokenReferenceStore();
-        var receiptDocuments = new FakeReceiptDocumentClient(Result.Success());
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
         var correlation = new FakeCorrelationContext();
@@ -105,13 +113,9 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         await OnboardingPaymentSucceededConsumer.Handle(
             evt,
             onboardings,
-            tokens,
-            tokenReferences,
-            Options.Create(RegistrationOptions),
-            receiptDocuments,
+            BuildCompleter(tokenReferences, bus),
             new FakePlanCatalogClient("Enterprise"),
             unitOfWork,
-            bus,
             correlation,
             NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
             CancellationToken.None
@@ -120,6 +124,5 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.Empty(bus.Published);
         Assert.Null(tokenReferences.Stored);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
-        Assert.Null(receiptDocuments.LastRequest);
     }
 }

@@ -37,9 +37,18 @@ public sealed record InvoiceDocumentRequest(
     string? PaymentUrl,
     DateOnly? PaidDate = null,
     string? ReceiptNumber = null,
-    string? ReceiptHash = null
+    string? ReceiptHash = null,
+    // Onboarding con código: descuento total + una línea de ajuste (negativa) por beneficio aplicado.
+    // SettlementType distingue "Paid" / "Mixed" / "FullyCoveredByCode" (total $0). Retrocompatible.
+    decimal Discount = 0m,
+    IReadOnlyList<InvoiceDocAdjustment>? Adjustments = null,
+    string? SettlementType = null
 );
 
 public sealed record InvoiceDocParty(string Name, string TaxId, string? Address);
 
 public sealed record InvoiceDocLine(string Description, decimal Quantity, decimal UnitPrice, decimal Amount);
+
+/// <summary>Línea de ajuste (descuento) para el PDF. <see cref="Amount"/> es la magnitud positiva del
+/// descuento; la plantilla la muestra en negativo.</summary>
+public sealed record InvoiceDocAdjustment(string Label, decimal Amount);

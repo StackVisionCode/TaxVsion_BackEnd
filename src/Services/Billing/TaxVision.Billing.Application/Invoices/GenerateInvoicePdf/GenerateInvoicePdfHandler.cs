@@ -52,7 +52,15 @@ public static class GenerateInvoicePdfHandler
             PaymentUrl: paymentUrl,
             PaidDate: invoice.PaidAtUtc is { } paid ? DateOnly.FromDateTime(paid) : null,
             ReceiptNumber: invoice.ReceiptNumber,
-            ReceiptHash: invoice.ReceiptHash
+            ReceiptHash: invoice.ReceiptHash,
+            Discount: ToDollars(invoice.DiscountTotal.AmountCents),
+            Adjustments: invoice
+                .Adjustments.Select(a => new InvoiceDocAdjustment(
+                    string.IsNullOrWhiteSpace(a.Code) ? a.Type.ToString() : $"{a.Type} · {a.Code}",
+                    ToDollars(a.Amount.AmountCents)
+                ))
+                .ToList(),
+            SettlementType: invoice.SettlementType?.ToString()
         );
 
         // Idempotencia versionada (punto 8 del review): incluye el ESTADO, la versión y el payable — así

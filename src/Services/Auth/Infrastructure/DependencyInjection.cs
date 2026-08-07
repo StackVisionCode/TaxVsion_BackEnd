@@ -177,6 +177,22 @@ public static class DependencyInjection
             }
         );
 
+        // Gift/Referral en onboarding — orquestación (reserva secuencial apilada + FINALIZE + éxito compartido).
+        services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingCodeReserver>();
+        services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingFinalizer>();
+        services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingSuccessCompleter>();
+
+        // Gift/Referral en onboarding — cliente M2M Auth→Growth (codes + referrals).
+        services.AddOptions<GrowthClientOptions>().Bind(configuration.GetSection(GrowthClientOptions.SectionName));
+        services.AddHttpClient<IGrowthOnboardingClient, GrowthOnboardingClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<GrowthClientOptions>>().Value;
+                http.BaseAddress = new Uri(opt.BaseUrl.EndsWith('/') ? opt.BaseUrl : opt.BaseUrl + "/");
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
         // Onboarding (PayFlow) — Fase 11
         services.AddHttpClient<IReceiptDocumentClient, ReceiptDocumentClient>(
             (sp, http) =>
@@ -241,6 +257,16 @@ public static class DependencyInjection
         );
 
         services.AddHttpClient<IPlanCatalogClient, PlanCatalogClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(opt.BaseUrl.EndsWith('/') ? opt.BaseUrl : opt.BaseUrl + "/");
+                http.Timeout = TimeSpan.FromSeconds(10);
+            }
+        );
+
+        // Gift/Referral en onboarding — bruto del plan (para cotizar los códigos antes del checkout).
+        services.AddHttpClient<IOnboardingPlanPricingClient, OnboardingPlanPricingClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;

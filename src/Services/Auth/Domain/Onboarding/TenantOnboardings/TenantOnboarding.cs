@@ -24,6 +24,8 @@ namespace TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 /// </summary>
 public sealed class TenantOnboarding : BaseEntity
 {
+    private readonly List<OnboardingCodeReservation> _codeReservations = [];
+
     private TenantOnboarding() { }
 
     public string FirstName { get; private set; } = default!;
@@ -38,6 +40,16 @@ public sealed class TenantOnboarding : BaseEntity
     public string? PaymentStatus { get; private set; }
     public string? PaymentReference { get; private set; }
     public DateTime? PaymentCompletedAtUtc { get; private set; }
+
+    // Gift/Referral: desglose comercial calculado por la reserva secuencial (apilada) en Growth.
+    // Se congela antes del checkout. Null hasta que se aplica al menos un código; FullyCovered = neto 0.
+    public Guid? ReferralAttributionId { get; private set; }
+    public long? GrossAmountCents { get; private set; }
+    public long? TotalDiscountCents { get; private set; }
+    public long? NetAmountCents { get; private set; }
+    public string? Currency { get; private set; }
+    public bool FullyCovered { get; private set; }
+    public IReadOnlyCollection<OnboardingCodeReservation> CodeReservations => _codeReservations;
 
     public string? RegistrationTokenHash { get; private set; }
     public DateTime? RegistrationTokenExpiresAtUtc { get; private set; }
@@ -133,6 +145,84 @@ public sealed class TenantOnboarding : BaseEntity
         PaymentReference = paymentReference;
         PaymentStatus = "Processing";
         Status = TenantOnboardingStatus.PaymentProcessing;
+        return Result.Success();
+    }
+
+    /// <summary>Gift/Referral: congela el desglose comercial (bruto/descuento/neto) y las reservas de
+    /// código apiladas ANTES del checkout. Válido solo en PendingPayment. Idempotente: si ya se aplicó
+    /// (hay reservas), es no-op — un reintento del checkout no re-reserva. <c>FullyCovered = neto 0</c>.</summary>
+    public Result ApplyOnboardingPricing(
+        long grossCents,
+        long totalDiscountCents,
+        long netCents,
+        string currency,
+        Guid? referralAttributionId,
+        IReadOnlyList<OnboardingCodeReservationInput> reservations,
+        DateTime nowUtc
+    )
+    {
+        if (Status != TenantOnboardingStatus.PendingPayment)
+            return Result.Failure(InvalidTransition());
+
+        if (_codeReservations.Count > 0)
+            return Result.Success(); // Ya aplicado (replay del checkout); no re-reservar.
+
+        if (grossCents < 0 || totalDiscountCents < 0 || netCents < 0)
+            return Result.Failure(new Error("Onboarding.InvalidAmount", "Amounts cannot be negative."));
+        if (totalDiscountCents > grossCents)
+            return Result.Failure(new Error("Onboarding.DiscountExceedsGross", "Discount cannot exceed gross."));
+        if (grossCents - totalDiscountCents != netCents)
+            return Result.Failure(new Error("Onboarding.InvalidNet", "Net must equal gross minus discount."));
+
+        var sumReservations = reservations?.Sum(r => r.DiscountCents) ?? 0;
+        if (sumReservations != totalDiscountCents)
+            return Result.Failure(
+                new Error("Onboarding.AdjustmentMismatch", "Sum of reservations must equal the total discount.")
+            );
+
+        GrossAmountCents = grossCents;
+        TotalDiscountCents = totalDiscountCents;
+        NetAmountCents = netCents;
+        Currency = currency;
+        ReferralAttributionId = referralAttributionId;
+        FullyCovered = netCents == 0;
+
+        var order = 0;
+        foreach (var r in reservations ?? [])
+            _codeReservations.Add(
+                new OnboardingCodeReservation(
+                    Id,
+                    r.CodeReservationId,
+                    r.BenefitType,
+                    r.Code,
+                    r.DiscountCents,
+                    r.SnapshotHash,
+                    order++,
+                    nowUtc
+                )
+            );
+
+        return Result.Success();
+    }
+
+    /// <summary>Carril $0 (cubierto 100% por código): pasa de PendingPayment a PaymentCompleted SIN pago
+    /// (no PaymentApp, no Stripe). Requiere haber aplicado un pricing con neto 0. Idempotente.</summary>
+    public Result MarkFullyCoveredByCode(DateTime nowUtc)
+    {
+        if (Status == TenantOnboardingStatus.PaymentCompleted && FullyCovered)
+            return Result.Success();
+
+        if (Status != TenantOnboardingStatus.PendingPayment)
+            return Result.Failure(InvalidTransition());
+
+        if (!FullyCovered || NetAmountCents is not 0)
+            return Result.Failure(
+                new Error("Onboarding.NotFullyCovered", "The onboarding is not fully covered by a code.")
+            );
+
+        PaymentStatus = "CoveredByCode";
+        PaymentCompletedAtUtc = nowUtc;
+        Status = TenantOnboardingStatus.PaymentCompleted;
         return Result.Success();
     }
 

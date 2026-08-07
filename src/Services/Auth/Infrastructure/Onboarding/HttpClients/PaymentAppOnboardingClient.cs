@@ -68,6 +68,11 @@ public sealed class PaymentAppOnboardingClient(
                         successUrl = request.SuccessUrl,
                         cancelUrl = request.CancelUrl,
                         idempotencyKey = request.IdempotencyKey,
+                        netAmountCents = request.NetAmountCents,
+                        discountAmountCents = request.DiscountAmountCents,
+                        currency = request.Currency,
+                        codeReservationId = request.CodeReservationId,
+                        promotionSnapshotHash = request.PromotionSnapshotHash,
                     }
                 ),
             };

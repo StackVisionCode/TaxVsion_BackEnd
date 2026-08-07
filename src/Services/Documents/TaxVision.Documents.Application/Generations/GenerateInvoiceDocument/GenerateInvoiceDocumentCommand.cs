@@ -58,12 +58,21 @@ public sealed record InvoicePayload(
     string? PaymentUrl = null,
     // Comprobante que provee Billing al pagar: número de recibo + hash de verificación (SHA-256).
     string? ReceiptNumber = null,
-    string? ReceiptHash = null
+    string? ReceiptHash = null,
+    // Onboarding con código: descuento total + una línea de ajuste por beneficio (referido/promo/gift).
+    // SettlementType = "Paid" | "Mixed" | "FullyCoveredByCode" (total $0). Retrocompatible (defaults).
+    decimal Discount = 0m,
+    IReadOnlyList<InvoiceAdjustment>? Adjustments = null,
+    string? SettlementType = null
 );
 
 public sealed record InvoiceParty(string Name, string TaxId, string? Address);
 
 public sealed record InvoiceLine(string Description, decimal Quantity, decimal UnitPrice, decimal Amount);
+
+/// <summary>Línea de ajuste (descuento) a representar. <see cref="Amount"/> es la magnitud positiva;
+/// la plantilla la muestra en negativo.</summary>
+public sealed record InvoiceAdjustment(string Label, decimal Amount);
 
 /// <summary>Respuesta 202: la generación se registró; el archivo se produce de forma asíncrona.</summary>
 public sealed record GenerateInvoiceDocumentResult(Guid GenerationId, string Status);

@@ -23,7 +23,13 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
         string PayerEmail,
         string SuccessUrl,
         string CancelUrl,
-        string IdempotencyKey
+        string IdempotencyKey,
+        // Gift/Referral: neto a cobrar (override del bruto) + resumen de la reserva, si un código aplicó.
+        long? NetAmountCents = null,
+        long? DiscountAmountCents = null,
+        string? Currency = null,
+        Guid? CodeReservationId = null,
+        string? PromotionSnapshotHash = null
     );
 
     [HttpPost("checkout")]
@@ -40,7 +46,12 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
                 request.PayerEmail,
                 request.SuccessUrl,
                 request.CancelUrl,
-                request.IdempotencyKey
+                request.IdempotencyKey,
+                request.NetAmountCents,
+                request.DiscountAmountCents,
+                request.Currency,
+                request.CodeReservationId,
+                request.PromotionSnapshotHash
             ),
             ct
         );

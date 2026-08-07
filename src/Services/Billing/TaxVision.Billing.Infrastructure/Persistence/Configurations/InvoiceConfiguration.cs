@@ -28,8 +28,16 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Property(i => i.ReceiptHash).HasMaxLength(64);
         b.Property(i => i.RowVersion).IsRowVersion();
 
+        // Onboarding pago-primero: factura pre-tenant keyed por OnboardingId (re-hospedada al activar).
+        b.Property(i => i.OnboardingId);
+        b.Property(i => i.PlanId);
+        b.Property(i => i.PaymentId);
+        b.Property(i => i.SettlementType).HasConversion<string>().HasMaxLength(32);
+
         b.HasIndex(i => new { i.TenantId, i.InvoiceNumber }).IsUnique().HasFilter("[InvoiceNumber] IS NOT NULL");
         b.HasIndex(i => new { i.TenantId, i.Status });
+        // Una factura por onboarding (idempotencia del alta pre-tenant).
+        b.HasIndex(i => i.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
 
         // Totales Money como escalar "cents|CUR".
         var money = new MoneyToStringConverter();
@@ -64,6 +72,22 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
                 lb.Property(l => l.UnitAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
                 lb.Property(l => l.TaxAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
                 lb.Property(l => l.LineTotal).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
+            }
+        );
+
+        // Líneas de ajuste (descuentos de onboarding) en tabla propia; magnitud del descuento como Money.
+        b.OwnsMany(
+            i => i.Adjustments,
+            ab =>
+            {
+                ab.ToTable("InvoiceAdjustmentLines");
+                ab.WithOwner().HasForeignKey(a => a.InvoiceId);
+                ab.HasKey(a => a.Id);
+                ab.Property(a => a.Id).ValueGeneratedNever();
+                ab.Property(a => a.Type).HasConversion<string>().HasMaxLength(32).IsRequired();
+                ab.Property(a => a.Code).HasMaxLength(64);
+                ab.Property(a => a.GrowthReservationId);
+                ab.Property(a => a.Amount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32).IsRequired();
             }
         );
 

@@ -24,6 +24,14 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
             .Include(i => i.PaymentLinks)
             .FirstOrDefaultAsync(i => i.TenantId == tenantId && i.Id == invoiceId, ct);
 
+    // Onboarding: la factura vive bajo PlatformTenant.Id hasta el backfill; se localiza por OnboardingId
+    // (índice único filtrado), no por tenant → IgnoreQueryFilters obligatorio.
+    public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+        _dbContext
+            .Invoices.IgnoreQueryFilters()
+            .Include(i => i.PaymentLinks)
+            .FirstOrDefaultAsync(i => i.OnboardingId == onboardingId, ct);
+
     public async Task<IReadOnlyList<Invoice>> ListByTenantAsync(
         Guid tenantId,
         int take,
