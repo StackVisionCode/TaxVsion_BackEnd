@@ -587,11 +587,28 @@ logs. Despues de aceptar la invitacion, deshabilite y elimine estos secretos. Lo
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-app.UseRateLimiter();
+// headers de seguridad (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS)
+app.UseMiddleware<InternalSurfaceGuardMiddleware>();   // GW-01: 404 a todo path con segmento `internal`
+app.UseCors("spa");
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
+app.UseMiddleware<LoadSheddingMiddleware>();           // Capa 1 del rate limiting
 app.UseMiddleware<TenantPropagationMiddleware>();
 ```
+
+`InternalSurfaceGuardMiddleware` va **antes de CORS y de la autenticación**: los 18 controllers M2M
+del sistema viven bajo `internal/*` y se hablan contenedor→contenedor, así que por el Gateway no hay
+tráfico legítimo que perder. Devuelve **404** (no 403, para no confirmar que el recurso existe),
+registra un `LogWarning` y suma a `gateway_internal_surface_probes_blocked_total`. Ver
+[ADR-019](documents/architecture/ADR_019_Internal_Surface_Not_Exposed_At_Gateway.md).
+
+**Convención obligatoria para endpoints M2M nuevos**: `[Route("internal/<recurso>")]`, **sin** el
+prefijo del servicio delante. Con el prefijo (`[Route("auth/internal/...")]`) el catch-all del
+Gateway sí los alcanza. Hay una fitness function que rompe el build si se incumple
+(`InternalRouteConventionFitnessTests`). Para probarlos con Postman se usa el puerto directo del
+servicio (`{{AuthDirectBase}}`, `{{TenantDirectBase}}`, `{{SubscriptionDirectBase}}`,
+`{{PaymentAppDirectBase}}`, `{{GrowthDirectBase}}`), nunca `{{UrlBase}}`.
 
 ### Auth
 
@@ -605,7 +622,8 @@ app.UseAuthorization();
 
 ### Tenant
 
-Agrega `TenantResolutionMiddleware` para reconstruir `TenantContext`.
+Agrega `BuildingBlocks.Tenancy.JwtTenantContextMiddleware` (antes de `UseAuthorization`) para
+reconstruir `TenantContext` desde el claim `tenant_id` del JWT ya verificado.
 
 El orden importa: correlation debe envolver logging y excepciones; autenticacion debe
 ejecutarse antes de leer claims.
@@ -7106,11 +7124,29 @@ Correspondence, Scribe, Growth) — se les agregó `ConnectionStrings__Redis: re
 antes de esta fase). Tokens M2M (sin claim `sid`) pasan sin chequear — la denylist es un concepto de
 sesión de usuario, no de actor de servicio.
 
+### Qué pasa si Redis se cae (`SessionDenylist:FailureMode`, hallazgo H-06)
+
+Si el store no responde, **no se sabe** si la sesión fue revocada. Antes cada implementación de
+`ISessionDenylistReader` se tragaba el fallo y devolvía `false`: fail-open razonable como default,
+pero invisible y no configurable — no había forma de saber cuántas revocaciones se estaban ignorando
+durante un incidente.
+
+Hoy el reader lanza `SessionDenylistUnavailableException` y la **política** la decide
+`SessionDenylistMiddleware`:
+
+| `SessionDenylist:FailureMode` | Comportamiento | Cuándo |
+|---|---|---|
+| `FailOpen` (**default**) | Deja pasar la request | Un Redis caído no debe tumbar todo el tráfico autenticado, y la exposición está acotada por el `exp` del access token (15 min) |
+| `FailClosed` | Responde **503** `Auth.SessionDenylistUnavailable` | Entornos donde una revocación ignorada es peor que una caída. Es una decisión de riesgo, no el default |
+
+En ambos casos se emite un `LogWarning` y se incrementa **`authz.session_denylist_unavailable`**
+(Meter `TaxVision.Authorization`, tag `outcome` = `fail_open` \| `fail_closed`), así que el fail-open
+deja de ser silencioso y se puede alertar sobre él.
+
 **Tests**: `TaxVision.BuildingBlocks.Tests/Session/` — `SessionDenylistMiddlewareTests` (401 si la
-sesión está en la denylist, pasa si no lo está, ignora tokens de servicio sin `sid`) +
-`SessionDenylistReaderTests` (fail-open + `LogWarning` real cuando el `ICacheService` lanza,
-confirma denegación cuando el cache dice `true`). 1892 tests .NET pasando en el monorepo completo
-tras la fase, 0 regresiones.
+sesión está en la denylist, pasa si no lo está, ignora tokens de servicio sin `sid`, y los dos modos
+de fallo del store) + `SessionDenylistReaderTests` (señaliza el fallo con la excepción dedicada en
+vez de tragárselo, confirma denegación cuando el cache dice `true`).
 
 ## 41.11 Enforce `perm_v` + proyección de permisos (RBAC Fase 7)
 
@@ -8071,3 +8107,141 @@ importación masiva (que no trae `DisplayName`) vía `CustomerDirectoryReconcili
   aplicando `IgnoreQueryFilters()` (mismo criterio que `GetByIdAsync`) a los 4 métodos, verificado
   en vivo tras rebuild+restart, y cubierto con un test de integración nuevo contra infraestructura
   real (`NoteListsIntegrationTests`) para que un regreso futuro vuelva a fallar aquí.
+
+---
+
+# 48. Bus de eventos — política de fallo, dead-letter queue y runbook de drenado (H-15, H-16)
+
+Ver `Documentacion Completa/91_Deuda_Bus_de_Eventos_H12_H20.md` para el análisis completo.
+
+## 48.1 Qué pasa con un mensaje que falla
+
+Medido contra el RabbitMQ real (Wolverine 6.14, sonda desechable, no por lectura de la doc):
+
+| Caso | Qué hace Wolverine | ¿Se pierde? |
+|---|---|---|
+| Handler lanza excepción **transitoria** | reintenta 3 veces (`1s`, `5s`, `15s`) y luego **mueve a `wolverine-dead-letter-queue`** | no, queda en la DLQ |
+| Handler lanza excepción **permanente** | **1 intento**, directo a la DLQ | no, queda en la DLQ |
+| No hay handler para ese tipo | **descarta en silencio**, sin log ni métrica | sí, y es correcto |
+
+Lo segundo suena mal y no lo es: con el fanout actual **cada una de las 17 colas recibe los ~183
+tipos de evento** y solo maneja un puñado — 177 pares (servicio, evento) tienen handler de 3111
+posibles, un **5,7%**. Recibir algo que no te toca es el modo normal de operación, no un fallo.
+
+**La DLQ no la crea el código, la crea `AutoProvision()`.** Existía desde el primer día y funciona.
+El agujero de H-16 nunca fue técnico: **nadie la estaba mirando**. Al medirlo había 6 mensajes
+muertos en las DLQ de Node que nunca había visto nadie.
+
+**Hay una sola `wolverine-dead-letter-queue` para los 17 servicios .NET.** Node tiene la suya por
+servicio (`communication-events.dlq`, `communication-transcript-worker.dlq`).
+
+## 48.1b La política de fallo, en un solo sitio (H-15)
+
+Los 17 `Program.cs` llamaban a `Policies.OnException<Exception>().RetryWithCooldown(1s, 5s, 15s)`
+copiado literalmente, y Node hacía `nack(requeue=false)` — **4 intentos contra 1**. Nadie había
+elegido esa asimetría: cada lado heredó el default de su librería.
+
+Hoy los dos lados aplican lo mismo, y la política vive en **un archivo**:
+
+- **.NET** — `BuildingBlocks/Messaging/WolverineFailurePolicies.cs`. Cada `Program.cs` llama
+  `options.ApplyStandardFailurePolicies();` y nada más.
+- **Node** — colas de espera con TTL en `rabbit-connection.ts`
+  (`communication-events.retry.1/2/3`) y la decisión de reencolar en `consumer-runtime.ts`.
+
+Lo que cambia respecto de antes es que **lo permanente ya no se reintenta**. Reintentar un bug
+determinista no lo arregla: gasta 21 segundos y tres ejecuciones más del handler para llegar al
+mismo sitio, ocupando un slot del consumidor. Se tratan como permanentes `JsonException`,
+`ArgumentException`, `FormatException` y `NotSupportedException` — todas dependen solo del payload,
+que es idéntico en cada intento.
+
+La lista es corta a propósito. **`InvalidOperationException`, `NullReferenceException` y
+`KeyNotFoundException` se quedaron fuera** aunque parezcan bugs: bajo consistencia eventual las
+tres las produce leer una proyección que todavía no llegó, y ahí el reintento es justo lo correcto.
+Un test lo fija (`FailurePolicyContractTests`) para que nadie las meta luego sin pensarlo.
+
+Node **no** replica esa distinción, y no es un olvido: el único fallo permanente que llega a su
+consumer es el payload ilegible, y ese ya se ack-skipea antes de entrar en la cadena de reintentos.
+No hay un catálogo de excepciones tipadas sobre el que discriminar.
+
+**Orden verificado contra el broker**: gana la primera regla que matchea, así que las específicas se
+registran antes de la genérica. Medido: `JsonException` da 1 intento, `InvalidOperationException`
+sigue dando 4.
+
+Dos fitness functions impiden la vuelta atrás: ningún `Program.cs` puede declarar su propio
+`RetryWithCooldown`, y todo servicio con `UseWolverine` tiene que aplicar el helper.
+
+## 48.1c El coste real de publicar un evento — deduplicar en el origen
+
+Con el fanout actual **un evento publicado son 17 escrituras a 17 bases de datos distintas**: cada
+cola lo recibe y su `UseDurableInbox()` lo persiste en su propio SQL Server *antes* de que Wolverine
+descubra si hay handler. Descartar lo que no te toca (§48.1) es barato en CPU y no es gratis en
+disco.
+
+Eso hace que **publicar por request sea un error de diseño**, no una ineficiencia. Encontrado en
+vivo: `TenantHostResolutionMiddleware` (Auth) publicaba `TenantResolutionFailedIntegrationEvent` en
+cada request cuyo Host no resolvía a un tenant. Nadie consume ese evento — cero handlers en el
+repo. Resultado medido: **30.638 eventos acumulados**, el inbox de Correspondence en 10.165 filas
+sin drenar y su agente de durabilidad deadlockeando contra SQL Server (error 1205 en
+`MoveReplayableErrorMessagesToIncomingOperation`), lo que congeló el inbox **entero** — incluidos
+los mensajes que Correspondence sí necesita procesar.
+
+En producción no es un problema de desarrollo: el apex y cualquier escáner de bots producen el
+mismo patrón, y un request con Host desconocido se amplifica ×17.
+
+**La regla:** si el disparador de un evento es *una request*, y no *una transición de estado del
+dominio*, hay que deduplicar antes de publicar.
+
+El patrón aplicado en `TenantHostResolutionMiddleware`, reutilizable:
+
+- El **audit log se escribe siempre** — es el registro forense, es una tabla local y no tiene
+  fan-out. Ahí está la cuenta exacta.
+- Al **bus solo sale el primer evento por clave y ventana**, con el `IRateCounter` de §45.4:
+  `IncrementAndGetAsync(key, ventana) == 1`. Ventana actual: 5 minutos por host.
+- Si el contador no está disponible se **omite la publicación**, no se propaga el fallo. Romper la
+  request o volver a inundar el bus son peores intercambios que perder una señal que nadie consume
+  en tiempo real, y el audit log ya quedó escrito.
+- Límite consciente: acota la **repetición** de una clave, no su **cardinalidad**. Un atacante que
+  rote el Host en cada request sigue generando un evento por request.
+
+## 48.2 Observabilidad
+
+- **Scrape:** job `rabbitmq` en `deploy/observability/prometheus.yml`, contra
+  `rabbitmq:15692/metrics/detailed?family=queue_coarse_metrics`. Hace falta el endpoint *detailed*:
+  el `/metrics` normal solo da el agregado del broker, sin desglose por cola. El puerto **no se
+  publica al host** — Prometheus entra por la red interna de Docker.
+- **Dashboard:** `deploy/observability/grafana/provisioning/dashboards/eventbus.json`.
+- **Alerta:** `deploy/observability/grafana/provisioning/alerting/eventbus-alerts.yml`. El umbral es
+  **cualquier mensaje** sostenido 5 minutos. Si se vuelve ruidosa, el arreglo es el bug que la
+  dispara, no subir el umbral.
+
+## 48.3 Runbook — hay mensajes en una DLQ
+
+**No purgar.** Purgar sin leer es perder los datos con pasos extra.
+
+1. **Ver qué hay**, sin consumir (`ack_requeue_true` los devuelve a la cola):
+
+```bash
+curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X POST "http://localhost:15672/api/queues/%2F/wolverine-dead-letter-queue/get" -H "content-type: application/json" -d '{"count":20,"ackmode":"ack_requeue_true","encoding":"auto"}'
+```
+
+2. **Identificar de dónde viene.** Como la DLQ de .NET es compartida, el servicio no está en el
+   nombre de la cola: sale de las cabeceras del envelope. Mirar `dotnet-type-name` (qué evento) y
+   el mensaje de excepción (por qué murió). Con eso se localiza el handler.
+
+3. **Corregir el handler y desplegarlo.** Re-encolar antes de arreglar solo repite el fallo y
+   vuelve a llenar la DLQ.
+
+4. **Re-encolar** con un shovel temporal de la DLQ a la cola de origen:
+
+```bash
+curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT "http://localhost:15672/api/parameters/shovel/%2F/drenar-dlq" -H "content-type: application/json" -d '{"value":{"src-protocol":"amqp091","src-uri":"amqp://","src-queue":"wolverine-dead-letter-queue","dest-protocol":"amqp091","dest-uri":"amqp://","dest-queue":"auth-tenant-events","src-delete-after":"queue-length"}}'
+```
+
+   `src-delete-after: queue-length` para el shovel al vaciar lo que había al empezar, sin quedarse
+   drenando lo que llegue después. Borrar el parámetro al terminar.
+
+5. **Verificar** que la DLQ queda a 0 y que la alerta se apaga sola.
+
+> **Los mensajes muertos caducan.** `DurabilitySettings.DeadLetterQueueExpiration` son 10 días por
+> defecto en Wolverine. Pasado ese plazo no hay nada que drenar — por eso la alerta dispara a los 5
+> minutos y no a los 5 días.

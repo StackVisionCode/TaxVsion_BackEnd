@@ -1,5 +1,5 @@
 using System.Diagnostics.Metrics;
-using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.ActorTypeAuthorization;

@@ -1,4 +1,5 @@
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Notes.Domain.Notes;
 using TaxVision.Notes.Domain.ValueObjects;

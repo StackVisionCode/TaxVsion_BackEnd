@@ -1,7 +1,7 @@
 using System.Security.Claims;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.ResourceAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;

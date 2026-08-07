@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,7 @@ namespace TaxVision.Subscription.Api.Controllers.Internal;
 /// HttpPlanRateLimitReader en TaxVision.Customer.Infrastructure). Mismo criterio que
 /// <see cref="InternalPlanPricingController"/>.</summary>
 [ApiController]
-[Route("subscriptions/internal/plan-rate-limits")]
+[Route("internal/plan-rate-limits")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalPlanRateLimitsController(IMessageBus bus) : ControllerBase

@@ -54,8 +54,7 @@ public static class ProcessTenantWebhookHandler
                 )
             );
 
-        var secret = secretProtector.Unprotect(config.WebhookSecretEncrypted.CipherText);
-        if (string.IsNullOrEmpty(secret))
+        if (!secretProtector.TryUnprotect(config.WebhookSecretEncrypted.CipherText, out var secret, out _))
             return Result.Failure(
                 new Error("TenantPaymentConfig.WebhookSecretMissing", "Webhook secret could not be decrypted.")
             );

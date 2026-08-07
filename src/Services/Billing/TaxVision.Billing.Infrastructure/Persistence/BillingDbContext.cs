@@ -8,27 +8,23 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.Numbering;
+using TaxVision.Billing.Domain.Permissions;
 using TaxVision.Billing.Domain.RateLimiting;
-using Wolverine;
 
 namespace TaxVision.Billing.Infrastructure.Persistence;
 
 /// <summary>
-/// DbContext del servicio Billing. Persiste el estado del aggregate ANTES de drenar sus domain
-/// events al outbox durable de Wolverine (misma transacción ambiental).
+/// DbContext del servicio Billing.
 ///
 /// Filtro global fail-closed por ITenantOwned: dentro de un scope de Wolverine (consumer/job) el
 /// ITenantContext ambiental está vacío → el filtro colapsa a Guid.Empty → los repos alcanzables
 /// desde ese scope deben usar .IgnoreQueryFilters() con un tenantId EXPLÍCITO.
 /// </summary>
-public sealed class BillingDbContext(
-    DbContextOptions<BillingDbContext> options,
-    ITenantContext tenantContext,
-    IMessageBus? messageBus = null
-) : DbContext(options), IUnitOfWork
+public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options, ITenantContext tenantContext)
+    : DbContext(options),
+        IUnitOfWork
 {
     private readonly ITenantContext _tenantContext = tenantContext;
-    private readonly IMessageBus? _messageBus = messageBus;
 
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<IssuerProfile> IssuerProfiles => Set<IssuerProfile>();
@@ -38,6 +34,12 @@ public sealed class BillingDbContext(
     // RateLimit Fase 2 — proyección local de PlanCode por tenant, mantenida por
     // TenantPlanCodeProjectionConsumer.
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
+
+    // H-01 — proyecciones de autorización mantenidas por AuthzPermissionsProjectionConsumers.
+    public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections =>
+        Set<AuthzUserPermissionsProjection>();
+    public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
+        Set<AuthzRolePermissionsProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,9 +53,7 @@ public sealed class BillingDbContext(
     {
         try
         {
-            var affected = await base.SaveChangesAsync(cancellationToken);
-            await DispatchDomainEventsAsync(cancellationToken);
-            return affected;
+            return await base.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException ex)
         {
@@ -70,26 +70,6 @@ public sealed class BillingDbContext(
                 "A record with the same unique values already exists.",
                 ex
             );
-        }
-    }
-
-    private async Task DispatchDomainEventsAsync(CancellationToken ct)
-    {
-        if (_messageBus is null)
-            return;
-
-        var roots = ChangeTracker
-            .Entries<AggregateRoot>()
-            .Where(e => e.Entity.DomainEvents.Count > 0)
-            .Select(e => e.Entity)
-            .ToList();
-
-        foreach (var root in roots)
-        {
-            var events = root.DomainEvents.ToArray();
-            root.ClearDomainEvents();
-            foreach (var domainEvent in events)
-                await _messageBus.PublishAsync(domainEvent);
         }
     }
 

@@ -55,7 +55,7 @@ public static class TenantCreatedConsumer
                 return;
 
             // PayFlow (Fase 16) — un tenant creado vía onboarding pago-primero activa su
-            // suscripción directo en Active vía subscriptions/internal/activate-from-onboarding
+            // suscripción directo en Active vía internal/subscriptions/activate-from-onboarding
             // (ActivateFromOnboardingHandler), no con el trial automático de este consumer.
             if (evt.OnboardingId is not null)
                 return;

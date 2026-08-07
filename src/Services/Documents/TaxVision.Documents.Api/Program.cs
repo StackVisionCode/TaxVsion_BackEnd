@@ -1,17 +1,20 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
-using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Caching;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
+using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -40,6 +43,15 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
 builder.Services.AddDocumentsInfrastructure(builder.Configuration);
+
+// BB-09 — Documents usaba IConnectionMultiplexer a pelo para IRateCounter y se quedaba sin
+// ICacheService, así que registrar aquí CachedTenantPlanCodeReader o HttpPlanRateLimitReader
+// reventaba en runtime. Reutiliza la misma ConnectionStrings:Redis que ya exige el rate limiting.
+builder.Services.AddRedisCache(builder.Configuration);
+
+// H-02 — el reader de la denylist necesita el ICacheService de la línea de arriba.
+builder.Services.AddSessionDenylist(builder.Configuration);
+
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "documents-service", DocumentsMetrics.MeterName);
 
@@ -56,13 +68,10 @@ builder
     .Services.AddAuthorizationBuilder()
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
-// RBAC Fase 7 — fuente de permisos. Con Authorization:PermissionsSource="Projection" se enforza perm_v
-// contra la proyección local (poblada por los eventos de Auth); ausente o "Jwt" lee el claim del token.
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Rate limiting tiered (Fase 4.16 del plan). Documents no tenía ningún rate limiting propio antes
 // de esta fase — se agrega IConnectionMultiplexer/IRateCounter desde cero, mismo patrón que
@@ -135,9 +144,7 @@ builder.Host.UseWolverine(options =>
     // Program.cs líneas 186-196.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-external-uploads");
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 
 var app = builder.Build();
@@ -156,6 +163,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseMiddleware<JwtTenantContextMiddleware>();
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();

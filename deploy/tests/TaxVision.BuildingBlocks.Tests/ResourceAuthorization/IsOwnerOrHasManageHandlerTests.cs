@@ -1,8 +1,8 @@
 using System.Diagnostics.Metrics;
 using System.Security.Claims;
-using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Domain;
-using BuildingBlocks.ResourceAuthorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.ResourceAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Xunit;
 

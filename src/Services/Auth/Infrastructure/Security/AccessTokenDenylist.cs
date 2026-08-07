@@ -1,6 +1,5 @@
 using BuildingBlocks.Caching;
 using BuildingBlocks.Sessions;
-using Microsoft.Extensions.Logging;
 using TaxVision.Auth.Application.Abstractions;
 
 namespace TaxVision.Auth.Infrastructure.Security;
@@ -14,9 +13,7 @@ namespace TaxVision.Auth.Infrastructure.Security;
 /// único servicio que además necesita <see cref="DenySessionAsync"/> (escritura), el resto de los
 /// 14 servicios solo consume <see cref="ISessionDenylistReader"/>.
 /// </summary>
-public sealed class AccessTokenDenylist(ICacheService cache, ILogger<AccessTokenDenylist> logger)
-    : IAccessTokenDenylist,
-        ISessionDenylistReader
+public sealed class AccessTokenDenylist(ICacheService cache) : IAccessTokenDenylist, ISessionDenylistReader
 {
     private static string Key(Guid sessionId) => $"auth:denylist:sid:{sessionId:N}";
 
@@ -29,15 +26,11 @@ public sealed class AccessTokenDenylist(ICacheService cache, ILogger<AccessToken
         {
             return await cache.GetAsync<bool?>(Key(sessionId), ct) == true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Fail-open (RBAC Fase 6): un Redis caído no debe bloquear el tráfico normal de Auth.
-            logger.LogWarning(
-                ex,
-                "Session denylist check failed (Redis unavailable?) for session {SessionId} — failing open.",
-                sessionId
-            );
-            return false;
+            // H-06 — la política ante un Redis caído (seguir o cortar) la decide
+            // SessionDenylistMiddleware según SessionDenylist:FailureMode, no este adaptador.
+            throw new SessionDenylistUnavailableException(sessionId, ex);
         }
     }
 }

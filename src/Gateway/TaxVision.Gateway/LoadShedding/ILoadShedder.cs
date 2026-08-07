@@ -1,13 +1,15 @@
 namespace TaxVision.Gateway.LoadShedding;
 
-/// <summary>Decide si un request entrante debe rechazarse por sobrecarga de flota (Capa 1, Fase 5
-/// del plan de rate limiting). Ver <see cref="LoadShedder"/> para la implementación de referencia.</summary>
+/// <summary>Decide si un request entrante debe rechazarse por sobrecarga de flota (Capa 1). Ver
+/// <see cref="LoadShedder"/> para la cascada de tres niveles de GW-14.</summary>
 public interface ILoadShedder
 {
-    /// <summary>Debe llamarse una vez por request, después de resolver <paramref name="tenantKey"/>
-    /// (tenant_id del JWT o <see cref="TenantConsumptionTracker.AnonymousKey"/>). Devuelve true si
-    /// el request debe rechazarse con 503.</summary>
-    bool ShouldShed(string tenantKey);
+    /// <summary>
+    /// Se llama una vez por request, despues de resolver el tenant (tenant_id del JWT o
+    /// <see cref="TenantConsumptionTracker.AnonymousKey"/>). Devuelve el motivo del descarte, o
+    /// <see cref="SheddingVerdict.Allowed"/> para seguir adelante.
+    /// </summary>
+    SheddingVerdict Evaluate(string tenantKey, PathString path, bool clientDisconnected);
 
     int RetryAfterSeconds { get; }
 }

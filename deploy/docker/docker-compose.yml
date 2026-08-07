@@ -141,11 +141,16 @@ services:
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:
       - ../observability/otel-collector.yml:/etc/otelcol/config.yml:ro
-    ports:
-      - "4317:4317"
-      - "4318:4318"
+    # INFRA-01 — sin `ports:`. Los 19 servicios llegan por DNS interno de Docker
+    # (http://otel-collector:4317), que atraviesa la red bridge y no el port mapping. Publicarlo
+    # dejaba el receptor OTLP abierto a internet: Docker escribe sus reglas iptables por debajo de
+    # UFW, asi que un `ufw deny 4317` no lo tapaba. Con tenant_id en los atributos, cualquiera
+    # podria inyectar spans con el tenant de otro cliente y envenenar dashboards y auditoria.
     expose:
+      - "4317"
+      - "4318"
       - "9464"
+    mem_limit: 512m
     depends_on:
       - loki
       - tempo
@@ -1628,6 +1633,20 @@ services:
       Cors__Origins__1: https://client.taxprocore.com
       Cors__Origins__2: http://localhost:5173
       Cors__Origins__3: http://localhost:4200
+      # GW-08 — las 8 claves escalares del load shedder (Capa 1) expuestas para poder
+      # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
+      # defaults de appsettings.json a proposito: el compose documenta que existen y son
+      # tuneables, no cambia el comportamiento. LoadShedding__Criticality es un diccionario
+      # (25 rutas) y se queda en appsettings: cambiar la criticidad de una ruta es una
+      # decision de diseno que debe pasar por code review, no por una variable de entorno.
+      LoadShedding__Enabled: "true"
+      LoadShedding__P99LatencyThresholdMs: "2000"
+      LoadShedding__ErrorRate5xxThreshold: "0.5"
+      LoadShedding__WindowSeconds: "60"
+      LoadShedding__MinSamples: "20"
+      LoadShedding__FairShareExcessFactor: "2.0"
+      LoadShedding__DefaultCriticality: Standard
+      LoadShedding__RetryAfterSeconds: "5"
       ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
       ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
       ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/

@@ -1,4 +1,5 @@
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Infrastructure.Persistence;

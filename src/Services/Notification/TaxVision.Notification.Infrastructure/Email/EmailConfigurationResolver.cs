@@ -48,5 +48,6 @@ public sealed class EmailConfigurationResolver(
             c.TenantProviderId
         );
 
-    private string? Reveal(string? cipher) => string.IsNullOrEmpty(cipher) ? null : protector.Unprotect(cipher);
+    private string? Reveal(string? cipher) =>
+        protector.TryUnprotect(cipher, out var plaintext, out _) ? plaintext : null;
 }

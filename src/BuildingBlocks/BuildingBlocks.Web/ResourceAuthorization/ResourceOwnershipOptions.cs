@@ -1,4 +1,4 @@
-namespace BuildingBlocks.ResourceAuthorization;
+namespace BuildingBlocks.Web.ResourceAuthorization;
 
 /// <summary>
 /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — feature flag del chequeo de resource ownership.

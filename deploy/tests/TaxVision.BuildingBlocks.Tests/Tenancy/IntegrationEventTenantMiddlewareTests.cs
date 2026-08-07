@@ -1,5 +1,5 @@
 using BuildingBlocks.Messaging;
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.Tenancy;

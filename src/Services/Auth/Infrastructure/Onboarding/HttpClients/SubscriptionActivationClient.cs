@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
 /// <summary>
 /// PayFlow (Fase 15) — dispara la activación de la suscripción
-/// (<c>POST subscriptions/internal/activate-from-onboarding</c>, endpoint que Fase 16 construye).
+/// (<c>POST internal/subscriptions/activate-from-onboarding</c>, endpoint que Fase 16 construye).
 /// Fire-and-forget: la Saga avanza cuando le llega
 /// <c>SubscriptionActivatedForOnboardingIntegrationEvent</c> por el bus.
 /// </summary>
@@ -44,7 +44,7 @@ public sealed class SubscriptionActivationClient(
         {
             using var httpRequest = new HttpRequestMessage(
                 HttpMethod.Post,
-                "subscriptions/internal/activate-from-onboarding"
+                "internal/subscriptions/activate-from-onboarding"
             )
             {
                 Content = JsonContent.Create(

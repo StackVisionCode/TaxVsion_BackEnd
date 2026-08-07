@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.Notes.Infrastructure\TaxVision.Notes.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
   </ItemGroup>
 

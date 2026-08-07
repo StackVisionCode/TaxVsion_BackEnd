@@ -9,7 +9,7 @@ using TaxVision.Notification.Application.Abstractions;
 namespace TaxVision.Notification.Infrastructure.Onboarding;
 
 /// <summary>
-/// PayFlow (Fase 12) — cliente HTTP de <c>GET auth/internal/onboarding/tokens/{reference}/raw</c>.
+/// PayFlow (Fase 12) — cliente HTTP de <c>GET internal/onboarding/tokens/{reference}/raw</c>.
 /// Reusa el mismo <see cref="IServiceTokenAcquirer"/> M2M ya registrado para CloudStorage/Scribe
 /// (no está atado a un downstream específico). El onboarding es pre-tenant — a diferencia de esos
 /// dos clientes, acá NO se puede pedir el token para <c>evt.TenantId</c> (viene en
@@ -38,7 +38,7 @@ public sealed class OnboardingTokenClient(
 
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"auth/internal/onboarding/tokens/{tokenReference:D}/raw"
+            $"internal/onboarding/tokens/{tokenReference:D}/raw"
         );
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

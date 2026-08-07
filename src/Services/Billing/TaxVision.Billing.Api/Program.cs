@@ -1,21 +1,24 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
-using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
+using BuildingBlocks.Web.Session;
+using BuildingBlocks.Web.Tenancy;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 using StackExchange.Redis;
-using TaxVision.Billing.Api.Common;
 using TaxVision.Billing.Infrastructure;
 using TaxVision.Billing.Infrastructure.Observability;
 using TaxVision.Billing.Infrastructure.Persistence;
@@ -31,7 +34,10 @@ builder.Host.UseTaxVisionSerilog("billing-service");
 
 builder
     .Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    // H-01 — Capa 1 (actor type). Sin esto los 7 endpoints solo exigían "estar autenticado": un
+    // CustomerPortal del propio tenant podía listar y emitir facturas.
+    .AddActorTypeAuthorization();
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
@@ -44,6 +50,9 @@ builder.Services.AddBillingInfrastructure(builder.Configuration);
 // conexión para el ICacheService compartido, mismo patrón que Tenant/Customer.
 builder.Services.AddRedisCache(builder.Configuration);
 
+// H-02/H-01 — revocar una sesión ahora también corta el acceso a Billing, no solo al resto.
+builder.Services.AddSessionDenylist(builder.Configuration);
+
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "billing-service", BillingMetrics.MeterName);
 
@@ -51,6 +60,14 @@ builder.Services.Configure<AuthorizationOptions>(options =>
 {
     options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
 });
+
+// H-01 Capa 2 — resuelve las políticas perm:* de [HasPermission("billing.*")].
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Rate limiting por tenant/usuario (Fase 4.11 del plan) — arrancaba en cero, Billing no tenia
 // ningun AddRateLimiter/EnableRateLimiting nativo ni Redis/IConnectionMultiplexer que
@@ -115,12 +132,10 @@ builder.Host.UseWolverine(options =>
     // comando local (GenerateInvoicePdf despachado post-commit por IssueInvoice).
     options
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
-        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
-    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+        .AddMiddleware(typeof(IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(LocalCommandTenantMiddleware));
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 
 var app = builder.Build();
@@ -139,6 +154,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseMiddleware<JwtTenantContextMiddleware>();
+app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();

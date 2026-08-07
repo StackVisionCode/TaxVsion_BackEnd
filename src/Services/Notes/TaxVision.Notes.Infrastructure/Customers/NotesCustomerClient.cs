@@ -28,12 +28,12 @@ public sealed class CustomerClientOptions
     /// <summary>Cada cuántas horas corre el barrido completo cross-tenant.</summary>
     public int ReconciliationIntervalHours { get; set; } = 12;
 
-    /// <summary>Tamaño de página al paginar <c>customers/internal/reconciliation</c>.</summary>
+    /// <summary>Tamaño de página al paginar <c>internal/customers/reconciliation</c>.</summary>
     public int ReconciliationPageSize { get; set; } = 200;
 }
 
 // ---------------------------------------------------------------------------
-// Fase 4B — cliente M2M read-only hacia GET customers/internal/list (policy ServiceOnly, ver
+// Fase 4B — cliente M2M read-only hacia GET internal/customers/list (policy ServiceOnly, ver
 // contrato real leído directamente del código de Customer). Reutiliza el MISMO
 // IServiceTokenAcquirer de Fase 4 (apunta a Auth) — Notes no necesita un segundo acquirer, solo un
 // tercer HttpClient tipado hacia un downstream distinto (Customer, no Subscription). Mismo
@@ -95,7 +95,7 @@ internal sealed class NotesCustomerClient(
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"customers/internal/reconciliation?status=All&page={page}&size={size}"
+                $"internal/customers/reconciliation?status=All&page={page}&size={size}"
             );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
@@ -144,7 +144,7 @@ internal sealed class NotesCustomerClient(
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"customers/internal/list?status=Active&page={page}&size={size}"
+                $"internal/customers/list?status=Active&page={page}&size={size}"
             );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

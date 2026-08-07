@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.AspNetCore.Http;
 using TaxVision.Growth.Api.Common;
 using Wolverine;

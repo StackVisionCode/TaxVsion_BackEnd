@@ -1,4 +1,6 @@
-namespace BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.ActorTypeAuthorization;
+
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Marca una acción como autorizada por un "capability token" (terminología de la Auth0 Tickets

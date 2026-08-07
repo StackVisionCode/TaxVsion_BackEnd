@@ -4,7 +4,7 @@ using TaxVision.Notes.Domain.Projections;
 namespace TaxVision.Notes.Application.Customers.Abstractions;
 
 /// <summary>
-/// Cliente M2M hacia Customer.Api (<c>GET /customers/internal/list</c>, policy <c>ServiceOnly</c>)
+/// Cliente M2M hacia Customer.Api (<c>GET /internal/customers/list</c>, policy <c>ServiceOnly</c>)
 /// usado por el backfill reactivo y el job de reconciliación de nombres (Fase 4B). Desacoplado del
 /// contrato HTTP real de Customer — solo expone lo que Notes necesita.
 /// </summary>
@@ -19,7 +19,7 @@ public interface INotesCustomerClient
     );
 
     /// <summary>
-    /// Stream global cross-tenant hacia <c>GET customers/internal/reconciliation</c> (todos los
+    /// Stream global cross-tenant hacia <c>GET internal/customers/reconciliation</c> (todos los
     /// tenants de una vez, token de <c>PlatformTenant</c>) — lo consume
     /// <c>TenantCustomerFullReconciliationJob</c> para el backfill de FILAS FALTANTES que el job de
     /// nombres nunca hizo. Devuelve <c>null</c> en cualquier fallo de token/HTTP, nunca lanza.

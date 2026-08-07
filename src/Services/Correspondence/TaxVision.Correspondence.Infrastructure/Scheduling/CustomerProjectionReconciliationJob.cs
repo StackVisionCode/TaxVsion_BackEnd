@@ -14,7 +14,7 @@ namespace TaxVision.Correspondence.Infrastructure.Scheduling;
 
 /// <summary>
 /// Auto-reparación de la proyección <see cref="CustomerEmailAddress"/>: re-pagina la fuente
-/// autoritativa completa (todos los tenants) vía <c>GET customers/internal/reconciliation</c> y hace
+/// autoritativa completa (todos los tenants) vía <c>GET internal/customers/reconciliation</c> y hace
 /// upsert de cada customer. Cierra la deuda de raíz — antes la proyección solo se poblaba con eventos
 /// en vivo (más el backfill/reconciliación por-tenant, que solo ve customers activos), así que cuando
 /// se perdía un evento o llegaba en ráfaga (o el servicio nació después de que ya existían customers)

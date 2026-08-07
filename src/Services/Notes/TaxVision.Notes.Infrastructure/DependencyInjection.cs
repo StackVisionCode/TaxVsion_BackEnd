@@ -108,7 +108,7 @@ public static class DependencyInjection
         services.AddHostedService<CustomerDirectoryReconciliationJob>();
 
         // Backfill de filas faltantes (lo que el job de nombres nunca hizo): barrido completo
-        // cross-tenant vía customers/internal/reconciliation. Reusa el HttpClient de NotesCustomerClient
+        // cross-tenant vía internal/customers/reconciliation. Reusa el HttpClient de NotesCustomerClient
         // y CustomerClientOptions ya bound arriba — solo un hosted service más, sin HttpClient nuevo.
         services.AddHostedService<TenantCustomerFullReconciliationJob>();
     }

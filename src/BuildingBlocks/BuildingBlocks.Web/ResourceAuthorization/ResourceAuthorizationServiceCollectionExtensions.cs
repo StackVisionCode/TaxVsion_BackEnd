@@ -1,10 +1,10 @@
-using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Domain;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace BuildingBlocks.ResourceAuthorization;
+namespace BuildingBlocks.Web.ResourceAuthorization;
 
 /// <summary>
 /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — wiring de resource ownership, mismo criterio que

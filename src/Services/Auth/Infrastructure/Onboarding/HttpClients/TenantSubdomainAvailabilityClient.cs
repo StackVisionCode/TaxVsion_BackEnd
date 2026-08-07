@@ -41,7 +41,7 @@ public sealed class TenantSubdomainAvailabilityClient(
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"tenants/internal/subdomain-available?slug={Uri.EscapeDataString(slug)}"
+                $"internal/tenants/subdomain-available?slug={Uri.EscapeDataString(slug)}"
             );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 

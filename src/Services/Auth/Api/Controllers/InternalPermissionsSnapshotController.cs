@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -15,7 +16,7 @@ namespace TaxVision.Auth.Api.Controllers;
 /// sumó como consumidor después de que el backfill global de Auth ya corrió) y persiste el resultado
 /// localmente — ver <c>ProjectionPermissionsSource</c> (BuildingBlocks.Web).</summary>
 [ApiController]
-[Route("auth/internal/tenants/{tenantId:guid}/users/{userId:guid}/permissions-snapshot")]
+[Route("internal/tenants/{tenantId:guid}/users/{userId:guid}/permissions-snapshot")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalPermissionsSnapshotController(IMessageBus bus) : ControllerBase

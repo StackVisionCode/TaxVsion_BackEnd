@@ -1,10 +1,11 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
-using BuildingBlocks.ResourceAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.ResourceAuthorization;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

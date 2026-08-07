@@ -10,7 +10,7 @@ using TaxVision.Correspondence.Application.Abstractions;
 namespace TaxVision.Correspondence.Infrastructure.Reconciliation;
 
 /// <summary>
-/// Cliente M2M hacia <c>GET customers/internal/reconciliation</c> (cross-tenant, solo PlatformTenant).
+/// Cliente M2M hacia <c>GET internal/customers/reconciliation</c> (cross-tenant, solo PlatformTenant).
 /// Reusa el mismo <see cref="IServiceTokenAcquirer"/> que el resto de Correspondence
 /// (<c>CorrespondenceServiceTokenAcquirer</c>, registrado por forwarding), pero pide el token para
 /// <see cref="PlatformTenant"/> (única identidad autorizada por el gate del endpoint). Nunca lanza:
@@ -42,7 +42,7 @@ internal sealed class CorrespondenceCustomerReconciliationClient(
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"customers/internal/reconciliation?status=All&page={page}&size={size}"
+                $"internal/customers/reconciliation?status=All&page={page}&size={size}"
             );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

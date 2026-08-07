@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace TaxVision.Subscription.Api.Controllers.Internal;
 /// <summary>PayFlow (Fase 16) — M2M-only: la Saga de onboarding de Auth (Fase 15) invoca este
 /// endpoint para activar la suscripción de un tenant recién provisionado, directo en Active.</summary>
 [ApiController]
-[Route("subscriptions/internal")]
+[Route("internal/subscriptions")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalSubscriptionActivationController(IMessageBus bus) : ControllerBase

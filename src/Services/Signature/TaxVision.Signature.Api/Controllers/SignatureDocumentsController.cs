@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;

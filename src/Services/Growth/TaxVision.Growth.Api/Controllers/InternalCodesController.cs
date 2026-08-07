@@ -17,7 +17,7 @@ using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
-using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
+using AllowActorTypesAttribute = BuildingBlocks.Web.ActorTypeAuthorization.AllowActorTypesAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 

@@ -1,16 +1,19 @@
 using BuildingBlocks.Caching;
-using Microsoft.Extensions.Logging;
+using BuildingBlocks.Sessions;
 
-namespace BuildingBlocks.Sessions;
+namespace BuildingBlocks.Infrastructure.Sessions;
 
 /// <summary>
 /// Lee la misma clave Redis que <c>Auth.Infrastructure.Security.AccessTokenDenylist</c> escribe —
-/// este servicio comparte el store, no el escritor. Fail-open: si Redis no responde, se registra
-/// un warning y se trata la sesión como no-denegada — un Redis caído nunca debe bloquear el tráfico
-/// normal (RBAC Fase 6, riesgo documentado en el plan).
+/// este servicio comparte el store, no el escritor (RBAC Fase 6).
+///
+/// <para>
+/// H-06 — si Redis no responde lanza <see cref="SessionDenylistUnavailableException"/> en vez de
+/// devolver <c>false</c>. La política de qué hacer con esa incertidumbre es de
+/// <c>SessionDenylistMiddleware</c>, que es quien tiene la configuración.
+/// </para>
 /// </summary>
-public sealed class SessionDenylistReader(ICacheService cache, ILogger<SessionDenylistReader> logger)
-    : ISessionDenylistReader
+public sealed class SessionDenylistReader(ICacheService cache) : ISessionDenylistReader
 {
     private static string Key(Guid sessionId) => $"auth:denylist:sid:{sessionId:N}";
 
@@ -20,14 +23,9 @@ public sealed class SessionDenylistReader(ICacheService cache, ILogger<SessionDe
         {
             return await cache.GetAsync<bool?>(Key(sessionId), ct) == true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(
-                ex,
-                "Session denylist check failed (Redis unavailable?) for session {SessionId} — failing open.",
-                sessionId
-            );
-            return false;
+            throw new SessionDenylistUnavailableException(sessionId, ex);
         }
     }
 }

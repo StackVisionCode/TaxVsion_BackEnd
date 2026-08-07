@@ -1,64 +1,62 @@
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TaxVision.Gateway.Observability;
 
 namespace TaxVision.Gateway.LoadShedding;
 
 /// <summary>
-/// Implementación de referencia de <see cref="ILoadShedder"/> — Fase 5 del plan de rate limiting
-/// (Plan_Implementacion_Fases.md), Capa 1 (load shedder global de flota) del modelo de 4 capas de
-/// ADR-017. Sobrecarga = p99 de latencia propia del Gateway o tasa de 5xx por encima del umbral
-/// configurado, medidos sobre <see cref="RequestOutcomeWindow"/>. Cuando hay sobrecarga, solo se
-/// rechazan requests de los <see cref="LoadShedderOptions.TopConsumerCount"/> tenants de mayor
-/// consumo en la ventana (<see cref="TenantConsumptionTracker"/>) — el resto del tráfico sigue
-/// pasando, degradando gracefully en vez de tumbar la flota entera de un golpe.
+/// Capa 1 (load shedder global de flota) del modelo de 4 capas de ADR-017. Sobrecarga = p99 de
+/// latencia propia del Gateway o tasa de 5xx por encima del umbral, medidos sobre
+/// <see cref="RequestOutcomeWindow"/> y precalculados en <see cref="OverloadSignal"/> (GW-05).
+///
+/// <para>
+/// GW-14 — la política de rechazo es una cascada de tres niveles evaluados <b>en orden</b>; el
+/// primero que diga "descarta" gana. Sustituye al criterio anterior ("sheddear a los N tenants de
+/// mayor consumo"), que con menos de N tenants activos rechazaba el <b>100%</b> del tráfico: el
+/// <c>Take(N)</c> no tenía piso, así que con 3 tenants los 3 estaban en el "top 10". Los niveles
+/// nuevos no dependen del número de tenants, así que ese modo de fallo desaparece por construcción
+/// y no por ajustar un umbral.
+/// </para>
 /// </summary>
 public sealed class LoadShedder(
-    RequestOutcomeWindow window,
+    OverloadSignal overloadSignal,
     TenantConsumptionTracker tenantTracker,
-    IOptions<LoadShedderOptions> options,
-    ILogger<LoadShedder> logger
+    RequestCriticalityClassifier classifier,
+    IOptionsMonitor<LoadShedderOptions> options
 ) : ILoadShedder
 {
-    private readonly LoadShedderOptions options = options.Value;
-    private int wasOverloaded;
+    public int RetryAfterSeconds => options.CurrentValue.RetryAfterSeconds;
 
-    public int RetryAfterSeconds => options.RetryAfterSeconds;
-
-    public bool ShouldShed(string tenantKey)
+    public SheddingVerdict Evaluate(string tenantKey, PathString path, bool clientDisconnected)
     {
-        if (!options.Enabled)
-            return false;
+        var current = options.CurrentValue;
 
-        var snapshot = window.GetSnapshot();
-        if (snapshot.SampleCount < options.MinSamples)
-            return false;
+        // Nivel 0 — el cliente ya se fue. Trabajo cuyo resultado nadie va a leer: descartarlo libera
+        // capacidad con impacto real cero, y por eso va antes incluso de mirar si hay sobrecarga.
+        if (clientDisconnected)
+            return SheddingVerdict.Abandoned;
 
-        var overloaded =
-            snapshot.P99LatencyMs > options.P99LatencyThresholdMs
-            || snapshot.ErrorRate5xx > options.ErrorRate5xxThreshold;
+        if (!current.Enabled)
+            return SheddingVerdict.Allowed;
 
-        var topConsumers = tenantTracker.GetTopConsumers(options.TopConsumerCount);
+        // GW-05 — una lectura de campo: la ventana la agrega OverloadSignal cada 200 ms fuera del
+        // camino de la peticion.
+        if (!overloadSignal.IsOverloaded)
+            return SheddingVerdict.Allowed;
 
-        if (!overloaded)
-        {
-            Interlocked.Exchange(ref wasOverloaded, 0);
-            return false;
-        }
+        // Nivel 1 — criticidad de la petición, no del remitente. Background cae de todos los tenants
+        // antes de tocar un solo Standard; Critical no cae nunca.
+        var criticality = classifier.Classify(path);
+        if (criticality == RequestCriticality.Background)
+            return SheddingVerdict.LowCriticality;
 
-        // Edge-triggered: solo loguea el top-10 en la transición hacia sobrecarga, no en cada
-        // request rechazado — evita saturar los logs mientras dura el episodio.
-        if (Interlocked.CompareExchange(ref wasOverloaded, 1, 0) == 0)
-        {
-            GatewayMetrics.LoadSheddingActivated.Add(1);
-            logger.LogWarning(
-                "Load shedding activated: p99={P99LatencyMs}ms errorRate5xx={ErrorRate5xx:P1} topConsumers={TopConsumers}",
-                snapshot.P99LatencyMs,
-                snapshot.ErrorRate5xx,
-                string.Join(", ", topConsumers.Select(t => $"{t.TenantKey}={t.RequestCount}"))
-            );
-        }
+        if (criticality == RequestCriticality.Critical)
+            return SheddingVerdict.Allowed;
 
-        return topConsumers.Any(t => t.TenantKey == tenantKey);
+        // Nivel 2 — exceso sobre la parte justa, no volumen absoluto. Si todos consumen parecido
+        // nadie supera el factor y nadie se sheddea: cuando la sobrecarga viene de un downstream
+        // lento y no de un tenant abusivo, rechazar tráfico no arregla nada, solo suma errores.
+        var consumption = tenantTracker.GetSnapshot(tenantKey);
+        return consumption.ExcessOverFairShare > current.FairShareExcessFactor
+            ? SheddingVerdict.FairShareExcess
+            : SheddingVerdict.Allowed;
     }
 }

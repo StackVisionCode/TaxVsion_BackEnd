@@ -57,8 +57,7 @@ public sealed class HmacAuditChainVerifier(
         var settings = await settingsRepository.GetByTenantIdAsync(tenantId, ct);
         if (settings is null)
             return null;
-        var decrypted = secretProtector.Unprotect(settings.AuditSecretEncrypted);
-        if (string.IsNullOrEmpty(decrypted))
+        if (!secretProtector.TryUnprotect(settings.AuditSecretEncrypted, out var decrypted, out _))
             return null;
         try
         {

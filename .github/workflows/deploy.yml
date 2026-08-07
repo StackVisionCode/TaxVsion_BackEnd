@@ -45,6 +45,32 @@ jobs:
         run: dotnet test TaxVision.slnx --nologo
 
       # ---------------------------------------------------------------------
+      # H-19 — Communication y CommunicationTranscriptWorker no estan en
+      # TaxVision.slnx (son Node/TypeScript), asi que el gate de arriba NO
+      # ejecutaba ni una linea de sus suites: se desplegaban sin probar. Sus
+      # tests son vitest y corren aparte, uno por servicio.
+      # ---------------------------------------------------------------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test Communication (Node)
+        working-directory: src/Services/Communication
+        run: |
+          npm ci
+          npx prisma generate
+          npm run typecheck
+          npm test
+
+      - name: Test CommunicationTranscriptWorker (Node)
+        working-directory: src/Services/CommunicationTranscriptWorker
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      # ---------------------------------------------------------------------
       # .env de produccion — se escribe en cada run a partir de los Secrets del
       # repo, nunca se versiona. Los nombres de variable son EXACTAMENTE los
       # que docker-compose.yml consume via ${VAR}.

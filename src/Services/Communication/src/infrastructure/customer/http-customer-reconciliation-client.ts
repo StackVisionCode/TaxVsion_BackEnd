@@ -5,7 +5,7 @@ import type { ServiceTokenClient } from '../auth/service-token-client.js';
 /**
  * Lector cross-tenant del directorio de customers para el reconciliador
  * periodico (Fase Backend — directory reconciliation). Llama al endpoint M2M
- * `GET customers/internal/reconciliation?status=All&page={n}&size={n}` de
+ * `GET internal/customers/reconciliation?status=All&page={n}&size={n}` de
  * Customer.Api (ServiceOnly), que solo acepta un service token cuyo tenant_id
  * == el PlatformTenant id. Igual que HttpPlanRateLimitReader, adquiere el token
  * con `config.platformTenantId` como sentinel — una sola credencial M2M cubre
@@ -65,7 +65,7 @@ export class HttpCustomerReconciliationClient {
 
     let response: Response;
     try {
-      const url = `${config.customer.baseUrl}/customers/internal/reconciliation?status=All&page=${page}&size=${size}`;
+      const url = `${config.customer.baseUrl}/internal/customers/reconciliation?status=All&page=${page}&size=${size}`;
       response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
     } catch (error) {
       logger.warn({ error, page }, 'customer reconciliation request failed; skipping');

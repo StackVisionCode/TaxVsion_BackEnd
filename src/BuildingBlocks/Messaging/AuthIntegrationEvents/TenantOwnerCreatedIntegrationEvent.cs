@@ -4,7 +4,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// PayFlow (Fase 16) — publicado por el endpoint interno de Auth
-/// (<c>POST auth/internal/tenants/{tenantId}/owners</c>) tras crear el TenantAdmin de un onboarding
+/// (<c>POST internal/tenants/{tenantId}/owners</c>) tras crear el TenantAdmin de un onboarding
 /// pago-primero. El password nunca cruza este evento — ya fue hasheado y persistido por el propio
 /// endpoint antes de publicar. Consumido por
 /// <c>TaxVision.Auth.Application.Onboarding.Sagas.TenantOnboardingProcessManager</c> (Fase 15) para

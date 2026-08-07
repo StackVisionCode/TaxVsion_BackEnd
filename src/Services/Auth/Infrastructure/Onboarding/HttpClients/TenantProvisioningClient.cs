@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
 /// <summary>
 /// PayFlow (Fase 15) — dispara la creación del Tenant real
-/// (<c>POST tenants/internal/from-onboarding</c>, endpoint que Fase 16 construye). Mismo patrón de
+/// (<c>POST internal/tenants/from-onboarding</c>, endpoint que Fase 16 construye). Mismo patrón de
 /// JWT in-process que <see cref="ReceiptDocumentClient"/>: fire-and-forget, la Saga
 /// (<c>TenantOnboardingProcessManager</c>) no espera el <c>TenantId</c> en esta respuesta — avanza
 /// cuando le llega <c>TenantCreatedForOnboardingIntegrationEvent</c> por el bus. Envuelto en
@@ -47,7 +47,7 @@ public sealed class TenantProvisioningClient(
 
         try
         {
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "tenants/internal/from-onboarding")
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/tenants/from-onboarding")
             {
                 Content = JsonContent.Create(
                     new

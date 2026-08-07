@@ -84,10 +84,11 @@ public sealed class HmacAuditChainAppender(
                 new Error("Signature.Audit.Settings", "Tenant signature settings not found.")
             );
 
-        var decrypted = secretProtector.Unprotect(settings.AuditSecretEncrypted);
-        if (string.IsNullOrEmpty(decrypted))
+        // El motivo va en el código de error: un tag que no valida es un incidente (manipulación o
+        // clave mal rotada), no lo mismo que un tenant al que nunca se le configuró el secreto.
+        if (!secretProtector.TryUnprotect(settings.AuditSecretEncrypted, out var decrypted, out var failure))
             return Result.Failure<byte[]>(
-                new Error("Signature.Audit.SecretDecrypt", "Audit secret could not be decrypted.")
+                new Error($"Signature.Audit.SecretDecrypt.{failure}", "Audit secret could not be decrypted.")
             );
 
         try

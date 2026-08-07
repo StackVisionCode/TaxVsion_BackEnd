@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
-namespace BuildingBlocks.Middleware;
+namespace BuildingBlocks.Web.Middleware;
 
 public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
 {
@@ -20,6 +20,13 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 "An unhandled exception occurred while processing the request in {Path}",
                 ctx.Request.Path
             );
+
+            // H-18 — si la respuesta ya empezó a escribirse (streaming, o un handler que ya mandó
+            // bytes), tocar StatusCode o el body lanza y enmascara la excepción original. Mismo
+            // criterio que el ExceptionHandlerMiddleware de ASP.NET Core: relanzar para que el host
+            // corte la conexión y el cliente vea una respuesta truncada, no una a medias.
+            if (ctx.Response.HasStarted)
+                throw;
 
             var (status, title, detail, code) = ex switch
             {

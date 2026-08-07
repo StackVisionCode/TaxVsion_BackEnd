@@ -57,7 +57,7 @@ public sealed class PaymentAppOnboardingClient(
 
         try
         {
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "payments-app/internal/onboarding/checkout")
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/onboarding/checkout")
             {
                 Content = JsonContent.Create(
                     new

@@ -1,2698 +1,2759 @@
 {
-	"info": {
-		"_postman_id": "b2867394-34d5-485f-bd62-4b6161ae1ded",
-		"name": "TaxVision - Auth",
-		"description": "Colección de pruebas del microservicio Auth de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047).",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"item": [
-		{
-			"name": "AcceptTenantAdminInvitation",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{UrlBase}}/auth/invitations/accept",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						"invitations",
-						"accept"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Login",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"type": "text/javascript",
-						"exec": [
-							"const r = pm.response.json();",
-							"if (r.mfaRequired) {",
-							"  pm.environment.set('loginTicket', r.loginTicket);",
-							"  console.log('MFA requerido. loginTicket guardado. Usa Auth/MFA/VerifyMfaChallenge.');",
-							"} else if (r.tokens) {",
-							"  pm.environment.set('accessToken', r.tokens.accessToken);",
-							"  pm.environment.set('refreshToken', r.tokens.refreshToken);",
-							"  if (r.tokens.deviceToken) pm.environment.set('deviceToken', r.tokens.deviceToken);",
-							"  console.log('accessToken y refreshToken guardados' + (r.mfaSetupRequired ? ' (mfaSetupRequired=true)' : ''));",
-							"}"
-						]
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{UrlBase}}/auth/login",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						"login"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "GetMe",
-			"request": {
-				"method": "GET",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/auth/me",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						"me"
-					]
-				},
-				"description": "Perfil, roles, permisos, plan y zona horaria del usuario autenticado."
-			},
-			"response": []
-		},
-		{
-			"name": "Refresh",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"url": {
-					"raw": "{{UrlBase}}/auth/refresh",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						"refresh"
-					]
-				},
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"description": "Rota el refresh token y emite un nuevo access token. Reutilizar un token ya rotado revoca la sesion."
-			},
-			"response": [],
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"type": "text/javascript",
-						"exec": [
-							"const r = pm.response.json();",
-							"if (r.accessToken) { pm.environment.set('accessToken', r.accessToken); pm.environment.set('refreshToken', r.refreshToken); console.log('tokens actualizados'); }"
-						]
-					}
-				}
-			]
-		},
-		{
-			"name": "Logout",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{UrlBase}}/auth/logout",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						"logout"
-					]
-				},
-				"description": "Cierra la sesion actual (revoca su familia de refresh tokens)."
-			},
-			"response": []
-		},
-		{
-			"name": "Jwks",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{UrlBase}}/auth/.well-known/jwks.json",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						".well-known",
-						"jwks.json"
-					]
-				},
-				"description": "JWKS publico (RS256). Con HS256 devuelve un set vacio."
-			},
-			"response": []
-		},
-		{
-			"name": "ServiceToken",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"clientId\": \"notification-worker\",\n  \"clientSecret\": \"{{serviceClientSecret}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{UrlBase}}/auth/service-token",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						"service-token"
-					]
-				},
-				"description": "Grant client-credentials (M2M): emite un token de servicio para un tenant, usado por workers de otros servicios (p. ej. Notification -> CloudStorage) sin contexto de usuario. clientId/clientSecret deben existir en ServiceAuth:Clients."
-			},
-			"response": []
-		},
-		{
-			"name": "Revoke",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Authorization",
-						"value": "Bearer {{accessToken}}",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{UrlBase}}/auth/revoke",
-					"host": [
-						"{{UrlBase}}"
-					],
-					"path": [
-						"auth",
-						"revoke"
-					]
-				},
-				"description": "Revoca un refresh token (logout selectivo de una familia de tokens) sin cerrar la sesion completa."
-			},
-			"response": []
-		},
-		{
-			"name": "Terms",
-			"item": [
-				{
-					"name": "GetTermsStatus",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant/terms/status",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant",
-								"terms",
-								"status"
-							]
-						},
-						"description": "Estado de aceptacion del ToS/AUP vigente para el tenant del usuario autenticado."
-					},
-					"response": []
-				},
-				{
-					"name": "AcceptTerms",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant/terms/accept",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant",
-								"terms",
-								"accept"
-							]
-						},
-						"description": "Acepta el ToS/AUP vigente. Cualquier usuario autenticado del tenant puede aceptar, sin permiso especifico (evita bloqueo de arranque si el admin no esta disponible). Sin body."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "MFA",
-			"item": [
-				{
-					"name": "SetupTotp",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/totp/setup",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"totp",
-								"setup"
-							]
-						},
-						"description": "Devuelve el secreto y el otpauthUri para escanear con Authenticator."
-					},
-					"response": []
-				},
-				{
-					"name": "ConfirmTotp",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/totp/confirm",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"totp",
-								"confirm"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"code\": \"123456\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"description": "Confirma el TOTP con un codigo y devuelve los recovery codes (una sola vez)."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"const r=pm.response.json(); if(r.recoveryCodes){console.log('Recovery codes:', r.recoveryCodes.join(', '));}"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "VerifyMfaChallenge",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/verify",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"verify"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"loginTicket\": \"{{loginTicket}}\",\n  \"code\": \"123456\",\n  \"rememberDevice\": true\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"description": "Paso 2 del login: verifica el codigo del desafio MFA y emite tokens."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"const r=pm.response.json();",
-									"if(r.accessToken){pm.environment.set('accessToken',r.accessToken);pm.environment.set('refreshToken',r.refreshToken);if(r.deviceToken)pm.environment.set('deviceToken',r.deviceToken);console.log('MFA verificado, tokens guardados');}"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "RevokeTrustedDevice",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/trusted-devices/{{deviceId}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"trusted-devices",
-								"{{deviceId}}"
-							]
-						},
-						"description": "Revoca un dispositivo marcado como 'recordar por N dias' (rememberDevice en VerifyMfaChallenge)."
-					},
-					"response": []
-				},
-				{
-					"name": "MfaStatus",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/status",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"status"
-							]
-						},
-						"description": "Metodos MFA registrados, recovery codes restantes y dispositivos confiables."
-					},
-					"response": []
-				},
-				{
-					"name": "DisableMfa",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/disable",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"disable"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"password\": \"Brittany040238.\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"description": "Desactiva MFA (bloqueado si la politica del tenant lo exige)."
-					},
-					"response": []
-				},
-				{
-					"name": "RegenerateRecoveryCodes",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/recovery-codes/regenerate",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"recovery-codes",
-								"regenerate"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"password\": \"Brittany040238.\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "GetMfaPolicy",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/policy",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"policy"
-							]
-						},
-						"description": "Politica MFA del tenant (requiere settings.manage)."
-					},
-					"response": []
-				},
-				{
-					"name": "UpdateMfaPolicy",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/mfa/policy",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"mfa",
-								"policy"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"requireForEmployees\": false,\n  \"requireForCustomerPortal\": false,\n  \"trustedDeviceDays\": 30\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Credentials",
-			"item": [
-				{
-					"name": "ForgotPassword",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/password/forgot",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"password",
-								"forgot"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"jturbi@example.com\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"description": "Siempre responde 202 (anti-enumeracion)."
-					},
-					"response": []
-				},
-				{
-					"name": "ResetPassword",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/password/reset",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"password",
-								"reset"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "ChangePassword",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/password/change",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"password",
-								"change"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"currentPassword\": \"Brittany040238.\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "RequestEmailChange",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/me/email/change-request",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"me",
-								"email",
-								"change-request"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"newEmail\": \"nuevo@example.com\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "ConfirmEmailChange",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/me/email/confirm",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"me",
-								"email",
-								"confirm"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"token\": \"{{emailChangeToken}}\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "RequestPhoneVerification",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/me/phone/change-request",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"me",
-								"phone",
-								"change-request"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"phoneNumber\": \"+18095551234\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "ConfirmPhoneVerification",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/me/phone/confirm",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"me",
-								"phone",
-								"confirm"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"code\": \"123456\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Sessions",
-			"item": [
-				{
-					"name": "MySessions",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/sessions/me",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"sessions",
-								"me"
-							]
-						},
-						"description": "Sesiones activas del usuario autenticado."
-					},
-					"response": []
-				},
-				{
-					"name": "UserSessions",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/sessions/users/{{targetUserId}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"sessions",
-								"users",
-								"{{targetUserId}}"
-							]
-						},
-						"description": "Sesiones activas de otro usuario del tenant (requiere users.manage)."
-					},
-					"response": []
-				},
-				{
-					"name": "RevokeSession",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/sessions/{{sessionId}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"sessions",
-								"{{sessionId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "RevokeAllMySessions",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/sessions?includeCurrent=false",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"sessions"
-							],
-							"query": [
-								{
-									"key": "includeCurrent",
-									"value": "false"
-								}
-							]
-						}
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Invitations",
-			"item": [
-				{
-					"name": "CreateInvitation",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/invitations",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"invitations"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"empleado@example.com\",\n  \"actorType\": \"TenantEmployee\",\n  \"customerId\": null,\n  \"roleIds\": []\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"description": "Crea una invitacion (permiso: users.invite, TenantAdmin/PlatformAdmin). Valida limites del plan."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"const r=pm.response.json(); if(r.invitationToken){pm.environment.set('invitationToken', r.invitationToken);}"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "ListInvitations",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/invitations?status=Pending&page=1&size=20",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"invitations"
-							],
-							"query": [
-								{
-									"key": "status",
-									"value": "Pending"
-								},
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "size",
-									"value": "20"
-								}
-							]
-						},
-						"description": "Lista invitaciones del tenant (permiso: users.invite)."
-					},
-					"response": []
-				},
-				{
-					"name": "ResendInvitation",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/resend",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"invitations",
-								"{{invitationId}}",
-								"resend"
-							]
-						},
-						"description": "Reenvia una invitacion pendiente (permiso: users.invite, TenantAdmin/PlatformAdmin)."
-					},
-					"response": []
-				},
-				{
-					"name": "CancelInvitation",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/cancel",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"invitations",
-								"{{invitationId}}",
-								"cancel"
-							]
-						},
-						"description": "Cancela una invitacion pendiente (permiso: users.invite, TenantAdmin/PlatformAdmin)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Users",
-			"item": [
-				{
-					"name": "GetUsers",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users?page=1&size=20",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "size",
-									"value": "20"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "GetUserById",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users/{{userId}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users",
-								"{{userId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "DeactivateUser",
-					"request": {
-						"method": "PATCH",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users/{{userId}}/deactivate",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users",
-								"{{userId}}",
-								"deactivate"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "ReactivateUser",
-					"request": {
-						"method": "PATCH",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users/{{userId}}/reactivate",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users",
-								"{{userId}}",
-								"reactivate"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "AssignUserRoles",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users/{{userId}}/roles",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users",
-								"{{userId}}",
-								"roles"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"roleIds\": [\n    \"{{roleId}}\"\n  ]\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "UpdateMyProfile",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users/me/profile",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users",
-								"me",
-								"profile"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Jorge\",\n  \"lastName\": \"Turbi\",\n  \"timeZoneId\": \"America/Santo_Domingo\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "GetTenantLimits",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenants/limits",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenants",
-								"limits"
-							]
-						},
-						"description": "Plan, asientos usados/disponibles e invitaciones restantes."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Roles",
-			"item": [
-				{
-					"name": "GetRoles",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/roles",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"roles"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "GetPermissionsCatalog",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/permissions",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"permissions"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "CreateRole",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/roles",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"roles"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Equipo comercial\",\n  \"permissionIds\": [],\n  \"targetActorType\": null\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"description": "targetActorType (RBAC Fase 3, opcional): 'TenantEmployee' | 'TenantAdmin' | 'CustomerPortal' | 'PlatformAdmin' | null. Declara para qué actor type es el rol custom; null se valida contra staff (TenantEmployee/TenantAdmin) por defecto. Ver ActorTypeRoleGuard.ValidatePermissionsForActorType."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"const r=pm.response.json(); if(r.id){pm.environment.set('roleId', r.id);}"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "UpdateRole",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/roles/{{roleId}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"roles",
-								"{{roleId}}"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Actualizado\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "SetRolePermissions",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/roles/{{roleId}}/permissions",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"roles",
-								"{{roleId}}",
-								"permissions"
-							]
-						},
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"permissionIds\": []\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "DeactivateRole",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/roles/{{roleId}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"roles",
-								"{{roleId}}"
-							]
-						}
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Subdomains",
-			"item": [
-				{
-					"name": "CheckAvailability",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/subdomains/check-availability?slug=oficina1",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"subdomains",
-								"check-availability"
-							],
-							"query": [
-								{
-									"key": "slug",
-									"value": "oficina1"
-								}
-							]
-						},
-						"description": "Publico, sin auth. Nunca falla: formato invalido/reservado/tomado son resultados validos { available, reason }."
-					},
-					"response": []
-				},
-				{
-					"name": "ReserveSubdomain",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"",
-									"const response = pm.response.json();",
-									"",
-									"pm.environment.set(\"registrationTicket\", response.registrationTicket);",
-									""
-								],
-								"type": "text/javascript",
-								"packages": {},
-								"requests": {}
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"slug\": \"oficina1\",\n  \"email\": \"jturbi@example.com\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/subdomains/reserve",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"subdomains",
-								"reserve"
-							]
-						},
-						"description": "Publico, sin auth. Bloquea el slug para ese email por un TTL corto (15 min por defecto) mientras se completa el alta de la oficina. La respuesta trae registrationTicket: el JWT que TaxVision.Tenant.Api exige (policy TenantRegistration) para aceptar POST /tenants sin ser PlatformAdmin — guardado aca en la variable de environment registrationTicket."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "TenantResolution",
-			"item": [
-				{
-					"name": "ByHost",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-resolution/by-host",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-resolution",
-								"by-host"
-							]
-						},
-						"description": "Publico. El Host de la request ya lo resolvio TenantHostResolutionMiddleware; 404 si no resuelve a un tenant activo (ej. llamado directo al Gateway sin subdominio real)."
-					},
-					"response": []
-				},
-				{
-					"name": "ByEmail",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"email\": \"jturbi@example.com\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-resolution/by-email",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-resolution",
-								"by-email"
-							]
-						},
-						"description": "\"Encuentra tu oficina\": siempre 202, envia por correo los subdominios donde ese email tiene cuenta (anti-enumeracion)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "TenantDomains",
-			"item": [
-				{
-					"name": "GetAll",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-domains",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-domains"
-							]
-						},
-						"description": "Requiere tenant-domains.manage. Lista subdominios y custom hostnames del tenant."
-					},
-					"response": []
-				},
-				{
-					"name": "CreateCustomHostname",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"hostname\": \"archivos.suoficina.com\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-domains",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-domains"
-							]
-						},
-						"description": "Requiere tenant-domains.manage. Solo dominios propios (custom hostname) - los subdominios *.taxprocore.com se crean solos al nacer el tenant. Arranca el provisioning en Cloudflare."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"const r=pm.response.json(); if(r.domain){pm.environment.set('domainId', r.domain.id);}"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "VerifyCustomHostname",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/verify",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-domains",
-								"{{domainId}}",
-								"verify"
-							]
-						},
-						"description": "Requiere tenant-domains.manage. Consulta (sin mutar) el estado DNS/TLS reportado por Cloudflare mientras el tenant configura sus registros."
-					},
-					"response": []
-				},
-				{
-					"name": "ActivateCustomHostname",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/activate",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-domains",
-								"{{domainId}}",
-								"activate"
-							]
-						},
-						"description": "Requiere tenant-domains.manage. Confirma con Cloudflare que el hostname esta status=active y ssl.status=active, y lo pasa a Active en Auth. Un poller de fondo tambien lo hace automaticamente."
-					},
-					"response": []
-				},
-				{
-					"name": "DisableDomain",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/disable",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-domains",
-								"{{domainId}}",
-								"disable"
-							]
-						},
-						"description": "Requiere tenant-domains.manage. El dominio primario no se puede deshabilitar (usar ChangeSubdomain). Si es custom hostname, primero se borra en Cloudflare (anti subdomain-takeover)."
-					},
-					"response": []
-				},
-				{
-					"name": "ChangeSubdomain",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"newSlug\": \"oficina2\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/subdomain",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"tenant-domains",
-								"{{domainId}}",
-								"subdomain"
-							]
-						},
-						"description": "Requiere tenant-domains.manage. Renombra el subdominio primario ya activo (ej. oficina1.taxprocore.com -> oficina2.taxprocore.com). No aplica a custom hostnames."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Audit",
-			"item": [
-				{
-					"name": "GetAuditLogs",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/audit?page=1&size=50",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"audit"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "size",
-									"value": "50"
-								}
-							]
-						},
-						"description": "Eventos de seguridad del tenant (requiere audit.view)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Onboarding (Public)",
-			"description": "PayFlow — flujo público \"pay-first\" completo, anónimo (sin Authorization) salvo donde se indica. Contrato completo en documents/architecture/payflowguide/API_Contract.md §2. Corre en orden: OTP (1-3) → CreateOnboarding+Checkout (4-5, pagar con tarjeta test 4242 4242 4242 4242 en el checkoutUrl) → [async: esperar el email de \"completa tu registro\" con el RegistrationToken real y pegarlo a mano en la variable {{registrationToken}} del environment, Postman no puede automatizar ese paso] → Terms (6) → Preview+CheckSubdomain+Complete (7-9) → Status (10) → Receipt (11, llega por otro email async en paralelo al paso 4-5).\n\nAuditoría frontend (post-Fase 14, verificada y cerrada esta sesión): dos bloqueos reales de backend detectados por el equipo de frontend antes de esta colección. (1) El Gateway no ruteaba /onboarding/** — src/Gateway/TaxVision.Gateway/appsettings.json ya tiene la entrada onboarding→auth. (2) POST onboarding/subdomains/check (paso 8) exigía onboardingId/email crudos del cliente, imposibles de tener en ese punto del flujo (invariante §5: el onboardingId real solo se expone una vez, en la respuesta de CreateOnboarding) — el endpoint ahora resuelve el onboarding server-side por el mismo token opaco que preview/complete.",
-			"item": [
-				{
-					"name": "1. RequestOtp",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 201', () => pm.response.to.have.status(201));",
-									"const body = pm.response.json();",
-									"pm.environment.set('onboardingChallengeId', body.challengeId);"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"email\": \"buyer@example.com\",\n  \"firstNameHint\": \"Ada\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/email-challenges",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"email-challenges"
-							]
-						},
-						"description": "API_Contract §2.1. Pide un OTP de 6 dígitos al email indicado. Rate limit: 5/email/hr, 10/IP/hr (Onboarding.OtpRateLimited)."
-					},
-					"response": []
-				},
-				{
-					"name": "2. VerifyOtp",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"code\": \"123456\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/verify",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"email-challenges",
-								"{{onboardingChallengeId}}",
-								"verify"
-							]
-						},
-						"description": "API_Contract §2.2. 204 en éxito. 5 intentos fallidos → Onboarding.OtpLocked (400)."
-					},
-					"response": []
-				},
-				{
-					"name": "3. ResendOtp (opcional)",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/resend",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"email-challenges",
-								"{{onboardingChallengeId}}",
-								"resend"
-							]
-						},
-						"description": "API_Contract §2.3. 202 Accepted. Cooldown 60s entre resends, máx 5 por challenge (Onboarding.ResendCooldown / Onboarding.ResendLimitExceeded)."
-					},
-					"response": []
-				},
-				{
-					"name": "4. CreateOnboarding",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 201', () => pm.response.to.have.status(201));",
-									"const body = pm.response.json();",
-									"pm.environment.set('onboardingId', body.onboardingId);"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"email\": \"buyer@example.com\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"phone\": \"+1-555-0100\",\n  \"planId\": \"{{planId}}\",\n  \"emailVerificationChallengeId\": \"{{onboardingChallengeId}}\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/onboarding",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding"
-							]
-						},
-						"description": "API_Contract §2.4. Crea el TenantOnboarding (UoW #1). Respuesta 201: { onboardingId, email, planId }. Nota: onboardingId se expone acá UNA SOLA VEZ (invariante §5) — solo hace falta para el siguiente paso (checkout), nunca más adelante en el flujo."
-					},
-					"response": []
-				},
-				{
-					"name": "5. StartCheckout",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-									"const body = pm.response.json();",
-									"console.log('Abrir en el browser para pagar (tarjeta test 4242 4242 4242 4242): ' + body.checkoutUrl);"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"onboardingId\": \"{{onboardingId}}\",\n  \"payerEmail\": \"buyer@example.com\",\n  \"successUrl\": \"https://app.taxvision.local/onboarding/success\",\n  \"cancelUrl\": \"https://app.taxvision.local/onboarding/cancel\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/checkout",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"checkout"
-							]
-						},
-						"description": "API_Contract §2.5. Dispara el checkout en PaymentApp/Stripe. Respuesta 200: { paymentId, checkoutUrl, expiresAtUtc }. Paso manual: seguir checkoutUrl en un browser y pagar — después de eso el webhook de Stripe activa el onboarding de forma asíncrona y llega el email con el RegistrationToken real (pegar a mano en la variable de environment registrationToken antes de correr los pasos 7-10)."
-					},
-					"response": []
-				},
-				{
-					"name": "6. GetCurrentTerms",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-									"const body = pm.response.json();",
-									"pm.environment.set('termsVersionId', body.termsVersionId);"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/terms/current?kind=TermsOfService&locale=en-US",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"onboarding",
-								"terms",
-								"current"
-							],
-							"query": [
-								{ "key": "kind", "value": "TermsOfService", "description": "TermsOfService | PrivacyPolicy" },
-								{ "key": "locale", "value": "en-US" }
-							]
-						},
-						"description": "API_Contract §2.11. Único endpoint del módulo bajo el prefijo auth/onboarding (no onboarding/ a secas) — el Gateway ya lo ruteaba correctamente incluso antes del fix del Gap 1. Respuesta 200: TermsVersionResponse (termsVersionId, kind, version, contentUri, contentHash, locale, ...)."
-					},
-					"response": []
-				},
-				{
-					"name": "6b. GetTermsContent",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/terms/{{termsVersionId}}/content",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"onboarding",
-								"terms",
-								"{{termsVersionId}}",
-								"content"
-							]
-						},
-						"description": "Auditoría gap MinIO/legal-docs. Devuelve el HTML real del documento (text/html) para renderizar inline antes de que exista cualquier tenant. Rate limit: policy terms-content-download."
-					},
-					"response": []
-				},
-				{
-					"name": "7. PreviewRegistration",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"token\": \"{{registrationToken}}\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/register/preview",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"register",
-								"preview"
-							]
-						},
-						"description": "API_Contract §2.7. Resuelve el RegistrationToken (del link del email de recibo) para prellenar el form. Respuesta 200: { firstName, lastName, maskedEmail, planName }. registrationToken debe pegarse a mano en el environment tras el paso 5 (llega por email, Postman no puede automatizar el webhook async de Stripe)."
-					},
-					"response": []
-				},
-				{
-					"name": "8. CheckAndReserveSubdomain",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"slug\": \"freedomtax\",\n  \"token\": \"{{registrationToken}}\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/subdomains/check",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"subdomains",
-								"check"
-							]
-						},
-						"description": "API_Contract §2.6. Gap 2 (auditoría frontend, cerrado esta sesión): antes exigía { slug, onboardingId, email } — imposible de armar en este punto del flujo porque onboardingId ya no vive en ningún lado del cliente (invariante §5). Ahora resuelve el onboarding server-side por el mismo token opaco que preview/complete, mismo patrón exacto que esos dos endpoints. Valida formato+disponibilidad y RESERVA el slug por 60 min (a pesar del nombre \"check\"). Llamar de nuevo con el mismo token+slug renueva la reserva (idempotente). Respuesta 200: { available, reason, expiresAtUtc }."
-					},
-					"response": []
-				},
-				{
-					"name": "9. CompleteRegistration",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 202', () => pm.response.to.have.status(202));"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"token\": \"{{registrationToken}}\",\n  \"password\": \"Str0ng-P@ssw0rd!\",\n  \"officeName\": \"FreedomTax LLC\",\n  \"subdomain\": \"freedomtax\",\n  \"termsAccepted\": true,\n  \"termsVersionId\": \"{{termsVersionId}}\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/register/complete",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"register",
-								"complete"
-							]
-						},
-						"description": "API_Contract §2.8. Canjea el token, crea el password del owner (hasheado en la primera línea del handler, nunca cruza RabbitMQ en claro) y arranca el provisioning (la Saga). subdomain debe coincidir con el slug reservado en el paso 8 para este mismo onboarding (si no: 400/409 Onboarding.SubdomainNotReserved). Respuesta 202: { status, statusUrl } — el MISMO token sirve para el polling del paso 10, no se emite uno nuevo."
-					},
-					"response": []
-				},
-				{
-					"name": "10. GetOnboardingStatus",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/status?token={{registrationToken}}",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"status"
-							],
-							"query": [
-								{ "key": "token", "value": "{{registrationToken}}" }
-							]
-						},
-						"description": "API_Contract §2.9. Polling del progreso post-submit (llamar cada 2-3s hasta status terminal). Respuesta 200: { status, currentStep, failureReason, failureCode, redirectUrl }. Nunca expone OnboardingId."
-					},
-					"response": []
-				},
-				{
-					"name": "11. DownloadReceipt",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/onboarding/receipts/{{onboardingReceiptFileId}}/download",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"onboarding",
-								"receipts",
-								"{{onboardingReceiptFileId}}",
-								"download"
-							]
-						},
-						"description": "API_Contract §2.10. 302 redirect a una URL presignada de CloudStorage (expira en minutos) — cada click pide una fresca, así el link embebido en el email de recibo nunca vence. onboardingReceiptFileId llega en el link del email de recibo (async, en paralelo al paso 5)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Onboarding (M2M)",
-			"description": "PayFlow Fase 16 — M2M interno, requiere un token de servicio (actor_type=Service, obtenido via POST /auth/service-token con el client_id/client_secret correspondiente en Auth:ServiceAuth:Clients — ver request ServiceToken en la raiz de esta coleccion). La policy ServiceOnly + [AllowActorTypes(Service)] rechaza cualquier token de usuario normal con 403, sin importar rol o permisos. Receptor de la Saga de onboarding pay-first (TenantOnboardingProcessManager, Fase 15) y del propio Tenant service (status). No apto para flujos de testing manual estandar — se incluye solo como utilidad para pruebas M2M explicitas, mismo criterio que las demas carpetas (M2M) de esta coleccion/repositorio.",
-			"item": [
-				{
-					"name": "GetOnboardingStatus (M2M — llamado por Tenant)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-									"const body = pm.response.json();",
-									"pm.test('tiene status', () => pm.expect(body).to.have.property('status'));"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text",
-								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Tenant via POST /auth/service-token — ver AuthOnboardingStatusClient (Tenant.Infrastructure/Onboarding), reusa ITenantServiceTokenAcquirer (mismo client tenant-worker que usa Tenant para llamar a CloudStorage)."
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/internal/onboarding/{{onboardingId}}/status",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"internal",
-								"onboarding",
-								"{{onboardingId}}",
-								"status"
-							]
-						},
-						"description": "PayFlow Fase 16 — M2M interno. Llamado por Tenant (AuthOnboardingStatusClient) antes de crear el Tenant real a partir de un onboarding, para confirmar en defensa en profundidad (mas alla del gate de la policy ServiceOnly) que el onboarding sigue Provisioning y el pago esta confirmado. Respuesta 200: InternalOnboardingStatusResponse(status, paymentCompletedAtUtc) — ej. {\"status\": \"Provisioning\", \"paymentCompletedAtUtc\": \"2026-07-28T12:00:00Z\"}."
-					},
-					"response": []
-				},
-				{
-					"name": "CreateTenantOwner (M2M — llamado por la Saga de Auth)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text",
-								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) generado in-process por la propia Saga de Auth (TenantOnboardingProcessManager) via IJwtTokenGenerator.GenerateScopedServiceToken — loopback hacia el propio Auth, no es un client registrado en ServiceAuth:Clients."
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"onboardingId\": \"11111111-1111-1111-1111-111111111111\",\n  \"email\": \"owner@example.com\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"passwordHashReference\": \"22222222-2222-2222-2222-222222222222\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/internal/tenants/{{tenantId}}/owners",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"internal",
-								"tenants",
-								"{{tenantId}}",
-								"owners"
-							]
-						},
-						"description": "PayFlow Fase 16 — M2M interno. Llamado por la Saga de onboarding (Fase 15) para crear el TenantAdmin de un tenant recien provisionado. El password NUNCA viaja en este body en texto plano ni siquiera ya hasheado: passwordHashReference es una referencia Redis de un solo uso (ITokenReferenceStore, GETDEL) a un hash PBKDF2 ya calculado durante el registro publico — este endpoint solo canjea la referencia. Idempotente por onboardingId. Responde 200 vacio en exito, o el shape de error estandar en fallo."
-					},
-					"response": []
-				},
-				{
-					"name": "ResolveRegistrationTokenReference (M2M — llamado por Notification)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-									"const body = pm.response.json();",
-									"pm.test('tiene registrationUrl', () => pm.expect(body).to.have.property('registrationUrl'));"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text",
-								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Notification (OnboardingTokenClient) via POST /auth/service-token."
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/internal/onboarding/tokens/{{onboardingRegistrationTokenReference}}/raw",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"internal",
-								"onboarding",
-								"tokens",
-								"{{onboardingRegistrationTokenReference}}",
-								"raw"
-							]
-						},
-						"description": "PayFlow Fase 9 — M2M interno. Expone el RegistrationToken crudo guardado en Redis (patron TokenReference, TTL 30s, GETDEL) por OnboardingPaymentSucceededConsumer, para que Notification arme el email de 'completa tu registro' con el link real. One-shot: un segundo intento con la misma referencia devuelve Onboarding.TokenReferenceNotFound (404). Respuesta 200: { registrationUrl }."
-					},
-					"response": []
-				},
-				{
-					"name": "StoreInvitationTokenReference (M2M — llamado por Tenant)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
-									"const body = pm.response.json();",
-									"pm.test('tiene reference', () => pm.expect(body).to.have.property('reference'));"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
-								"type": "text",
-								"description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Tenant antes de publicar TenantCreatedIntegrationEvent."
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"rawToken\": \"raw-admin-invitation-token-before-hashing\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/internal/invitations/token-references",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"internal",
-								"invitations",
-								"token-references"
-							]
-						},
-						"description": "PayFlow Fase 18 — M2M interno. Lado de escritura del patron TokenReference (mismo ITokenReferenceStore que RegistrationToken/PasswordHashReference, Redis GETDEL, TTL 30s) aplicado a AdminInvitationRawToken: Tenant deposita el raw token de activacion del owner ANTES de publicar TenantCreatedIntegrationEvent (que ahora lleva solo AdminInvitationTokenReference, un Guid, nunca el token en claro). TenantCreatedConsumer (Auth) lo consume in-process via ConsumeAsync. Respuesta 200: { reference } (Guid)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Onboarding Admin (PlatformAdmin)",
-			"description": "PayFlow Fase 17 — panel de soporte para onboardings en ManualReview o con fallos permanentes de provisioning. Todos gateados por [Authorize] + [AllowActorTypes(PlatformAdmin)] + [HasPermission(PermissionCatalog.OnboardingAdminManage)] (OnboardingAdminController). resume/update-and-resume publican comandos que la Saga (TenantOnboardingProcessManager) retoma desde el paso fallido; force-complete marca el onboarding completo manualmente tras resolver el problema fuera de banda; cancel-and-refund es irreversible — dispara OnboardingCancelRequestedIntegrationEvent (compensacion en Subscription/Auth/Tenant, no-op si el paso nunca corrio) y OnboardingRefundRequestedIntegrationEvent (consumido por PaymentApp's OnboardingRefundConsumer).",
-			"item": [
-				{
-					"name": "ListOnboardings (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/admin?status=ManualReview&page=1&limit=50",
-							"host": [ "{{UrlBase}}" ],
-							"path": [ "auth", "onboarding", "admin" ],
-							"query": [
-								{ "key": "status", "value": "ManualReview", "description": "Opcional — filtra por TenantOnboardingStatus (ej. ManualReview, ProvisioningFailed). Omitir para traer todos los estados." },
-								{ "key": "page", "value": "1" },
-								{ "key": "limit", "value": "50" }
-							]
-						},
-						"description": "Lista paginada de onboardings para el panel de soporte de PlatformAdmin."
-					},
-					"response": []
-				},
-				{
-					"name": "GetOnboardingDetail (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}",
-							"host": [ "{{UrlBase}}" ],
-							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}" ]
-						},
-						"description": "Detalle completo de un onboarding puntual (status, CurrentStep, historial de reintentos, error de la Saga si aplica)."
-					},
-					"response": []
-				},
-				{
-					"name": "ResumeOnboarding (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/resume",
-							"host": [ "{{UrlBase}}" ],
-							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "resume" ]
-						},
-						"description": "Sin body. Reintenta el paso de provisioning que quedo fallido, sin cambiar ningun dato del onboarding (usar cuando la causa raiz del fallo transitorio ya se resolvio, ej. un servicio downstream que estaba caido)."
-					},
-					"response": []
-				},
-				{
-					"name": "UpdateAndResumeOnboarding (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"Subdomain\": \"acme-tax-2\",\n  \"PlanId\": null\n}",
-							"options": { "raw": { "language": "json" } }
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/update-and-resume",
-							"host": [ "{{UrlBase}}" ],
-							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "update-and-resume" ]
-						},
-						"description": "Corrige el dato que causo el fallo permanente (ej. Subdomain ya tomado) antes de reintentar. Ambos campos del body son opcionales — enviar solo el que se necesite corregir."
-					},
-					"response": []
-				},
-				{
-					"name": "ForceCompleteOnboarding (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"Reason\": \"Provisioning verificado manualmente en DB, todos los pasos ya corrieron correctamente pese al error reportado por la Saga.\"\n}",
-							"options": { "raw": { "language": "json" } }
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/force-complete",
-							"host": [ "{{UrlBase}}" ],
-							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "force-complete" ]
-						},
-						"description": "Marca el onboarding como Completed sin ejecutar ningun paso de provisioning adicional. Usar solo cuando ya se confirmo fuera de banda (DB/logs) que el tenant quedo correctamente provisionado pese al error reportado."
-					},
-					"response": []
-				},
-				{
-					"name": "CancelAndRefundOnboarding (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"Reason\": \"Cliente solicito cancelacion, provisioning no se pudo completar.\",\n  \"Confirmation\": \"I understand this is irreversible\"\n}",
-							"options": { "raw": { "language": "json" } }
-						},
-						"url": {
-							"raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/cancel-and-refund",
-							"host": [ "{{UrlBase}}" ],
-							"path": [ "auth", "onboarding", "admin", "{{onboardingId}}", "cancel-and-refund" ]
-						},
-						"description": "IRREVERSIBLE. Requiere el campo Confirmation exacto (\"I understand this is irreversible\") o la API rechaza el request. Dispara compensacion (Subscription/Auth/Tenant deshacen lo que hayan provisionado, no-op por paso) y refund (PaymentApp)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Health",
-			"item": [
-				{
-					"name": "GetHealthDetailed",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{UrlBase}}/health/detailed",
-							"host": [ "{{UrlBase}}" ],
-							"path": [ "health", "detailed" ]
-						},
-						"description": "Sin auth. Devuelve el detalle de los health checks tageados 'ready' (sql-server, redis, rabbitmq) con status/duracion/error por check. Fase 17: deliberadamente NO agrega checks downstream a Documents/PaymentApp/Tenant/Subscription — ver comentario en Program.cs."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Negative Cases — Actor Type",
-			"item": [
-				{
-					"name": "CustomerPortal token rejected — GetUsers",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{customerPortalAccessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users?page=1&size=20",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "size",
-									"value": "20"
-								}
-							]
-						},
-						"description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"GetUsers\" (requiere users.view, actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
-									"    pm.response.to.have.status(403);",
-									"});"
-								]
-							}
-						}
-					]
-				}
-			],
-			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
-		},
-		{
-			"name": "RBAC Fase 7 — perm_v Enforcement",
-			"item": [
-				{
-					"name": "TokenStale after role change (requires Authorization:PermissionsSource=Projection)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{staleAccessToken}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{UrlBase}}/auth/users?page=1&size=20",
-							"host": [
-								"{{UrlBase}}"
-							],
-							"path": [
-								"auth",
-								"users"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "size",
-									"value": "20"
-								}
-							]
-						},
-						"description": "RBAC Fase 7 (RBAC_Hardening_Plan.md) — caso negativo runnable, OFF por default. Este servicio (Auth) debe tener `Authorization:PermissionsSource=\"Projection\"` en su config para que este caso aplique — con el default (\"Jwt\") este endpoint responde 200 igual que siempre, el test se salta.\n\nPasos manuales para reproducir:\n1. Login normal → guardar el access token en la variable {{staleAccessToken}} (NO refrescarlo después).\n2. Sin refrescar ese token, quitarle a ese mismo usuario un permiso (p.ej. `users.view`) vía SetRolePermissions o AssignUserRoles — esto incrementa `PermissionsVersion` en Auth y publica `UserRolesChangedIntegrationEvent`/`RolePermissionsChangedIntegrationEvent`, que el consumer de este servicio procesa y sube la versión de su `UserPermissionsProjection`.\n2b. Esperar a que expire el cache de 30s de `ProjectionPermissionsSource` si se repite la prueba (o usar un tenant/usuario nuevo cada vez).\n3. Reenviar este request con el mismo {{staleAccessToken}} (perm_v desactualizado) — debe responder 401 con code `Auth.TokenStale`, no 200 ni 403.\n\nEsto confirma el mecanismo end-to-end (JWT viejo → proyección más nueva → rechazo), no solo la unidad ProjectionPermissionsSource (ver PermissionsSourceTests.cs para esa cobertura)."
-					},
-					"response": [],
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Skipped — Authorization:PermissionsSource is \\\"Jwt\\\" (default) on this environment, perm_v is not enforced\", () => {",
-									"        pm.expect(pm.response.code).to.eql(200);",
-									"    });",
-									"} else {",
-									"    pm.test(\"401 Auth.TokenStale — JWT perm_v is behind the UserPermissionsProjection\", () => {",
-									"        pm.response.to.have.status(401);",
-									"        pm.expect(pm.response.json().code).to.eql(\"Auth.TokenStale\");",
-									"    });",
-									"}"
-								]
-							}
-						}
-					]
-				}
-			],
-			"description": "RBAC Fase 7 (RBAC_Hardening_Plan.md) — enforcement de perm_v contra la proyección local de permisos, apagado por default (Authorization:PermissionsSource=\"Jwt\" en todos los servicios). El caso de esta carpeta documenta y ejercita el flujo TokenStale cuando un servicio activa \"Projection\"; con el default no hace nada distinto de un request normal. Ver README §41.11."
-		}
-	]
+  "info": {
+    "_postman_id": "b2867394-34d5-485f-bd62-4b6161ae1ded",
+    "name": "TaxVision - Auth",
+    "description": "Colección de pruebas del microservicio Auth de TaxVision. Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway, p. ej. http://localhost:5047).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "AcceptTenantAdminInvitation",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"invitationToken\": \"{{invitationToken}}\",\r\n  \"name\": \"Jorge\",\r\n  \"lastName\": \"Turbi\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{UrlBase}}/auth/invitations/accept",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "invitations",
+            "accept"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const r = pm.response.json();",
+              "if (r.mfaRequired) {",
+              "  pm.environment.set('loginTicket', r.loginTicket);",
+              "  console.log('MFA requerido. loginTicket guardado. Usa Auth/MFA/VerifyMfaChallenge.');",
+              "} else if (r.tokens) {",
+              "  pm.environment.set('accessToken', r.tokens.accessToken);",
+              "  pm.environment.set('refreshToken', r.tokens.refreshToken);",
+              "  if (r.tokens.deviceToken) pm.environment.set('deviceToken', r.tokens.deviceToken);",
+              "  console.log('accessToken y refreshToken guardados' + (r.mfaSetupRequired ? ' (mfaSetupRequired=true)' : ''));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"tenantId\": \"{{tenantId}}\",\r\n  \"email\": \"jturbi@example.com\",\r\n  \"password\": \"Brittany040238.\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{UrlBase}}/auth/login",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "GetMe",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/auth/me",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "me"
+          ]
+        },
+        "description": "Perfil, roles, permisos, plan y zona horaria del usuario autenticado."
+      },
+      "response": []
+    },
+    {
+      "name": "Refresh",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{UrlBase}}/auth/refresh",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "refresh"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Rota el refresh token y emite un nuevo access token. Reutilizar un token ya rotado revoca la sesion."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const r = pm.response.json();",
+              "if (r.accessToken) { pm.environment.set('accessToken', r.accessToken); pm.environment.set('refreshToken', r.refreshToken); console.log('tokens actualizados'); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/auth/logout",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "logout"
+          ]
+        },
+        "description": "Cierra la sesion actual (revoca su familia de refresh tokens)."
+      },
+      "response": []
+    },
+    {
+      "name": "Jwks",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{UrlBase}}/auth/.well-known/jwks.json",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            ".well-known",
+            "jwks.json"
+          ]
+        },
+        "description": "JWKS publico (RS256). Con HS256 devuelve un set vacio."
+      },
+      "response": []
+    },
+    {
+      "name": "ServiceToken",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"clientId\": \"notification-worker\",\n  \"clientSecret\": \"{{serviceClientSecret}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{UrlBase}}/auth/service-token",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "service-token"
+          ]
+        },
+        "description": "Grant client-credentials (M2M): emite un token de servicio para un tenant, usado por workers de otros servicios (p. ej. Notification -> CloudStorage) sin contexto de usuario. clientId/clientSecret deben existir en ServiceAuth:Clients."
+      },
+      "response": []
+    },
+    {
+      "name": "Revoke",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{UrlBase}}/auth/revoke",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "revoke"
+          ]
+        },
+        "description": "Revoca un refresh token (logout selectivo de una familia de tokens) sin cerrar la sesion completa."
+      },
+      "response": []
+    },
+    {
+      "name": "Terms",
+      "item": [
+        {
+          "name": "GetTermsStatus",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant/terms/status",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant",
+                "terms",
+                "status"
+              ]
+            },
+            "description": "Estado de aceptacion del ToS/AUP vigente para el tenant del usuario autenticado."
+          },
+          "response": []
+        },
+        {
+          "name": "AcceptTerms",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant/terms/accept",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant",
+                "terms",
+                "accept"
+              ]
+            },
+            "description": "Acepta el ToS/AUP vigente. Cualquier usuario autenticado del tenant puede aceptar, sin permiso especifico (evita bloqueo de arranque si el admin no esta disponible). Sin body."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "MFA",
+      "item": [
+        {
+          "name": "SetupTotp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/totp/setup",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "totp",
+                "setup"
+              ]
+            },
+            "description": "Devuelve el secreto y el otpauthUri para escanear con Authenticator."
+          },
+          "response": []
+        },
+        {
+          "name": "ConfirmTotp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/totp/confirm",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "totp",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Confirma el TOTP con un codigo y devuelve los recovery codes (una sola vez)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r=pm.response.json(); if(r.recoveryCodes){console.log('Recovery codes:', r.recoveryCodes.join(', '));}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "VerifyMfaChallenge",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/verify",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginTicket\": \"{{loginTicket}}\",\n  \"code\": \"123456\",\n  \"rememberDevice\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Paso 2 del login: verifica el codigo del desafio MFA y emite tokens."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r=pm.response.json();",
+                  "if(r.accessToken){pm.environment.set('accessToken',r.accessToken);pm.environment.set('refreshToken',r.refreshToken);if(r.deviceToken)pm.environment.set('deviceToken',r.deviceToken);console.log('MFA verificado, tokens guardados');}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "RevokeTrustedDevice",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/trusted-devices/{{deviceId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "trusted-devices",
+                "{{deviceId}}"
+              ]
+            },
+            "description": "Revoca un dispositivo marcado como 'recordar por N dias' (rememberDevice en VerifyMfaChallenge)."
+          },
+          "response": []
+        },
+        {
+          "name": "MfaStatus",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/status",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "status"
+              ]
+            },
+            "description": "Metodos MFA registrados, recovery codes restantes y dispositivos confiables."
+          },
+          "response": []
+        },
+        {
+          "name": "DisableMfa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/disable",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "disable"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"Brittany040238.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Desactiva MFA (bloqueado si la politica del tenant lo exige)."
+          },
+          "response": []
+        },
+        {
+          "name": "RegenerateRecoveryCodes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/recovery-codes/regenerate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "recovery-codes",
+                "regenerate"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"Brittany040238.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GetMfaPolicy",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/policy",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "policy"
+              ]
+            },
+            "description": "Politica MFA del tenant (requiere settings.manage)."
+          },
+          "response": []
+        },
+        {
+          "name": "UpdateMfaPolicy",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/mfa/policy",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "mfa",
+                "policy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requireForEmployees\": false,\n  \"requireForCustomerPortal\": false,\n  \"trustedDeviceDays\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Credentials",
+      "item": [
+        {
+          "name": "ForgotPassword",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/password/forgot",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "forgot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"jturbi@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Siempre responde 202 (anti-enumeracion)."
+          },
+          "response": []
+        },
+        {
+          "name": "ResetPassword",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/password/reset",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "reset"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ChangePassword",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/password/change",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "password",
+                "change"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Brittany040238.\",\n  \"newPassword\": \"NuevaClaveSegura2026!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "RequestEmailChange",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/me/email/change-request",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "email",
+                "change-request"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEmail\": \"nuevo@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ConfirmEmailChange",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/me/email/confirm",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "email",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{emailChangeToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "RequestPhoneVerification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/me/phone/change-request",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "phone",
+                "change-request"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+18095551234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ConfirmPhoneVerification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/me/phone/confirm",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "me",
+                "phone",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sessions",
+      "item": [
+        {
+          "name": "MySessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/sessions/me",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "sessions",
+                "me"
+              ]
+            },
+            "description": "Sesiones activas del usuario autenticado."
+          },
+          "response": []
+        },
+        {
+          "name": "UserSessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/sessions/users/{{targetUserId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "sessions",
+                "users",
+                "{{targetUserId}}"
+              ]
+            },
+            "description": "Sesiones activas de otro usuario del tenant (requiere users.manage)."
+          },
+          "response": []
+        },
+        {
+          "name": "RevokeSession",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/sessions/{{sessionId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "sessions",
+                "{{sessionId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "RevokeAllMySessions",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/sessions?includeCurrent=false",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "sessions"
+              ],
+              "query": [
+                {
+                  "key": "includeCurrent",
+                  "value": "false"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Invitations",
+      "item": [
+        {
+          "name": "CreateInvitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "invitations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"empleado@example.com\",\n  \"actorType\": \"TenantEmployee\",\n  \"customerId\": null,\n  \"roleIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Crea una invitacion (permiso: users.invite, TenantAdmin/PlatformAdmin). Valida limites del plan."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r=pm.response.json(); if(r.invitationToken){pm.environment.set('invitationToken', r.invitationToken);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ListInvitations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations?status=Pending&page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "invitations"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "Pending"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Lista invitaciones del tenant (permiso: users.invite)."
+          },
+          "response": []
+        },
+        {
+          "name": "ResendInvitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/resend",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "invitations",
+                "{{invitationId}}",
+                "resend"
+              ]
+            },
+            "description": "Reenvia una invitacion pendiente (permiso: users.invite, TenantAdmin/PlatformAdmin)."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelInvitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/invitations/{{invitationId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "invitations",
+                "{{invitationId}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancela una invitacion pendiente (permiso: users.invite, TenantAdmin/PlatformAdmin)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "GetUsers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users?page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GetUserById",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DeactivateUser",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}/deactivate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}",
+                "deactivate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ReactivateUser",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}/reactivate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}",
+                "reactivate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "AssignUserRoles",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/{{userId}}/roles",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "{{userId}}",
+                "roles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleIds\": [\n    \"{{roleId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "UpdateMyProfile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users/me/profile",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users",
+                "me",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jorge\",\n  \"lastName\": \"Turbi\",\n  \"timeZoneId\": \"America/Santo_Domingo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GetTenantLimits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenants/limits",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenants",
+                "limits"
+              ]
+            },
+            "description": "Plan, asientos usados/disponibles e invitaciones restantes."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Roles",
+      "item": [
+        {
+          "name": "GetRoles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/roles",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "roles"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GetPermissionsCatalog",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/permissions",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "permissions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CreateRole",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/roles",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "roles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Equipo comercial\",\n  \"permissionIds\": [],\n  \"targetActorType\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "targetActorType (RBAC Fase 3, opcional): 'TenantEmployee' | 'TenantAdmin' | 'CustomerPortal' | 'PlatformAdmin' | null. Declara para qué actor type es el rol custom; null se valida contra staff (TenantEmployee/TenantAdmin) por defecto. Ver ActorTypeRoleGuard.ValidatePermissionsForActorType."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r=pm.response.json(); if(r.id){pm.environment.set('roleId', r.id);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "UpdateRole",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/roles/{{roleId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "roles",
+                "{{roleId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ventas\",\n  \"description\": \"Actualizado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "SetRolePermissions",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/roles/{{roleId}}/permissions",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "roles",
+                "{{roleId}}",
+                "permissions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DeactivateRole",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/roles/{{roleId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "roles",
+                "{{roleId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Subdomains",
+      "item": [
+        {
+          "name": "CheckAvailability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/subdomains/check-availability?slug=oficina1",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "subdomains",
+                "check-availability"
+              ],
+              "query": [
+                {
+                  "key": "slug",
+                  "value": "oficina1"
+                }
+              ]
+            },
+            "description": "Publico, sin auth. Nunca falla: formato invalido/reservado/tomado son resultados validos { available, reason }."
+          },
+          "response": []
+        },
+        {
+          "name": "ReserveSubdomain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "",
+                  "const response = pm.response.json();",
+                  "",
+                  "pm.environment.set(\"registrationTicket\", response.registrationTicket);",
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"oficina1\",\n  \"email\": \"jturbi@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/subdomains/reserve",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "subdomains",
+                "reserve"
+              ]
+            },
+            "description": "Publico, sin auth. Bloquea el slug para ese email por un TTL corto (15 min por defecto) mientras se completa el alta de la oficina. La respuesta trae registrationTicket: el JWT que TaxVision.Tenant.Api exige (policy TenantRegistration) para aceptar POST /tenants sin ser PlatformAdmin — guardado aca en la variable de environment registrationTicket."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TenantResolution",
+      "item": [
+        {
+          "name": "ByHost",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-resolution/by-host",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-resolution",
+                "by-host"
+              ]
+            },
+            "description": "Publico. El Host de la request ya lo resolvio TenantHostResolutionMiddleware; 404 si no resuelve a un tenant activo (ej. llamado directo al Gateway sin subdominio real)."
+          },
+          "response": []
+        },
+        {
+          "name": "ByEmail",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jturbi@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-resolution/by-email",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-resolution",
+                "by-email"
+              ]
+            },
+            "description": "\"Encuentra tu oficina\": siempre 202, envia por correo los subdominios donde ese email tiene cuenta (anti-enumeracion)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TenantDomains",
+      "item": [
+        {
+          "name": "GetAll",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-domains",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-domains"
+              ]
+            },
+            "description": "Requiere tenant-domains.manage. Lista subdominios y custom hostnames del tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "CreateCustomHostname",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hostname\": \"archivos.suoficina.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-domains",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-domains"
+              ]
+            },
+            "description": "Requiere tenant-domains.manage. Solo dominios propios (custom hostname) - los subdominios *.taxprocore.com se crean solos al nacer el tenant. Arranca el provisioning en Cloudflare."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r=pm.response.json(); if(r.domain){pm.environment.set('domainId', r.domain.id);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "VerifyCustomHostname",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/verify",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-domains",
+                "{{domainId}}",
+                "verify"
+              ]
+            },
+            "description": "Requiere tenant-domains.manage. Consulta (sin mutar) el estado DNS/TLS reportado por Cloudflare mientras el tenant configura sus registros."
+          },
+          "response": []
+        },
+        {
+          "name": "ActivateCustomHostname",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/activate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-domains",
+                "{{domainId}}",
+                "activate"
+              ]
+            },
+            "description": "Requiere tenant-domains.manage. Confirma con Cloudflare que el hostname esta status=active y ssl.status=active, y lo pasa a Active en Auth. Un poller de fondo tambien lo hace automaticamente."
+          },
+          "response": []
+        },
+        {
+          "name": "DisableDomain",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/disable",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-domains",
+                "{{domainId}}",
+                "disable"
+              ]
+            },
+            "description": "Requiere tenant-domains.manage. El dominio primario no se puede deshabilitar (usar ChangeSubdomain). Si es custom hostname, primero se borra en Cloudflare (anti subdomain-takeover)."
+          },
+          "response": []
+        },
+        {
+          "name": "ChangeSubdomain",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newSlug\": \"oficina2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/tenant-domains/{{domainId}}/subdomain",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "tenant-domains",
+                "{{domainId}}",
+                "subdomain"
+              ]
+            },
+            "description": "Requiere tenant-domains.manage. Renombra el subdominio primario ya activo (ej. oficina1.taxprocore.com -> oficina2.taxprocore.com). No aplica a custom hostnames."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "GetAuditLogs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/audit?page=1&size=50",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Eventos de seguridad del tenant (requiere audit.view)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Onboarding (Public)",
+      "description": "PayFlow — flujo público \"pay-first\" completo, anónimo (sin Authorization) salvo donde se indica. Contrato completo en documents/architecture/payflowguide/API_Contract.md §2. Corre en orden: OTP (1-3) → CreateOnboarding+Checkout (4-5, pagar con tarjeta test 4242 4242 4242 4242 en el checkoutUrl) → [async: esperar el email de \"completa tu registro\" con el RegistrationToken real y pegarlo a mano en la variable {{registrationToken}} del environment, Postman no puede automatizar ese paso] → Terms (6) → Preview+CheckSubdomain+Complete (7-9) → Status (10) → Receipt (11, llega por otro email async en paralelo al paso 4-5).\n\nAuditoría frontend (post-Fase 14, verificada y cerrada esta sesión): dos bloqueos reales de backend detectados por el equipo de frontend antes de esta colección. (1) El Gateway no ruteaba /onboarding/** — src/Gateway/TaxVision.Gateway/appsettings.json ya tiene la entrada onboarding→auth. (2) POST onboarding/subdomains/check (paso 8) exigía onboardingId/email crudos del cliente, imposibles de tener en ese punto del flujo (invariante §5: el onboardingId real solo se expone una vez, en la respuesta de CreateOnboarding) — el endpoint ahora resuelve el onboarding server-side por el mismo token opaco que preview/complete.",
+      "item": [
+        {
+          "name": "1. RequestOtp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('onboardingChallengeId', body.challengeId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer@example.com\",\n  \"firstNameHint\": \"Ada\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/email-challenges",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "email-challenges"
+              ]
+            },
+            "description": "API_Contract §2.1. Pide un OTP de 6 dígitos al email indicado. Rate limit: 5/email/hr, 10/IP/hr (Onboarding.OtpRateLimited)."
+          },
+          "response": []
+        },
+        {
+          "name": "2. VerifyOtp",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/verify",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "email-challenges",
+                "{{onboardingChallengeId}}",
+                "verify"
+              ]
+            },
+            "description": "API_Contract §2.2. 204 en éxito. 5 intentos fallidos → Onboarding.OtpLocked (400)."
+          },
+          "response": []
+        },
+        {
+          "name": "3. ResendOtp (opcional)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/resend",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "email-challenges",
+                "{{onboardingChallengeId}}",
+                "resend"
+              ]
+            },
+            "description": "API_Contract §2.3. 202 Accepted. Cooldown 60s entre resends, máx 5 por challenge (Onboarding.ResendCooldown / Onboarding.ResendLimitExceeded)."
+          },
+          "response": []
+        },
+        {
+          "name": "4. CreateOnboarding",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('onboardingId', body.onboardingId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer@example.com\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"phone\": \"+1-555-0100\",\n  \"planId\": \"{{planId}}\",\n  \"emailVerificationChallengeId\": \"{{onboardingChallengeId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/onboarding",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding"
+              ]
+            },
+            "description": "API_Contract §2.4. Crea el TenantOnboarding (UoW #1). Respuesta 201: { onboardingId, email, planId }. Nota: onboardingId se expone acá UNA SOLA VEZ (invariante §5) — solo hace falta para el siguiente paso (checkout), nunca más adelante en el flujo."
+          },
+          "response": []
+        },
+        {
+          "name": "5. StartCheckout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "console.log('Abrir en el browser para pagar (tarjeta test 4242 4242 4242 4242): ' + body.checkoutUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"onboardingId\": \"{{onboardingId}}\",\n  \"payerEmail\": \"buyer@example.com\",\n  \"successUrl\": \"https://app.taxvision.local/onboarding/success\",\n  \"cancelUrl\": \"https://app.taxvision.local/onboarding/cancel\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/checkout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "checkout"
+              ]
+            },
+            "description": "API_Contract §2.5. Dispara el checkout en PaymentApp/Stripe. Respuesta 200: { paymentId, checkoutUrl, expiresAtUtc }. Paso manual: seguir checkoutUrl en un browser y pagar — después de eso el webhook de Stripe activa el onboarding de forma asíncrona y llega el email con el RegistrationToken real (pegar a mano en la variable de environment registrationToken antes de correr los pasos 7-10)."
+          },
+          "response": []
+        },
+        {
+          "name": "6. GetCurrentTerms",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('termsVersionId', body.termsVersionId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/terms/current?kind=TermsOfService&locale=en-US",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "terms",
+                "current"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "TermsOfService",
+                  "description": "TermsOfService | PrivacyPolicy"
+                },
+                {
+                  "key": "locale",
+                  "value": "en-US"
+                }
+              ]
+            },
+            "description": "API_Contract §2.11. Único endpoint del módulo bajo el prefijo auth/onboarding (no onboarding/ a secas) — el Gateway ya lo ruteaba correctamente incluso antes del fix del Gap 1. Respuesta 200: TermsVersionResponse (termsVersionId, kind, version, contentUri, contentHash, locale, ...)."
+          },
+          "response": []
+        },
+        {
+          "name": "6b. GetTermsContent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/terms/{{termsVersionId}}/content",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "terms",
+                "{{termsVersionId}}",
+                "content"
+              ]
+            },
+            "description": "Auditoría gap MinIO/legal-docs. Devuelve el HTML real del documento (text/html) para renderizar inline antes de que exista cualquier tenant. Rate limit: policy terms-content-download."
+          },
+          "response": []
+        },
+        {
+          "name": "7. PreviewRegistration",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{registrationToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/register/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "register",
+                "preview"
+              ]
+            },
+            "description": "API_Contract §2.7. Resuelve el RegistrationToken (del link del email de recibo) para prellenar el form. Respuesta 200: { firstName, lastName, maskedEmail, planName }. registrationToken debe pegarse a mano en el environment tras el paso 5 (llega por email, Postman no puede automatizar el webhook async de Stripe)."
+          },
+          "response": []
+        },
+        {
+          "name": "8. CheckAndReserveSubdomain",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"freedomtax\",\n  \"token\": \"{{registrationToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/subdomains/check",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "subdomains",
+                "check"
+              ]
+            },
+            "description": "API_Contract §2.6. Gap 2 (auditoría frontend, cerrado esta sesión): antes exigía { slug, onboardingId, email } — imposible de armar en este punto del flujo porque onboardingId ya no vive en ningún lado del cliente (invariante §5). Ahora resuelve el onboarding server-side por el mismo token opaco que preview/complete, mismo patrón exacto que esos dos endpoints. Valida formato+disponibilidad y RESERVA el slug por 60 min (a pesar del nombre \"check\"). Llamar de nuevo con el mismo token+slug renueva la reserva (idempotente). Respuesta 200: { available, reason, expiresAtUtc }."
+          },
+          "response": []
+        },
+        {
+          "name": "9. CompleteRegistration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{registrationToken}}\",\n  \"password\": \"Str0ng-P@ssw0rd!\",\n  \"officeName\": \"FreedomTax LLC\",\n  \"subdomain\": \"freedomtax\",\n  \"termsAccepted\": true,\n  \"termsVersionId\": \"{{termsVersionId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/register/complete",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "register",
+                "complete"
+              ]
+            },
+            "description": "API_Contract §2.8. Canjea el token, crea el password del owner (hasheado en la primera línea del handler, nunca cruza RabbitMQ en claro) y arranca el provisioning (la Saga). subdomain debe coincidir con el slug reservado en el paso 8 para este mismo onboarding (si no: 400/409 Onboarding.SubdomainNotReserved). Respuesta 202: { status, statusUrl } — el MISMO token sirve para el polling del paso 10, no se emite uno nuevo."
+          },
+          "response": []
+        },
+        {
+          "name": "10. GetOnboardingStatus",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/status?token={{registrationToken}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{registrationToken}}"
+                }
+              ]
+            },
+            "description": "API_Contract §2.9. Polling del progreso post-submit (llamar cada 2-3s hasta status terminal). Respuesta 200: { status, currentStep, failureReason, failureCode, redirectUrl }. Nunca expone OnboardingId."
+          },
+          "response": []
+        },
+        {
+          "name": "11. DownloadReceipt",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/onboarding/receipts/{{onboardingReceiptFileId}}/download",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "onboarding",
+                "receipts",
+                "{{onboardingReceiptFileId}}",
+                "download"
+              ]
+            },
+            "description": "API_Contract §2.10. 302 redirect a una URL presignada de CloudStorage (expira en minutos) — cada click pide una fresca, así el link embebido en el email de recibo nunca vence. onboardingReceiptFileId llega en el link del email de recibo (async, en paralelo al paso 5)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Onboarding (M2M)",
+      "description": "PayFlow Fase 16 — M2M interno, requiere un token de servicio (actor_type=Service, obtenido via POST /auth/service-token con el client_id/client_secret correspondiente en Auth:ServiceAuth:Clients — ver request ServiceToken en la raiz de esta coleccion). La policy ServiceOnly + [AllowActorTypes(Service)] rechaza cualquier token de usuario normal con 403, sin importar rol o permisos. Receptor de la Saga de onboarding pay-first (TenantOnboardingProcessManager, Fase 15) y del propio Tenant service (status). No apto para flujos de testing manual estandar — se incluye solo como utilidad para pruebas M2M explicitas, mismo criterio que las demas carpetas (M2M) de esta coleccion/repositorio.",
+      "item": [
+        {
+          "name": "CreateTenantOwner (M2M — llamado por la Saga de Auth)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) generado in-process por la propia Saga de Auth (TenantOnboardingProcessManager) via IJwtTokenGenerator.GenerateScopedServiceToken — loopback hacia el propio Auth, no es un client registrado en ServiceAuth:Clients."
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"onboardingId\": \"11111111-1111-1111-1111-111111111111\",\n  \"email\": \"owner@example.com\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"passwordHashReference\": \"22222222-2222-2222-2222-222222222222\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{AuthDirectBase}}/internal/tenants/{{tenantId}}/owners",
+              "host": [
+                "{{AuthDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "tenants",
+                "{{tenantId}}",
+                "owners"
+              ]
+            },
+            "description": "PayFlow Fase 16 — M2M interno. Llamado por la Saga de onboarding (Fase 15) para crear el TenantAdmin de un tenant recien provisionado. El password NUNCA viaja en este body en texto plano ni siquiera ya hasheado: passwordHashReference es una referencia Redis de un solo uso (ITokenReferenceStore, GETDEL) a un hash PBKDF2 ya calculado durante el registro publico — este endpoint solo canjea la referencia. Idempotente por onboardingId. Responde 200 vacio en exito, o el shape de error estandar en fallo."
+          },
+          "response": []
+        },
+        {
+          "name": "ResolveRegistrationTokenReference (M2M — llamado por Notification)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene registrationUrl', () => pm.expect(body).to.have.property('registrationUrl'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Notification (OnboardingTokenClient) via POST /auth/service-token."
+              }
+            ],
+            "url": {
+              "raw": "{{AuthDirectBase}}/internal/onboarding/tokens/{{onboardingRegistrationTokenReference}}/raw",
+              "host": [
+                "{{AuthDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "onboarding",
+                "tokens",
+                "{{onboardingRegistrationTokenReference}}",
+                "raw"
+              ]
+            },
+            "description": "PayFlow Fase 9 — M2M interno. Expone el RegistrationToken crudo guardado en Redis (patron TokenReference, TTL 30s, GETDEL) por OnboardingPaymentSucceededConsumer, para que Notification arme el email de 'completa tu registro' con el link real. One-shot: un segundo intento con la misma referencia devuelve Onboarding.TokenReferenceNotFound (404). Respuesta 200: { registrationUrl }."
+          },
+          "response": []
+        },
+        {
+          "name": "StoreInvitationTokenReference (M2M — llamado por Tenant)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tiene reference', () => pm.expect(body).to.have.property('reference'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text",
+                "description": "En produccion este token SIEMPRE es un token de servicio (M2M, actor_type=Service) obtenido por Tenant antes de publicar TenantCreatedIntegrationEvent."
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rawToken\": \"raw-admin-invitation-token-before-hashing\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{AuthDirectBase}}/internal/invitations/token-references",
+              "host": [
+                "{{AuthDirectBase}}"
+              ],
+              "path": [
+                "internal",
+                "invitations",
+                "token-references"
+              ]
+            },
+            "description": "PayFlow Fase 18 — M2M interno. Lado de escritura del patron TokenReference (mismo ITokenReferenceStore que RegistrationToken/PasswordHashReference, Redis GETDEL, TTL 30s) aplicado a AdminInvitationRawToken: Tenant deposita el raw token de activacion del owner ANTES de publicar TenantCreatedIntegrationEvent (que ahora lleva solo AdminInvitationTokenReference, un Guid, nunca el token en claro). TenantCreatedConsumer (Auth) lo consume in-process via ConsumeAsync. Respuesta 200: { reference } (Guid)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Onboarding Admin (PlatformAdmin)",
+      "description": "PayFlow Fase 17 — panel de soporte para onboardings en ManualReview o con fallos permanentes de provisioning. Todos gateados por [Authorize] + [AllowActorTypes(PlatformAdmin)] + [HasPermission(PermissionCatalog.OnboardingAdminManage)] (OnboardingAdminController). resume/update-and-resume publican comandos que la Saga (TenantOnboardingProcessManager) retoma desde el paso fallido; force-complete marca el onboarding completo manualmente tras resolver el problema fuera de banda; cancel-and-refund es irreversible — dispara OnboardingCancelRequestedIntegrationEvent (compensacion en Subscription/Auth/Tenant, no-op si el paso nunca corrio) y OnboardingRefundRequestedIntegrationEvent (consumido por PaymentApp's OnboardingRefundConsumer).",
+      "item": [
+        {
+          "name": "ListOnboardings (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin?status=ManualReview&page=1&limit=50",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ManualReview",
+                  "description": "Opcional — filtra por TenantOnboardingStatus (ej. ManualReview, ProvisioningFailed). Omitir para traer todos los estados."
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Lista paginada de onboardings para el panel de soporte de PlatformAdmin."
+          },
+          "response": []
+        },
+        {
+          "name": "GetOnboardingDetail (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin",
+                "{{onboardingId}}"
+              ]
+            },
+            "description": "Detalle completo de un onboarding puntual (status, CurrentStep, historial de reintentos, error de la Saga si aplica)."
+          },
+          "response": []
+        },
+        {
+          "name": "ResumeOnboarding (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/resume",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin",
+                "{{onboardingId}}",
+                "resume"
+              ]
+            },
+            "description": "Sin body. Reintenta el paso de provisioning que quedo fallido, sin cambiar ningun dato del onboarding (usar cuando la causa raiz del fallo transitorio ya se resolvio, ej. un servicio downstream que estaba caido)."
+          },
+          "response": []
+        },
+        {
+          "name": "UpdateAndResumeOnboarding (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Subdomain\": \"acme-tax-2\",\n  \"PlanId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/update-and-resume",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin",
+                "{{onboardingId}}",
+                "update-and-resume"
+              ]
+            },
+            "description": "Corrige el dato que causo el fallo permanente (ej. Subdomain ya tomado) antes de reintentar. Ambos campos del body son opcionales — enviar solo el que se necesite corregir."
+          },
+          "response": []
+        },
+        {
+          "name": "ForceCompleteOnboarding (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Reason\": \"Provisioning verificado manualmente en DB, todos los pasos ya corrieron correctamente pese al error reportado por la Saga.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/force-complete",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin",
+                "{{onboardingId}}",
+                "force-complete"
+              ]
+            },
+            "description": "Marca el onboarding como Completed sin ejecutar ningun paso de provisioning adicional. Usar solo cuando ya se confirmo fuera de banda (DB/logs) que el tenant quedo correctamente provisionado pese al error reportado."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelAndRefundOnboarding (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Reason\": \"Cliente solicito cancelacion, provisioning no se pudo completar.\",\n  \"Confirmation\": \"I understand this is irreversible\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlBase}}/auth/onboarding/admin/{{onboardingId}}/cancel-and-refund",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "onboarding",
+                "admin",
+                "{{onboardingId}}",
+                "cancel-and-refund"
+              ]
+            },
+            "description": "IRREVERSIBLE. Requiere el campo Confirmation exacto (\"I understand this is irreversible\") o la API rechaza el request. Dispara compensacion (Subscription/Auth/Tenant deshacen lo que hayan provisionado, no-op por paso) y refund (PaymentApp)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GetHealthDetailed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/health/detailed",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "health",
+                "detailed"
+              ]
+            },
+            "description": "Sin auth. Devuelve el detalle de los health checks tageados 'ready' (sql-server, redis, rabbitmq) con status/duracion/error por check. Fase 17: deliberadamente NO agrega checks downstream a Documents/PaymentApp/Tenant/Subscription — ver comentario en Program.cs."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Negative Cases — Actor Type",
+      "item": [
+        {
+          "name": "CustomerPortal token rejected — GetUsers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerPortalAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users?page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Fase 7.3 (Actor_Type_Authorization_Layers_Plan.md) — caso negativo cross-actor. Mismo endpoint que \"GetUsers\" (requiere users.view, actor type staff), llamado con {{customerPortalAccessToken}} (poblado por Portal Access > LoginCustomerPortal en la colección Customer). Debe rechazar con 403 — Capa 1 (HasPermission) y Capa 2 (AllowActorTypes) del mecanismo de autorización, ver el plan. No es exhaustivo endpoint por endpoint (ver ActorTypeAuthorizationFilterTests.cs para esa cobertura completa a nivel filtro); este caso documenta y ejercita el mecanismo real vía HTTP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 Forbidden — CustomerPortal actor type blocked from a staff-only endpoint\", () => {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
+    },
+    {
+      "name": "RBAC Fase 7 — perm_v Enforcement",
+      "item": [
+        {
+          "name": "TokenStale after role change (requires Authorization:PermissionsSource=Projection)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{staleAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/users?page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "RBAC Fase 7 (RBAC_Hardening_Plan.md) — caso negativo runnable, OFF por default. Este servicio (Auth) debe tener `Authorization:PermissionsSource=\"Projection\"` en su config para que este caso aplique — con el default (\"Jwt\") este endpoint responde 200 igual que siempre, el test se salta.\n\nPasos manuales para reproducir:\n1. Login normal → guardar el access token en la variable {{staleAccessToken}} (NO refrescarlo después).\n2. Sin refrescar ese token, quitarle a ese mismo usuario un permiso (p.ej. `users.view`) vía SetRolePermissions o AssignUserRoles — esto incrementa `PermissionsVersion` en Auth y publica `UserRolesChangedIntegrationEvent`/`RolePermissionsChangedIntegrationEvent`, que el consumer de este servicio procesa y sube la versión de su `UserPermissionsProjection`.\n2b. Esperar a que expire el cache de 30s de `ProjectionPermissionsSource` si se repite la prueba (o usar un tenant/usuario nuevo cada vez).\n3. Reenviar este request con el mismo {{staleAccessToken}} (perm_v desactualizado) — debe responder 401 con code `Auth.TokenStale`, no 200 ni 403.\n\nEsto confirma el mecanismo end-to-end (JWT viejo → proyección más nueva → rechazo), no solo la unidad ProjectionPermissionsSource (ver PermissionsSourceTests.cs para esa cobertura)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.test(\"Skipped — Authorization:PermissionsSource is \\\"Jwt\\\" (default) on this environment, perm_v is not enforced\", () => {",
+                  "        pm.expect(pm.response.code).to.eql(200);",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"401 Auth.TokenStale — JWT perm_v is behind the UserPermissionsProjection\", () => {",
+                  "        pm.response.to.have.status(401);",
+                  "        pm.expect(pm.response.json().code).to.eql(\"Auth.TokenStale\");",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "RBAC Fase 7 (RBAC_Hardening_Plan.md) — enforcement de perm_v contra la proyección local de permisos, apagado por default (Authorization:PermissionsSource=\"Jwt\" en todos los servicios). El caso de esta carpeta documenta y ejercita el flujo TokenStale cuando un servicio activa \"Projection\"; con el default no hace nada distinto de un request normal. Ver README §41.11."
+    }
+  ]
 }

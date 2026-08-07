@@ -1,19 +1,22 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
-using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.ResourceAuthorization;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.ResourceAuthorization;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -58,14 +61,10 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "cloudstorage-
 // CloudStorage con el resto del monorepo.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // RBAC Fase 4 (RBAC_Hardening_Plan.md) — resource ownership sobre ShareLink, apagado por
 // default (Authorization:ResourceOwnership:Enabled). Reusa CloudStorageShareManage, permiso ya
@@ -216,16 +215,14 @@ builder.Host.UseWolverine(options =>
         .UseDurableInbox()
         .DefaultIncomingMessage<SaveFileRequestedIntegrationEvent>();
 
-    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
     options
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
-        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
-    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+        .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 
 var app = builder.Build();
@@ -244,13 +241,13 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 
-// Setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter global de
+// Setea BuildingBlocks.Web.Tenancy.TenantContext desde el JWT para el HasQueryFilter global de
 // CloudStorageDbContext. Va ANTES de UseAuthorization() — en modo
 // Authorization:PermissionsSource=Projection, [HasPermission] resuelve el permiso con una
 // consulta tenant-scoped DURANTE la evaluación de UseAuthorization();
 // si el tenant se poblara después, esa consulta vería EffectiveTenantId=Guid.Empty y fallaría
 // cerrado (403) para todo el mundo.
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();

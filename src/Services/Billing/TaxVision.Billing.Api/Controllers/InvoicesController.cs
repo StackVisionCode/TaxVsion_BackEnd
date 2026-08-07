@@ -1,9 +1,12 @@
+using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Billing.Api.Common;
+using TaxVision.Billing.Api.Authorization;
 using TaxVision.Billing.Application.Invoices.CreateInvoiceDraft;
 using TaxVision.Billing.Application.Invoices.GetInvoice;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
@@ -20,6 +23,8 @@ namespace TaxVision.Billing.Api.Controllers;
 [ApiController]
 [Route("billing/invoices")]
 [Authorize]
+// Los mismos actores que declara el catálogo de Auth para billing.* (Permission.InferAllowedActorTypes).
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 {
     public sealed record CreateInvoiceDraftRequest(
@@ -32,6 +37,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(BillingPermissions.Manage)]
     [ProducesResponseType<CreateInvoiceDraftResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateDraft(CreateInvoiceDraftRequest request, CancellationToken ct)
     {
@@ -56,6 +62,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{invoiceId:guid}/issue")]
     [RateLimit("billing.g.invoice_issue")]
+    [HasPermission(BillingPermissions.Manage)]
     [ProducesResponseType<IssueInvoiceResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Issue(Guid invoiceId, CancellationToken ct)
     {
@@ -72,6 +79,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpGet]
     [RateLimit("billing.f.invoice_read")]
+    [HasPermission(BillingPermissions.View)]
     [ProducesResponseType<IReadOnlyList<InvoiceSummaryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] int take, CancellationToken ct)
     {
@@ -91,6 +99,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
     /// <summary>Registra un pago manual/offline (efectivo, cheque, transferencia…) — marca la factura Paid.</summary>
     [HttpPost("{invoiceId:guid}/record-payment")]
     [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(BillingPermissions.Manage)]
     [ProducesResponseType<RecordManualPaymentResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> RecordManualPayment(
         Guid invoiceId,
@@ -118,6 +127,7 @@ public sealed class InvoicesController(IMessageBus bus) : ControllerBase
 
     [HttpGet("{invoiceId:guid}")]
     [RateLimit("billing.f.invoice_read")]
+    [HasPermission(BillingPermissions.View)]
     [ProducesResponseType<InvoiceSummaryResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid invoiceId, CancellationToken ct)
     {

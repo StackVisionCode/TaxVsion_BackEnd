@@ -48,7 +48,7 @@ public sealed class User : TenantEntity
     public DateTime? DeactivatedAtUtc { get; private set; }
 
     /// <summary>PayFlow (Fase 16) — presente solo para el TenantAdmin creado por la Saga de
-    /// onboarding (<c>auth/internal/tenants/{tenantId}/owners</c>). Único índice filtrado: protege
+    /// onboarding (<c>internal/tenants/{tenantId}/owners</c>). Único índice filtrado: protege
     /// contra que un reintento del mismo comando M2M cree un segundo TenantAdmin.</summary>
     public Guid? OnboardingId { get; private set; }
 

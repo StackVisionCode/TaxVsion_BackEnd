@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;
@@ -95,8 +96,10 @@ public static class ConfirmTotpHandler
         if (method?.SecretCiphertext is null)
             return Result.Failure<ConfirmTotpResponse>(new Error("Mfa.NotSetUp", "TOTP setup was not started."));
 
-        var secret = protector.Unprotect(method.SecretCiphertext);
-        if (secret is null || !totp.ValidateCode(secret, command.Code, DateTime.UtcNow))
+        if (
+            !protector.TryUnprotect(method.SecretCiphertext, out var secret, out _)
+            || !totp.ValidateCode(secret, command.Code, DateTime.UtcNow)
+        )
         {
             return Result.Failure<ConfirmTotpResponse>(new Error("Auth.MfaInvalid", "Verification code is invalid."));
         }

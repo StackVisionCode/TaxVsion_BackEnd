@@ -130,7 +130,7 @@ const rawEnv = z
       .transform((value) => value === 'true'),
 
     // Reconciliacion periodica de la proyeccion CustomerDirectoryEntry contra la fuente
-    // autoritativa (customers/internal/reconciliation, cross-tenant M2M). Auto-cura eventos
+    // autoritativa (internal/customers/reconciliation, cross-tenant M2M). Auto-cura eventos
     // perdidos. Mismo Customer.Api que ya usan otros clientes; local corre en :5263.
     COMMUNICATION_CUSTOMER_BASE_URL: z.string().url().default('http://localhost:5263'),
     COMMUNICATION_CUSTOMER_RECONCILE_ENABLED: z

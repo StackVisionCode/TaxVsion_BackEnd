@@ -41,7 +41,7 @@ internal sealed class PermissionsSnapshotClient(
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"auth/internal/tenants/{tenantId:D}/users/{userId:D}/permissions-snapshot"
+                $"internal/tenants/{tenantId:D}/users/{userId:D}/permissions-snapshot"
             );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

@@ -65,7 +65,7 @@ public sealed class RateLimitMetrics : IDisposable
             new KeyValuePair<string, object?>("plan", plan)
         );
 
-    /// <param name="reason">"redis_primary" | "redis_overlay" | "quota_unresolved".</param>
+    /// <param name="reason">"redis_primary" | "redis_overlay" | "redis_endpoint" | "quota_unresolved".</param>
     public void RecordFallbackOpen(string policy, string reason) =>
         _fallbackOpen.Add(
             1,

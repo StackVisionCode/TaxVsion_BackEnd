@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;

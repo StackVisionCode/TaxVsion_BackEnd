@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 
 /// <summary>
 /// PayFlow (Fase 15) — loopback HTTP hacia el propio Auth
-/// (<c>POST auth/internal/tenants/{tenantId}/owners</c>, endpoint que Fase 16 construye). Deliberado:
+/// (<c>POST internal/tenants/{tenantId}/owners</c>, endpoint que Fase 16 construye). Deliberado:
 /// el password nunca debe cruzar el bus de mensajería de Wolverine, así que en vez de que la Saga
 /// invoque un command local que reciba el <see cref="CreateTenantOwnerForOnboardingRequest.PasswordHashReference"/>,
 /// pasa por este canal HTTP interno igual que cualquier otro paso M2M — el endpoint receptor es el
@@ -55,7 +55,7 @@ public sealed class AuthInternalOwnerCreationClient(
         {
             using var httpRequest = new HttpRequestMessage(
                 HttpMethod.Post,
-                $"auth/internal/tenants/{request.TenantId}/owners"
+                $"internal/tenants/{request.TenantId}/owners"
             )
             {
                 Content = JsonContent.Create(

@@ -16,7 +16,7 @@ namespace TaxVision.Notes.Infrastructure.Jobs;
 /// Backfill de FILAS FALTANTES de la proyección <see cref="CustomerDirectoryEntry"/> — la deuda que
 /// <see cref="CustomerDirectoryReconciliationJob"/> nunca cerró (ese solo rellena DisplayName de filas
 /// que YA existen; nunca inserta un customer que Notes jamás vio). Re-pagina la fuente autoritativa
-/// completa (todos los tenants) vía <c>GET customers/internal/reconciliation</c> con token de
+/// completa (todos los tenants) vía <c>GET internal/customers/reconciliation</c> con token de
 /// PlatformTenant y hace upsert de cada customer. Cierra el hueco cuando se pierde un evento, llega en
 /// ráfaga, o el servicio nació después de que ya existían customers.
 ///

@@ -1,5 +1,6 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -13,6 +14,7 @@ using TaxVision.Signature.Application.RateLimiting.Abstractions;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
 using TaxVision.Signature.Infrastructure.Locking;
+using TaxVision.Signature.Infrastructure.Permissions;
 using TaxVision.Signature.Infrastructure.Persistence;
 using TaxVision.Signature.Infrastructure.Persistence.Queries;
 using TaxVision.Signature.Infrastructure.Persistence.Repositories;
@@ -210,6 +212,7 @@ public static class DependencyInjection
         );
         services.AddHostedService<CustomerProjectionReconciliationJob>();
 
+        AddPermissionsPullRecovery(services);
         return services;
     }
 
@@ -248,6 +251,23 @@ public static class DependencyInjection
                 var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+    }
+
+    // H-04 — recuperación pull bajo demanda de permisos. Cuando ProjectionPermissionsSource
+    // (BuildingBlocks.Web) no encuentra la fila local, pregunta a Auth en vez de negar sin más:
+    // evento perdido, backfill pendiente o usuario recién creado dejan de ser un 403 permanente.
+    // Reutiliza el IServiceTokenAcquirer y el ServiceAuthClientOptions que ya apuntan a Auth.
+    private static void AddPermissionsPullRecovery(IServiceCollection services)
+    {
+        services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
     }

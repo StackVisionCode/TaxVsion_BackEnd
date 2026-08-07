@@ -22,7 +22,7 @@ public sealed record CreateTenantOwnerFromOnboardingCommand(
 );
 
 /// <summary>
-/// PayFlow (Fase 16) — receptor del <c>POST auth/internal/tenants/{tenantId}/owners</c> que la Saga
+/// PayFlow (Fase 16) — receptor del <c>POST internal/tenants/{tenantId}/owners</c> que la Saga
 /// (Fase 15, <c>Sagas/Commands/CreateTenantOwnerCommand.cs</c>) invoca vía
 /// <c>IAuthInternalOwnerCreationClient</c>. Nombre distinto a propósito del comando local de la Saga
 /// (mismo nombre en el plan original, <c>CreateTenantOwnerCommand</c>, en ambos lados habría sido

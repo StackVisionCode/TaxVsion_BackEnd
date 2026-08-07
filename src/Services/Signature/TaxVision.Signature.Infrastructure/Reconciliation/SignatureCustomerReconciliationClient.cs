@@ -10,7 +10,7 @@ using TaxVision.Signature.Application.Abstractions;
 namespace TaxVision.Signature.Infrastructure.Reconciliation;
 
 /// <summary>
-/// Cliente M2M hacia <c>GET customers/internal/reconciliation</c> (cross-tenant, solo PlatformTenant).
+/// Cliente M2M hacia <c>GET internal/customers/reconciliation</c> (cross-tenant, solo PlatformTenant).
 /// Reusa el mismo <see cref="IServiceTokenAcquirer"/> que el resto de Signature, pero pide el token para
 /// <see cref="PlatformTenant"/> (única identidad autorizada por el gate del endpoint). Nunca lanza: null
 /// en cualquier fallo de token/HTTP para que el job aborte esa corrida y reintente en la siguiente.
@@ -41,7 +41,7 @@ internal sealed class SignatureCustomerReconciliationClient(
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"customers/internal/reconciliation?status=All&page={page}&size={size}"
+                $"internal/customers/reconciliation?status=All&page={page}&size={size}"
             );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

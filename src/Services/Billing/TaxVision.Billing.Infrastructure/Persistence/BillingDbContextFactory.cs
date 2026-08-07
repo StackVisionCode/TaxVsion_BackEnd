@@ -15,7 +15,7 @@ public sealed class BillingDbContextFactory : IDesignTimeDbContextFactory<Billin
             ?? "Server=localhost,1433;Database=TaxVision_Billing;Trusted_Connection=True;TrustServerCertificate=True";
 
         var options = new DbContextOptionsBuilder<BillingDbContext>().UseSqlServer(connectionString).Options;
-        return new BillingDbContext(options, new EmptyTenantContext(), messageBus: null);
+        return new BillingDbContext(options, new EmptyTenantContext());
     }
 
     private sealed class EmptyTenantContext : ITenantContext

@@ -14,7 +14,7 @@ namespace TaxVision.Subscription.Application.Subscriptions.Commands;
 public sealed record ActivateFromOnboardingCommand(Guid OnboardingId, Guid TenantId, Guid PlanId);
 
 /// <summary>
-/// PayFlow (Fase 16) — receptor del <c>POST subscriptions/internal/activate-from-onboarding</c> que
+/// PayFlow (Fase 16) — receptor del <c>POST internal/subscriptions/activate-from-onboarding</c> que
 /// la Saga de Auth (Fase 15, <c>Sagas/Commands/ActivateSubscriptionCommand.cs</c>) invoca. A
 /// diferencia de <c>TenantCreatedConsumer</c> (trial automático), esta suscripción nace directo en
 /// <c>Active</c> — el cliente ya pagó en PaymentApp antes de llegar acá. Billing cycle fijo en

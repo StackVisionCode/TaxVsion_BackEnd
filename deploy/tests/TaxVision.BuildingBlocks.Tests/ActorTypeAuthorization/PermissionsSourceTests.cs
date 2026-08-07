@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Permissions;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Xunit;

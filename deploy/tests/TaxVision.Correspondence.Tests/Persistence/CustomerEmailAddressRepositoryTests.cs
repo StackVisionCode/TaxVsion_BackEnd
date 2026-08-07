@@ -1,4 +1,5 @@
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Domain.Projections;
 using TaxVision.Correspondence.Domain.ValueObjects;

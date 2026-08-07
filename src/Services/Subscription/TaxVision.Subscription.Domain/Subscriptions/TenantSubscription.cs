@@ -55,7 +55,7 @@ public sealed class TenantSubscription : TenantEntity
     public IReadOnlyCollection<PendingDowngrade> PendingDowngrades => _pendingDowngrades;
 
     /// <summary>PayFlow (Fase 16) — presente solo para suscripciones activadas vía
-    /// <c>subscriptions/internal/activate-from-onboarding</c>. Único índice filtrado: idempotencia
+    /// <c>internal/subscriptions/activate-from-onboarding</c>. Único índice filtrado: idempotencia
     /// de ese endpoint contra reintentos del mismo comando M2M.</summary>
     public Guid? OnboardingId { get; private set; }
 

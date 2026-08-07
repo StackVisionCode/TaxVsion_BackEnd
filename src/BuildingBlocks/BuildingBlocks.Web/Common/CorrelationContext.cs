@@ -1,6 +1,7 @@
+using BuildingBlocks.Common;
 using Serilog.Context;
 
-namespace BuildingBlocks.Common;
+namespace BuildingBlocks.Web.Common;
 
 public sealed class CorrelationContext : ICorrelationContext
 {

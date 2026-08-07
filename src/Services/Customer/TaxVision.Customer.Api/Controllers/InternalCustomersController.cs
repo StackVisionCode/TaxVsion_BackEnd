@@ -1,6 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,7 +29,7 @@ namespace TaxVision.Customer.Api.Controllers;
 [ApiController]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
-[Route("customers/internal")]
+[Route("internal/customers")]
 public sealed class InternalCustomersController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("list")]

@@ -1,5 +1,4 @@
-using BuildingBlocks.Infrastructure.RateLimit;
-using BuildingBlocks.Infrastructure.RateLimiting;
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;

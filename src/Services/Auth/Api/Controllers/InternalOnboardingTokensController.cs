@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,7 @@ namespace TaxVision.Auth.Api.Controllers;
 /// construya el email de bienvenida con el link real. One-shot: la referencia se consume (se
 /// borra) en la misma llamada — un segundo intento con la misma referencia siempre falla.</summary>
 [ApiController]
-[Route("auth/internal/onboarding/tokens")]
+[Route("internal/onboarding/tokens")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalOnboardingTokensController(IMessageBus bus) : ControllerBase

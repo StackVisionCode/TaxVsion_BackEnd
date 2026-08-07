@@ -26,6 +26,6 @@ public sealed class CustomerClientOptions
     /// <summary>Cada cuántas horas re-pagina la fuente completa. Default 6h.</summary>
     public int ReconciliationIntervalHours { get; set; } = 12;
 
-    /// <summary>Tamaño de página al paginar customers/internal/reconciliation. Default 200.</summary>
+    /// <summary>Tamaño de página al paginar internal/customers/reconciliation. Default 200.</summary>
     public int ReconciliationPageSize { get; set; } = 200;
 }

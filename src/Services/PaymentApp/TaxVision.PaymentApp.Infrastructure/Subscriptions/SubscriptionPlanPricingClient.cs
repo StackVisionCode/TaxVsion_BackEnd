@@ -24,7 +24,7 @@ internal sealed class SubscriptionPlanPricingClient(
                 new Error("PaymentApp.Subscription.Auth", "No Subscription credentials available.")
             );
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"subscriptions/internal/plans/{planId}/pricing");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"internal/plans/{planId}/pricing");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         try

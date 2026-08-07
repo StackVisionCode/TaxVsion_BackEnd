@@ -1,0 +1,72 @@
+apiVersion: 1
+
+# H-16 (91_Deuda_Bus_de_Eventos_H12_H20.md) — vigilancia de la dead-letter del bus.
+#
+# El hallazgo original decía "la DLQ de .NET no esta configurada explicitamente". Medido contra
+# el RabbitMQ real, era falso en las dos direcciones:
+#
+#   * Wolverine 6.14 crea y usa `wolverine-dead-letter-queue` el solo via AutoProvision(). Un
+#     handler que agota los reintentos acaba ahi. La DLQ existe y funciona.
+#   * Los mensajes SIN handler no llegan a la DLQ: Wolverine los descarta en silencio. Con el
+#     fanout actual eso es lo correcto — cada una de las 17 colas recibe los ~183 tipos de evento
+#     y solo maneja un puñado (177 pares servicio/evento con handler de 3111 posibles, ~5.7%).
+#
+# Asi que el agujero real nunca fue tecnico: la DLQ estaba ahi y nadie la miraba. Al escribir
+# esto habia 6 mensajes muertos en las dos DLQ de Node que nadie habia visto nunca.
+#
+# Por eso el umbral es CUALQUIER mensaje: una DLQ con contenido significa que algo se rompio,
+# sin excepciones. Si esta alerta se vuelve ruidosa, el arreglo es el bug que la dispara, no
+# subir el umbral.
+groups:
+  - orgId: 1
+    name: eventbus-dead-letter
+    folder: TaxVision
+    interval: 1m
+    rules:
+      - uid: eventbus-dlq-not-empty
+        title: "Bus de eventos — hay mensajes muertos en una dead-letter queue"
+        condition: C
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              # Cubre las tres familias que existen hoy:
+              #   wolverine-dead-letter-queue   -> los 17 servicios .NET (una sola, compartida)
+              #   communication-events.dlq      -> Communication (Node)
+              #   communication-transcript-worker.dlq -> el worker de transcripcion (Node)
+              expr: 'max(rabbitmq_detailed_queue_messages_ready{queue=~".*dead-letter.*|.*\\.dlq"}) by (queue)'
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+              instant: false
+              range: true
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+              refId: B
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              refId: C
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "{{ $labels.queue }} tiene mensajes muertos"
+          description: >-
+            Un handler agoto sus reintentos y el mensaje se perdio para el negocio. Ver el runbook
+            de drenado en README (seccion del bus de eventos): inspeccionar la cabecera
+            `dotnet-type-name` para saber que evento es y `exception-message` para el porque,
+            corregir el handler, y solo entonces re-encolar. Purgar sin leer es perder los datos
+            con pasos extra.
+        labels:
+          severity: warning
+          area: eventbus

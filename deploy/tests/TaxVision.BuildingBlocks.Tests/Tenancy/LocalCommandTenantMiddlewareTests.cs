@@ -1,4 +1,4 @@
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Wolverine;
 using Xunit;
 

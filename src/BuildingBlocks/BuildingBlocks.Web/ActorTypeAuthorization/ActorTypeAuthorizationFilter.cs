@@ -1,10 +1,11 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace BuildingBlocks.ActorTypeAuthorization;
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Capa 2 del plan de autorización por actor type (ver Actor_Type_Authorization_Layers_Plan.md,

@@ -1,7 +1,7 @@
 namespace TaxVision.Signature.Application.Abstractions;
 
 /// <summary>
-/// Cliente M2M read-only hacia <c>GET customers/internal/reconciliation</c> (Customer.Api, cross-tenant,
+/// Cliente M2M read-only hacia <c>GET internal/customers/reconciliation</c> (Customer.Api, cross-tenant,
 /// solo token de PlatformTenant). Lo consume <c>CustomerProjectionReconciliationJob</c> para auto-reparar
 /// la proyección <c>CustomerEmailProjection</c> cuando se pierden eventos o el servicio nació después de
 /// que ya existían customers. Nunca lanza: devuelve null en cualquier fallo de token/HTTP y el job decide.

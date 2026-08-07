@@ -23,7 +23,7 @@ internal sealed class AuthInvitationTokenReferenceClient(
         if (string.IsNullOrEmpty(token))
             return Result.Failure<Guid>(new Error("Tenant.Invitation.Auth", "No Auth credentials available."));
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "auth/internal/invitations/token-references")
+        using var request = new HttpRequestMessage(HttpMethod.Post, "internal/invitations/token-references")
         {
             Content = JsonContent.Create(new { RawToken = rawToken }),
         };

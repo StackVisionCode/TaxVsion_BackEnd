@@ -1,7 +1,8 @@
+using BuildingBlocks.Caching;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace BuildingBlocks.Caching;
+namespace BuildingBlocks.Infrastructure.Caching;
 
 public static class CachingRegistration
 {
@@ -12,7 +13,9 @@ public static class CachingRegistration
             o.Configuration = config.GetConnectionString("Redis") ?? "localhost:6379";
             o.InstanceName = "taxvision:";
         });
-        services.AddScoped<ICacheService, RedisCacheService>();
+        // BB-07 — Singleton, no Scoped: el coalescing de GetOrCreateAsync vive en la instancia, y
+        // con una por request no hay nada que coalescer. IDistributedCache ya es Singleton.
+        services.AddSingleton<ICacheService, RedisCacheService>();
         return services;
     }
 }

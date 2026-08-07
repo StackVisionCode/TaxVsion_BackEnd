@@ -1,4 +1,6 @@
-namespace BuildingBlocks.Tenancy;
+using BuildingBlocks.Tenancy;
+
+namespace BuildingBlocks.Web.Tenancy;
 
 /// <summary>
 /// Implementación concreta mutable del <see cref="ITenantContext"/>. Registrada como

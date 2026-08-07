@@ -38,10 +38,13 @@ public static class NoteVisibilityPolicy
         };
     }
 
-    /// <summary>Solo el autor edita el contenido — ni siquiera <c>notes.view_all</c> lo habilita (governance: admin ve/archiva, no edita ajena).</summary>
+    /// <summary>
+    /// Solo el autor toca la nota — ni siquiera <c>notes.view_all</c> lo habilita (governance: admin
+    /// ve y archiva, no edita ajena). Cubre contenido, visibilidad, pin/unpin, color y adjuntos.
+    /// </summary>
     public static bool CanEditContent(Note note, Guid actorUserId) => note.CreatedByUserId == actorUserId;
 
-    /// <summary>Archivar/restaurar/borrar/pin/color: autor, o staff con <c>notes.view_all</c> (governance).</summary>
+    /// <summary>Ciclo de vida (archivar/restaurar/borrar): autor, o staff con <c>notes.view_all</c> (governance).</summary>
     public static bool CanManage(Note note, Guid actorUserId, bool actorHasViewAll) =>
         note.CreatedByUserId == actorUserId || actorHasViewAll;
 }

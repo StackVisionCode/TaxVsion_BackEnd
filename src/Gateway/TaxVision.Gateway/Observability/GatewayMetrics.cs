@@ -18,4 +18,12 @@ public static class GatewayMetrics
 
     /// <summary>Requests rechazados con 503 por el load shedder. Tag "tenant_key".</summary>
     public static readonly Counter<long> RequestsShed = Meter.CreateCounter<long>("gateway_requests_shed_total");
+
+    /// <summary>
+    /// Peticiones a la superficie interna bloqueadas con 404 (GW-01). Cualquier valor &gt; 0 es un
+    /// sondeo desde internet: el M2M legítimo va contenedor→contenedor y no pasa por acá.
+    /// </summary>
+    public static readonly Counter<long> InternalSurfaceProbesBlocked = Meter.CreateCounter<long>(
+        "gateway_internal_surface_probes_blocked_total"
+    );
 }

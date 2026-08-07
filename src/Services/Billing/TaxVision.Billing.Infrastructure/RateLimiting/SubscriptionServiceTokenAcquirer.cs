@@ -6,7 +6,7 @@ namespace TaxVision.Billing.Infrastructure.RateLimiting;
 /// RateLimit Fase 2 — adaptador hacia el contrato compartido de BuildingBlocks
 /// (<see cref="BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer"/>), consumido por
 /// <c>HttpPlanRateLimitReader</c> para llamar el catálogo M2M de Subscription
-/// (GET subscriptions/internal/plan-rate-limits).
+/// (GET internal/plan-rate-limits).
 ///
 /// A diferencia de Tenant/Customer (un solo cliente de servicio), Billing ya tenía
 /// <see cref="IServiceTokenProvider"/> — un proveedor multi-cliente nombrado (Documents, Payments,

@@ -1,20 +1,21 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
-using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
-using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -74,14 +75,10 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-servic
 // post Fase 3).
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Acepta el ticket firmado por Auth (ReserveSubdomainHandler, claim reg_slug) o un
 // PlatformAdmin creando un tenant directamente — ver TenantController.Create.
@@ -95,7 +92,7 @@ builder
             )
     )
     // PayFlow (Fase 14) — M2M desde Auth para chequear disponibilidad de subdominio
-    // (GET tenants/internal/subdomain-available) durante el registro post-pago.
+    // (GET internal/tenants/subdomain-available) durante el registro post-pago.
     .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
 // Rate limiting por tenant/usuario (Fase 4.2 del plan) — reemplaza el AddRateLimiter nativo de
@@ -178,9 +175,7 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 var app = builder.Build();
 
@@ -206,15 +201,10 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header
-// X-Tenant-Id sin validar, confiando en el caller — inseguro) por el middleware compartido
-// que resuelve el tenant SOLO del claim tenant_id del JWT verificado. Este servicio no tiene
-// entidades ITenantOwned (Tenant ES el registro de tenants, no algo que le pertenezca a uno),
-// así que hoy nada consume el TenantContext que este middleware llena — se mantiene por
-// consistencia con los otros 12 servicios y para no dejar el header-trust inseguro activo.
-// Va ANTES de UseAuthorization() por consistencia con el resto de servicios, aunque acá no
-// exista todavía un consumer de Projection que dependa del orden.
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+// Tenant no tiene entidades ITenantOwned (ES el registro de tenants), así que hoy nada consume
+// el TenantContext que llena este middleware. Se mantiene por consistencia con los demás
+// servicios y para que el orden ya sea correcto si aparece un consumer de Projection.
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();

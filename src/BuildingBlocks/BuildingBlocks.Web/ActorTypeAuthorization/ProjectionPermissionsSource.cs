@@ -1,9 +1,10 @@
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Permissions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
-namespace BuildingBlocks.ActorTypeAuthorization;
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Enforza <c>perm_v</c> contra la proyección local (RBAC Fase 7) — si el JWT trae una versión

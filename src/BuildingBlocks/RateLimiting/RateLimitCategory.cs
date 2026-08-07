@@ -44,10 +44,13 @@ public enum RateLimitCategory
     /// <summary>Bloque III — Financiera, iniciar cobro. Partición (tenant, user) + overlay tenant.</summary>
     L,
 
-    /// <summary>Bloque III — Financiera admin (money-out). Partición tenant. Audit obligatorio, nunca escala por plan.</summary>
+    /// <summary>Bloque III — Financiera admin (money-out). Partición tenant; una política puede añadir
+    /// User cuando el tenant es el PlatformTenant compartido por todo admin. Audit obligatorio. No
+    /// escala por multiplicador de plan, pero sí admite <c>HardOverridePerMinute</c> por plan.</summary>
     M,
 
-    /// <summary>Bloque IV — Reveal de dato sensible. Partición user, nunca tenant. Audit obligatorio, nunca escala por plan.</summary>
+    /// <summary>Bloque IV — Reveal de dato sensible. Partición user, nunca tenant. Audit obligatorio.
+    /// No escala por multiplicador de plan, pero sí admite <c>HardOverridePerMinute</c> por plan.</summary>
     N,
 
     /// <summary>Bloque IV — Realtime sockets. Partición (tenant, user) por scope.</summary>

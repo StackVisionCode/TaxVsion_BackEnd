@@ -6,7 +6,7 @@ import type { HttpCustomerReconciliationClient } from '../customer/http-customer
 /**
  * Auto-reparacion de la proyeccion CustomerDirectoryEntry contra la fuente
  * autoritativa: re-pagina TODOS los customers de TODOS los tenants via el
- * endpoint M2M cross-tenant `customers/internal/reconciliation` y hace upsert de
+ * endpoint M2M cross-tenant `internal/customers/reconciliation` y hace upsert de
  * cada fila. Cierra la deuda de raiz — la proyeccion solo se poblaba con eventos
  * en vivo, asi que cuando se perdia un evento (o llegaba una rafaga que
  * outrunneaba al consumer) quedaba corta sin forma de recuperarse.

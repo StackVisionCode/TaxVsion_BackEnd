@@ -15,6 +15,9 @@ public static class LoadSheddingRegistration
 
         services.AddSingleton(new RequestOutcomeWindow(windowSeconds));
         services.AddSingleton(new TenantConsumptionTracker(windowSeconds));
+        services.AddSingleton<RequestCriticalityClassifier>();
+        services.AddSingleton<OverloadSignal>();
+        services.AddHostedService<OverloadSignalRefresher>();
         services.AddSingleton<ILoadShedder, LoadShedder>();
 
         return services;

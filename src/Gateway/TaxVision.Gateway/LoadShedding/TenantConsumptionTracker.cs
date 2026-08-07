@@ -5,9 +5,9 @@ namespace TaxVision.Gateway.LoadShedding;
 /// <summary>
 /// Cuenta requests entrantes por tenant (o por el bucket "anon" para tráfico sin <c>tenant_id</c>
 /// resuelto — pre-auth/JWT ausente) en una ventana deslizante por-segundo, para que
-/// <see cref="LoadShedder"/> priorice el shedding hacia los tenants de mayor consumo (Fase 5 del
-/// plan de rate limiting). Señal local a esta réplica del Gateway, no agregada de flota — mismo
-/// criterio que <see cref="RequestOutcomeWindow"/>.
+/// <see cref="LoadShedder"/> pueda comparar a cada tenant con la media de tenants activos (Nivel 2
+/// de GW-14). Señal local a esta réplica del Gateway, no agregada de flota — mismo criterio que
+/// <see cref="RequestOutcomeWindow"/>.
 /// </summary>
 public sealed class TenantConsumptionTracker(int windowSeconds)
 {
@@ -22,30 +22,51 @@ public sealed class TenantConsumptionTracker(int windowSeconds)
         buckets.AddOrUpdate(bucketKey, 1, (_, count) => count + 1);
     }
 
-    /// <summary>Top-N tenants por requests en la ventana, orden descendente. Poda de paso los
-    /// buckets vencidos y las entradas de tenant que quedaron en 0.</summary>
-    public IReadOnlyList<TenantConsumption> GetTopConsumers(int topN)
+    /// <summary>
+    /// Total de la ventana, número de tenants activos y consumo del tenant preguntado, en una sola
+    /// pasada. Poda de paso los buckets vencidos y las entradas de tenant que quedaron en 0.
+    /// </summary>
+    public ConsumptionSnapshot GetSnapshot(string tenantKey)
     {
         var cutoff = CurrentBucketKey() - windowSeconds;
-        var results = new List<TenantConsumption>(perTenantBuckets.Count);
+        long total = 0;
+        var activeTenants = 0;
+        long forTenant = 0;
 
-        foreach (var (tenantKey, buckets) in perTenantBuckets)
+        foreach (var (key, buckets) in perTenantBuckets)
         {
-            var expired = buckets.Keys.Where(key => key <= cutoff).ToArray();
-            foreach (var key in expired)
-                buckets.TryRemove(key, out _);
+            foreach (var expired in buckets.Keys.Where(k => k <= cutoff).ToArray())
+                buckets.TryRemove(expired, out _);
 
-            var total = buckets.Values.Sum();
-            if (total > 0)
-                results.Add(new TenantConsumption(tenantKey, total));
-            else
-                perTenantBuckets.TryRemove(tenantKey, out _);
+            var tenantTotal = buckets.Values.Sum();
+            if (tenantTotal == 0)
+            {
+                perTenantBuckets.TryRemove(key, out _);
+                continue;
+            }
+
+            total += tenantTotal;
+            activeTenants++;
+            if (key == tenantKey)
+                forTenant = tenantTotal;
         }
 
-        return results.OrderByDescending(r => r.RequestCount).Take(topN).ToArray();
+        return new ConsumptionSnapshot(total, activeTenants, forTenant);
     }
 
     private static long CurrentBucketKey() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 }
 
-public readonly record struct TenantConsumption(string TenantKey, long RequestCount);
+/// <param name="TotalRequests">Requests de todos los tenants en la ventana.</param>
+/// <param name="ActiveTenantCount">Tenants con al menos un request en la ventana.</param>
+/// <param name="TenantRequests">Requests del tenant evaluado.</param>
+public readonly record struct ConsumptionSnapshot(long TotalRequests, int ActiveTenantCount, long TenantRequests)
+{
+    /// <summary>
+    /// Cuántas veces por encima de la media de tenants activos está este tenant. <c>0</c> cuando no
+    /// hay tráfico: sin muestras no hay exceso que medir, y devolver <c>1</c> (la media exacta)
+    /// mentiría igual pero sería más difícil de leer en un log.
+    /// </summary>
+    public double ExcessOverFairShare =>
+        ActiveTenantCount == 0 || TotalRequests == 0 ? 0 : TenantRequests / ((double)TotalRequests / ActiveTenantCount);
+}

@@ -1,5 +1,6 @@
 using System.Reflection;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 
 namespace TaxVision.Signature.Tests.Authorization;
 

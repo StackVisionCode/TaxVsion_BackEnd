@@ -1,9 +1,12 @@
+using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaxVision.Billing.Api.Common;
+using TaxVision.Billing.Api.Authorization;
 using TaxVision.Billing.Application.Invoices.IssuerProfile;
 using Wolverine;
 
@@ -14,10 +17,12 @@ namespace TaxVision.Billing.Api.Controllers;
 [ApiController]
 [Route("billing/issuer-profile")]
 [Authorize]
+[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
     [RateLimit("billing.f.issuer_profile_read")]
+    [HasPermission(BillingPermissions.View)]
     [ProducesResponseType<IssuerProfileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
@@ -43,6 +48,7 @@ public sealed class IssuerProfileController(IMessageBus bus) : ControllerBase
 
     [HttpPut]
     [RateLimit("billing.g.issuer_profile_manage")]
+    [HasPermission(BillingPermissions.Manage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Upsert(UpsertIssuerProfileRequest request, CancellationToken ct)
     {

@@ -274,7 +274,7 @@ file sealed class ThrowingSecretProtector : ISecretProtector
 {
     public string Protect(string plaintext) => throw new InvalidOperationException("Unexpected secret access.");
 
-    public string? Unprotect(string ciphertext) =>
+    public bool TryUnprotect(string? protectedValue, out string plaintext, out SecretUnprotectFailure failure) =>
         throw new InvalidOperationException("A zero-amount charge must never decrypt a provider secret.");
 }
 

@@ -18,9 +18,10 @@ namespace BuildingBlocks.RateLimiting;
 /// es el overlay base sin escalar, no null.
 /// </param>
 /// <param name="PlanCode">
-/// Código del plan usado para escalar, o null cuando la categoría no escala por plan
-/// (invariante §3.6) o cuando <see cref="IsFallback"/> es true (no se pudo resolver). Fase 8 lo
-/// usa como tag <c>plan</c> de <c>ratelimit.evaluated_total</c>/<c>blocked_total</c>.
+/// Plan del tenant, o null cuando la categoría no consulta plan (invariante §3.6) o cuando no se
+/// pudo resolver. Si el plan sí se resolvió pero faltó su fila en <c>PlanRateLimits</c>, viene
+/// poblado con <see cref="IsFallback"/> en true: el plan se conoce aunque la cuota no se escaló.
+/// Se usa como tag <c>plan</c> de <c>ratelimit.evaluated_total</c>/<c>blocked_total</c>.
 /// </param>
 public sealed record EffectiveQuota(
     int PermitCount,

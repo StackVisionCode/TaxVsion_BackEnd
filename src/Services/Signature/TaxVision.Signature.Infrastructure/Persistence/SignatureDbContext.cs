@@ -74,35 +74,32 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
         base.OnModelCreating(modelBuilder);
     }
 
-    // RBAC Fase 5 fix (RBAC_Hardening_Plan.md) — bug real descubierto al escribir el mismo
-    // mecanismo para Auth: EF Core cachea el modelo compilado POR TIPO de DbContext, no por
-    // instancia. El filtro original cerraba sobre `tenantContext` (el servicio inyectado vía
-    // constructor) con Expression.Constant — eso queda CONGELADO con el valor del PRIMER
-    // SignatureDbContext jamás construido en el proceso; toda request siguiente (con su propio
-    // ITenantContext scoped-per-request) seguiría leyendo ESE tenant viejo para siempre. Cerrar
-    // sobre `this` (la propia instancia de DbContext) sí se reevalúa por-instancia — EF Core
-    // reconoce ese patrón como parámetro, no como constante congelada.
-    private bool HasTenant => tenantContext.HasTenant;
-    private Guid CurrentTenantId => tenantContext.TenantId;
-
-    // ------------------------------------------------------------------
-    // Multi-tenant safety net: HasQueryFilter en TODAS las entidades que heredan
-    // de TenantEntity. El filtro explícito por TenantId sigue en cada repo/read
-    // service — pero si algún día un dev olvida el .Where(t => t.TenantId == ...),
-    // esta red evita el leak cross-tenant (defense-in-depth).
+    // Guid.Empty nunca es un tenant válido: sin tenant ambiental (scope de Wolverine, job de
+    // background, tiempo de diseño) el filtro compara contra Empty → cero filas, en vez de abrir
+    // acceso cross-tenant.
     //
-    // Si el ITenantContext no tiene tenant (migraciones, background jobs sin
-    // scope, escenarios admin), el filtro no aplica: comportamiento "todo abierto"
-    // — porque en esos casos NO hay concepto de tenant y romper todas las queries
-    // sería peor que devolver más de lo que debería.
-    // ------------------------------------------------------------------
+    // Se lee vía `this` y no capturando `tenantContext` en la lambda: EF Core cachea el modelo
+    // compilado POR TIPO de DbContext, así que un Expression.Constant sobre el servicio inyectado
+    // queda congelado con el ITenantContext del PRIMER SignatureDbContext del proceso y todas las
+    // requests siguientes leerían ese tenant viejo. Cerrar sobre `this` sí se reevalúa por instancia.
+    private Guid TenantFilterId => tenantContext.HasTenant ? tenantContext.TenantId : Guid.Empty;
+
+    /// <summary>
+    /// H-10 — red de seguridad multi-tenant fail-CLOSED sobre las entidades <see cref="ITenantOwned"/>,
+    /// igual que los otros 15 servicios. Antes era <c>!HasTenant || e.TenantId == CurrentTenantId</c>:
+    /// sin tenant ambiental el filtro no aplicaba y una consulta que olvidara su <c>.Where</c>
+    /// devolvía las filas de TODOS los tenants — justo en los scopes (consumers de Wolverine, jobs)
+    /// donde el tenant ambiental está vacío y la red hace más falta.
+    ///
+    /// <para>
+    /// El cambio se verificó como sin impacto de comportamiento antes de aplicarlo: de los 35 accesos
+    /// a las 10 entidades <c>ITenantOwned</c>, 12 son escrituras (a las que un query filter no aplica)
+    /// y las 23 lecturas ya usaban <c>IgnoreQueryFilters()</c> con un <c>TenantId ==</c> explícito. Ni
+    /// una sola consulta dependía del comportamiento abierto.
+    /// </para>
+    /// </summary>
     private void ApplyGlobalTenantFilter(ModelBuilder modelBuilder)
     {
-        var contextConstant = Expression.Constant(this);
-        var currentTenantAccess = Expression.Property(contextConstant, nameof(CurrentTenantId));
-        var hasTenantAccess = Expression.Property(contextConstant, nameof(HasTenant));
-        var noTenantSet = Expression.Not(hasTenantAccess);
-
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {
             if (!typeof(ITenantOwned).IsAssignableFrom(entity.ClrType))
@@ -110,11 +107,13 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
 
             var parameter = Expression.Parameter(entity.ClrType, "e");
             var tenantProperty = Expression.Property(parameter, nameof(ITenantOwned.TenantId));
-
-            // !HasTenant || e.TenantId == CurrentTenantId
-            var equalsCurrent = Expression.Equal(tenantProperty, currentTenantAccess);
-            var body = Expression.OrElse(noTenantSet, equalsCurrent);
-            var lambda = Expression.Lambda(body, parameter);
+            var tenantFilterIdProperty =
+                typeof(SignatureDbContext).GetProperty(
+                    nameof(TenantFilterId),
+                    BindingFlags.Instance | BindingFlags.NonPublic
+                ) ?? throw new InvalidOperationException("Tenant filter property was not found.");
+            var tenantFilterId = Expression.Property(Expression.Constant(this), tenantFilterIdProperty);
+            var lambda = Expression.Lambda(Expression.Equal(tenantProperty, tenantFilterId), parameter);
 
             modelBuilder.Entity(entity.ClrType).HasQueryFilter(lambda);
         }
