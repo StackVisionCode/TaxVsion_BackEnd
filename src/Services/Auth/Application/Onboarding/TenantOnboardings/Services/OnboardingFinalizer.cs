@@ -28,7 +28,8 @@ public sealed class OnboardingFinalizer(IGrowthOnboardingClient growth, IMessage
         {
             var commit = await growth.CommitAsync(
                 reservation.CodeReservationId,
-                cmd.OnboardingId,
+                // Misma referencia de pago única que usó ReserveAsync para esta posición (stacking).
+                OnboardingPaymentReference.For(cmd.OnboardingId, reservation.Order),
                 reservation.SnapshotHash,
                 sourceEventId,
                 idempotencyKey: $"onb-commit:{cmd.OnboardingId:N}:{reservation.CodeReservationId:N}",

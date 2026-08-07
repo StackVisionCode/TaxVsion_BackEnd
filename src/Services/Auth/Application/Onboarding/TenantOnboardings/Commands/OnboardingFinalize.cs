@@ -34,7 +34,9 @@ public sealed record FinalizeReservationDto(
     string BenefitType,
     string? Code,
     long DiscountCents,
-    string SnapshotHash
+    string SnapshotHash,
+    // Posición de aplicación (0-based) — deriva el PaymentId único de la reserva en Growth para el commit.
+    int Order
 );
 
 public static class OnboardingFinalizeHandler

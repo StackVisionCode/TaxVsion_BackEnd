@@ -37,6 +37,9 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
         var reservations = new List<OnboardingCodeReservationInput>();
 
         // Orden de aplicación: referido(0) → promo(1) → gift(2). El gift (dinero) absorbe el residual final.
+        // `order` es la posición secuencial (0,1,2…): identifica la reserva y deriva su PaymentId único en
+        // Growth (OnboardingPaymentReference.For). DEBE coincidir con el Order que asigna ApplyOnboardingPricing.
+        var order = 0;
         foreach (var code in codes.OrderBy(c => (int)c.BenefitType))
         {
             if (residual <= 0)
@@ -67,7 +70,7 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
 
             var reserve = await growth.ReserveAsync(
                 quote.Value.QuoteId,
-                onboarding.Id,
+                OnboardingPaymentReference.For(onboarding.Id, order),
                 ReservationTtlSeconds,
                 idempotencyKey: $"onb-reserve:{onboarding.Id:N}:{snapshot}",
                 ct
@@ -75,6 +78,8 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
             if (reserve.IsFailure)
                 return Result.Failure<OnboardingPricingOutcome>(reserve.Error);
 
+            // El Order persistido (OnboardingCodeReservation.Order) lo asigna ApplyOnboardingPricing por
+            // posición de lista = este mismo `order`, así que el commit reconstruye el mismo PaymentId.
             reservations.Add(
                 new OnboardingCodeReservationInput(
                     reserve.Value.ReservationId,
@@ -85,6 +90,7 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
                 )
             );
             residual = reserve.Value.NetAmountCents;
+            order++;
         }
 
         var totalDiscount = gross - residual;

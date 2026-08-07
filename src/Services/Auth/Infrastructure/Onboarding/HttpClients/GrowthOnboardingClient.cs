@@ -85,7 +85,7 @@ public sealed class GrowthOnboardingClient(
 
     public async Task<Result<GrowthReserveResult>> ReserveAsync(
         Guid quoteId,
-        Guid onboardingId,
+        Guid paymentReferenceId,
         int ttlSeconds,
         string idempotencyKey,
         CancellationToken ct = default
@@ -95,7 +95,10 @@ public sealed class GrowthOnboardingClient(
         {
             quoteId,
             paymentSource = PaymentSourceOnboarding,
-            paymentId = onboardingId,
+            // Stacking: cada reserva del mismo onboarding necesita un PaymentId ÚNICO — Growth tiene
+            // UX_CodeReservations_Payment (unique sobre (Source, PaymentId)). El caller deriva un GUID
+            // determinístico por orden de código (OnboardingPaymentReference.For) para reserve+commit.
+            paymentId = paymentReferenceId,
             ttlSeconds,
         };
 
@@ -105,7 +108,7 @@ public sealed class GrowthOnboardingClient(
             "internal/codes/reservations",
             body,
             idempotencyKey,
-            onboardingId,
+            paymentReferenceId,
             ct
         );
         if (response.IsFailure)
@@ -128,7 +131,7 @@ public sealed class GrowthOnboardingClient(
 
     public async Task<Result> CommitAsync(
         Guid reservationId,
-        Guid onboardingId,
+        Guid paymentReferenceId,
         string snapshotHash,
         Guid sourceEventId,
         string idempotencyKey,
@@ -138,7 +141,9 @@ public sealed class GrowthOnboardingClient(
         var body = new
         {
             paymentSource = PaymentSourceOnboarding,
-            paymentId = onboardingId,
+            // Debe COINCIDIR con el PaymentId usado en ReserveAsync (mismo OnboardingPaymentReference.For
+            // por orden de código) — Growth valida que el commit refiera la misma reserva/pago.
+            paymentId = paymentReferenceId,
             snapshotHash,
             sourceEventId,
         };
@@ -149,7 +154,7 @@ public sealed class GrowthOnboardingClient(
             $"internal/codes/reservations/{reservationId}/commit",
             body,
             idempotencyKey,
-            onboardingId,
+            paymentReferenceId,
             ct
         );
         if (response.IsFailure)

@@ -1,6 +1,24 @@
+using System.Security.Cryptography;
+using System.Text;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Auth.Application.Onboarding.Abstractions;
+
+/// <summary>
+/// Deriva la referencia de pago (<c>PaymentId</c>) que liga cada reserva de código de Growth a un
+/// onboarding. El stacking permite N reservas por onboarding, pero Growth exige <c>(Source, PaymentId)</c>
+/// único (índice <c>UX_CodeReservations_Payment</c>), así que NO se puede reusar el OnboardingId para
+/// todas: se deriva un GUID determinístico por <c>(OnboardingId, Order)</c>. Reserve y commit deben usar
+/// el MISMO valor para la misma posición — por eso es determinístico (sin estado extra que persistir).
+/// </summary>
+public static class OnboardingPaymentReference
+{
+    public static Guid For(Guid onboardingId, int order)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"onb-payref:{onboardingId:N}:{order}"));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+}
 
 /// <summary>
 /// Puerto M2M hacia Growth para aplicar códigos (promo/gift) y calificar referidos DURANTE el onboarding
@@ -14,19 +32,22 @@ public interface IGrowthOnboardingClient
     /// <c>Growth.Quote.CodeNotFound</c> si el código no existe/no aplica → el caller lo reporta al usuario.</summary>
     Task<Result<GrowthQuoteResult>> QuoteAsync(GrowthQuoteRequest request, CancellationToken ct = default);
 
-    /// <summary>Reserva (hold atómico) el código cotizado, ligado al OnboardingId. TTL = vida del checkout.</summary>
+    /// <summary>Reserva (hold atómico) el código cotizado. <paramref name="paymentReferenceId"/> = GUID
+    /// ÚNICO por reserva del mismo onboarding (Growth exige (Source,PaymentId) único vía
+    /// UX_CodeReservations_Payment); derivarlo con <see cref="OnboardingPaymentReference"/>. TTL = vida del checkout.</summary>
     Task<Result<GrowthReserveResult>> ReserveAsync(
         Guid quoteId,
-        Guid onboardingId,
+        Guid paymentReferenceId,
         int ttlSeconds,
         string idempotencyKey,
         CancellationToken ct = default
     );
 
-    /// <summary>Confirma la redención de una reserva (al completarse la operación comercial). Idempotente.</summary>
+    /// <summary>Confirma la redención de una reserva (al completarse la operación comercial). Idempotente.
+    /// <paramref name="paymentReferenceId"/> DEBE coincidir con el usado en <see cref="ReserveAsync"/>.</summary>
     Task<Result> CommitAsync(
         Guid reservationId,
-        Guid onboardingId,
+        Guid paymentReferenceId,
         string snapshotHash,
         Guid sourceEventId,
         string idempotencyKey,

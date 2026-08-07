@@ -95,7 +95,8 @@ public sealed class OnboardingSuccessCompleter(
                 r.BenefitType.ToString(),
                 r.Code,
                 r.DiscountCents,
-                r.SnapshotHash
+                r.SnapshotHash,
+                r.Order
             ))
             .ToList();
 
