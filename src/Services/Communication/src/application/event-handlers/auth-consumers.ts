@@ -56,15 +56,16 @@ export function bindAuthConsumers(
   register('auth.user.registered.v1', async (env) => {
     const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
     if (!userId) return;
-    const permissions = getStringArray(env.payload, 'permissions', 'Permissions');
     const actorType =
       getString(env.payload, 'actorType') ?? getString(env.payload, 'ActorType') ?? 'TenantEmployee';
-    await deps.userPermissions.upsert({
+    // UserRegisteredIntegrationEvent NO transporta permisos, asi que este handler no puede
+    // afirmar nada sobre ellos. Con `upsert` escribia `permissions: []` tambien en el UPDATE y,
+    // como el consumer corre con prefetch > 1 (sin orden garantizado entre eventos), si este
+    // llegaba DESPUES de `roles_changed` borraba los permisos buenos: usuario fail-closed en
+    // Communication, sin excepcion ni dead-letter. Medido en vivo sobre 2 usuarios reales.
+    await deps.userPermissions.upsertIdentityPreservingPermissions({
       userId,
       tenantId: env.tenantId,
-      permissions,
-      permissionVersion: 1,
-      roleIds: [], // un usuario recien registrado todavia no tiene roles asignados
       actorType,
       isActive: true,
       updatedAtUtc: new Date(),

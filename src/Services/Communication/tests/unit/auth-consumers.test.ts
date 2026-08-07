@@ -24,6 +24,7 @@ function setup() {
   };
   const userPermissions: UserPermissionsProjectionRepository = {
     upsert: vi.fn(),
+    upsertIdentityPreservingPermissions: vi.fn(),
     findByUserId: vi.fn(),
     markInactive: vi.fn(),
     findActiveByTenantAndRoleId: vi.fn(),
@@ -115,6 +116,24 @@ describe('bindAuthConsumers — contrato de campos con Auth (.NET)', () => {
 
     expect(userPermissions.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ roleIds: ['11111111-1111-1111-1111-111111111111'] }),
+    );
+  });
+
+  it('auth.user.registered.v1 NO pisa los permisos: el evento no los transporta', async () => {
+    const { handlers, userPermissions } = setup();
+
+    const registered = handlers.get('auth.user.registered.v1');
+    expect(registered).toBeDefined();
+    await registered?.({
+      ...envelope({ userId: 'user-4', email: 'nuevo@example.com', actorType: 'TenantAdmin' }),
+      eventType: 'auth.user.registered.v1',
+    });
+
+    // Si volviera a llamar `upsert`, escribiria permissions: [] tambien en el UPDATE y borraria
+    // los permisos que `roles_changed` ya hubiera dejado (el consumer no garantiza orden).
+    expect(userPermissions.upsert).not.toHaveBeenCalled();
+    expect(userPermissions.upsertIdentityPreservingPermissions).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-4', tenantId: 'tenant-1', actorType: 'TenantAdmin' }),
     );
   });
 });

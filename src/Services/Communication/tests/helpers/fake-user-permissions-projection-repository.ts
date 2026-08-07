@@ -31,6 +31,15 @@ export function createFakeProjectionRepository(
     async upsert(snapshot) {
       byUserId.set(snapshot.userId, { ...snapshot, updatedAtUtc: snapshot.updatedAtUtc });
     },
+    async upsertIdentityPreservingPermissions(identity) {
+      const existing = byUserId.get(identity.userId);
+      byUserId.set(identity.userId, {
+        permissions: existing?.permissions ?? [],
+        permissionVersion: existing?.permissionVersion ?? 1,
+        roleIds: existing?.roleIds ?? [],
+        ...identity,
+      });
+    },
     async findByUserId(userId) {
       return byUserId.get(userId) ?? null;
     },
