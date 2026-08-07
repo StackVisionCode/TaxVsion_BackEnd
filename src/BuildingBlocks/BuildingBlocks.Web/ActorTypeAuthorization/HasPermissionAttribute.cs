@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 
-namespace BuildingBlocks.ActorTypeAuthorization;
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Autorización por permiso: <c>[HasPermission(CustomersPermissions.FiscalProfileReveal)]</c>.

@@ -18,7 +18,7 @@ public partial class Tenant : BaseEntity
     public DateTime CreatedAtUtc { get; private set; }
 
     /// <summary>PayFlow (Fase 16) — presente solo para tenants creados vía
-    /// <c>tenants/internal/from-onboarding</c>. Único índice filtrado: idempotencia de ese endpoint
+    /// <c>internal/tenants/from-onboarding</c>. Único índice filtrado: idempotencia de ese endpoint
     /// contra reintentos del mismo comando M2M.</summary>
     public Guid? OnboardingId { get; private set; }
 

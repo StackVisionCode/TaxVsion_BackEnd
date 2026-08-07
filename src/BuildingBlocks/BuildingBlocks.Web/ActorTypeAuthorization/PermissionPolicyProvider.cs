@@ -1,9 +1,10 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-namespace BuildingBlocks.ActorTypeAuthorization;
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Intercepta las policies con prefijo <see cref="HasPermissionAttribute.PolicyPrefix"/> y las

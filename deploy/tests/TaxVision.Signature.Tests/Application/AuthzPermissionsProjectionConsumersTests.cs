@@ -1,6 +1,6 @@
-using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Web.Common;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Consumers;

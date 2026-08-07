@@ -17,9 +17,9 @@ using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
-using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
+using AllowActorTypesAttribute = BuildingBlocks.Web.ActorTypeAuthorization.AllowActorTypesAttribute;
 // Alias puntual — ver mismo comentario en CodesController.cs.
-using HasPermissionAttribute = BuildingBlocks.ActorTypeAuthorization.HasPermissionAttribute;
+using HasPermissionAttribute = BuildingBlocks.Web.ActorTypeAuthorization.HasPermissionAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 

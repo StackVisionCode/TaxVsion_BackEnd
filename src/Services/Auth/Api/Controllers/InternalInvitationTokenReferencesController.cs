@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,7 @@ namespace TaxVision.Auth.Api.Controllers;
 /// patrón TokenReference que Onboarding, Fase 9). One-shot, TTL 30s — TenantCreatedConsumer lo
 /// consume in-process en el mismo request de procesamiento del evento.</summary>
 [ApiController]
-[Route("auth/internal/invitations/token-references")]
+[Route("internal/invitations/token-references")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalInvitationTokenReferencesController(IMessageBus bus) : ControllerBase

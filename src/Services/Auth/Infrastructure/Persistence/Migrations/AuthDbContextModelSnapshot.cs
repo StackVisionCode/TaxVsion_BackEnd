@@ -2903,6 +2903,58 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "onboarding",
                             PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000154"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "notes.read",
+                            Description = "Ver notas del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000155"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "notes.manage",
+                            Description = "Crear, editar, archivar/restaurar y adjuntar archivos a notas propias",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000156"),
+                            AllowedActorTypes = "TenantAdmin,PlatformAdmin",
+                            Code = "notes.view_all",
+                            Description = "Ver, archivar y borrar notas de cualquier autor del tenant (gobernanza)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000157"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "notes.portal.read",
+                            Description = "El cliente puede ver sus notas marcadas como visibles para el cliente",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
                         });
                 });
 

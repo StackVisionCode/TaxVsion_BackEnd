@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace TaxVision.Tenant.Api.Controllers;
 /// <summary>PayFlow (Fase 16) — M2M-only: la Saga de onboarding de Auth (Fase 15) invoca este
 /// endpoint para crear el Tenant real tras la confirmación de pago.</summary>
 [ApiController]
-[Route("tenants/internal")]
+[Route("internal/tenants")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalTenantProvisioningController(IMessageBus bus) : ControllerBase

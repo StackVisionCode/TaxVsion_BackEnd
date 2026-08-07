@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +14,7 @@ namespace TaxVision.Subscription.Api.Controllers.Internal;
 /// un plan antes de crear un Stripe Checkout Session, en vez de confiar en el precio que envía el
 /// frontend. Ver doc-comment de <see cref="GetInternalPlanPricingHandler"/>.</summary>
 [ApiController]
-[Route("subscriptions/internal/plans")]
+[Route("internal/plans")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalPlanPricingController(IMessageBus bus) : ControllerBase

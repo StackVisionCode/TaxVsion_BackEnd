@@ -18,7 +18,7 @@ public sealed class SubscriptionClientOptions
 
 /// <summary>
 /// RateLimit Fase 6 (piloto Customer) / Fase 1 (extracción BuildingBlocks) — trae el catálogo
-/// completo de PlanRateLimits desde Subscription (GET subscriptions/internal/plan-rate-limits) y
+/// completo de PlanRateLimits desde Subscription (GET internal/plan-rate-limits) y
 /// lo cachea 5 min: el catálogo es global (no por-tenant), así que una sola llamada M2M cubre
 /// todos los tenants del proceso. Depende de <see cref="IServiceTokenAcquirer"/> (contrato
 /// compartido, F25) — cada servicio inyecta su propio acquirer M2M ya existente; Subscription's
@@ -67,7 +67,7 @@ public sealed class HttpPlanRateLimitReader(
             return empty;
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, "subscriptions/internal/plan-rate-limits");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "internal/plan-rate-limits");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var response = await http.SendAsync(request, ct);

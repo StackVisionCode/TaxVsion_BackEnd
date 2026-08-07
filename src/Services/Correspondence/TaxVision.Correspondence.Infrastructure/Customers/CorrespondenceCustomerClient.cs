@@ -10,7 +10,7 @@ namespace TaxVision.Correspondence.Infrastructure.Customers;
 
 /// <summary>
 /// Implementación de <see cref="ICorrespondenceCustomerClient"/> contra
-/// <c>GET /customers/internal/list</c> de Customer.Api (policy ServiceOnly).
+/// <c>GET /internal/customers/list</c> de Customer.Api (policy ServiceOnly).
 /// </summary>
 internal sealed class CorrespondenceCustomerClient(
     HttpClient httpClient,
@@ -53,7 +53,7 @@ internal sealed class CorrespondenceCustomerClient(
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                $"customers/internal/list?status=Active&page={page}&size={size}"
+                $"internal/customers/list?status=Active&page={page}&size={size}"
             );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

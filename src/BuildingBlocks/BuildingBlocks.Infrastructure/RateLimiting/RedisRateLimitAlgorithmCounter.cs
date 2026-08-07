@@ -1,4 +1,4 @@
-using BuildingBlocks.Infrastructure.RateLimit;
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.RateLimiting;
 using StackExchange.Redis;
 
@@ -88,6 +88,13 @@ return exceeded";
         CancellationToken ct = default
     )
     {
+        // BB-13 — el token se honra acá y no más allá a propósito: **ningún** comando de
+        // StackExchange.Redis acepta CancellationToken (todos los overloads terminan en
+        // CommandFlags); la librería controla el corte por timeout de configuración, no por token.
+        // Sin esta línea el parámetro era puramente decorativo. No intentar "propagarlo": no existe
+        // el overload.
+        ct.ThrowIfCancellationRequested();
+
         var db = redis.GetDatabase();
         var windowMs = (long)window.TotalMilliseconds;
 

@@ -162,6 +162,25 @@ public static class DependencyInjection
         services.AddHostedService<DraftCleanupJob>();
         services.AddHostedService<CustomerEmailReconciliationJob>();
 
+        // Auto-reparación de la proyección CustomerEmailAddress vía el endpoint global de reconciliación
+        // de Customer (cross-tenant, un solo token de PlatformTenant) + job periódico. Reusa el
+        // IServiceTokenAcquirer compartido de BuildingBlocks (forwarding registrado en
+        // AddRateLimitTierQuotas → CorrespondenceServiceTokenAcquirer), que pide el token para
+        // PlatformTenant — única identidad que el gate del endpoint acepta. Distinto de
+        // CustomerEmailReconciliationJob de arriba (por-tenant, solo activos): este ve inactivos también.
+        services.AddHttpClient<
+            ICustomerReconciliationClient,
+            Reconciliation.CorrespondenceCustomerReconciliationClient
+        >(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<CustomerClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<Scheduling.CustomerProjectionReconciliationJob>();
+
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
         // instancia scoped satisface el puerto local rico (para los consumers) y el puerto

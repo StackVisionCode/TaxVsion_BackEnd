@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using TaxVision.Growth.Api.Common;
@@ -31,7 +32,7 @@ public static class GrowthAuthentication
 /// <see cref="IAuthorizationPolicyProvider"/> porque ASP.NET Core solo permite registrar uno por
 /// aplicación:
 /// <list type="bullet">
-/// <item><description><c>perm:</c> (<see cref="BuildingBlocks.ActorTypeAuthorization.HasPermissionAttribute"/>)
+/// <item><description><c>perm:</c> (<see cref="BuildingBlocks.Web.ActorTypeAuthorization.HasPermissionAttribute"/>)
 /// — permisos de usuario humano/PlatformAdmin. RBAC Fase 8: delegada byte a byte a
 /// <see cref="PermissionPolicyProvider"/> (composición, no se reimplementa la lógica acá) — mismo
 /// comportamiento que los otros 13 microservicios: resuelve <c>IUserPermissionsSource</c> desde DI

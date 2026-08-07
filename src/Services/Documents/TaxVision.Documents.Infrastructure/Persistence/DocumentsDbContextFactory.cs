@@ -14,7 +14,7 @@ public sealed class DocumentsDbContextFactory : IDesignTimeDbContextFactory<Docu
             ?? "Server=localhost,1433;Database=TaxVision_Documents;Trusted_Connection=True;TrustServerCertificate=True";
 
         var options = new DbContextOptionsBuilder<DocumentsDbContext>().UseSqlServer(connectionString).Options;
-        return new DocumentsDbContext(options, new EmptyTenantContext(), messageBus: null);
+        return new DocumentsDbContext(options, new EmptyTenantContext());
     }
 
     private sealed class EmptyTenantContext : ITenantContext

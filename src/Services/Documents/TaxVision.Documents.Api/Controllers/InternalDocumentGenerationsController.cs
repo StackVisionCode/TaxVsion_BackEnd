@@ -17,7 +17,7 @@ namespace TaxVision.Documents.Api.Controllers;
 [ApiController]
 [Route("internal/document-generations")]
 [Authorize(Policy = "ServiceOnly")]
-[BuildingBlocks.ActorTypeAuthorization.AllowActorTypes(BuildingBlocks.ActorTypeAuthorization.ActorType.Service)]
+[BuildingBlocks.Web.ActorTypeAuthorization.AllowActorTypes(BuildingBlocks.ActorTypeAuthorization.ActorType.Service)]
 public sealed class InternalDocumentGenerationsController(IMessageBus bus) : ControllerBase
 {
     public sealed record GenerateInvoiceRequest(

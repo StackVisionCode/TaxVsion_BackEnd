@@ -11,7 +11,7 @@ public sealed record CreateTenantForOnboardingRequest(
 );
 
 /// <summary>PayFlow (Fase 15) — dispara la creación asíncrona del Tenant real
-/// (<c>POST tenants/internal/from-onboarding</c>, Fase 16). No espera el <c>TenantId</c> en la
+/// (<c>POST internal/tenants/from-onboarding</c>, Fase 16). No espera el <c>TenantId</c> en la
 /// respuesta: <c>TenantCreatedForOnboardingIntegrationEvent</c> (publicado por Tenant) es la señal
 /// real que la Saga espera. <see cref="Result"/> solo indica si la solicitud fue aceptada.</summary>
 public interface ITenantProvisioningClient

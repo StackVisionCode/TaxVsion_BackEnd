@@ -13,7 +13,7 @@ using TaxVision.Referrals.Application.Rewards.ConfirmReferralRewardGrant;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
-using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
+using AllowActorTypesAttribute = BuildingBlocks.Web.ActorTypeAuthorization.AllowActorTypesAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 

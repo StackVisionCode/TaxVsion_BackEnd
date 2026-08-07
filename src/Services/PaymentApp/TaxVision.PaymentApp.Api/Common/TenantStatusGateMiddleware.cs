@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using TaxVision.PaymentApp.Application.Abstractions;
 
 namespace TaxVision.PaymentApp.Api.Common;
@@ -7,7 +8,7 @@ namespace TaxVision.PaymentApp.Api.Common;
 /// <summary>
 /// Rechaza cualquier request de un tenant que no esté activo (Suspended/Closed) o que sea
 /// el Platform tenant (nunca sujeto de cobro). Corre después de
-/// <see cref="BuildingBlocks.Tenancy.JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana
+/// <see cref="BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana
 /// en la que un tenant recién suspendido podría seguir cobrando con un JWT todavía vigente
 /// (§42.4 del diseño).
 /// </summary>

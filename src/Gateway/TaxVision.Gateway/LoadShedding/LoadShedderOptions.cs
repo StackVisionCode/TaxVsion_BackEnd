@@ -25,9 +25,20 @@ public sealed class LoadShedderOptions
     /// con 1-2 requests lentos.</summary>
     public int MinSamples { get; init; } = 20;
 
-    /// <summary>Cuántos tenants (los de mayor consumo en la ventana) se priorizan para shedding
-    /// cuando hay sobrecarga. El resto de tráfico sigue pasando mientras dure la sobrecarga.</summary>
-    public int TopConsumerCount { get; init; } = 10;
+    /// <summary>
+    /// Umbral del Nivel 2 (GW-14): se descarta al tenant cuyo consumo supera este multiplo de la
+    /// media de tenants activos. Es continuo, no un top-N — si todos consumen parecido nadie lo
+    /// supera y nadie se sheddea, sea cual sea el numero de tenants, que es el resultado correcto:
+    /// si la sobrecarga viene de un downstream lento y no de un tenant abusivo, rechazar trafico
+    /// solo agrega errores.
+    /// </summary>
+    public double FairShareExcessFactor { get; init; } = 2.0;
+
+    /// <summary>Criticidad por primer segmento de ruta (ver RequestCriticalityClassifier).</summary>
+    public Dictionary<string, RequestCriticality> Criticality { get; init; } = [];
+
+    /// <summary>Criticidad de una ruta no declarada. Standard: ni se protege ni se sacrifica sola.</summary>
+    public RequestCriticality DefaultCriticality { get; init; } = RequestCriticality.Standard;
 
     public int RetryAfterSeconds { get; init; } = 5;
 }

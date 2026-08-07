@@ -16,4 +16,11 @@
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- El mapeo de buckets del histograma (GW-05) es un detalle interno, pero es donde vive la
+         correccion del p99: se testea directo en vez de inferirlo desde GetSnapshot. -->
+    <InternalsVisibleTo Include="TaxVision.Gateway.Tests" />
+  </ItemGroup>
+
 </Project>

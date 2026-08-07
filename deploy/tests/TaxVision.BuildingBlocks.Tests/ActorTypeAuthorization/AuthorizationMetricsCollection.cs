@@ -3,7 +3,7 @@ using Xunit;
 namespace TaxVision.BuildingBlocks.Tests.ActorTypeAuthorization;
 
 /// <summary>
-/// RBAC Fase 10 — <see cref="BuildingBlocks.ActorTypeAuthorization.AuthorizationMetrics"/> usa un
+/// RBAC Fase 10 — <see cref="BuildingBlocks.Web.ActorTypeAuthorization.AuthorizationMetrics"/> usa un
 /// <see cref="System.Diagnostics.Metrics.Meter"/> con nombre fijo (proceso-wide, ver
 /// <c>AuthorizationMetrics.MeterName</c>). Un <see cref="System.Diagnostics.Metrics.MeterListener"/>
 /// suscripto por nombre recibe mediciones de CUALQUIER instancia de ese Meter, incluida la de otro

@@ -1,4 +1,6 @@
-namespace BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.ActorTypeAuthorization;
+
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Declara para qué <see cref="ActorType"/>(s) es un endpoint — Capa 2 del plan de autorización

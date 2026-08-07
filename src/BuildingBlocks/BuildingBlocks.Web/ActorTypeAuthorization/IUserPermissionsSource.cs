@@ -1,6 +1,6 @@
 using System.Security.Claims;
 
-namespace BuildingBlocks.ActorTypeAuthorization;
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Fuente de verdad para "¿este usuario tiene este permiso, ahora mismo?" — <see cref="PermissionPolicyProvider"/>

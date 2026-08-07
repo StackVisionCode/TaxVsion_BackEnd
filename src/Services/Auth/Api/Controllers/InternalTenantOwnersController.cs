@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +14,7 @@ namespace TaxVision.Auth.Api.Controllers;
 /// crear el TenantAdmin de un tenant recién provisionado. El password nunca viaja en el body — solo
 /// una referencia de un solo uso a un hash ya calculado (ver doc-comment del handler).</summary>
 [ApiController]
-[Route("auth/internal/tenants/{tenantId:guid}/owners")]
+[Route("internal/tenants/{tenantId:guid}/owners")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalTenantOwnersController(IMessageBus bus) : ControllerBase

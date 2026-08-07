@@ -1,12 +1,12 @@
-using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace BuildingBlocks.Observability;
+namespace BuildingBlocks.Web.Observability;
 
 public static class OpenTelemetryRegistration
 {

@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Api.Bootstrap;
 /// Backfill de arranque (Fase A3): crea el TenantDomain primario para cualquier tenant
 /// que exista desde antes de que la tabla TenantDomains existiera (Fase A2) y por lo
 /// tanto no tenga ninguno. Sin este backfill, habilitar "host desconocido -> 404" en
-/// TenantResolutionMiddleware rompería el login de todos los tenants pre-existentes.
+/// TenantHostResolutionMiddleware rompería el login de todos los tenants pre-existentes.
 /// Idempotente: no hace nada en corridas posteriores una vez que todos los tenants
 /// tienen su dominio primario. Los tenants creados a partir de ahora ya reciben el
 /// suyo directamente en TenantCreatedConsumer.

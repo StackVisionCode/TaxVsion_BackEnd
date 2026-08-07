@@ -4,7 +4,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 
 /// <summary>
 /// PayFlow (Fase 16) — publicado por Subscription tras activar la suscripción de un onboarding
-/// pago-primero (<c>POST subscriptions/internal/activate-from-onboarding</c>) directamente en
+/// pago-primero (<c>POST internal/subscriptions/activate-from-onboarding</c>) directamente en
 /// <c>Active</c> (no <c>Trialing</c> — el cliente ya pagó). Consumido por
 /// <c>TaxVision.Auth.Application.Onboarding.Sagas.TenantOnboardingProcessManager</c> (Fase 15) para
 /// avanzar al paso <c>CloudStorage</c>.

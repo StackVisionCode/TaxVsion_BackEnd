@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -19,6 +20,18 @@ public sealed class TenantDbContextFactory : IDesignTimeDbContextFactory<TenantD
 
         var options = new DbContextOptionsBuilder<TenantDbContext>().UseSqlServer(connectionString).Options;
 
-        return new TenantDbContext(options);
+        return new TenantDbContext(options, new EmptyTenantContext());
+    }
+
+    /// <summary>H-11 — el filtro global fail-closed necesita un ITenantContext; en tiempo de diseño
+    /// no hay request ni tenant, y `HasTenant = false` hace que el filtro compare contra Guid.Empty
+    /// (irrelevante para generar el modelo). Mismo patrón que BillingDbContextFactory.</summary>
+    private sealed class EmptyTenantContext : ITenantContext
+    {
+        public Guid TenantId => throw new InvalidOperationException("TenantId is not set at design time.");
+        public bool HasTenant => false;
+
+        public void SetTenant(Guid tenantId) =>
+            throw new InvalidOperationException("TenantId cannot be set at design time.");
     }
 }

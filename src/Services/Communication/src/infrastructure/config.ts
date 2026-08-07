@@ -128,6 +128,16 @@ const rawEnv = z
       .string()
       .default('false')
       .transform((value) => value === 'true'),
+
+    // Reconciliacion periodica de la proyeccion CustomerDirectoryEntry contra la fuente
+    // autoritativa (internal/customers/reconciliation, cross-tenant M2M). Auto-cura eventos
+    // perdidos. Mismo Customer.Api que ya usan otros clientes; local corre en :5263.
+    COMMUNICATION_CUSTOMER_BASE_URL: z.string().url().default('http://localhost:5263'),
+    COMMUNICATION_CUSTOMER_RECONCILE_ENABLED: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
   })
   .parse(process.env);
 
@@ -274,6 +284,13 @@ export const config = {
   },
   subscription: {
     baseUrl: rawEnv.COMMUNICATION_SUBSCRIPTION_BASE_URL,
+  },
+  customer: {
+    baseUrl: rawEnv.COMMUNICATION_CUSTOMER_BASE_URL,
+  },
+  customerReconcile: {
+    enabled: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_ENABLED,
+    intervalHours: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS,
   },
 } as const;
 

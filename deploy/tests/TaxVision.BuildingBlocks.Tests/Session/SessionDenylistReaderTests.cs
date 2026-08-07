@@ -1,6 +1,6 @@
 using BuildingBlocks.Caching;
+using BuildingBlocks.Infrastructure.Sessions;
 using BuildingBlocks.Sessions;
-using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.Session;
@@ -8,24 +8,25 @@ namespace TaxVision.BuildingBlocks.Tests.Session;
 public sealed class SessionDenylistReaderTests
 {
     [Fact]
-    public async Task Fails_open_and_logs_a_warning_when_the_cache_is_unavailable()
+    public async Task Senala_el_fallo_en_vez_de_tragarselo_cuando_el_cache_no_responde()
     {
-        var logger = new RecordingLogger<SessionDenylistReader>();
-        var reader = new SessionDenylistReader(new ThrowingCacheService(), logger);
+        // H-06 — antes devolvía false (fail-open quemado en el adaptador). Ahora la política la
+        // decide SessionDenylistMiddleware, así que el reader tiene que dejar ver el fallo.
+        var reader = new SessionDenylistReader(new ThrowingCacheService());
 
-        var isDenied = await reader.IsSessionDeniedAsync(Guid.NewGuid());
+        var sessionId = Guid.NewGuid();
+        var exception = await Assert.ThrowsAsync<SessionDenylistUnavailableException>(() =>
+            reader.IsSessionDeniedAsync(sessionId)
+        );
 
-        Assert.False(isDenied);
-        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Equal(sessionId, exception.SessionId);
+        Assert.IsType<InvalidOperationException>(exception.InnerException);
     }
 
     [Fact]
     public async Task Returns_true_when_the_cache_has_the_session_marked_as_denied()
     {
-        var reader = new SessionDenylistReader(
-            new FakeCacheService(true),
-            new RecordingLogger<SessionDenylistReader>()
-        );
+        var reader = new SessionDenylistReader(new FakeCacheService(true));
 
         Assert.True(await reader.IsSessionDeniedAsync(Guid.NewGuid()));
     }
@@ -63,23 +64,5 @@ public sealed class SessionDenylistReaderTests
             TimeSpan? ttl = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
-    }
-
-    private sealed class RecordingLogger<T> : ILogger<T>
-    {
-        public List<(LogLevel Level, string Message)> Entries { get; } = [];
-
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter
-        ) => Entries.Add((logLevel, formatter(state, exception)));
     }
 }

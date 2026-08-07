@@ -22,7 +22,7 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
         // El subdominio es único globalmente (a diferencia del email por tenant).
         b.HasIndex(t => t.SubDomain).IsUnique();
 
-        // PayFlow (Fase 16) — idempotencia de tenants/internal/from-onboarding.
+        // PayFlow (Fase 16) — idempotencia de internal/tenants/from-onboarding.
         b.Property(t => t.OnboardingId);
         b.HasIndex(t => t.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
 

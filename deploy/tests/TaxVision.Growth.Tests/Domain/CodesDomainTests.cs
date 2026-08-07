@@ -1,4 +1,3 @@
-using BuildingBlocks.Tenancy;
 using TaxVision.Codes.Domain.Compensations;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Codes.Domain.Reservations;

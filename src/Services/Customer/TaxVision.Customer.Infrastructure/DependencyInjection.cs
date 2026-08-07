@@ -12,6 +12,7 @@ using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Configuration;
 using TaxVision.Customer.Application.RateLimiting.Abstractions;
 using TaxVision.Customer.Infrastructure.Imports;
+using TaxVision.Customer.Infrastructure.Permissions;
 using TaxVision.Customer.Infrastructure.Persistence;
 using TaxVision.Customer.Infrastructure.Persistence.Repositories;
 using TaxVision.Customer.Infrastructure.RateLimiting;
@@ -127,7 +128,25 @@ public static class InfrastructureRegistration
             }
         );
 
+        AddPermissionsPullRecovery(services);
         return services;
+    }
+
+    // H-04 — recuperación pull bajo demanda de permisos. Cuando ProjectionPermissionsSource
+    // (BuildingBlocks.Web) no encuentra la fila local, pregunta a Auth en vez de negar sin más:
+    // evento perdido, backfill pendiente o usuario recién creado dejan de ser un 403 permanente.
+    // Reutiliza el IServiceTokenAcquirer y el ServiceAuthClientOptions que ya apuntan a Auth.
+    private static void AddPermissionsPullRecovery(IServiceCollection services)
+    {
+        services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

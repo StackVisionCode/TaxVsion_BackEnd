@@ -3,7 +3,7 @@ using BuildingBlocks.Common;
 namespace TaxVision.Correspondence.Application.Abstractions;
 
 /// <summary>
-/// Cliente M2M hacia Customer.Api (<c>GET /customers/internal/list</c>, policy
+/// Cliente M2M hacia Customer.Api (<c>GET /internal/customers/list</c>, policy
 /// <c>ServiceOnly</c>) usado por el backfill de <c>CustomerEmailAddresses</c> al descubrir un
 /// tenant nuevo. Deliberadamente desacoplado del contrato HTTP real de Customer — solo expone lo
 /// que Correspondence necesita (id + email primario + si está activo).

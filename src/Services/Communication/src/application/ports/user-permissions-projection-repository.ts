@@ -26,12 +26,32 @@ export interface UserPermissionsProjectionSnapshot {
  * documenta aqui para que no lo confunda con una violacion del tenant-filter.
  */
 export interface UserPermissionsProjectionRepository {
+  /** Escribe el snapshot completo. Solo para eventos que SI transportan permisos
+   * (`UserRolesChanged`, `RolePermissionsChanged`); ver `upsertIdentityPreservingPermissions`. */
   upsert(snapshot: {
     userId: string;
     tenantId: string;
     permissions: readonly string[];
     permissionVersion: number;
     roleIds: readonly string[];
+    actorType: string;
+    isActive: boolean;
+    updatedAtUtc: Date;
+  }): Promise<void>;
+
+  /**
+   * Alta de la fila SIN tocar `permissions`/`permissionVersion`/`roleIds` si ya existe.
+   *
+   * Para eventos que identifican al usuario pero no transportan permisos —
+   * `UserRegisteredIntegrationEvent` es el caso real. Usar `upsert` desde ahí escribía
+   * `permissions: []` también en el UPDATE, así que si `registered` llegaba DESPUES de
+   * `roles_changed` (el consumer procesa con prefetch > 1, sin orden garantizado) borraba los
+   * permisos buenos y dejaba al usuario fail-closed en Communication, sin excepción ni
+   * dead-letter. Un evento que no transporta permisos no tiene autoridad para borrarlos.
+   */
+  upsertIdentityPreservingPermissions(identity: {
+    userId: string;
+    tenantId: string;
     actorType: string;
     isActive: boolean;
     updatedAtUtc: Date;

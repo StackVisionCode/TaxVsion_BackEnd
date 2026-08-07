@@ -20,7 +20,7 @@ public interface ISubscriptionRepository
     Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantSubscription subscription, CancellationToken ct = default);
 
-    /// <summary>PayFlow (Fase 16) — idempotencia de subscriptions/internal/activate-from-onboarding.</summary>
+    /// <summary>PayFlow (Fase 16) — idempotencia de internal/subscriptions/activate-from-onboarding.</summary>
     Task<TenantSubscription?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
 
     /// <summary>Active subscriptions whose NextRenewalAtUtc has passed. Batch job query —
@@ -157,7 +157,7 @@ public interface ITenantEntitlementSnapshotRepository
 }
 
 /// <summary>RateLimit Fase 6 — catálogo completo, consultado por otros servicios vía
-/// GET subscriptions/internal/plan-rate-limits (mismo patrón de exposición M2M de datos
+/// GET internal/plan-rate-limits (mismo patrón de exposición M2M de datos
 /// globales de Subscription que GetInternalPlanPricingHandler).</summary>
 public interface IPlanRateLimitRepository
 {

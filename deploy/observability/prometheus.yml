@@ -27,3 +27,23 @@ scrape_configs:
     static_configs:
       - targets:
           - node-exporter:9100
+
+  # H-16 — profundidad por cola, incluida la dead-letter.
+  #
+  # Wolverine crea y usa `wolverine-dead-letter-queue` el solo (AutoProvision): un handler
+  # que agota los reintentos acaba ahi. El agujero nunca fue que faltara la DLQ, es que
+  # nadie la miraba. Los mensajes sin handler NO llegan aqui — Wolverine los descarta, que
+  # con el fanout actual es lo correcto: cada cola recibe los ~183 tipos de evento y solo
+  # maneja un puñado.
+  #
+  # Hace falta /metrics/detailed: el /metrics normal solo da el agregado del broker, sin
+  # desglose por cola, y sin desglose no se puede alertar solo sobre las DLQ.
+  # El puerto 15692 no se publica al host — Prometheus entra por la red interna.
+  - job_name: rabbitmq
+    metrics_path: /metrics/detailed
+    params:
+      family:
+        - queue_coarse_metrics
+    static_configs:
+      - targets:
+          - rabbitmq:15692

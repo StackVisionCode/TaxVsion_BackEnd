@@ -1,4 +1,4 @@
-namespace BuildingBlocks.Health;
+namespace BuildingBlocks.Web.Health;
 
 public sealed record HostPort(string Host, int Port)
 {

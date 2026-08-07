@@ -9,6 +9,7 @@ using TaxVision.Billing.Application.RateLimiting.Abstractions;
 using TaxVision.Billing.Infrastructure.Documents;
 using TaxVision.Billing.Infrastructure.Observability;
 using TaxVision.Billing.Infrastructure.Payments;
+using TaxVision.Billing.Infrastructure.Permissions;
 using TaxVision.Billing.Infrastructure.Persistence;
 using TaxVision.Billing.Infrastructure.Persistence.Repositories;
 using TaxVision.Billing.Infrastructure.RateLimiting;
@@ -35,6 +36,31 @@ public static class DependencyInjection
         services.AddScoped<IPaymentReceiptRepository, PaymentReceiptRepository>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<BillingMetrics>();
+
+        // H-01 — proyección local de permisos. Una sola instancia scoped bajo los tres puertos: los
+        // dos ricos que usan los consumers y el angosto que consulta ProjectionPermissionsSource.
+        services.AddScoped<AuthzUserPermissionsProjectionRepository>();
+        services.AddScoped<IAuthzUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<BuildingBlocks.Permissions.IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<AuthzUserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IAuthzRolePermissionsProjectionRepository, AuthzRolePermissionsProjectionRepository>();
+
+        // Opción B (recuperación pull bajo demanda) — sin estos dos, ProjectionPermissionsSource
+        // trata el miss local como definitivo y Billing queda fail-closed permanente: su proyección
+        // solo la alimentan los eventos de cambio de rol, y un usuario que nunca cambia de rol no
+        // genera ninguno. Medido en vivo: 0 filas y 403 en todo endpoint autenticado.
+        services.AddScoped<BuildingBlocks.Permissions.IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<BuildingBlocks.Permissions.IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<BillingServiceClientsOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
 
         // --- Tokens M2M: un solo proveedor para todos los clientes de servicio (punto 10 del review) ---
         services

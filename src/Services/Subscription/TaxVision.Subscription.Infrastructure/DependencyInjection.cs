@@ -98,7 +98,7 @@ public static class DependencyInjection
     // flag RateLimit:EnforceTierQuotas, como en Customer/Tenant/Connectors).
     //
     // Caso especial de Subscription para IPlanRateLimitReader: este servicio ES el dueño de la
-    // tabla PlanRateLimits y expone el propio endpoint M2M (GET subscriptions/internal/plan-rate-limits)
+    // tabla PlanRateLimits y expone el propio endpoint M2M (GET internal/plan-rate-limits)
     // que HttpPlanRateLimitReader llama en TODOS los demás servicios. Apuntar HttpPlanRateLimitReader
     // a sí mismo implicaría un round-trip HTTP + M2M circular para leer un dato que ya está
     // disponible en el mismo proceso vía IPlanRateLimitRepository — auditoría RateLimit hallazgo #2

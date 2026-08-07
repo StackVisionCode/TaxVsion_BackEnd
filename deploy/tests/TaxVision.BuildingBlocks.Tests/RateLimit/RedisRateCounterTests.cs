@@ -1,4 +1,4 @@
-using BuildingBlocks.Infrastructure.RateLimit;
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
 using StackExchange.Redis;
 using Xunit;
 

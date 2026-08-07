@@ -1,7 +1,9 @@
-﻿using BuildingBlocks.Tenancy;
+﻿using BuildingBlocks.Common;
+using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace BuildingBlocks.Common;
+namespace BuildingBlocks.Web.Common;
 
 public static class BuildingBlocksRegistration
 {

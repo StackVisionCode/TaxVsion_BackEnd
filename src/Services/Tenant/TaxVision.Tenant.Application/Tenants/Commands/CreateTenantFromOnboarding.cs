@@ -19,10 +19,10 @@ public sealed record CreateTenantFromOnboardingCommand(
 );
 
 /// <summary>
-/// PayFlow (Fase 16) — receptor del <c>POST tenants/internal/from-onboarding</c> que la Saga de Auth
+/// PayFlow (Fase 16) — receptor del <c>POST internal/tenants/from-onboarding</c> que la Saga de Auth
 /// (Fase 15, <c>Sagas/Commands/CreateTenantForOnboardingCommand.cs</c>) invoca. No hay invitación de
 /// TenantAdmin en este flujo (el owner se crea directo vía Fase 16's
-/// <c>auth/internal/tenants/{id}/owners</c>) — <see cref="TenantCreatedIntegrationEvent.AdminInvitationTokenHash"/>
+/// <c>internal/tenants/{id}/owners</c>) — <see cref="TenantCreatedIntegrationEvent.AdminInvitationTokenHash"/>
 /// queda vacío a propósito: Auth.TenantCreatedConsumer salta ese bloque entero cuando
 /// <c>OnboardingId != null</c> (ver Fase 16's cambio a ese consumer), así que el valor nunca se lee.
 /// <para>

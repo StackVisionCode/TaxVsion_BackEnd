@@ -11,7 +11,7 @@ public sealed class TenantDomainOptions
     public string BaseDomain { get; set; } = "taxprocore.com";
 
     /// <summary>
-    /// Si es true, TenantResolutionMiddleware responde 404 cuando el Host de la request
+    /// Si es true, TenantHostResolutionMiddleware responde 404 cuando el Host de la request
     /// no resuelve a un tenant activo. Se desactiva en Development para no romper el
     /// login/Postman locales (que no tienen un subdominio real apuntando a localhost).
     /// </summary>

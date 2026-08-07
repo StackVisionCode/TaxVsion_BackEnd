@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.Correspondence.Infrastructure\TaxVision.Correspondence.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
   </ItemGroup>
 </Project>

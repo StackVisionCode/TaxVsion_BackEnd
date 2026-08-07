@@ -1,6 +1,6 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Infrastructure.Persistence;

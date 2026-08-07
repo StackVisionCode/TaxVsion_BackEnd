@@ -1,5 +1,6 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.RateLimiting;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -42,11 +43,10 @@ public static class TieredRateLimitingRegistration
         services.AddSingleton<RateLimitMetrics>();
         services.TryAddSingleton<IRateLimitAlgorithmCounter, RedisRateLimitAlgorithmCounter>();
         services.AddSingleton<ITieredRateLimitEvaluator, TieredRateLimitEvaluator>();
-        // Auditoría independiente post-Fase-9 (invariante §4, categoría M) — default no-op. Un
-        // servicio con al menos una política M debe llamar services.AddScoped&lt;IRateLimitAuditSink,
-        // TSink&gt;() DESPUÉS de este método (mismo patrón last-registration-wins que
-        // ITenantPlanCodeReader usa con TryAdd, pero acá con Add plano porque el override es la
-        // norma esperada para esos 2 servicios, no la excepción rara).
+        // Default no-op para la auditoría de 429 en políticas de categoría M. Un servicio con al
+        // menos una política M registra su sink real con AddScoped&lt;IRateLimitAuditSink, TSink&gt;()
+        // después de este método: el TryAdd solo evita pisar un registro previo, y un Add posterior
+        // gana igualmente en la resolución simple. Así ambos órdenes funcionan.
         services.TryAddScoped<IRateLimitAuditSink, NoOpRateLimitAuditSink>();
         return services;
     }

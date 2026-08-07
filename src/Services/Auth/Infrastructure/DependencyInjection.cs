@@ -1,7 +1,11 @@
-using System.Net.Http.Headers;
-using BuildingBlocks.Infrastructure.RateLimit;
+﻿using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Resilience;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Security;
 using BuildingBlocks.Sessions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +32,10 @@ using TaxVision.Auth.Infrastructure.Persistence.Repositories;
 using TaxVision.Auth.Infrastructure.RateLimiting;
 using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Infrastructure.Tenancy;
+// BuildingBlocks.Infrastructure.RateLimiting expone otro SubscriptionClientOptions (el del lector
+// de PlanRateLimits). Acá siempre se quiere el de Onboarding, que trae el BaseUrl de los clientes
+// M2M de la Saga.
+using SubscriptionClientOptions = TaxVision.Auth.Infrastructure.Onboarding.HttpClients.SubscriptionClientOptions;
 
 namespace TaxVision.Auth.Infrastructure;
 
@@ -103,7 +111,10 @@ public static class DependencyInjection
         services.AddSingleton<IOnboardingMetrics, OnboardingMetrics>();
         services.AddSingleton<ISecureTokenService, SecureTokenService>();
         services.AddSingleton<ITotpService, TotpService>();
-        services.AddSingleton<ISecretProtector, AesGcmSecretProtector>();
+        // BB-10 — el protector es el compartido de BuildingBlocks, pero con la clave de Auth: los
+        // secretos TOTP están cifrados con Mfa:EncryptionKey y pasarlos a Encryption:MasterKey los
+        // volvería ilegibles (todo usuario con MFA perdería su segundo factor).
+        services.AddSingleton<ISecretProtector>(_ => new AesGcmSecretProtector(ResolveMfaKey(configuration)));
         services.AddSingleton<SigningKeyProvider>();
         services.AddSingleton<IJwksProvider>(provider => provider.GetRequiredService<SigningKeyProvider>());
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -330,6 +341,23 @@ public static class DependencyInjection
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
             }
         );
+    }
+
+    /// <summary>
+    /// Clave AES-256 de los secretos TOTP. Preferencia: <c>Mfa:EncryptionKey</c> (base64, 32 bytes).
+    /// Si falta, se deriva de <c>Jwt:Secret</c> — aceptable en desarrollo, pero en producción hay que
+    /// configurarla: rotar el secreto JWT dejaría ilegibles todos los secretos MFA ya guardados.
+    /// </summary>
+    private static byte[] ResolveMfaKey(IConfiguration configuration)
+    {
+        if (!string.IsNullOrWhiteSpace(configuration["Mfa:EncryptionKey"]))
+            return AesGcmSecretProtector.ResolveKey(configuration, "Mfa:EncryptionKey");
+
+        var jwtSecret =
+            configuration["Jwt:Secret"]
+            ?? throw new InvalidOperationException("Mfa:EncryptionKey or Jwt:Secret must be configured.");
+
+        return SHA256.HashData(Encoding.UTF8.GetBytes($"{jwtSecret}:taxvision-mfa"));
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

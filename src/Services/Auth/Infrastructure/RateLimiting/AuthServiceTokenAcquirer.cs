@@ -18,7 +18,7 @@ namespace TaxVision.Auth.Infrastructure.RateLimiting;
 /// <para>
 /// Mismos parámetros que <c>SubscriptionActivationClient</c>/<c>PlanCatalogClient</c> (permissions
 /// y scopes vacíos, audience "TaxVision.Services"): el endpoint que consume este token
-/// (<c>GET subscriptions/internal/plan-rate-limits</c>) usa una policy ServiceOnly que solo exige
+/// (<c>GET internal/plan-rate-limits</c>) usa una policy ServiceOnly que solo exige
 /// <c>actor_type=Service</c>, sin scopes de permiso.
 /// </para>
 /// </summary>

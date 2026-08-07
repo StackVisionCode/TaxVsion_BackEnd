@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,7 @@ namespace TaxVision.Tenant.Api.Controllers;
 /// <summary>PayFlow (Fase 14) — M2M-only: Auth's TenantSubdomainAvailabilityClient invoca este
 /// endpoint durante el registro post-pago, antes de que el tenant exista.</summary>
 [ApiController]
-[Route("tenants/internal")]
+[Route("internal/tenants")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalTenantAvailabilityController(IMessageBus bus) : ControllerBase

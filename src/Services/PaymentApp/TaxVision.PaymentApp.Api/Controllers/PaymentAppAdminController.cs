@@ -2,6 +2,7 @@ using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Csv;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
@@ -95,7 +96,9 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
         if (result.IsFailure)
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 
-        var csv = CsvWriter.Write(
+        // BB-17 — WriteWithBom: sin BOM, Excel abre el CSV con la codepage ANSI y los acentos de los
+        // nombres de clientes salen como mojibake. Encoding.UTF8.GetBytes() NO emite BOM.
+        var csv = CsvWriter.WriteWithBom(
             [
                 "Id",
                 "TenantId",
@@ -127,7 +130,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
             )
         );
 
-        return File(Encoding.UTF8.GetBytes(csv), "text/csv", $"saas-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
+        return File(csv, "text/csv", $"saas-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
     }
 
     private async Task<IActionResult> Search(

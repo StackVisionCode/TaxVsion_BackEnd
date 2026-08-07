@@ -2,6 +2,7 @@ using System.Net.Mail;
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Domain.Users;

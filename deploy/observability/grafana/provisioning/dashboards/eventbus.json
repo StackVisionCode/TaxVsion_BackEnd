@@ -1,0 +1,83 @@
+{
+  "uid": "taxvision-eventbus",
+  "title": "TaxVision — Bus de eventos (RabbitMQ)",
+  "tags": ["taxvision", "eventbus", "rabbitmq"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Mensajes muertos (todas las DLQ)",
+      "description": "H-16. Cualquier valor > 0 significa que un handler agoto sus reintentos y el mensaje se perdio para el negocio. Los mensajes SIN handler no llegan aqui: Wolverine los descarta, que con el fanout actual es lo correcto.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rabbitmq_detailed_queue_messages_ready{queue=~\".*dead-letter.*|.*\\\\.dlq\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Profundidad de cada dead-letter queue",
+      "description": "Hay UNA sola wolverine-dead-letter-queue para los 17 servicios .NET — para saber de que servicio venia un mensaje hay que leer sus cabeceras. Node tiene la suya por servicio.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "rabbitmq_detailed_queue_messages_ready{queue=~\".*dead-letter.*|.*\\\\.dlq\"}",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Backlog por cola de servicio (sin las DLQ)",
+      "description": "Un backlog que sube y no baja significa consumidor caido o mas lento que el productor. Ojo al leerlo: con la flota parada todas las colas acumulan, y eso es normal.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "targets": [
+        {
+          "expr": "rabbitmq_detailed_queue_messages_ready{queue!~\".*dead-letter.*|.*\\\\.dlq\"}",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Mensajes sin confirmar (unacked) por cola",
+      "description": "Unacked alto y sostenido = handlers atascados, no lentos. Distingue 'no da abasto' (ready sube, unacked plano) de 'esta colgado' (unacked sube y no baja).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "rabbitmq_detailed_queue_messages_unacked",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

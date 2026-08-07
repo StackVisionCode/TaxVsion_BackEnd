@@ -12,7 +12,7 @@ public sealed record CreateTenantOwnerForOnboardingRequest(
 );
 
 /// <summary>PayFlow (Fase 15) — loopback HTTP hacia el propio Auth
-/// (<c>POST auth/internal/tenants/{tenantId}/owners</c>, Fase 16), no una llamada local de Wolverine:
+/// (<c>POST internal/tenants/{tenantId}/owners</c>, Fase 16), no una llamada local de Wolverine:
 /// el password nunca debe cruzar el bus de mensajería, así que el hash referenciado por
 /// <see cref="CreateTenantOwnerForOnboardingRequest.PasswordHashReference"/> viaja únicamente por
 /// este canal HTTP interno, canjeado del <c>ITokenReferenceStore</c> por el endpoint receptor.</summary>

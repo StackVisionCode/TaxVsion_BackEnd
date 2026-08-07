@@ -3,7 +3,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <summary>
 /// PayFlow (Fase 9) — el pago del onboarding se confirmó y el `RegistrationToken` ya existe
 /// (hash persistido en `TenantOnboarding`). Notification (Fase 12) consume este evento, resuelve
-/// el raw token vía el endpoint M2M one-shot de Auth (<c>GET /auth/internal/onboarding/tokens/{TokenReference}/raw</c>),
+/// el raw token vía el endpoint M2M one-shot de Auth (<c>GET /internal/onboarding/tokens/{TokenReference}/raw</c>),
 /// y renderiza el email — el raw NUNCA viaja en este evento (§3.6 del plan).
 /// <see cref="IntegrationEvent.TenantId"/> queda en <c>Guid.Empty</c> (el tenant no existe
 /// todavía) — <see cref="OnboardingId"/> es la clave de correlación real.

@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace TaxVision.PaymentApp.Api.Controllers;
 /// <summary>PayFlow (Fase 8) — M2M-only: Auth's onboarding Saga (Fase 15) invoca este endpoint
 /// para iniciar el pago inicial de un onboarding pago-primero, antes de que el tenant exista.</summary>
 [ApiController]
-[Route("payments-app/internal/onboarding")]
+[Route("internal/onboarding")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : ControllerBase

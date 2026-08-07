@@ -1,5 +1,6 @@
 using BuildingBlocks.Security;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace BuildingBlocks.Infrastructure.Security;
 
@@ -11,7 +12,7 @@ public static class SecretProtectionRegistration
     /// </summary>
     public static IServiceCollection AddSecretProtection(this IServiceCollection services)
     {
-        services.AddSingleton<ISecretProtector, AesGcmSecretProtector>();
+        services.TryAddSingleton<ISecretProtector, AesGcmSecretProtector>();
         return services;
     }
 }

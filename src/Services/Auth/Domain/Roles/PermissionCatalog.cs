@@ -146,6 +146,16 @@ public static class PermissionCatalog
     public const string NotificationCampaignManage = NotificationPermissions.CampaignManage;
     public const string NotificationLogView = NotificationPermissions.LogView;
 
+    // Notes — notas internas/portal sobre customers y otras entidades (bounded context propio,
+    // ver microservicio Notes). Read/Manage son el uso normal de staff (Manage exige además ser
+    // el autor, chequeado en Application — ver ADR-06); ViewAll es gobernanza: un TenantAdmin
+    // puede leer/archivar/borrar notas ajenas, pero NUNCA editar su contenido (no hay override de
+    // Manage). PortalRead es exclusivo del cliente final leyendo sus propias notas ClientVisible.
+    public const string NotesRead = NotesPermissions.Read;
+    public const string NotesManage = NotesPermissions.Manage;
+    public const string NotesViewAll = NotesPermissions.ViewAll;
+    public const string NotesPortalRead = NotesPermissions.PortalRead;
+
     // Portal del cliente final
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
@@ -1560,6 +1570,39 @@ public static class PermissionCatalog
             IsAssignableByTenant: false,
             PlatformOnly: true
         ),
+        new(new Guid("a1000000-0000-0000-0000-000000000154"), NotesRead, "notes", "Ver notas del tenant", false),
+        new(
+            // ADR-06: Manage cubre crear/editar/pin/color/visibilidad/adjuntar — la regla "solo
+            // el propio autor" NO vive acá (Permission no modela ownership), la aplica el handler
+            // (note.CreatedByUserId == actorUserId) en Application, igual que Correspondence Draft.
+            new Guid("a1000000-0000-0000-0000-000000000155"),
+            NotesManage,
+            "notes",
+            "Crear, editar, archivar/restaurar y adjuntar archivos a notas propias",
+            false
+        ),
+        new(
+            // Gobernanza (ADR-06): un TenantAdmin/PlatformAdmin puede leer, archivar o borrar
+            // notas de CUALQUIER autor del tenant — nunca editar su contenido (eso exige ser el
+            // autor vía NotesManage). Explícitamente sin TenantEmployee: leer notas ajenas no es
+            // parte del bundle por defecto de un empleado.
+            new Guid("a1000000-0000-0000-0000-000000000156"),
+            NotesViewAll,
+            "notes",
+            "Ver, archivar y borrar notas de cualquier autor del tenant (gobernanza)",
+            false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.PlatformAdmin]
+        ),
+        new(
+            // IsCustomerPortal:true → InferAllowedActorTypes ya limita esto a [CustomerPortal]
+            // (ver Permission.InferAllowedActorTypes) — el cliente final solo ve sus propias
+            // notas con Visibility=ClientVisible, filtro que aplica el handler, no este permiso.
+            new Guid("a1000000-0000-0000-0000-000000000157"),
+            NotesPortalRead,
+            "notes",
+            "El cliente puede ver sus notas marcadas como visibles para el cliente",
+            true
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -1700,6 +1743,28 @@ public static class PermissionCatalog
             ],
             _ => [],
         };
+
+    /// <summary>
+    /// 2026-08-06 (hallazgo real, encontrado verificando self-healing de RolePermissionsProjections
+    /// en Notes) — permisos con los que se siembra/reconcilia el rol de sistema TenantAdmin de CADA
+    /// tenant (<see cref="RoleRepository.EnsureSystemRolesAsync"/> al crear el tenant,
+    /// <c>SystemRolePermissionsSyncService</c> para reconciliar tenants existentes cuando el
+    /// catálogo cambia). A diferencia de <see cref="SystemRoleDefaults"/>/<see cref="DefaultsFor"/>
+    /// (que SÍ excluyen <see cref="Permission.IsDangerous"/> — correcto para el bundle sugerido al
+    /// crear un rol CUSTOM vía <see cref="RolePermissionGuard"/>, donde un TenantAdmin no debe poder
+    /// otorgar auto-escalada/billing/legal a un rol de staff sin decisión explícita), este método
+    /// SÍ incluye <c>IsDangerous</c>: el rol de sistema TenantAdmin representa al dueño/admin raíz
+    /// del propio tenant, y el propio catálogo documenta caso por caso que roles.manage/billing.*/
+    /// subscription.manage/tenant_domains.manage/cloudstorage.legal.manage "SÍ tienen un caso de uso
+    /// legítimo para un TenantAdmin" — la exclusión de IsDangerous nunca tuvo un mecanismo real de
+    /// "asignación explícita" para llegar a ese rol de sistema, dejando a TODO tenant sin nadie
+    /// capaz de gestionar roles/billing/dominios/legal-hold desde que existe el tenant. Sigue
+    /// excluyendo PlatformOnly e IsCustomerPortal, igual que <see cref="SystemRoleDefaults"/>.
+    /// </summary>
+    public static IReadOnlyCollection<string> SystemTenantAdminRootPermissions() =>
+        All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly)
+            .Select(definition => definition.Code)
+            .ToArray();
 
     /// <summary>
     /// Permisos efectivos de respaldo cuando un usuario aún no tiene roles asignados

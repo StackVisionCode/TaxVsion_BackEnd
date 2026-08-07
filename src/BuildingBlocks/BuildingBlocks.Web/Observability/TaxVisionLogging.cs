@@ -2,7 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Formatting.Compact;
 
-namespace BuildingBlocks.Observability;
+namespace BuildingBlocks.Web.Observability;
 
 public static class TaxVisionLogging
 {

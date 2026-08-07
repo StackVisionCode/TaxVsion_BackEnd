@@ -97,8 +97,7 @@ public static class RedeemPaymentLinkHandler
         if (attachResult.IsFailure)
             return Result.Failure<RedeemPaymentLinkResponse>(attachResult.Error);
 
-        var secretKey = secretProtector.Unprotect(config.SecretKeyEncrypted.CipherText);
-        if (string.IsNullOrEmpty(secretKey))
+        if (!secretProtector.TryUnprotect(config.SecretKeyEncrypted.CipherText, out var secretKey, out _))
         {
             TenantPaymentChargeOutcome.FailPayment(
                 payment,

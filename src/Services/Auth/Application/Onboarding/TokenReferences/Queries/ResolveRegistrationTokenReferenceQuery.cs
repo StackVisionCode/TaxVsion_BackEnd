@@ -10,7 +10,7 @@ public sealed record ResolveRegistrationTokenReferenceQuery(Guid TokenReference)
 public sealed record ResolveRegistrationTokenReferenceResponse(string RegistrationUrl);
 
 /// <summary>PayFlow (Fase 9) — el lado de lectura del endpoint M2M one-shot
-/// (<c>GET /auth/internal/onboarding/tokens/{reference}/raw</c>).
+/// (<c>GET /internal/onboarding/tokens/{reference}/raw</c>).
 /// <para>
 /// Auditoría F15 — hasta acá el raw token se consumía (GETDEL) en la misma llamada, así que un
 /// retry de Notification tras un fallo transient (timeout, 5xx) siempre encontraba la referencia

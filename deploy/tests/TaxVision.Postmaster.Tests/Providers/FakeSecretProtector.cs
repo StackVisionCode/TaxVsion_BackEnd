@@ -7,5 +7,10 @@ internal sealed class FakeSecretProtector : ISecretProtector
 {
     public string Protect(string plaintext) => plaintext;
 
-    public string? Unprotect(string ciphertext) => ciphertext;
+    public bool TryUnprotect(string? protectedValue, out string plaintext, out SecretUnprotectFailure failure)
+    {
+        plaintext = protectedValue ?? string.Empty;
+        failure = protectedValue is null ? SecretUnprotectFailure.NoValueStored : SecretUnprotectFailure.None;
+        return protectedValue is not null;
+    }
 }

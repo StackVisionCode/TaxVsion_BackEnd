@@ -1,21 +1,22 @@
 using System.Net;
+using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
-using BuildingBlocks.Infrastructure.RateLimit;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
+using BuildingBlocks.Web.Tenancy;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -39,6 +40,10 @@ using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
+// BuildingBlocks.Infrastructure.RateLimiting expone otro SubscriptionClientOptions (el del lector
+// de PlanRateLimits). Acá siempre se quiere el de Onboarding, que trae el BaseUrl usado por el
+// health check de downstream.
+using SubscriptionClientOptions = TaxVision.Auth.Infrastructure.Onboarding.HttpClients.SubscriptionClientOptions;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseTaxVisionSerilog("auth-service");
@@ -115,18 +120,14 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 // local que tenía este servicio).
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 — perm_v enforcement vía IUserPermissionsSource. Default "Jwt" (comportamiento
-// actual, sin cambios) — "Projection" se activa por servicio tras validar performance en
-// staging (Authorization:PermissionsSource). Auth es el único de los 14 servicios sin
-// proyección eventual: ya es la fuente de verdad de User/Role, así que
-// AuthUserPermissionsProjectionReader resuelve en vivo contra sus propias tablas (cero
-// staleness posible salvo la del propio JWT).
-builder.Services.AddMemoryCache();
+// Auth es el único de los 17 sin proyección eventual: ya es la fuente de verdad de User/Role, así
+// que AuthUserPermissionsProjectionReader resuelve en vivo contra sus propias tablas.
 builder.Services.AddScoped<IUserPermissionsProjectionReader, AuthUserPermissionsProjectionReader>();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // PayFlow (Fase 9) — primer policy M2M-only de Auth, mismo patrón "ServiceOnly" que PaymentApp
 // (Fase 8): gatea InternalOnboardingTokensController, invocado por otro servicio (no por Auth).
@@ -402,7 +403,7 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, AuthDbContext>();
     options.Policies.AutoApplyTransactions();
 
-    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event), ver
     // JwtTenantContextMiddleware/LocalCommandTenantMiddleware para el porqué.
     options.Policies.ForMessagesOfType<IIntegrationEvent>().AddMiddleware(typeof(IntegrationEventTenantMiddleware));
@@ -468,9 +469,7 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 
 // Red de confianza para X-Forwarded-Proto/Host y la IP real del cliente (Fase A3).
@@ -518,7 +517,7 @@ app.UseMiddleware<TenantHostResolutionMiddleware>();
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT, para que el
+// RBAC Fase 5 — setea BuildingBlocks.Web.Tenancy.TenantContext desde el JWT, para que el
 // HasQueryFilter global de AuthDbContext tenga tenant listo. Distinto de
 // TenantHostResolutionMiddleware (arriba, pre-auth, resuelve por Host). Va ANTES de
 // UseAuthorization(): RBAC Fase 7 (Authorization:PermissionsSource=Projection) resuelve el
@@ -527,7 +526,7 @@ app.UseAuthentication();
 // esa consulta vería EffectiveTenantId=Guid.Empty y fallaría cerrado (403) para todo el mundo en
 // modo Projection. En modo Jwt (default) esto nunca importó porque JwtEmbeddedPermissionsSource
 // no toca la base de datos.
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseAuthorization();
 app.UseRateLimiter();

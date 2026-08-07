@@ -27,16 +27,22 @@ public class InMemoryProviderRateLimiterTests
             Options.Create(new ProviderRateLimiterOptions { MaxRequestsPerSecond = 2 })
         );
 
+        // Arrancar al filo de un segundo: si no, las dos primeras llamadas pueden caer en segundos
+        // distintos y no agotar el budget de ninguno.
+        await Task.Delay(1000 - DateTimeOffset.UtcNow.Millisecond + 5);
+
         // Consume el budget del segundo actual.
         await limiter.WaitForSlotAsync(ProviderCode.Gmail, Guid.NewGuid());
         await limiter.WaitForSlotAsync(ProviderCode.Gmail, Guid.NewGuid());
 
+        var startSecond = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var start = DateTime.UtcNow;
         await limiter.WaitForSlotAsync(ProviderCode.Gmail, Guid.NewGuid());
         var elapsed = DateTime.UtcNow - start;
 
-        // Debe haber esperado al próximo segundo — no instantáneo, pero acotado.
-        Assert.True(elapsed > TimeSpan.FromMilliseconds(50));
+        // La propiedad real del limiter es cruzar al siguiente segundo de reloj, no tardar N ms: la
+        // espera es `1000 - msIntoSecond`, que legítimamente puede ser de pocos ms.
+        Assert.True(DateTimeOffset.UtcNow.ToUnixTimeSeconds() > startSecond);
         Assert.True(elapsed < TimeSpan.FromSeconds(2));
     }
 

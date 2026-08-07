@@ -61,7 +61,17 @@ public static class ErrorHttpMapping
             or "TermsVersion.NotFound"
             or "Onboarding.TokenReferenceNotFound"
             or "Onboarding.NotFound"
-            or "Onboarding.ChallengeNotFound" => StatusCodes.Status404NotFound,
+            or "Onboarding.ChallengeNotFound"
+            // Notes Fase 7 (hardening post-Fase-6): Note.NotFound/AttachmentNotFound no tenían
+            // entrada explícita y caían al default (400) en vez del 404 semánticamente correcto —
+            // mismo gap exacto que EventTemplateMapping.NotFound tuvo en Scribe Fase 10.5.
+            or "Note.NotFound"
+            or "Note.AttachmentNotFound"
+            // Opción B (recuperación pull de permisos, endpoint interno de Auth) — el status exacto
+            // no cambia el comportamiento del caller M2M (IPermissionsSnapshotClient trata cualquier
+            // no-2xx igual, devuelve null), pero se mapea explícito de todos modos por consistencia
+            // con el resto del catálogo.
+            or "Auth.UserNotFound" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -181,7 +191,9 @@ public static class ErrorHttpMapping
             or "Role.NotAssignableToCustomerPortal"
             or "ShareLink.Forbidden"
             or "ShareLink.PublicSharingDisabled"
-            or "ShareLink.ElevatedPermissionRequiresManage" => StatusCodes.Status403Forbidden,
+            or "ShareLink.ElevatedPermissionRequiresManage"
+            or "Note.Forbidden"
+            or "Auth.UserInactive" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -198,7 +210,13 @@ public static class ErrorHttpMapping
             or "TenantPaymentConfig.AlreadyExists"
             // 2026-07-20 — DeleteFolderHandler: la carpeta tiene subfolders o archivos directos,
             // el llamador debe vaciarla primero. Sin esta entrada caía al default 400.
-            or "Folder.NotEmpty" => StatusCodes.Status409Conflict,
+            or "Folder.NotEmpty"
+            // Notes Fase 7: transiciones/estado inválido de la nota o del adjunto — mismo criterio
+            // que TenantEmailAccount.InvalidTransition/EmailAccount.Conflict (409, no 400).
+            or "Note.Deleted"
+            or "Note.InvalidTransition"
+            or "Note.AttachmentDuplicate"
+            or "Note.AttachmentLimit" => StatusCodes.Status409Conflict,
             "Auth.LockedOut"
             or "Auth.OtpThrottled"
             or "Invitation.ResendLimit"

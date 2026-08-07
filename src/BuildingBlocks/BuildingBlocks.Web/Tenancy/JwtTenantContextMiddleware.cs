@@ -2,7 +2,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Http;
 using Wolverine;
 
-namespace BuildingBlocks.Tenancy;
+namespace BuildingBlocks.Web.Tenancy;
 
 /// <summary>
 /// RBAC Fase 5 (RBAC_Hardening_Plan.md) — setea el <see cref="TenantContext"/> scoped-request a

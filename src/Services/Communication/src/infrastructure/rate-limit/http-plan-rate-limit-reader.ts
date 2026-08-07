@@ -4,7 +4,7 @@ import type { ServiceTokenClient } from '../auth/service-token-client.js';
 
 /**
  * Espejo de BuildingBlocks.Infrastructure.RateLimiting.HttpPlanRateLimitReader (.NET): trae el
- * catalogo completo de PlanRateLimits desde Subscription (GET subscriptions/internal/plan-rate-limits)
+ * catalogo completo de PlanRateLimits desde Subscription (GET internal/plan-rate-limits)
  * y lo cachea 5 min en memoria — el catalogo es global (no por-tenant), asi que una sola llamada
  * M2M cubre todos los tenants del proceso. Usa `config.platformTenantId` como sentinel de tenant
  * para el token M2M, mismo criterio que HttpPlanRateLimitReader.cs (Guid.Empty es rechazado por
@@ -71,7 +71,7 @@ export class HttpPlanRateLimitReader {
 
     let response: Response;
     try {
-      response = await fetch(`${config.subscription.baseUrl}/subscriptions/internal/plan-rate-limits`, {
+      response = await fetch(`${config.subscription.baseUrl}/internal/plan-rate-limits`, {
         headers: { authorization: `Bearer ${token}` },
       });
     } catch (error) {

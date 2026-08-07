@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Security;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
@@ -89,8 +90,9 @@ public static class VerifyMfaChallengeHandler
             var method = await mfa.GetMethodByIdAsync(methodId, ct);
             if (method?.SecretCiphertext is not null && !string.IsNullOrWhiteSpace(command.Code))
             {
-                var secret = protector.Unprotect(method.SecretCiphertext);
-                verified = secret is not null && totp.ValidateCode(secret, command.Code.Trim(), now);
+                verified =
+                    protector.TryUnprotect(method.SecretCiphertext, out var secret, out _)
+                    && totp.ValidateCode(secret, command.Code.Trim(), now);
                 if (verified)
                     method.MarkUsed();
             }

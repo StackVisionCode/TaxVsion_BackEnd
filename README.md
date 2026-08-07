@@ -587,11 +587,28 @@ logs. Despues de aceptar la invitacion, deshabilite y elimine estos secretos. Lo
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-app.UseRateLimiter();
+// headers de seguridad (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS)
+app.UseMiddleware<InternalSurfaceGuardMiddleware>();   // GW-01: 404 a todo path con segmento `internal`
+app.UseCors("spa");
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
+app.UseMiddleware<LoadSheddingMiddleware>();           // Capa 1 del rate limiting
 app.UseMiddleware<TenantPropagationMiddleware>();
 ```
+
+`InternalSurfaceGuardMiddleware` va **antes de CORS y de la autenticación**: los 18 controllers M2M
+del sistema viven bajo `internal/*` y se hablan contenedor→contenedor, así que por el Gateway no hay
+tráfico legítimo que perder. Devuelve **404** (no 403, para no confirmar que el recurso existe),
+registra un `LogWarning` y suma a `gateway_internal_surface_probes_blocked_total`. Ver
+[ADR-019](documents/architecture/ADR_019_Internal_Surface_Not_Exposed_At_Gateway.md).
+
+**Convención obligatoria para endpoints M2M nuevos**: `[Route("internal/<recurso>")]`, **sin** el
+prefijo del servicio delante. Con el prefijo (`[Route("auth/internal/...")]`) el catch-all del
+Gateway sí los alcanza. Hay una fitness function que rompe el build si se incumple
+(`InternalRouteConventionFitnessTests`). Para probarlos con Postman se usa el puerto directo del
+servicio (`{{AuthDirectBase}}`, `{{TenantDirectBase}}`, `{{SubscriptionDirectBase}}`,
+`{{PaymentAppDirectBase}}`, `{{GrowthDirectBase}}`), nunca `{{UrlBase}}`.
 
 ### Auth
 
@@ -605,7 +622,8 @@ app.UseAuthorization();
 
 ### Tenant
 
-Agrega `TenantResolutionMiddleware` para reconstruir `TenantContext`.
+Agrega `BuildingBlocks.Tenancy.JwtTenantContextMiddleware` (antes de `UseAuthorization`) para
+reconstruir `TenantContext` desde el claim `tenant_id` del JWT ya verificado.
 
 El orden importa: correlation debe envolver logging y excepciones; autenticacion debe
 ejecutarse antes de leer claims.
@@ -7106,11 +7124,29 @@ Correspondence, Scribe, Growth) — se les agregó `ConnectionStrings__Redis: re
 antes de esta fase). Tokens M2M (sin claim `sid`) pasan sin chequear — la denylist es un concepto de
 sesión de usuario, no de actor de servicio.
 
+### Qué pasa si Redis se cae (`SessionDenylist:FailureMode`, hallazgo H-06)
+
+Si el store no responde, **no se sabe** si la sesión fue revocada. Antes cada implementación de
+`ISessionDenylistReader` se tragaba el fallo y devolvía `false`: fail-open razonable como default,
+pero invisible y no configurable — no había forma de saber cuántas revocaciones se estaban ignorando
+durante un incidente.
+
+Hoy el reader lanza `SessionDenylistUnavailableException` y la **política** la decide
+`SessionDenylistMiddleware`:
+
+| `SessionDenylist:FailureMode` | Comportamiento | Cuándo |
+|---|---|---|
+| `FailOpen` (**default**) | Deja pasar la request | Un Redis caído no debe tumbar todo el tráfico autenticado, y la exposición está acotada por el `exp` del access token (15 min) |
+| `FailClosed` | Responde **503** `Auth.SessionDenylistUnavailable` | Entornos donde una revocación ignorada es peor que una caída. Es una decisión de riesgo, no el default |
+
+En ambos casos se emite un `LogWarning` y se incrementa **`authz.session_denylist_unavailable`**
+(Meter `TaxVision.Authorization`, tag `outcome` = `fail_open` \| `fail_closed`), así que el fail-open
+deja de ser silencioso y se puede alertar sobre él.
+
 **Tests**: `TaxVision.BuildingBlocks.Tests/Session/` — `SessionDenylistMiddlewareTests` (401 si la
-sesión está en la denylist, pasa si no lo está, ignora tokens de servicio sin `sid`) +
-`SessionDenylistReaderTests` (fail-open + `LogWarning` real cuando el `ICacheService` lanza,
-confirma denegación cuando el cache dice `true`). 1892 tests .NET pasando en el monorepo completo
-tras la fase, 0 regresiones.
+sesión está en la denylist, pasa si no lo está, ignora tokens de servicio sin `sid`, y los dos modos
+de fallo del store) + `SessionDenylistReaderTests` (señaliza el fallo con la excepción dedicada en
+vez de tragárselo, confirma denegación cuando el cache dice `true`).
 
 ## 41.11 Enforce `perm_v` + proyección de permisos (RBAC Fase 7)
 
@@ -7945,3 +7981,267 @@ cada `*ArchitectureTests.cs`:
    (Auth, Growth, CloudStorage, Connectors, PaymentApp, Signature, PaymentClient) — todos endpoints
    pre-auth/público/webhook sin tenant_id/user_id que particionar, verificados uno por uno. Cualquier
    `AddRateLimiter` nuevo fuera de esa lista rompe el build.
+
+# 47. Notes — Microservicio de notas del staff (plan de 11 fases, CERRADO)
+
+Microservicio independiente para notas del staff, asociables polimórficamente a cualquier entidad
+del ecosistema (Customer, Task, Appointment, SignatureRequest, etc.). DB propia, puerto dev
+**5440**, host interno `http://notes-api:8080`. Ver `ADR_018_Notes_Bounded_Context.md` (§`documents/architecture/`) para el porqué de la decisión y `Implementaciones/Notes/*.md` para el plan
+completo de 11 fases.
+
+## 47.1 Endpoints
+
+Staff (`NotesController`, `[AllowActorTypes(TenantEmployee, TenantAdmin, PlatformAdmin)]`):
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| POST | `/notes` | `notes.manage` | `notes.g.create` | |
+| GET | `/notes/mine` | `notes.read` | `notes.f.list` | |
+| GET | `/notes/search?q=` | `notes.read` | `notes.h.search` | |
+| GET | `/notes?targetType=&targetId=` | `notes.read` | `notes.f.list` | |
+| GET | `/notes/{id}` | `notes.read` | `notes.f.get` | 404 uniforme (existe-pero-no-visible == no-existe) |
+| PUT | `/notes/{id}/content` | `notes.manage` | `notes.g.write` | solo autor (Capa 3b, Fase 9) |
+| PUT | `/notes/{id}/visibility` | `notes.manage` | `notes.g.write` | solo autor |
+| POST | `/notes/{id}/pin` \| `/unpin` | `notes.manage` | `notes.g.write` | solo autor |
+| PUT | `/notes/{id}/color` | `notes.manage` | `notes.g.write` | solo autor |
+| POST | `/notes/{id}/archive` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| POST | `/notes/{id}/restore` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| DELETE | `/notes/{id}` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| POST | `/notes/{id}/attachments` | `notes.manage` | `notes.g.write` | solo autor |
+| DELETE | `/notes/{id}/attachments/{fileId}` | `notes.manage` | `notes.g.write` | solo autor |
+
+\* Capa 1 (`[HasPermission]`) solo puede expresar un permiso — el OR real (autor **o**
+`notes.view_all`) se evalúa en `NoteVisibilityPolicy.CanManage` dentro del handler; ver §47.4.
+
+CustomerPortal (`PortalNotesController`, `[AllowActorTypes(CustomerPortal)]`):
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| GET | `/notes/portal?targetType=&targetId=` | `notes.portal.read` | `notes.f.portal_read` | solo `ClientVisible`, nunca crea/edita |
+
+## 47.2 Permisos (`BuildingBlocks.Authorization.NotesPermissions`)
+
+`notes.read`, `notes.manage`, `notes.view_all` (ver todas — incl. `Private` de otros — pero no
+editar contenido ajeno), `notes.portal.read` (CustomerPortal).
+
+## 47.3 Rate limiting (catálogo `RateLimitPolicyCatalog.Notes.cs`)
+
+| Política | Categoría | Cuota (tenant, overlay) | Algoritmo |
+|---|---|---|---|
+| `notes.f.get` / `notes.f.list` / `notes.f.portal_read` | F | 300/60s (overlay 3000) | Token bucket |
+| `notes.g.create` / `notes.g.write` | G | 60/60s (overlay 600) | Token bucket |
+| `notes.h.search` | H | 20/60s (overlay 100) | Sliding window |
+
+Verificado end-to-end con `TaxVision.Notes.Tests.Integration.RateLimitIntegrationTests` (SQL
+Server/Redis/RabbitMQ locales reales, sin mocks) — confirma 429 con `Retry-After` +
+`X-RateLimit-{Policy,Layer,Limit,Remaining,Reset}` en `notes.f.list` (límite 300) y `notes.g.write`
+(límite 60).
+
+## 47.4 Autorización — 5 capas (RBAC + Fase 9)
+
+Igual al mecanismo de 5 capas del resto del monorepo (§41). La particularidad de Notes: el
+endurecimiento de Capa 3b (`IsOwnerOrHasManageHandler<Note>`, Fase 9) se conectó **solo** en los
+endpoints de edición de contenido (Update/Visibility/Pin/Unpin/Color/Attach/Detach — sin permiso de
+override, estrictamente el autor), flag `Authorization:ResourceOwnership:Enabled` (default `false`).
+Archive/Restore/Delete **no** usan ese mecanismo: como necesitan un override distinto
+(`notes.view_all`, no "sin override"), y `IsOwnerOrHasManageHandler<TResource>` solo admite un
+permiso de override por tipo de recurso aplicado a *todas* sus operaciones, el OR real vive en
+`NoteVisibilityPolicy.CanManage` (Application) — ver el doc-comment de `NotesController.cs` para el
+razonamiento completo.
+
+## 47.5 Adjuntos — CloudStorage Caso B (sin MinIO ni M2M en Notes)
+
+El navegador sube el archivo directo a CloudStorage con el JWT del usuario; Notes solo guarda la
+referencia (`fileId`) y reacciona a 4 eventos de integración (`NotesFileScanResultConsumer`):
+`FileAvailable`→`Available`, `FileInfected/BlockedByPolicy`→`Rejected` (con razón), `FileDeleted`→
+`Detached` (+ publica `notes.attachment_detached.v1`, igual que el detach manual). Cada handler
+valida `note.TenantId == evt.TenantId` post-fetch — el repo usado (`GetByAttachmentFileIdAsync`) no
+filtra por tenant porque el consumer no corre dentro de un scope HTTP.
+
+## 47.6 Proyección de Customer (`CustomerDirectoryEntry`, Fase 4B — obligatoria en v1)
+
+Único M2M saliente de Notes (lectura, hacia Customer) — usado para validar SOFT al crear una nota
+sobre un Customer y para mostrar/buscar por nombre sin N+1. Alimentada por 6 eventos granulares
+(Created/Updated/Activated/Deactivated/Archived/Reactivated) + reconciliación batched para
+importación masiva (que no trae `DisplayName`) vía `CustomerDirectoryReconciliationJob` (cada 6h).
+
+## 47.7 Configuración
+
+```jsonc
+// appsettings.json
+"Authorization": { "PermissionsSource": "Projection", "ResourceOwnership": { "Enabled": false } },
+"RateLimit": { "EnforceTierQuotas": true },
+"Notes": {
+  "Customer": { "BaseUrl": "http://localhost:5263" },
+  "CloudStorage": { "BaseUrl": "http://localhost:5330" }
+}
+```
+
+## 47.8 Verificación de cierre
+
+- `dotnet build TaxVision.slnx` + suite completa del monorepo: **verdes**, incluido el cierre de
+  Fase 10 (76/76 tests Notes: los 2 de integración real de rate limiting + 1 nuevo de regresión
+  del bug descrito abajo).
+- `NotesArchitectureTests` (NetArchTest): `[AllowActorTypes]`/`[RateLimit]` en toda acción pública +
+  Controllers sin dependencia directa de Infrastructure.
+- **Verificación E2E en vivo (completada)**: Auth + Tenant + Notes levantados localmente con
+  `dotnet run` contra SQL Server/Redis/RabbitMQ reales; tenant nuevo creado vía
+  `POST /auth/subdomains/reserve` (ticket firmado RS256) → `POST /tenants` → invitación aceptada →
+  login real como TenantAdmin (JWT emitido de verdad por Auth, no minteado a mano). Con ese JWT se
+  ejecutó el flujo completo contra Notes real: crear nota, `GetById`, `ListByReference`, `Mine`,
+  `Search`, `UpdateContent`, `ChangeVisibility`, `Pin`/`Unpin`, `SetColor`, `Archive`/`Restore`,
+  `Delete` (soft) — todos 200/204 con los datos esperados. El endpoint del portal
+  (`GET /notes/portal`, `[AllowActorTypes(CustomerPortal)]`) se verificó rechazando el JWT de staff
+  con 403 (gate de actor-type confirmado en vivo); no se probó el camino 200 porque no existía una
+  cuenta CustomerPortal local — gap disclosed, no inventado.
+- **Bug real encontrado y corregido durante esta verificación**: `ListByReferenceAsync`,
+  `ListForAuthorAsync`, `SearchAsync` y `ListClientVisibleAsync` en `NoteRepository` dependían del
+  `HasQueryFilter` global fail-closed de `NotesDbContext` (poblado por `ITenantContext`, alimentado
+  por `JwtTenantContextMiddleware`), pero ese servicio *scoped* no está garantizado poblado en el
+  scope de DI que usa Wolverine para despachar localmente estas queries — a diferencia de
+  `GetByIdAsync`, que ya usaba `IgnoreQueryFilters()` con el tenantId explícito (mismo patrón
+  documentado para otros servicios en sesiones previas: EF query filter + Wolverine scope
+  mismatch). Sin el fix, **todo endpoint de listado/búsqueda de Notes devolvía siempre 0 filas en
+  producción** pese a que la nota existía — los 75 tests previos no lo detectaban porque los tests
+  unitarios de handlers usan un repositorio fake en memoria, no el `NotesDbContext` real. Corregido
+  aplicando `IgnoreQueryFilters()` (mismo criterio que `GetByIdAsync`) a los 4 métodos, verificado
+  en vivo tras rebuild+restart, y cubierto con un test de integración nuevo contra infraestructura
+  real (`NoteListsIntegrationTests`) para que un regreso futuro vuelva a fallar aquí.
+
+---
+
+# 48. Bus de eventos — política de fallo, dead-letter queue y runbook de drenado (H-15, H-16)
+
+Ver `Documentacion Completa/91_Deuda_Bus_de_Eventos_H12_H20.md` para el análisis completo.
+
+## 48.1 Qué pasa con un mensaje que falla
+
+Medido contra el RabbitMQ real (Wolverine 6.14, sonda desechable, no por lectura de la doc):
+
+| Caso | Qué hace Wolverine | ¿Se pierde? |
+|---|---|---|
+| Handler lanza excepción **transitoria** | reintenta 3 veces (`1s`, `5s`, `15s`) y luego **mueve a `wolverine-dead-letter-queue`** | no, queda en la DLQ |
+| Handler lanza excepción **permanente** | **1 intento**, directo a la DLQ | no, queda en la DLQ |
+| No hay handler para ese tipo | **descarta en silencio**, sin log ni métrica | sí, y es correcto |
+
+Lo segundo suena mal y no lo es: con el fanout actual **cada una de las 17 colas recibe los ~183
+tipos de evento** y solo maneja un puñado — 177 pares (servicio, evento) tienen handler de 3111
+posibles, un **5,7%**. Recibir algo que no te toca es el modo normal de operación, no un fallo.
+
+**La DLQ no la crea el código, la crea `AutoProvision()`.** Existía desde el primer día y funciona.
+El agujero de H-16 nunca fue técnico: **nadie la estaba mirando**. Al medirlo había 6 mensajes
+muertos en las DLQ de Node que nunca había visto nadie.
+
+**Hay una sola `wolverine-dead-letter-queue` para los 17 servicios .NET.** Node tiene la suya por
+servicio (`communication-events.dlq`, `communication-transcript-worker.dlq`).
+
+## 48.1b La política de fallo, en un solo sitio (H-15)
+
+Los 17 `Program.cs` llamaban a `Policies.OnException<Exception>().RetryWithCooldown(1s, 5s, 15s)`
+copiado literalmente, y Node hacía `nack(requeue=false)` — **4 intentos contra 1**. Nadie había
+elegido esa asimetría: cada lado heredó el default de su librería.
+
+Hoy los dos lados aplican lo mismo, y la política vive en **un archivo**:
+
+- **.NET** — `BuildingBlocks/Messaging/WolverineFailurePolicies.cs`. Cada `Program.cs` llama
+  `options.ApplyStandardFailurePolicies();` y nada más.
+- **Node** — colas de espera con TTL en `rabbit-connection.ts`
+  (`communication-events.retry.1/2/3`) y la decisión de reencolar en `consumer-runtime.ts`.
+
+Lo que cambia respecto de antes es que **lo permanente ya no se reintenta**. Reintentar un bug
+determinista no lo arregla: gasta 21 segundos y tres ejecuciones más del handler para llegar al
+mismo sitio, ocupando un slot del consumidor. Se tratan como permanentes `JsonException`,
+`ArgumentException`, `FormatException` y `NotSupportedException` — todas dependen solo del payload,
+que es idéntico en cada intento.
+
+La lista es corta a propósito. **`InvalidOperationException`, `NullReferenceException` y
+`KeyNotFoundException` se quedaron fuera** aunque parezcan bugs: bajo consistencia eventual las
+tres las produce leer una proyección que todavía no llegó, y ahí el reintento es justo lo correcto.
+Un test lo fija (`FailurePolicyContractTests`) para que nadie las meta luego sin pensarlo.
+
+Node **no** replica esa distinción, y no es un olvido: el único fallo permanente que llega a su
+consumer es el payload ilegible, y ese ya se ack-skipea antes de entrar en la cadena de reintentos.
+No hay un catálogo de excepciones tipadas sobre el que discriminar.
+
+**Orden verificado contra el broker**: gana la primera regla que matchea, así que las específicas se
+registran antes de la genérica. Medido: `JsonException` da 1 intento, `InvalidOperationException`
+sigue dando 4.
+
+Dos fitness functions impiden la vuelta atrás: ningún `Program.cs` puede declarar su propio
+`RetryWithCooldown`, y todo servicio con `UseWolverine` tiene que aplicar el helper.
+
+## 48.1c El coste real de publicar un evento — deduplicar en el origen
+
+Con el fanout actual **un evento publicado son 17 escrituras a 17 bases de datos distintas**: cada
+cola lo recibe y su `UseDurableInbox()` lo persiste en su propio SQL Server *antes* de que Wolverine
+descubra si hay handler. Descartar lo que no te toca (§48.1) es barato en CPU y no es gratis en
+disco.
+
+Eso hace que **publicar por request sea un error de diseño**, no una ineficiencia. Encontrado en
+vivo: `TenantHostResolutionMiddleware` (Auth) publicaba `TenantResolutionFailedIntegrationEvent` en
+cada request cuyo Host no resolvía a un tenant. Nadie consume ese evento — cero handlers en el
+repo. Resultado medido: **30.638 eventos acumulados**, el inbox de Correspondence en 10.165 filas
+sin drenar y su agente de durabilidad deadlockeando contra SQL Server (error 1205 en
+`MoveReplayableErrorMessagesToIncomingOperation`), lo que congeló el inbox **entero** — incluidos
+los mensajes que Correspondence sí necesita procesar.
+
+En producción no es un problema de desarrollo: el apex y cualquier escáner de bots producen el
+mismo patrón, y un request con Host desconocido se amplifica ×17.
+
+**La regla:** si el disparador de un evento es *una request*, y no *una transición de estado del
+dominio*, hay que deduplicar antes de publicar.
+
+El patrón aplicado en `TenantHostResolutionMiddleware`, reutilizable:
+
+- El **audit log se escribe siempre** — es el registro forense, es una tabla local y no tiene
+  fan-out. Ahí está la cuenta exacta.
+- Al **bus solo sale el primer evento por clave y ventana**, con el `IRateCounter` de §45.4:
+  `IncrementAndGetAsync(key, ventana) == 1`. Ventana actual: 5 minutos por host.
+- Si el contador no está disponible se **omite la publicación**, no se propaga el fallo. Romper la
+  request o volver a inundar el bus son peores intercambios que perder una señal que nadie consume
+  en tiempo real, y el audit log ya quedó escrito.
+- Límite consciente: acota la **repetición** de una clave, no su **cardinalidad**. Un atacante que
+  rote el Host en cada request sigue generando un evento por request.
+
+## 48.2 Observabilidad
+
+- **Scrape:** job `rabbitmq` en `deploy/observability/prometheus.yml`, contra
+  `rabbitmq:15692/metrics/detailed?family=queue_coarse_metrics`. Hace falta el endpoint *detailed*:
+  el `/metrics` normal solo da el agregado del broker, sin desglose por cola. El puerto **no se
+  publica al host** — Prometheus entra por la red interna de Docker.
+- **Dashboard:** `deploy/observability/grafana/provisioning/dashboards/eventbus.json`.
+- **Alerta:** `deploy/observability/grafana/provisioning/alerting/eventbus-alerts.yml`. El umbral es
+  **cualquier mensaje** sostenido 5 minutos. Si se vuelve ruidosa, el arreglo es el bug que la
+  dispara, no subir el umbral.
+
+## 48.3 Runbook — hay mensajes en una DLQ
+
+**No purgar.** Purgar sin leer es perder los datos con pasos extra.
+
+1. **Ver qué hay**, sin consumir (`ack_requeue_true` los devuelve a la cola):
+
+```bash
+curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X POST "http://localhost:15672/api/queues/%2F/wolverine-dead-letter-queue/get" -H "content-type: application/json" -d '{"count":20,"ackmode":"ack_requeue_true","encoding":"auto"}'
+```
+
+2. **Identificar de dónde viene.** Como la DLQ de .NET es compartida, el servicio no está en el
+   nombre de la cola: sale de las cabeceras del envelope. Mirar `dotnet-type-name` (qué evento) y
+   el mensaje de excepción (por qué murió). Con eso se localiza el handler.
+
+3. **Corregir el handler y desplegarlo.** Re-encolar antes de arreglar solo repite el fallo y
+   vuelve a llenar la DLQ.
+
+4. **Re-encolar** con un shovel temporal de la DLQ a la cola de origen:
+
+```bash
+curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT "http://localhost:15672/api/parameters/shovel/%2F/drenar-dlq" -H "content-type: application/json" -d '{"value":{"src-protocol":"amqp091","src-uri":"amqp://","src-queue":"wolverine-dead-letter-queue","dest-protocol":"amqp091","dest-uri":"amqp://","dest-queue":"auth-tenant-events","src-delete-after":"queue-length"}}'
+```
+
+   `src-delete-after: queue-length` para el shovel al vaciar lo que había al empezar, sin quedarse
+   drenando lo que llegue después. Borrar el parámetro al terminar.
+
+5. **Verificar** que la DLQ queda a 0 y que la alerta se apaga sola.
+
+> **Los mensajes muertos caducan.** `DurabilitySettings.DeadLetterQueueExpiration` son 10 días por
+> defecto en Wolverine. Pasado ese plazo no hay nada que drenar — por eso la alerta dispara a los 5
+> minutos y no a los 5 días.

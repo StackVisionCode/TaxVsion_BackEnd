@@ -1,5 +1,5 @@
 import type { ConsumeMessage } from 'amqplib';
-import { getRabbitContext } from './rabbit-connection.js';
+import { ATTEMPT_HEADER, RETRY_COOLDOWNS_MS, getRabbitContext, retryQueueName } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
 import type { ProcessedEventStore } from '../../application/ports/processed-event-store.js';
@@ -11,7 +11,19 @@ import type { ConsumerHandler, IncomingEnvelope } from '../../application/ports/
  * runtime se encarga de:
  *   - Ack durable (siempre ack, no requeue en errores no-retriables).
  *   - Idempotencia via ProcessedEventStore (inbox) — cierra CRIT-10 legacy.
+ *   - Reintentos con backoff antes de la DLQ (ver mas abajo).
  *   - Logs estructurados con eventId, eventType, source.
+ *
+ * POLITICA DE FALLO (H-15) — hasta 2026-08-07 un handler que fallaba iba a la DLQ al primer
+ * intento, mientras los 17 servicios .NET reintentaban 4 veces el mismo tipo de fallo. Nadie
+ * habia elegido esa asimetria: cada lado heredo el default de su libreria. Ahora los dos hacen
+ * 1 intento + 3 cooldowns (1s/5s/15s) via las colas de espera de `rabbit-connection.ts`.
+ *
+ * Lo que NO se replico de .NET es la distincion transitorio/permanente, y por una razon
+ * concreta: el unico fallo permanente que llega hasta aqui es el payload ilegible, y ese ya se
+ * ack-skipea antes (ver el catch del JSON.parse) sin gastar reintentos. Node no tiene un
+ * catalogo de excepciones tipadas cruzando la frontera del consumer sobre el que discriminar,
+ * asi que inventarlo seria adivinar.
  *
  * Consumers se registran con `register(eventType, handler)` y arrancan con
  * `start()`. No reinventamos rueda tipo rascal: consumer set fijo por servicio.
@@ -48,6 +60,10 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerCreatedIntegrationEvent': 'customer.created.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerUpdatedIntegrationEvent': 'customer.updated.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerDeactivatedIntegrationEvent': 'customer.deactivated.v1',
+  // 2026-08-06 (auditoria de proyecciones de customer): un cliente archivado tambien debe salir
+  // del directorio; sin esta entrada + su handler en customer-consumers.ts, un customer archivado
+  // seguia con IsActive=true y aparecia en el autocomplete de invitaciones.
+  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerArchivedIntegrationEvent': 'customer.archived.v1',
   // Fase B2 (chat tipado) — alimentan CustomerPreparerAssignment (ver customer-consumers.ts).
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerPreparerAssignedIntegrationEvent':
     'customer.preparer_assigned.v1',
@@ -245,13 +261,9 @@ export class ConsumerRuntime {
       await handler(envelope);
       rabbit.channel.ack(msg);
     } catch (err) {
-      logger.error(
-        { err: (err as Error).message, eventId: envelope.eventId, eventType: envelope.eventType },
-        'consumer handler failed — sending to DLQ',
-      );
-      // Rollback the inbox mark so a retry from the DLQ (manual reprocess) is
-      // not treated as a duplicate. If the DB write fails, log and continue —
-      // the message is going to the DLQ either way.
+      // Rollback the inbox mark: sin esto el reintento se veria como duplicado y se
+      // ack-skipearia, dejando la cadena de reintentos sin efecto. Si el write a la BD falla,
+      // log y seguimos — el mensaje se va a reintentar o a la DLQ igual.
       await this.processedEvents
         .unmark({
           eventId: envelope.eventId,
@@ -260,6 +272,34 @@ export class ConsumerRuntime {
         .catch((unmarkErr: unknown) =>
           logger.warn({ err: (unmarkErr as Error).message }, 'inbox unmark after handler failure failed'),
         );
+
+      const nextAttempt = this.readAttempt(msg) + 1;
+      const context = {
+        err: (err as Error).message,
+        eventId: envelope.eventId,
+        eventType: envelope.eventType,
+        attempt: nextAttempt,
+      };
+
+      if (nextAttempt <= RETRY_COOLDOWNS_MS.length) {
+        const queue = retryQueueName(nextAttempt);
+        rabbit.channel.sendToQueue(queue, msg.content, {
+          ...msg.properties,
+          persistent: true,
+          headers: { ...msg.properties.headers, [ATTEMPT_HEADER]: nextAttempt },
+        });
+        // Ack DESPUES de encolar la copia. Si el proceso muere entre las dos, el original se
+        // redelivery-ea y hay dos copias: la primera que llegue marca el inbox y la segunda se
+        // descarta como duplicado. Al reves —ack primero— el mensaje se perderia.
+        rabbit.channel.ack(msg);
+        logger.warn(
+          { ...context, retryInMs: RETRY_COOLDOWNS_MS[nextAttempt - 1] },
+          'consumer handler failed — reintentando tras cooldown',
+        );
+        return;
+      }
+
+      logger.error(context, 'consumer handler failed tras agotar reintentos — a la DLQ');
       // nack with requeue=false → dead-letter routing (see rabbit-connection.ts:
       // main queue has deadLetterExchange:'' + deadLetterRoutingKey:dlq).
       rabbit.channel.nack(msg, false, false);
@@ -303,5 +343,12 @@ export class ConsumerRuntime {
     // "signature.request.reminder_due.v1" → "signature"
     const idx = eventType.indexOf('.');
     return idx > 0 ? eventType.slice(0, idx) : eventType;
+  }
+
+  /** Intentos ya consumidos por este mensaje. Ausente (0) la primera vez. */
+  private readAttempt(msg: ConsumeMessage): number {
+    const raw = msg.properties.headers?.[ATTEMPT_HEADER];
+    const value = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10);
+    return Number.isFinite(value) && value > 0 ? value : 0;
   }
 }

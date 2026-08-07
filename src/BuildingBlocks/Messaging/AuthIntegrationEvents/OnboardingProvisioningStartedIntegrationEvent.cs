@@ -8,7 +8,7 @@ namespace BuildingBlocks.Messaging.AuthIntegrationEvents;
 /// <para>
 /// <see cref="IntegrationEvent.TenantId"/> se estampa con <c>BuildingBlocks.Tenancy.PlatformTenant.Id</c>
 /// (NO <see cref="Guid.Empty"/>): el tenant real todavía no existe, pero
-/// <c>BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware</c> (registrado globalmente para
+/// <c>BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware</c> (registrado globalmente para
 /// todo <see cref="IIntegrationEvent"/> en Auth) rechaza con <see cref="InvalidOperationException"/>
 /// cualquier evento con TenantId=Guid.Empty — el mismo sentinel que ya usan Documents Fase 10
 /// (recibo pre-tenant) y el cliente M2M de Notification Fase 12 para "identidad de plataforma,

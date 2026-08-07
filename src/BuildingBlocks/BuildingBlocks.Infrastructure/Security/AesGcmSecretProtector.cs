@@ -7,10 +7,15 @@ namespace BuildingBlocks.Infrastructure.Security;
 
 /// <summary>
 /// Implementación compartida de <see cref="ISecretProtector"/> con AES-256-GCM.
-/// La clave se toma de <c>Encryption:MasterKey</c> (base64, exactamente 32 bytes).
 /// Formato del ciphertext: <c>base64(nonce[12] || ciphertext || tag[16])</c>.
-/// Reemplaza las copias por-servicio (Auth <c>ISecretProtector</c>, Customer
-/// <c>ISensitiveDataProtector</c>) para nuevos consumidores.
+///
+/// <para>
+/// La clave por defecto es <c>Encryption:MasterKey</c> (base64, exactamente 32 bytes), pero el
+/// constructor que recibe los bytes permite que un servicio traiga la suya (BB-10). Eso es lo que
+/// hace posible consolidar las copias por-servicio sin re-cifrar nada: Auth sigue usando
+/// <c>Mfa:EncryptionKey</c> para sus secretos TOTP, así que los datos ya guardados se siguen
+/// descifrando — cambiar de clave los volvería ilegibles.
+/// </para>
 /// </summary>
 public sealed class AesGcmSecretProtector : ISecretProtector
 {
@@ -20,14 +25,29 @@ public sealed class AesGcmSecretProtector : ISecretProtector
     private readonly byte[] _key;
 
     public AesGcmSecretProtector(IConfiguration configuration)
-    {
-        var configured = configuration["Encryption:MasterKey"];
-        if (string.IsNullOrWhiteSpace(configured))
-            throw new InvalidOperationException("Encryption:MasterKey must be configured (base64, 32 bytes).");
+        : this(ResolveKey(configuration, "Encryption:MasterKey")) { }
 
-        _key = Convert.FromBase64String(configured);
-        if (_key.Length != KeySize)
-            throw new InvalidOperationException("Encryption:MasterKey must be exactly 32 bytes (base64).");
+    public AesGcmSecretProtector(byte[] key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        if (key.Length != KeySize)
+            throw new InvalidOperationException($"The master key must be exactly {KeySize} bytes.");
+
+        _key = key;
+    }
+
+    /// <summary>Lee y valida una master key base64 de 32 bytes desde la ruta de configuración dada.</summary>
+    public static byte[] ResolveKey(IConfiguration configuration, string configurationKey)
+    {
+        var configured = configuration[configurationKey];
+        if (string.IsNullOrWhiteSpace(configured))
+            throw new InvalidOperationException($"{configurationKey} must be configured (base64, 32 bytes).");
+
+        var key = Convert.FromBase64String(configured);
+        if (key.Length != KeySize)
+            throw new InvalidOperationException($"{configurationKey} must be exactly 32 bytes (base64).");
+
+        return key;
     }
 
     public string Protect(string plaintext)
@@ -49,29 +69,52 @@ public sealed class AesGcmSecretProtector : ISecretProtector
         return Convert.ToBase64String(output);
     }
 
-    public string? Unprotect(string ciphertext)
+    public bool TryUnprotect(string? protectedValue, out string plaintext, out SecretUnprotectFailure failure)
     {
-        if (string.IsNullOrWhiteSpace(ciphertext))
-            return null;
+        plaintext = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(protectedValue))
+        {
+            failure = SecretUnprotectFailure.NoValueStored;
+            return false;
+        }
+
+        byte[] input;
+        try
+        {
+            input = Convert.FromBase64String(protectedValue);
+        }
+        catch (FormatException)
+        {
+            failure = SecretUnprotectFailure.MalformedInput;
+            return false;
+        }
+
+        if (input.Length < NonceSize + TagSize)
+        {
+            failure = SecretUnprotectFailure.MalformedInput;
+            return false;
+        }
+
+        var nonce = input.AsSpan(0, NonceSize);
+        var tag = input.AsSpan(input.Length - TagSize, TagSize);
+        var cipherBytes = input.AsSpan(NonceSize, input.Length - NonceSize - TagSize);
+        var plainBytes = new byte[cipherBytes.Length];
 
         try
         {
-            var input = Convert.FromBase64String(ciphertext);
-            if (input.Length < NonceSize + TagSize)
-                return null;
-
-            var nonce = input.AsSpan(0, NonceSize);
-            var tag = input.AsSpan(input.Length - TagSize, TagSize);
-            var cipherBytes = input.AsSpan(NonceSize, input.Length - NonceSize - TagSize);
-            var plainBytes = new byte[cipherBytes.Length];
-
             using var aes = new AesGcm(_key, TagSize);
             aes.Decrypt(nonce, cipherBytes, tag, plainBytes);
-            return Encoding.UTF8.GetString(plainBytes);
         }
-        catch (Exception ex) when (ex is FormatException or CryptographicException)
+        catch (CryptographicException)
         {
-            return null;
+            // El tag no valida: manipulación o clave equivocada, indistinguibles en AES-GCM.
+            failure = SecretUnprotectFailure.AuthenticationFailed;
+            return false;
         }
+
+        plaintext = Encoding.UTF8.GetString(plainBytes);
+        failure = SecretUnprotectFailure.None;
+        return true;
     }
 }

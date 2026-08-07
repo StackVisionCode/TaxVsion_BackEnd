@@ -80,6 +80,13 @@
     <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Domain/TaxVision.Correspondence.Domain.csproj" />
     <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Infrastructure/TaxVision.Correspondence.Infrastructure.csproj" />
   </Folder>
+  <!-- NotesService -->
+  <Folder Name="/src/Services/Notes/">
+    <Project Path="src/Services/Notes/TaxVision.Notes.Api/TaxVision.Notes.Api.csproj" />
+    <Project Path="src/Services/Notes/TaxVision.Notes.Application/TaxVision.Notes.Application.csproj" />
+    <Project Path="src/Services/Notes/TaxVision.Notes.Domain/TaxVision.Notes.Domain.csproj" />
+    <Project Path="src/Services/Notes/TaxVision.Notes.Infrastructure/TaxVision.Notes.Infrastructure.csproj" />
+  </Folder>
   <!-- PostmasterService -->
   <Folder Name="/src/Services/Postmaster/">
     <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Api/TaxVision.Postmaster.Api.csproj" />
@@ -134,6 +141,7 @@
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Gateway.Tests/TaxVision.Gateway.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Growth.Tests/TaxVision.Growth.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Notes.Tests/TaxVision.Notes.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentApp.Tests/TaxVision.PaymentApp.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentClient.Tests/TaxVision.PaymentClient.Tests.csproj" />

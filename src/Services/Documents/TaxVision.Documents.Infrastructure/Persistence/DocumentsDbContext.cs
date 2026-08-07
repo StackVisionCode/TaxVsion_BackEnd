@@ -10,7 +10,6 @@ using TaxVision.Documents.Domain.Branding;
 using TaxVision.Documents.Domain.Generations;
 using TaxVision.Documents.Domain.Permissions;
 using TaxVision.Documents.Domain.RateLimiting;
-using Wolverine;
 
 namespace TaxVision.Documents.Infrastructure.Persistence;
 
@@ -24,14 +23,11 @@ namespace TaxVision.Documents.Infrastructure.Persistence;
 /// IgnoreQueryFilters/Wolverine). GetByFileIdAsync es cross-tenant deliberado (correlación de un
 /// evento de CloudStorage) y valida el tenant contra la generación encontrada.
 /// </summary>
-public sealed class DocumentsDbContext(
-    DbContextOptions<DocumentsDbContext> options,
-    ITenantContext tenantContext,
-    IMessageBus? messageBus = null
-) : DbContext(options), IUnitOfWork
+public sealed class DocumentsDbContext(DbContextOptions<DocumentsDbContext> options, ITenantContext tenantContext)
+    : DbContext(options),
+        IUnitOfWork
 {
     private readonly ITenantContext _tenantContext = tenantContext;
-    private readonly IMessageBus? _messageBus = messageBus;
 
     public DbSet<DocumentGeneration> DocumentGenerations => Set<DocumentGeneration>();
     public DbSet<DocumentBranding> DocumentBrandings => Set<DocumentBranding>();
@@ -54,12 +50,7 @@ public sealed class DocumentsDbContext(
     {
         try
         {
-            // Persistir estado ANTES de despachar domain events; recién después publicarlos + limpiarlos.
-            // Wolverine corre este SaveChanges dentro de su transacción ambiental, así que los eventos
-            // publicados acá se encolan en el outbox durable y se entregan de forma atómica al commitear.
-            var affected = await base.SaveChangesAsync(cancellationToken);
-            await DispatchDomainEventsAsync(cancellationToken);
-            return affected;
+            return await base.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException ex)
         {
@@ -76,26 +67,6 @@ public sealed class DocumentsDbContext(
                 "A record with the same unique values already exists.",
                 ex
             );
-        }
-    }
-
-    private async Task DispatchDomainEventsAsync(CancellationToken ct)
-    {
-        if (_messageBus is null)
-            return;
-
-        var roots = ChangeTracker
-            .Entries<AggregateRoot>()
-            .Where(e => e.Entity.DomainEvents.Count > 0)
-            .Select(e => e.Entity)
-            .ToList();
-
-        foreach (var root in roots)
-        {
-            var events = root.DomainEvents.ToArray();
-            root.ClearDomainEvents();
-            foreach (var domainEvent in events)
-                await _messageBus.PublishAsync(domainEvent);
         }
     }
 

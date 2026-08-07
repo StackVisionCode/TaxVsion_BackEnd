@@ -35,6 +35,7 @@ import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
 import { ServiceTokenClient } from './auth/service-token-client.js';
 import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage-metadata-client.js';
+import { HttpCustomerReconciliationClient } from './customer/http-customer-reconciliation-client.js';
 import { CachedPlanCodeReader } from './rate-limit/cached-plan-code-reader.js';
 import { HttpPlanRateLimitReader } from './rate-limit/http-plan-rate-limit-reader.js';
 import { TierAwareQuotaResolver } from './rate-limit/tier-aware-quota-resolver.js';
@@ -112,6 +113,7 @@ export interface AppContainer {
   readonly recordingSessions: RecordingSessionRepository;
   readonly recordingConsents: RecordingConsentRepository;
   readonly cloudStorageMetadata: CloudStorageMetadataClient;
+  readonly customerReconciliation: HttpCustomerReconciliationClient;
   /**
    * Wired late (post-init) por main.ts inmediatamente despues de construir el
    * Socket.IO server, porque `SocketRealtimeEmitter` necesita el `io` que a
@@ -166,5 +168,6 @@ export function buildContainer(): AppContainer {
     recordingSessions: new PrismaRecordingSessionRepository(prisma),
     recordingConsents: new PrismaRecordingConsentRepository(prisma),
     cloudStorageMetadata: new HttpCloudStorageMetadataClient(serviceTokens),
+    customerReconciliation: new HttpCustomerReconciliationClient(serviceTokens),
   };
 }

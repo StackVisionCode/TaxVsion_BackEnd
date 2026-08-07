@@ -10,12 +10,3 @@ public interface ITotpService
 
     bool ValidateCode(string base32Secret, string code, DateTime utcNow);
 }
-
-/// <summary>Cifrado simétrico (AES-GCM) para secretos TOTP en reposo.</summary>
-public interface ISecretProtector
-{
-    string Protect(string plaintext);
-
-    /// <summary>Devuelve null si el ciphertext es inválido o la clave no corresponde.</summary>
-    string? Unprotect(string ciphertext);
-}

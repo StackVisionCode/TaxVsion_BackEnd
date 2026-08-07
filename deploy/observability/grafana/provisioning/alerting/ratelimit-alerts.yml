@@ -20,7 +20,7 @@ groups:
             relativeTimeRange: { from: 300, to: 0 }
             datasourceUid: prometheus
             model:
-              expr: "sum(rate(ratelimit_blocked_total[5m])) by (tenant_id) / sum(rate(ratelimit_evaluated_total[5m])) by (tenant_id))"
+              expr: "sum(rate(ratelimit_blocked_total[5m])) by (tenant_id) / sum(rate(ratelimit_evaluated_total[5m])) by (tenant_id)"
               intervalMs: 60000
               maxDataPoints: 43200
               refId: A

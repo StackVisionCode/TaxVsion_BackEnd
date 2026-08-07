@@ -39,6 +39,35 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
     });
   }
 
+  async upsertIdentityPreservingPermissions(identity: {
+    userId: string;
+    tenantId: string;
+    actorType: string;
+    isActive: boolean;
+    updatedAtUtc: Date;
+  }): Promise<void> {
+    await this.prisma.userPermissionsProjection.upsert({
+      where: { UserId: identity.userId },
+      // Fila nueva: no hay nada que preservar y el caller no trae permisos, asi que arranca
+      // vacia. La va a llenar el `UserRolesChanged` correspondiente (o el backfill de Auth).
+      create: {
+        UserId: identity.userId,
+        TenantId: identity.tenantId,
+        Permissions: '[]',
+        PermVersion: 1,
+        RoleIds: '[]',
+        ActorType: identity.actorType,
+        IsActive: identity.isActive,
+      },
+      // Deliberadamente sin Permissions/PermVersion/RoleIds: es todo el punto de este metodo.
+      update: {
+        TenantId: identity.tenantId,
+        ActorType: identity.actorType,
+        IsActive: identity.isActive,
+      },
+    });
+  }
+
   async findByUserId(userId: string): Promise<UserPermissionsProjectionSnapshot | null> {
     const row = await this.prisma.userPermissionsProjection.findUnique({ where: { UserId: userId } });
     if (!row) return null;

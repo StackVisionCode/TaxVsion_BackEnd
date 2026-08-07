@@ -55,7 +55,7 @@ public static class TenantCreatedConsumer
                 await EnsurePrimaryDomainAsync(evt, domains, reservations, domainOptions.Value, logger, ct);
 
                 // PayFlow (Fase 16) — un tenant creado vía onboarding pago-primero ya tiene su
-                // TenantAdmin creado directo por la Saga (auth/internal/tenants/{id}/owners, Fase 16),
+                // TenantAdmin creado directo por la Saga (internal/tenants/{id}/owners, Fase 16),
                 // no por invitación: crear una Invitation acá sería redundante (y el AdminEmail/
                 // AdminInvitationTokenHash de ese evento son placeholders vacíos, ver
                 // CreateTenantFromOnboardingHandler en Tenant).
