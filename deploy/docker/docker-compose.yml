@@ -462,6 +462,13 @@ services:
       # reutilizará; solo para que HttpPlanRateLimitReader lea el catálogo de Subscription.
       ServiceAuth__Clients__20__ClientId: ${NOTES_SERVICE_CLIENT_ID:-notes-worker}
       ServiceAuth__Clients__20__Secret: ${NOTES_SERVICE_CLIENT_SECRET:-}
+      # Billing quedó fuera de la tanda 15-19 porque es el único servicio cuya config M2M es un
+      # diccionario multi-cliente (Billing:ServiceClients:Clients:<Nombre>) en vez de un
+      # ServiceAuthClient único, así que el barrido por nombre de clave no lo tocó. Sin este
+      # cliente, dos cosas fallaban en silencio: el catálogo de plan-rate-limits (cuotas sin
+      # escalar por tier) y la recuperación pull de permisos (Billing fail-closed).
+      ServiceAuth__Clients__21__ClientId: ${BILLING_PLATFORM_CLIENT_ID:-billing-worker}
+      ServiceAuth__Clients__21__Secret: ${BILLING_PLATFORM_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1318,6 +1325,12 @@ services:
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # Tokens M2M: un solo proveedor, credenciales por cliente nombrado (punto 10 del review).
       Billing__ServiceClients__AuthBaseUrl: http://auth-api:8080
+      # Platform = audiencia amplia TaxVision.Services. Lo consumen el snapshot de permisos de Auth
+      # (recuperación pull) y el catálogo de plan-rate-limits de Subscription; los dos endpoints solo
+      # exigen ServiceOnly + ActorType.Service. Documents/Payments NO sirven ahí: se emiten con
+      # audiencia acotada al destino y el receptor los rechaza con 401.
+      Billing__ServiceClients__Clients__Platform__ClientId: ${BILLING_PLATFORM_CLIENT_ID:-billing-worker}
+      Billing__ServiceClients__Clients__Platform__ClientSecret: ${BILLING_PLATFORM_CLIENT_SECRET:-}
       Billing__ServiceClients__Clients__Documents__ClientId: ${BILLING_DOCUMENTS_CLIENT_ID:-billing-documents}
       Billing__ServiceClients__Clients__Documents__ClientSecret: ${BILLING_DOCUMENTS_CLIENT_SECRET:-}
       Billing__ServiceClients__Clients__Payments__ClientId: ${BILLING_PAYMENTS_CLIENT_ID:-billing-payments}
@@ -1325,6 +1338,9 @@ services:
       # Bases de los servicios destino (prod docker; en dev Documents corre en el host → override por .env).
       Billing__Documents__BaseUrl: ${BILLING_DOCUMENTS_BASE_URL:-http://documents-api:8080}
       Billing__PaymentClient__BaseUrl: ${BILLING_PAYMENTCLIENT_BASE_URL:-http://payment-client-api:8080}
+      # Cuotas por tier: HttpPlanRateLimitReader va contra este host. Sin esto caía al default
+      # localhost:5360 del binding, que dentro del contenedor no resuelve a nada.
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

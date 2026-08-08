@@ -11,7 +11,8 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
     // el checkout no detectaría reservas ya aplicadas y el FINALIZE vería "0 code(s)" (no commitea ni
     // arma las líneas de ajuste de la factura).
     public Task<TenantOnboarding?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-        db.TenantOnboardings.Include(onboarding => onboarding.CodeReservations)
+        db
+            .TenantOnboardings.Include(onboarding => onboarding.CodeReservations)
             .FirstOrDefaultAsync(onboarding => onboarding.Id == id, ct);
 
     public Task<TenantOnboarding?> GetByRegistrationTokenHashAsync(

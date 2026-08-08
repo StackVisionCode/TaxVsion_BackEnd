@@ -38,7 +38,10 @@ public sealed class OnboardingPlanPricingClient(
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"subscriptions/internal/plans/{planId}/pricing");
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"subscriptions/internal/plans/{planId}/pricing"
+            );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var breaker = resilience.GetOrCreate(nameof(OnboardingPlanPricingClient));
@@ -51,7 +54,10 @@ public sealed class OnboardingPlanPricingClient(
                     planId
                 );
                 return Result.Failure<OnboardingPlanPrice>(
-                    new Error("Onboarding.Pricing.UnexpectedStatus", $"Subscription returned {(int)response.StatusCode}.")
+                    new Error(
+                        "Onboarding.Pricing.UnexpectedStatus",
+                        $"Subscription returned {(int)response.StatusCode}."
+                    )
                 );
             }
 

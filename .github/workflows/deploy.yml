@@ -216,6 +216,11 @@ jobs:
           BILLING_DOCUMENTS_CLIENT_SECRET=${{ secrets.BILLING_DOCUMENTS_CLIENT_SECRET }}
           BILLING_PAYMENTS_CLIENT_ID=${{ secrets.BILLING_PAYMENTS_CLIENT_ID }}
           BILLING_PAYMENTS_CLIENT_SECRET=${{ secrets.BILLING_PAYMENTS_CLIENT_SECRET }}
+          # billing-worker: audiencia amplia TaxVision.Services. Los dos de arriba llevan audiencia
+          # acotada al destino, asi que no sirven para el snapshot de permisos de Auth ni para el
+          # catalogo de plan-rate-limits de Subscription; sin este, ambos fallan en silencio.
+          BILLING_PLATFORM_CLIENT_ID=${{ secrets.BILLING_PLATFORM_CLIENT_ID }}
+          BILLING_PLATFORM_CLIENT_SECRET=${{ secrets.BILLING_PLATFORM_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}

@@ -87,7 +87,14 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         );
         Assert.Equal(onboarding.Id, finalize.OnboardingId);
         Assert.Equal(paymentId, finalize.PaymentId);
-        Assert.Equal(4900, finalize.PaidAmountCents);
+        // Este onboarding no tiene códigos de referido/giftcard, así que se cumple el invariante
+        // que declara OnboardingSuccessCompleter: bruto = neto = lo cobrado, descuento 0 y
+        // liquidación "Paid". Antes esto era un único PaidAmountCents; el desglose lo introdujo
+        // el soporte de códigos.
+        Assert.Equal(4900, finalize.GrossAmountCents);
+        Assert.Equal(0, finalize.DiscountAmountCents);
+        Assert.Equal(4900, finalize.NetAmountCents);
+        Assert.Equal("Paid", finalize.SettlementType);
     }
 
     [Fact]
