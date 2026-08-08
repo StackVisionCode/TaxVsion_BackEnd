@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
@@ -20,10 +21,15 @@ public static class OnboardingInvoiceBackfillConsumer
         IInvoiceRepository invoices,
         IUnitOfWork unitOfWork,
         TimeProvider clock,
+        ICorrelationContext correlation,
         ILogger<Invoice> logger,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
+
         var invoice = await invoices.GetByOnboardingIdAsync(evt.OnboardingId, ct);
         if (invoice is null)
             return; // Onboarding sin factura (aún no asentada o flujo sin código); nada que re-hospedar.

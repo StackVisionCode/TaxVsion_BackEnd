@@ -1,4 +1,5 @@
 using System.Globalization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
@@ -30,10 +31,15 @@ public static class OnboardingInvoiceRequestedConsumer
         IMessageBus bus,
         IOptions<PlatformIssuerOptions> platformIssuer,
         TimeProvider clock,
+        ICorrelationContext correlation,
         ILogger<Invoice> logger,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+        );
+
         // Idempotencia: una sola factura por onboarding (reproceso del bus = no-op).
         var existing = await invoices.GetByOnboardingIdAsync(evt.OnboardingId, ct);
         if (existing is not null)
