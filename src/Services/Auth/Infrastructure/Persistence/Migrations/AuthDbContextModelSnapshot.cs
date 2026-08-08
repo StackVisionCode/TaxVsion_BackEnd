@@ -599,6 +599,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
                     b.Property<string>("CurrentStep")
                         .IsRequired()
                         .HasMaxLength(24)
@@ -629,10 +633,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<bool>("FullyCovered")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("GrossAmountCents")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<long?>("NetAmountCents")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime?>("NextRetryAtUtc")
                         .HasColumnType("datetime2");
@@ -666,6 +679,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<Guid?>("ReceiptFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReferralAttributionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("RegistrationCompletedAtUtc")
@@ -708,6 +724,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("TermsVersionId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("TotalDiscountCents")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("UserAgent")
                         .HasMaxLength(512)
@@ -3449,6 +3468,58 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", b =>
+                {
+                    b.OwnsMany("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.OnboardingCodeReservation", "CodeReservations", b1 =>
+                        {
+                            b1.Property<Guid>("Id")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("BenefitType")
+                                .IsRequired()
+                                .HasMaxLength(16)
+                                .HasColumnType("nvarchar(16)");
+
+                            b1.Property<string>("Code")
+                                .HasMaxLength(64)
+                                .HasColumnType("nvarchar(64)");
+
+                            b1.Property<Guid>("CodeReservationId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTime>("CreatedAtUtc")
+                                .HasColumnType("datetime2");
+
+                            b1.Property<long>("DiscountCents")
+                                .HasColumnType("bigint");
+
+                            b1.Property<Guid>("OnboardingId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("Order")
+                                .HasColumnType("int");
+
+                            b1.Property<string>("SnapshotHash")
+                                .IsRequired()
+                                .HasMaxLength(128)
+                                .HasColumnType("nvarchar(128)");
+
+                            b1.HasKey("Id");
+
+                            b1.HasIndex("CodeReservationId");
+
+                            b1.HasIndex("OnboardingId");
+
+                            b1.ToTable("OnboardingCodeReservations", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("OnboardingId");
+                        });
+
+                    b.Navigation("CodeReservations");
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.RefreshTokens.RefreshToken", b =>

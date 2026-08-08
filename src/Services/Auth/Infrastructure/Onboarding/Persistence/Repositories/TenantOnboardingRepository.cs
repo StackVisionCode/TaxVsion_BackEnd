@@ -7,8 +7,12 @@ namespace TaxVision.Auth.Infrastructure.Onboarding.Persistence.Repositories;
 
 public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboardingRepository
 {
+    // Include(CodeReservations): ahora es entidad normal (no owned) → EF no la auto-incluye. Sin esto,
+    // el checkout no detectaría reservas ya aplicadas y el FINALIZE vería "0 code(s)" (no commitea ni
+    // arma las líneas de ajuste de la factura).
     public Task<TenantOnboarding?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-        db.TenantOnboardings.FirstOrDefaultAsync(onboarding => onboarding.Id == id, ct);
+        db.TenantOnboardings.Include(onboarding => onboarding.CodeReservations)
+            .FirstOrDefaultAsync(onboarding => onboarding.Id == id, ct);
 
     public Task<TenantOnboarding?> GetByRegistrationTokenHashAsync(
         string registrationTokenHash,

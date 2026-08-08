@@ -1,44 +1,47 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
+using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
 
 namespace TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
 
 /// <summary>
-/// PayFlow (Fase 16) — deliberadamente sin precio/moneda en el request: hasta esta fase, el
-/// caller (en última instancia el frontend anónimo) los enviaba sin validación server-side contra
-/// el catálogo real de planes (gap documentado y aceptado en Fase 9, cerrado acá). PaymentApp
-/// resuelve el precio real vía M2M a Subscription antes de crear el Stripe Checkout Session — ver
-/// <c>CreateOnboardingCheckoutHandler</c>.
+/// PayFlow (Fase 16) + Gift/Referral — inicia el checkout. Los códigos (referido/promo/gift) son
+/// OPCIONALES; si vienen, se cotizan+reservan apilados en Growth ANTES de crear el pago. Bifurca:
+/// net &gt; 0 → PaymentApp cobra el NETO; net = 0 → SIN pago (cubierto 100%), se dispara el camino de éxito.
 /// </summary>
 public sealed record StartOnboardingCheckoutCommand(
     Guid OnboardingId,
     string PayerEmail,
     string SuccessUrl,
-    string CancelUrl
+    string CancelUrl,
+    string? ReferralCode = null,
+    string? PromoCode = null,
+    string? GiftCode = null
 );
 
-public sealed record StartOnboardingCheckoutResponse(Guid PaymentId, string CheckoutUrl, DateTime ExpiresAtUtc);
+/// <summary><see cref="FullyCovered"/> = un código cubrió el 100%: no hay pago ni CheckoutUrl; el
+/// comprador recibe directamente el email con el link de registro.</summary>
+public sealed record StartOnboardingCheckoutResponse(
+    Guid PaymentId,
+    string CheckoutUrl,
+    DateTime ExpiresAtUtc,
+    bool FullyCovered = false
+);
 
-/// <summary>
-/// PayFlow (Fase 9) — llama al checkout M2M de PaymentApp (Fase 8) y avanza el onboarding a
-/// <c>PaymentProcessing</c>. La <see cref="TenantOnboarding.MarkPaymentCompleted"/> posterior
-/// (en <c>OnboardingPaymentSucceededConsumer</c>) exige que el <c>paymentReference</c> coincida
-/// exactamente con el que se guardó acá — por eso se usa el <c>PaymentId</c> (Guid del
-/// <c>SaaSPayment</c> en PaymentApp) como referencia estable en ambos lados, en vez de cualquier
-/// identificador específico de Stripe (Checkout Session id / PaymentIntent id): ambos servicios
-/// ya conocen ese mismo Guid de forma determinista (PaymentApp lo devuelve acá; PaymentApp
-/// también lo publica como <c>SaaSPaymentId</c> en el evento de éxito), sin inventar plumbing
-/// nuevo para transportar una referencia de Stripe que el checkout inicial ni siquiera conoce
-/// todavía.
-/// </summary>
 public static class StartOnboardingCheckoutHandler
 {
     public static async Task<Result<StartOnboardingCheckoutResponse>> Handle(
         StartOnboardingCheckoutCommand command,
         ITenantOnboardingRepository onboardings,
+        OnboardingCodeReserver reserver,
+        OnboardingSuccessCompleter successCompleter,
+        IPlanCatalogClient planCatalog,
         IPaymentAppOnboardingClient paymentApp,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -48,7 +51,35 @@ public static class StartOnboardingCheckoutHandler
                 new Error("Onboarding.NotFound", "Onboarding not found.")
             );
 
+        // 1) Reserva secuencial apilada de códigos (idempotente: si ya se aplicó, se salta).
+        var codes = BuildCodeInputs(command);
+        if (codes.Count > 0 && onboarding.CodeReservations.Count == 0)
+        {
+            var reserveResult = await reserver.ReserveAsync(onboarding, codes, ct);
+            if (reserveResult.IsFailure)
+                return Result.Failure<StartOnboardingCheckoutResponse>(reserveResult.Error);
+
+            var outcome = reserveResult.Value;
+            var applied = onboarding.ApplyOnboardingPricing(
+                outcome.GrossAmountCents,
+                outcome.TotalDiscountCents,
+                outcome.NetAmountCents,
+                outcome.Currency,
+                referralAttributionId: null, // recompensa al referidor = follow-up (atribución pre-tenant)
+                outcome.Reservations,
+                DateTime.UtcNow
+            );
+            if (applied.IsFailure)
+                return Result.Failure<StartOnboardingCheckoutResponse>(applied.Error);
+        }
+
+        // 2) Carril $0: cubierto 100% por código → SIN PaymentApp/Stripe.
+        if (onboarding.FullyCovered)
+            return await CompleteFullyCoveredAsync(onboarding, successCompleter, planCatalog, unitOfWork, correlation, ct);
+
+        // 3) Carril con cobro: PaymentApp cobra el NETO (o el bruto si no hubo códigos).
         var idempotencyKey = $"onboarding-checkout-{onboarding.Id:N}";
+        var primaryReservation = onboarding.CodeReservations.OrderBy(r => r.Order).FirstOrDefault();
 
         var checkoutResult = await paymentApp.CreateCheckoutAsync(
             new PaymentAppCheckoutRequest(
@@ -57,7 +88,12 @@ public static class StartOnboardingCheckoutHandler
                 command.PayerEmail,
                 command.SuccessUrl,
                 command.CancelUrl,
-                idempotencyKey
+                idempotencyKey,
+                NetAmountCents: onboarding.NetAmountCents,
+                DiscountAmountCents: onboarding.TotalDiscountCents,
+                Currency: onboarding.Currency,
+                CodeReservationId: primaryReservation?.CodeReservationId,
+                PromotionSnapshotHash: primaryReservation?.SnapshotHash
             ),
             ct
         );
@@ -80,5 +116,54 @@ public static class StartOnboardingCheckoutHandler
                 checkoutResult.Value.ExpiresAtUtc
             )
         );
+    }
+
+    private static async Task<Result<StartOnboardingCheckoutResponse>> CompleteFullyCoveredAsync(
+        TenantOnboarding onboarding,
+        OnboardingSuccessCompleter successCompleter,
+        IPlanCatalogClient planCatalog,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var markCovered = onboarding.MarkFullyCoveredByCode(nowUtc);
+        if (markCovered.IsFailure)
+            return Result.Failure<StartOnboardingCheckoutResponse>(markCovered.Error);
+
+        var planName = await planCatalog.GetPlanNameAsync(onboarding.PlanId, ct);
+        var correlationId = string.IsNullOrWhiteSpace(correlation.CorrelationId)
+            ? onboarding.Id.ToString("N")
+            : correlation.CorrelationId;
+
+        var completed = await successCompleter.CompleteAsync(
+            onboarding,
+            amountPaidCents: 0,
+            currency: onboarding.Currency ?? "USD",
+            paymentId: null,
+            planName,
+            nowUtc,
+            correlationId,
+            ct
+        );
+        if (completed.IsFailure)
+            return Result.Failure<StartOnboardingCheckoutResponse>(completed.Error);
+
+        await unitOfWork.SaveChangesAsync(ct);
+
+        return Result.Success(new StartOnboardingCheckoutResponse(Guid.Empty, string.Empty, nowUtc, FullyCovered: true));
+    }
+
+    private static List<OnboardingCodeInput> BuildCodeInputs(StartOnboardingCheckoutCommand command)
+    {
+        var codes = new List<OnboardingCodeInput>();
+        if (!string.IsNullOrWhiteSpace(command.ReferralCode))
+            codes.Add(new OnboardingCodeInput(command.ReferralCode.Trim(), OnboardingBenefitType.Referral, command.ReferralCode.Trim()));
+        if (!string.IsNullOrWhiteSpace(command.PromoCode))
+            codes.Add(new OnboardingCodeInput(command.PromoCode.Trim(), OnboardingBenefitType.Promo, command.PromoCode.Trim()));
+        if (!string.IsNullOrWhiteSpace(command.GiftCode))
+            codes.Add(new OnboardingCodeInput(command.GiftCode.Trim(), OnboardingBenefitType.Gift, command.GiftCode.Trim()));
+        return codes;
     }
 }

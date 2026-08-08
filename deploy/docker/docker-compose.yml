@@ -97,7 +97,7 @@ services:
       MSSQL_PID: Developer
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     ports:
-      - "${SQLSERVER_BIND_ADDRESS:-127.0.0.1}:1433:1433"
+      - "${SQLSERVER_BIND_ADDRESS:-127.0.0.1}:11433:1433"
     volumes:
       - sqlserver-data:/var/opt/mssql
     networks:
@@ -207,7 +207,7 @@ services:
       - prometheus-data:/prometheus
     # Solo loopback, via VPN+SSH — Grafana ya reexpone lo que hace falta ver.
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:19090:9090"
     depends_on:
       - otel-collector
       - cadvisor
@@ -324,6 +324,14 @@ services:
       # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
       # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.
       Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY in .env}
+      # PayFlow + Gift/Referral — URLs internas que el onboarding pago-primero llama M2M. Los defaults de
+      # appsettings son localhost host-mapped (no resuelven container-a-container), así que se fijan acá.
+      Auth__Growth__BaseUrl: http://growth-api:8080
+      Auth__Subscription__BaseUrl: http://subscription-api:8080
+      Auth__PaymentApp__BaseUrl: http://payment-app-api:8080
+      Auth__Tenant__BaseUrl: http://tenant-api:8080
+      # Loopback de la saga (creación del owner) — debe apuntar al propio auth-api, no a localhost.
+      Onboarding__AuthPublicBaseUrl: http://auth-api:8080
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
       # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
       # token M2M para llamar POST /scribe/render, gateado por [HasPermission(ScribePermissions.
@@ -1260,6 +1268,9 @@ services:
       Jwt__Audience: TaxVision.Services
       Jwt__ValidAudiences__0: TaxVision.Services
       Jwt__ValidAudiences__1: taxvision-growth
+      # DEV/E2E — desactiva el tiered rate-limit (la categoría growth.j.codes_quote declara OverlayLayers
+      # vacío y el TieredRateLimitEvaluator la rechaza; gap de config preexistente del catálogo).
+      RateLimit__EnforceTierQuotas: "false"
       Growth__Codes__TokenHashing__Pepper: ${GROWTH_CODE_TOKEN_PEPPER:?Set GROWTH_CODE_TOKEN_PEPPER in .env}
       Growth__Referrals__TokenHashing__Pepper: ${GROWTH_REFERRAL_CODE_TOKEN_PEPPER:?Set GROWTH_REFERRAL_CODE_TOKEN_PEPPER in .env}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317

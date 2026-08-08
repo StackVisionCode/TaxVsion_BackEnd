@@ -435,6 +435,10 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantResolutionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingOtpRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingRegistrationReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Gift/Referral — FINALIZE pide a Billing asentar la factura (fuente de verdad financiera).
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingReceiptReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStepFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");

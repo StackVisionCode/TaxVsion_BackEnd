@@ -56,7 +56,12 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
         Guid OnboardingId,
         string PayerEmail,
         string SuccessUrl,
-        string CancelUrl
+        string CancelUrl,
+        // Gift/Referral: códigos opcionales. Si un código cubre el 100%, la respuesta trae FullyCovered=true
+        // (sin CheckoutUrl) y el comprador recibe el email de registro directamente.
+        string? ReferralCode = null,
+        string? PromoCode = null,
+        string? GiftCode = null
     );
 
     [HttpPost("checkout")]
@@ -73,7 +78,10 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
                 request.OnboardingId,
                 request.PayerEmail,
                 request.SuccessUrl,
-                request.CancelUrl
+                request.CancelUrl,
+                request.ReferralCode,
+                request.PromoCode,
+                request.GiftCode
             ),
             ct
         );

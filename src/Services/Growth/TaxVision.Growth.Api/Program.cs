@@ -154,6 +154,19 @@ builder.Host.UseWolverine(options =>
 
 var app = builder.Build();
 
+// Gift/Referral — siembra los códigos de plataforma usables en el onboarding (idempotente por hash).
+await using (var seedScope = app.Services.CreateAsyncScope())
+{
+    var sp = seedScope.ServiceProvider;
+    await TaxVision.Codes.Application.Definitions.Seeding.PlatformOnboardingCodeSeeder.SeedAsync(
+        sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeDefinitionRepository>(),
+        sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeTokenHasher>(),
+        sp.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(),
+        sp.GetRequiredService<ILogger<Program>>(),
+        CancellationToken.None
+    );
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi().AllowAnonymous();

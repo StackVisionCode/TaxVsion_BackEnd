@@ -267,7 +267,23 @@ public static class CreateOnboardingCheckoutHandler
         if (keyResult.IsFailure)
             return Result.Failure<SaaSPayment>(keyResult.Error);
 
-        var amountResult = Money.Create(price.AmountCents, price.Currency);
+        // Gift/Referral: se cobra el NETO si Auth lo pasó (descuento parcial), validado contra el bruto
+        // autoritativo de Subscription; si no, el bruto. El carril $0 no llega acá (Auth no invoca checkout).
+        var chargeCents = price.AmountCents;
+        var chargeCurrency = price.Currency;
+        if (command.NetAmountCents is { } net)
+        {
+            if (net <= 0 || net > price.AmountCents)
+                return Result.Failure<SaaSPayment>(
+                    new Error(
+                        "Onboarding.Checkout.InvalidNet",
+                        "The net amount must be greater than zero and not exceed the resolved plan price."
+                    )
+                );
+            chargeCents = net;
+        }
+
+        var amountResult = Money.Create(chargeCents, chargeCurrency);
         if (amountResult.IsFailure)
             return Result.Failure<SaaSPayment>(amountResult.Error);
 

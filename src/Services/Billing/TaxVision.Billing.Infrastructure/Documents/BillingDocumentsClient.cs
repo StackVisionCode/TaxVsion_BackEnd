@@ -74,6 +74,10 @@ public sealed class BillingDocumentsClient(
                 paidDate = request.PaidDate,
                 receiptNumber = request.ReceiptNumber,
                 receiptHash = request.ReceiptHash,
+                // Onboarding con código: descuento total + líneas de ajuste (negativas) + tipo de liquidación.
+                discount = request.Discount,
+                settlementType = request.SettlementType,
+                adjustments = (request.Adjustments ?? []).Select(a => new { label = a.Label, amount = a.Amount }),
             },
         };
 

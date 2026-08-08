@@ -1,15 +1,38 @@
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using TaxVision.Auth.Application.Onboarding;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Commands;
+using TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
+using TaxVision.Auth.Infrastructure.Security;
 using TaxVision.Auth.Tests.Application;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 
-/// <summary>PayFlow Fase 9 — llama al checkout M2M de PaymentApp y avanza el onboarding a
-/// PaymentProcessing usando el PaymentId como referencia estable entre ambos servicios.</summary>
+/// <summary>PayFlow Fase 9 + Gift/Referral — sin códigos, el checkout llama a PaymentApp y avanza a
+/// PaymentProcessing (comportamiento base intacto). El reserver/completer se inyectan pero no se invocan
+/// en el camino sin código.</summary>
 public sealed class StartOnboardingCheckoutHandlerTests
 {
+    private static readonly OnboardingOptions RegistrationOptions = new()
+    {
+        RegistrationUrlBase = "https://app.example.com",
+    };
+
+    // Camino sin código: estos colaboradores nunca se invocan; fallan ruidosamente si se los llamara.
+    private static OnboardingCodeReserver BuildReserver() => new(new ThrowingPricingClient(), new ThrowingGrowthClient());
+
+    private static OnboardingSuccessCompleter BuildCompleter() =>
+        new(
+            new SecureTokenService(),
+            new FakeTokenReferenceStore(),
+            Options.Create(RegistrationOptions),
+            new FakeMessageBus(),
+            NullLogger<OnboardingSuccessCompleter>.Instance
+        );
+
     [Fact]
     public async Task Marks_payment_processing_using_the_paymentapp_paymentid_as_reference()
     {
@@ -31,13 +54,18 @@ public sealed class StartOnboardingCheckoutHandlerTests
                 "https://app.example.com/cancel"
             ),
             onboardings,
+            BuildReserver(),
+            BuildCompleter(),
+            new FakePlanCatalogClient("Enterprise"),
             paymentApp,
             unitOfWork,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(paymentId, result.Value.PaymentId);
+        Assert.False(result.Value.FullyCovered);
         Assert.Equal(TenantOnboardingStatus.PaymentProcessing, onboarding.Status);
         Assert.Equal(paymentId.ToString("N"), onboarding.PaymentReference);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
@@ -60,8 +88,12 @@ public sealed class StartOnboardingCheckoutHandlerTests
                 "https://app.example.com/cancel"
             ),
             onboardings,
+            BuildReserver(),
+            BuildCompleter(),
+            new FakePlanCatalogClient("Enterprise"),
             paymentApp,
             unitOfWork,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -90,8 +122,12 @@ public sealed class StartOnboardingCheckoutHandlerTests
                 "https://app.example.com/cancel"
             ),
             onboardings,
+            BuildReserver(),
+            BuildCompleter(),
+            new FakePlanCatalogClient("Enterprise"),
             paymentApp,
             unitOfWork,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -99,5 +135,45 @@ public sealed class StartOnboardingCheckoutHandlerTests
         Assert.Equal("PaymentAppClient.RequestFailed", result.Error.Code);
         Assert.Equal(TenantOnboardingStatus.PendingPayment, onboarding.Status);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    private sealed class ThrowingPricingClient : IOnboardingPlanPricingClient
+    {
+        public Task<Result<OnboardingPlanPrice>> GetGrossPriceAsync(Guid planId, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Pricing must not be called in the no-code path.");
+    }
+
+    private sealed class ThrowingGrowthClient : IGrowthOnboardingClient
+    {
+        public Task<Result<GrowthQuoteResult>> QuoteAsync(GrowthQuoteRequest request, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Growth must not be called in the no-code path.");
+
+        public Task<Result<GrowthReserveResult>> ReserveAsync(
+            Guid quoteId,
+            Guid onboardingId,
+            int ttlSeconds,
+            string idempotencyKey,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("Growth must not be called in the no-code path.");
+
+        public Task<Result> CommitAsync(
+            Guid reservationId,
+            Guid onboardingId,
+            string snapshotHash,
+            Guid sourceEventId,
+            string idempotencyKey,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("Growth must not be called in the no-code path.");
+
+        public Task<Result> CancelAsync(
+            Guid reservationId,
+            Guid onboardingId,
+            string reason,
+            string idempotencyKey,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("Growth must not be called in the no-code path.");
+
+        public Task<Result> QualifyReferralAsync(GrowthQualifyRequest request, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Growth must not be called in the no-code path.");
     }
 }

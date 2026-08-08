@@ -44,6 +44,13 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddBillingInfrastructure(builder.Configuration);
 
+// Emisor de las facturas de onboarding (pre-tenant) = la plataforma. Config Billing:PlatformIssuer.
+builder
+    .Services.AddOptions<TaxVision.Billing.Application.Invoices.IntegrationEvents.PlatformIssuerOptions>()
+    .Bind(builder.Configuration.GetSection(
+        TaxVision.Billing.Application.Invoices.IntegrationEvents.PlatformIssuerOptions.SectionName
+    ));
+
 // RateLimit Fase 2 — CachedTenantPlanCodeReader (5 min TTL) y HttpPlanRateLimitReader (catálogo
 // de Subscription, cacheado 5 min) dependen de ICacheService. Billing ya requiere
 // ConnectionStrings:Redis para IRateCounter (línea abajo); AddRedisCache reutiliza esa misma

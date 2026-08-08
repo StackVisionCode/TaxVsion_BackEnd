@@ -211,6 +211,18 @@ public static class ProcessInvoiceGenerationHandler
             )
             .ToList();
 
+        // Ajustes de onboarding (descuentos por código): una fila negativa por beneficio.
+        var adjustments = (invoice.Adjustments ?? [])
+            .Select(
+                object (adj) =>
+                    new Dictionary<string, object>
+                    {
+                        ["label"] = adj.Label,
+                        ["amount"] = adj.Amount.ToString("N2", culture),
+                    }
+            )
+            .ToList();
+
         return new Dictionary<string, object?>
         {
             ["invoice"] = new Dictionary<string, object>
@@ -227,6 +239,11 @@ public static class ProcessInvoiceGenerationHandler
                 ["taxAmount"] = invoice.TaxAmount.ToString("N2", culture),
                 ["total"] = invoice.Total.ToString("N2", culture),
                 ["notes"] = invoice.Notes ?? string.Empty,
+                // Onboarding con código: ajustes (negativos), descuento total y tipo de liquidación.
+                ["adjustments"] = adjustments,
+                ["discount"] = invoice.Discount.ToString("N2", culture),
+                ["hasDiscount"] = invoice.Discount > 0m,
+                ["settlementType"] = invoice.SettlementType ?? string.Empty,
                 // Estado + cobro (dato de Billing). La plantilla decide watermark y visibilidad del botón.
                 ["status"] = string.IsNullOrWhiteSpace(invoice.Status) ? "Pending" : invoice.Status,
                 ["paidDate"] = invoice.PaidDate?.ToString("yyyy-MM-dd", culture) ?? string.Empty,
