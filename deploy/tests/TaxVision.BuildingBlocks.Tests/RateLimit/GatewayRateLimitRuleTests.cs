@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.RateLimiting;
 using BuildingBlocks.Web.RateLimiting;
 using Xunit;
 

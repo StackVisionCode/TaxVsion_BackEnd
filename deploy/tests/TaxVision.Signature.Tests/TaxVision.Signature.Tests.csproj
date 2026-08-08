@@ -21,6 +21,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Signature\TaxVision.Signature.Domain\TaxVision.Signature.Domain.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
     <!-- ActorType Fase 6: agregado para probar la fitness function AllowActorTypes vía reflexión
          sobre los controllers reales del Api. -->
     <ProjectReference Include="..\..\..\src\Services\Signature\TaxVision.Signature.Api\TaxVision.Signature.Api.csproj" />

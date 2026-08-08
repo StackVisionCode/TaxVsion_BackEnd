@@ -24,5 +24,7 @@
     <ProjectReference Include="..\..\..\src\Services\Scribe\TaxVision.Scribe.Application\TaxVision.Scribe.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Scribe\TaxVision.Scribe.Infrastructure\TaxVision.Scribe.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Scribe\TaxVision.Scribe.Api\TaxVision.Scribe.Api.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
 </Project>

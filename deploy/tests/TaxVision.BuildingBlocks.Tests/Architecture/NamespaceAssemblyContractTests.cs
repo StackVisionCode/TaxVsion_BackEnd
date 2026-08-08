@@ -1,7 +1,9 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using Xunit;
 
@@ -28,6 +30,8 @@ public sealed class NamespaceAssemblyContractTests
     private static readonly Assembly Core = typeof(ActorType).Assembly;
     private static readonly Assembly Web = typeof(AllowActorTypesAttribute).Assembly;
     private static readonly Assembly Infrastructure = typeof(RedisCacheService).Assembly;
+    private static readonly Assembly Messaging = typeof(IIntegrationEvent).Assembly;
+    private static readonly Assembly Authorization = typeof(NotesPermissions).Assembly;
 
     /// <summary>
     /// Tipos que el compilador genera (clases de cierre, iteradores, <c>&lt;Module&gt;</c>) no llevan
@@ -47,12 +51,26 @@ public sealed class NamespaceAssemblyContractTests
     [Theory]
     [InlineData("BuildingBlocks.Web")]
     [InlineData("BuildingBlocks.Infrastructure")]
+    [InlineData("BuildingBlocks.Messaging")]
+    [InlineData("BuildingBlocks.Authorization")]
     public void CadaNamespaceLlevaElPrefijoDeSuEnsamblado(string prefix)
     {
-        var assembly = prefix == "BuildingBlocks.Web" ? Web : Infrastructure;
+        var assembly = prefix switch
+        {
+            "BuildingBlocks.Web" => Web,
+            "BuildingBlocks.Infrastructure" => Infrastructure,
+            "BuildingBlocks.Messaging" => Messaging,
+            "BuildingBlocks.Authorization" => Authorization,
+            _ => throw new ArgumentOutOfRangeException(nameof(prefix), prefix, "Ensamblado no mapeado."),
+        };
 
+        // El propio namespace raíz del ensamblado cumple el contrato: IIntegrationEvent vive en
+        // BuildingBlocks.Messaging a secas y sale de BuildingBlocks.Messaging.dll.
         var offenders = DeclaredNamespaces(assembly)
-            .Where(ns => !ns.StartsWith(prefix + ".", StringComparison.Ordinal))
+            .Where(ns =>
+                !string.Equals(ns, prefix, StringComparison.Ordinal)
+                && !ns.StartsWith(prefix + ".", StringComparison.Ordinal)
+            )
             .OrderBy(ns => ns)
             .ToArray();
 
@@ -71,6 +89,8 @@ public sealed class NamespaceAssemblyContractTests
             ("BuildingBlocks", Core),
             ("BuildingBlocks.Web", Web),
             ("BuildingBlocks.Infrastructure", Infrastructure),
+            ("BuildingBlocks.Messaging", Messaging),
+            ("BuildingBlocks.Authorization", Authorization),
         };
 
         var owners = new Dictionary<string, List<string>>(StringComparer.Ordinal);

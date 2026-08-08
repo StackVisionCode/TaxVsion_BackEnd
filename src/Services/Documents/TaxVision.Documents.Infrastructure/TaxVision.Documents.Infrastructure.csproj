@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\TaxVision.Documents.Domain\TaxVision.Documents.Domain.csproj" />
     <ProjectReference Include="..\TaxVision.Documents.Application\TaxVision.Documents.Application.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 
   <ItemGroup>

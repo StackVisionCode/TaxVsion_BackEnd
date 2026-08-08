@@ -22,5 +22,6 @@
     <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Domain\TaxVision.Tenant.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Application\TaxVision.Tenant.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Tenant\TaxVision.Tenant.Api\TaxVision.Tenant.Api.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 </Project>

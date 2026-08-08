@@ -2,6 +2,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Application\TaxVision.Auth.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
 
   <ItemGroup>

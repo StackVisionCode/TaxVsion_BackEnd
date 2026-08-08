@@ -1,9 +1,10 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Logging;
 
-namespace BuildingBlocks.RateLimiting;
+namespace BuildingBlocks.Messaging.RateLimiting;
 
 /// <summary>
 /// RateLimit Fase 1 — lógica compartida del consumer de <see cref="TenantEntitlementsChangedIntegrationEvent"/>
@@ -11,6 +12,14 @@ namespace BuildingBlocks.RateLimiting;
 /// original de Customer (Fase 6). Cada servicio registra un handler local de 1 línea que delega
 /// acá, pasando su propia factory de proyección (<c>TProjection.Create</c>) — mismo criterio que
 /// el resto de esta fase: la forma se comparte, la persistencia no.
+///
+/// <para>
+/// Vive en <c>BuildingBlocks.Messaging</c> y no en el núcleo porque consume un integration event:
+/// dejarlo en el núcleo obligaría a que el núcleo referenciara a Messaging, y esa referencia se
+/// heredaría de forma transitiva a los 18 proyectos Domain. Los tipos de proyección que recibe
+/// (<see cref="ITenantPlanCodeProjection"/> y su repositorio) sí se quedan en el núcleo, porque de
+/// ellos sí depende el Domain de cada servicio.
+/// </para>
 /// </summary>
 public static class TenantPlanCodeProjectionHandler
 {

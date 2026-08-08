@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.PaymentClient.Domain\TaxVision.PaymentClient.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 
   <ItemGroup>

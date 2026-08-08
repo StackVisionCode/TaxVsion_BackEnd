@@ -1,7 +1,12 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0.300 AS build
 WORKDIR /src
 
-COPY . .
+# Contexto acotado: solo el SDK pin, BuildingBlocks y este servicio. Con `COPY . .`
+# cualquier cambio en cualquier archivo del repo invalidaba esta capa y reconstruia
+# las 19 imagenes; asi un cambio en otro servicio ya no toca esta.
+COPY global.json ./
+COPY src/BuildingBlocks/ src/BuildingBlocks/
+COPY src/Services/Correspondence/ src/Services/Correspondence/
 RUN dotnet restore "src/Services/Correspondence/TaxVision.Correspondence.Api/TaxVision.Correspondence.Api.csproj"
 RUN dotnet publish "src/Services/Correspondence/TaxVision.Correspondence.Api/TaxVision.Correspondence.Api.csproj" \
     -c Release \

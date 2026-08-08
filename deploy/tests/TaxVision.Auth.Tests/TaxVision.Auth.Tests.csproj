@@ -25,5 +25,7 @@
     <ProjectReference Include="..\..\..\src\Services\Auth\Domain\TaxVision.Auth.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Auth\Application\TaxVision.Auth.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Auth\Api\TaxVision.Auth.Api.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
 </Project>

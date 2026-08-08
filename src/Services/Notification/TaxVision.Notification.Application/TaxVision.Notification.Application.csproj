@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.Notification.Domain\TaxVision.Notification.Domain.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
 
   <ItemGroup>
