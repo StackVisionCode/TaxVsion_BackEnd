@@ -1,0 +1,290 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 2070" width="1600" height="2070" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="av" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b5cf6"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#14b8a6"/></marker>
+    <marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/></marker>
+  </defs>
+  <rect width="1600" height="2070" fill="#ffffff"/>
+
+  <text x="50" y="42" font-size="27" font-weight="700" fill="#0f172a">Calendar · Task · Notes · Reminder · MyPlanner — el mapa completo</text>
+  <text x="50" y="70" font-size="14.5" fill="#475569"><tspan font-weight="700" fill="#3730a3">4 contextos de escritura</tspan> (Calendar, Task, Notes, Reminder) + <tspan font-weight="700" fill="#115e59">1 read model</tspan> (MyPlanner). Reminder pasó a ser contexto propio: tiene su CRUD, su BD y Quartz.</text>
+
+  <!-- ===== BANDA 1 · EL MAPA ===== -->
+  <rect x="40" y="95" width="1520" height="530" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="120" font-size="14" font-weight="700" fill="#475569">① QUIÉN ES DUEÑO DE QUÉ — «dueño» = quien guarda el dato Y decide las reglas sobre él</text>
+
+  <rect x="60" y="132" width="190" height="42" rx="6" fill="#334155"/><text x="155" y="159" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle">Pieza</text>
+  <rect x="258" y="132" width="200" height="42" rx="6" fill="#334155"/><text x="358" y="159" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle">Qué es</text>
+  <rect x="466" y="132" width="600" height="42" rx="6" fill="#334155"/><text x="766" y="159" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle">Dueño de datos + lógica</text>
+  <rect x="1074" y="132" width="100" height="42" rx="6" fill="#334155"/><text x="1124" y="159" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle">DB</text>
+  <rect x="1182" y="132" width="358" height="42" rx="6" fill="#334155"/><text x="1361" y="159" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle">Por qué, en simple</text>
+
+  <rect x="60" y="182" width="190" height="74" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="155" y="214" font-size="15" font-weight="700" fill="#1e40af" text-anchor="middle">Calendar</text>
+  <text x="155" y="235" font-size="10" fill="#2563eb" text-anchor="middle">citas / agenda</text>
+  <rect x="258" y="182" width="200" height="74" rx="6" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="358" y="212" font-size="12" font-weight="700" fill="#1e40af" text-anchor="middle">Contexto de escritura</text>
+  <text x="358" y="234" font-size="10.5" fill="#2563eb" text-anchor="middle">📋 diseñado, sin código aún</text>
+  <rect x="466" y="182" width="600" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="482" y="208" font-size="11.5" fill="#334155">Eventos/citas, attendees, RSVP, free/busy, recurrencia, timezone.</text>
+  <text x="482" y="230" font-size="11.5" fill="#991b1b"><tspan font-weight="700">Ya NO</tspan> es dueño de <tspan font-family="Consolas, monospace">AppointmentReminder</tspan> — eso se fue a Reminder.</text>
+  <text x="482" y="249" font-size="11" fill="#64748b">Gana la obligación de publicar 3 eventos (creada / movida / cancelada).</text>
+  <rect x="1074" y="182" width="100" height="74" rx="6" fill="#f0fdf4" stroke="#22c55e"/><text x="1124" y="228" font-size="22" font-weight="700" fill="#16a34a" text-anchor="middle">✔</text>
+  <rect x="1182" y="182" width="358" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="1196" y="212" font-size="11" fill="#475569">Dos citas no pueden pisarse el mismo hueco:</text>
+  <text x="1196" y="230" font-size="11" fill="#475569">eso se decide en el acto, dentro de su propia</text>
+  <text x="1196" y="248" font-size="11" fill="#475569">transacción.</text>
+
+  <rect x="60" y="264" width="190" height="74" rx="6" fill="#fff7ed" stroke="#f97316" stroke-width="2"/>
+  <text x="155" y="296" font-size="15" font-weight="700" fill="#9a3412" text-anchor="middle">Task</text>
+  <text x="155" y="317" font-size="10" fill="#c2410c" text-anchor="middle">tareas / trabajo</text>
+  <rect x="258" y="264" width="200" height="74" rx="6" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="358" y="294" font-size="12" font-weight="700" fill="#9a3412" text-anchor="middle">Contexto de escritura</text>
+  <text x="358" y="316" font-size="10.5" fill="#c2410c" text-anchor="middle">📋 diseñado, sin código aún</text>
+  <rect x="466" y="264" width="600" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="482" y="290" font-size="11.5" fill="#334155">Tareas, asignación, workflow, dependencias, time-tracking, recurrencia.</text>
+  <text x="482" y="312" font-size="11.5" fill="#991b1b"><tspan font-weight="700">Ya NO</tspan> es dueño de <tspan font-family="Consolas, monospace">TaskReminder</tspan> — mismo cambio que Calendar.</text>
+  <text x="482" y="331" font-size="11" fill="#64748b">Publica sus 3 eventos (creada / movida / completada-cancelada).</text>
+  <rect x="1074" y="264" width="100" height="74" rx="6" fill="#f0fdf4" stroke="#22c55e"/><text x="1124" y="310" font-size="22" font-weight="700" fill="#16a34a" text-anchor="middle">✔</text>
+  <rect x="1182" y="264" width="358" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="1196" y="294" font-size="11" fill="#475569">Una tarea bloqueada por otra, o reasignada,</text>
+  <text x="1196" y="312" font-size="11" fill="#475569">son reglas suyas que nadie más tiene por</text>
+  <text x="1196" y="330" font-size="11" fill="#475569">qué conocer.</text>
+
+  <rect x="60" y="346" width="190" height="74" rx="6" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="155" y="378" font-size="15" font-weight="700" fill="#3730a3" text-anchor="middle">Notes</text>
+  <text x="155" y="399" font-size="10" fill="#4338ca" text-anchor="middle">notas del staff</text>
+  <rect x="258" y="346" width="200" height="74" rx="6" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="358" y="376" font-size="12" font-weight="700" fill="#3730a3" text-anchor="middle">Contexto de escritura</text>
+  <text x="358" y="398" font-size="10.5" font-weight="700" fill="#4338ca" text-anchor="middle">✅ el único ya construido</text>
+  <rect x="466" y="346" width="600" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="482" y="372" font-size="11.5" fill="#334155">Notas + <tspan font-family="Consolas, monospace" font-weight="700" fill="#3730a3">NoteReference</tspan> polimórfico, adjuntos, visibilidad</text>
+  <text x="482" y="392" font-size="11.5" fill="#334155">(<tspan font-weight="600">Private · Team · ClientVisible</tspan>). Puerto dev <tspan font-family="Consolas, monospace" font-weight="700">5440</tspan>.</text>
+  <text x="482" y="412" font-size="11" fill="#16a34a"><tspan font-weight="700">No cambia nada.</tspan> Este rediseño no lo toca ni en una línea.</text>
+  <rect x="1074" y="346" width="100" height="74" rx="6" fill="#f0fdf4" stroke="#22c55e"/><text x="1124" y="392" font-size="22" font-weight="700" fill="#16a34a" text-anchor="middle">✔</text>
+  <rect x="1182" y="346" width="358" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="1196" y="376" font-size="11" fill="#475569">Una nota es un post-it: se pega sobre</text>
+  <text x="1196" y="394" font-size="11" fill="#475569">cualquier cosa y si tarda un segundo en</text>
+  <text x="1196" y="412" font-size="11" fill="#475569">aparecer, no rompe nada.</text>
+
+  <rect x="60" y="428" width="190" height="82" rx="6" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="3"/>
+  <text x="155" y="458" font-size="15" font-weight="700" fill="#5b21b6" text-anchor="middle">Reminder</text>
+  <text x="155" y="478" font-size="10" fill="#6d28d9" text-anchor="middle">«avisame en T»</text>
+  <rect x="98" y="486" width="114" height="18" rx="9" fill="#8b5cf6"/>
+  <text x="155" y="499" font-size="9.5" font-weight="700" fill="#fff" text-anchor="middle">CAMBIÓ ↺</text>
+  <rect x="258" y="428" width="200" height="82" rx="6" fill="#f5f3ff" stroke="#c4b5fd"/>
+  <text x="358" y="456" font-size="12" font-weight="700" fill="#5b21b6" text-anchor="middle">Contexto de escritura</text>
+  <text x="358" y="476" font-size="10.5" fill="#6d28d9" text-anchor="middle">Antes era «mecanismo».</text>
+  <text x="358" y="496" font-size="10.5" font-weight="700" fill="#5b21b6" text-anchor="middle">Tiene CRUD → es dominio.</text>
+  <rect x="466" y="428" width="600" height="82" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="482" y="452" font-size="11.5" fill="#334155">El <tspan font-weight="700">CUÁNDO</tspan>: qué recordar, a quién, en qué momento. Categoría</text>
+  <text x="482" y="472" font-size="11.5" fill="#334155">(<tspan font-family="Consolas, monospace">Calendar | Task | Note</tspan>) + <tspan font-family="Consolas, monospace">targetId</tspan> opaco. Snooze, dismiss, cancelar.</text>
+  <text x="482" y="492" font-size="11.5" fill="#334155">Quartz con <tspan font-family="Consolas, monospace" font-weight="700">AdoJobStore</tspan> dispara los triggers.</text>
+  <text x="482" y="506" font-size="10.5" font-weight="700" fill="#991b1b">NO entrega nada — eso es de Notification.</text>
+  <rect x="1074" y="428" width="100" height="82" rx="6" fill="#f0fdf4" stroke="#22c55e"/><text x="1124" y="478" font-size="22" font-weight="700" fill="#16a34a" text-anchor="middle">✔</text>
+  <rect x="1182" y="428" width="358" height="82" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="1196" y="452" font-size="11" fill="#475569">El usuario los <tspan font-weight="700">ve, lista y pospone</tspan>. Eso</text>
+  <text x="1196" y="470" font-size="11" fill="#475569">es ciclo de vida propio, no plomería.</text>
+  <text x="1196" y="492" font-size="11" fill="#475569">Y solo un dueño único puede agrupar</text>
+  <text x="1196" y="504" font-size="11" fill="#475569">5 avisos de la misma hora en un digest.</text>
+
+  <rect x="60" y="518" width="190" height="74" rx="6" fill="#f0fdfa" stroke="#14b8a6" stroke-width="2" stroke-dasharray="6 3"/>
+  <text x="155" y="550" font-size="15" font-weight="700" fill="#115e59" text-anchor="middle">MyPlanner</text>
+  <text x="155" y="571" font-size="10" fill="#0f766e" text-anchor="middle">la pantalla «mi día»</text>
+  <rect x="258" y="518" width="200" height="74" rx="6" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <text x="358" y="546" font-size="12.5" font-weight="700" fill="#991b1b" text-anchor="middle">✘ NO es contexto</text>
+  <text x="358" y="564" font-size="12.5" font-weight="700" fill="#991b1b" text-anchor="middle">de escritura</text>
+  <text x="358" y="583" font-size="11.5" font-weight="700" fill="#115e59" text-anchor="middle">read model / BFF</text>
+  <rect x="466" y="518" width="600" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="482" y="544" font-size="11.5" fill="#334155">Compone «mi día» <tspan font-weight="700">leyendo</tspan> de Calendar + Task + Notes.</text>
+  <text x="482" y="564" font-size="11.5" font-weight="700" fill="#991b1b">Cero lógica de dominio. Cero datos propios de negocio.</text>
+  <text x="482" y="584" font-size="11" fill="#64748b">Sigue igual — solo suma Reminder como cuarta fuente si hace falta.</text>
+  <rect x="1074" y="518" width="100" height="74" rx="6" fill="#f0fdfa" stroke="#14b8a6"/>
+  <text x="1124" y="548" font-size="10" fill="#0f766e" text-anchor="middle">solo caché</text>
+  <text x="1124" y="565" font-size="10" fill="#0f766e" text-anchor="middle">denormalizado</text>
+  <text x="1124" y="582" font-size="16" font-weight="700" fill="#ef4444" text-anchor="middle">✘</text>
+  <rect x="1182" y="518" width="358" height="74" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="1196" y="546" font-size="11" fill="#475569">Bórralo entero y <tspan font-weight="700">no perdés un solo dato</tspan>:</text>
+  <text x="1196" y="564" font-size="11" fill="#475569">se reconstruye leyendo otra vez. Con los</text>
+  <text x="1196" y="582" font-size="11" fill="#475569">otros cuatro eso sería una catástrofe.</text>
+
+  <!-- ===== BANDA 2 · RUNTIME ===== -->
+  <rect x="40" y="640" width="1520" height="372" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="665" font-size="14" font-weight="700" fill="#475569">② CÓMO SE HABLAN — <tspan fill="#16a34a">cero flechas síncronas en camino de escritura</tspan>. Por eso son 5 cajas y NO es un monolito distribuido.</text>
+  <text x="58" y="686" font-size="11.5" fill="#64748b">Lo que hacía peligroso al diseño legacy no era el número de servicios: era que se llamaban entre sí por HTTP para poder guardar.</text>
+
+  <rect x="80" y="706" width="200" height="52" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="180" y="738" font-size="14" font-weight="700" fill="#1e40af" text-anchor="middle">Calendar</text>
+  <rect x="80" y="768" width="200" height="52" rx="8" fill="#fff7ed" stroke="#f97316" stroke-width="2"/>
+  <text x="180" y="800" font-size="14" font-weight="700" fill="#9a3412" text-anchor="middle">Task</text>
+  <rect x="80" y="830" width="200" height="52" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="180" y="862" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">Notes</text>
+
+  <rect x="520" y="726" width="290" height="146" rx="9" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="3"/>
+  <text x="665" y="756" font-size="17" font-weight="700" fill="#5b21b6" text-anchor="middle">Reminder</text>
+  <text x="665" y="778" font-size="11.5" fill="#6d28d9" text-anchor="middle">CRUD propio · BD propia</text>
+  <rect x="560" y="790" width="210" height="30" rx="6" fill="#ede9fe" stroke="#a78bfa"/>
+  <text x="665" y="810" font-size="11.5" font-weight="700" fill="#5b21b6" text-anchor="middle">Quartz + AdoJobStore</text>
+  <text x="665" y="838" font-size="11" fill="#6d28d9" text-anchor="middle">Guarda el CUÁNDO y dispara.</text>
+  <text x="665" y="858" font-size="11" font-weight="700" fill="#991b1b" text-anchor="middle">No sabe de emails ni de push.</text>
+
+  <rect x="900" y="766" width="240" height="66" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+  <text x="1020" y="792" font-size="14" font-weight="700" fill="#334155" text-anchor="middle">Notification</text>
+  <text x="1020" y="812" font-size="10.5" fill="#475569" text-anchor="middle">ya existe — entrega y preferencias</text>
+
+  <rect x="330" y="906" width="280" height="62" rx="8" fill="#f0fdfa" stroke="#14b8a6" stroke-width="2" stroke-dasharray="6 3"/>
+  <text x="470" y="932" font-size="14" font-weight="700" fill="#115e59" text-anchor="middle">MyPlanner</text>
+  <text x="470" y="952" font-size="10.5" fill="#0f766e" text-anchor="middle">solo lee — nunca escribe de vuelta</text>
+
+  <rect x="900" y="852" width="640" height="116" rx="9" fill="#f0fdf4" stroke="#22c55e"/>
+  <text x="920" y="877" font-size="12.5" font-weight="700" fill="#166534">La prueba de que NO es monolito distribuido: qué pasa si se cae uno</text>
+  <text x="920" y="900" font-size="11.5" fill="#166534">• <tspan font-weight="700">Reminder caído</tspan> → las citas y tareas se siguen creando normal. Los avisos llegan tarde.</text>
+  <text x="920" y="920" font-size="11.5" fill="#166534">• <tspan font-weight="700">Calendar caído</tspan> → los recordatorios ya agendados igual disparan a su hora.</text>
+  <text x="920" y="940" font-size="11.5" fill="#166534">• <tspan font-weight="700">Notification caído</tspan> → el disparo queda en la cola; se entrega al volver.</text>
+  <text x="920" y="960" font-size="11" font-style="italic" fill="#15803d">Monolito distribuido es cuando A no puede trabajar si B está caído. Acá nadie bloquea a nadie.</text>
+
+  <!-- conectores banda 2 (al final para que no los tape ningún rect) -->
+  <line x1="280" y1="730" x2="514" y2="772" stroke="#8b5cf6" stroke-width="2.2" marker-end="url(#av)"/>
+  <line x1="280" y1="794" x2="514" y2="797" stroke="#8b5cf6" stroke-width="2.2" marker-end="url(#av)"/>
+  <line x1="280" y1="856" x2="514" y2="822" stroke="#8b5cf6" stroke-width="2.2" marker-end="url(#av)"/>
+  <text x="398" y="710" font-size="11" font-weight="700" fill="#5b21b6" text-anchor="middle">publican eventos →</text>
+  <text x="398" y="880" font-size="10.5" font-family="Consolas, monospace" fill="#6d28d9" text-anchor="middle">reminder.requested / target_moved / target_closed</text>
+  <line x1="810" y1="799" x2="894" y2="799" stroke="#8b5cf6" stroke-width="2.2" marker-end="url(#av)"/>
+  <text x="852" y="790" font-size="10" font-family="Consolas, monospace" font-weight="700" fill="#5b21b6" text-anchor="middle">reminder.due.v1</text>
+  <path d="M 180 882 L 180 937 L 324 937" fill="none" stroke="#14b8a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#at)"/>
+  <text x="250" y="930" font-size="10.5" font-weight="700" fill="#0f766e" text-anchor="middle">lee</text>
+
+  <!-- ===== BANDA 3 · RECORRIDO ===== -->
+  <rect x="40" y="1028" width="1520" height="330" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="1053" font-size="14" font-weight="700" fill="#475569">③ UNA CITA DE VERDAD, PASO A PASO — cita a las 15:00, aviso 15 minutos antes</text>
+
+  <rect x="60" y="1072" width="350" height="256" rx="9" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <circle cx="95" cy="1104" r="17" fill="#3b82f6"/><text x="95" y="1110" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+  <text x="124" y="1110" font-size="14" font-weight="700" fill="#1e40af">Se agenda la cita</text>
+  <rect x="80" y="1128" width="310" height="72" rx="6" fill="#fff" stroke="#bfdbfe"/>
+  <text x="94" y="1150" font-size="10.5" font-family="Consolas, monospace" fill="#1e40af">POST /calendar/appointments</text>
+  <text x="94" y="1168" font-size="10.5" font-family="Consolas, monospace" fill="#475569">{ start: 15:00 }</text>
+  <text x="94" y="1190" font-size="10.5" font-family="Consolas, monospace" fill="#16a34a">→ CalendarDB: Appointment(15:00)</text>
+  <text x="80" y="1224" font-size="11.5" fill="#1e40af">Una sola transacción, en su propia BD.</text>
+  <text x="80" y="1246" font-size="11.5" fill="#1e40af">Después publica su evento y sigue.</text>
+  <text x="80" y="1276" font-size="11.5" font-weight="700" fill="#991b1b">Calendar nunca llama a Reminder.</text>
+  <text x="80" y="1296" font-size="11" fill="#64748b">Ni siquiera sabe que Reminder existe.</text>
+  <text x="80" y="1316" font-size="11" fill="#64748b">Si Reminder está caído, esto igual funciona.</text>
+
+  <rect x="440" y="1072" width="350" height="256" rx="9" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2"/>
+  <circle cx="475" cy="1104" r="17" fill="#8b5cf6"/><text x="475" y="1110" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+  <text x="504" y="1110" font-size="14" font-weight="700" fill="#5b21b6">Se pide el recordatorio</text>
+  <rect x="460" y="1128" width="310" height="90" rx="6" fill="#fff" stroke="#ddd6fe"/>
+  <text x="474" y="1150" font-size="10.5" font-family="Consolas, monospace" fill="#5b21b6">POST /reminders</text>
+  <text x="474" y="1168" font-size="10.5" font-family="Consolas, monospace" fill="#475569">{ category: Calendar,</text>
+  <text x="474" y="1184" font-size="10.5" font-family="Consolas, monospace" fill="#475569">  targetId: &lt;appointmentId&gt;,</text>
+  <text x="474" y="1200" font-size="10.5" font-family="Consolas, monospace" fill="#475569">  leadMinutes: 15 }</text>
+  <text x="460" y="1242" font-size="11.5" fill="#5b21b6">ReminderDB: <tspan font-family="Consolas, monospace">Reminder(14:45, Scheduled)</tspan></text>
+  <text x="460" y="1264" font-size="11.5" fill="#5b21b6">Quartz: <tspan font-family="Consolas, monospace">ScheduleJob(@14:45)</tspan></text>
+  <text x="460" y="1294" font-size="11" fill="#64748b">El frontend habla con los dos servicios:</text>
+  <text x="460" y="1312" font-size="11" fill="#64748b">Calendar para la cita, Reminder para el aviso.</text>
+
+  <rect x="820" y="1072" width="350" height="256" rx="9" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+  <circle cx="855" cy="1104" r="17" fill="#8b5cf6"/><text x="855" y="1110" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+  <text x="884" y="1110" font-size="14" font-weight="700" fill="#5b21b6">14:45 — Quartz dispara</text>
+  <rect x="840" y="1128" width="310" height="72" rx="6" fill="#fff" stroke="#ddd6fe"/>
+  <text x="854" y="1150" font-size="10.5" font-family="Consolas, monospace" fill="#5b21b6">ReminderFireJob(reminderId)</text>
+  <text x="854" y="1170" font-size="10.5" font-family="Consolas, monospace" fill="#475569">reminder.MarkFired()</text>
+  <text x="854" y="1190" font-size="10.5" font-family="Consolas, monospace" fill="#16a34a">→ publica reminder.due.v1</text>
+  <text x="840" y="1226" font-size="11.5" fill="#5b21b6">Un solo tipo de job para todos los</text>
+  <text x="840" y="1244" font-size="11.5" fill="#5b21b6">recordatorios; el id va en el <tspan font-family="Consolas, monospace">JobDataMap</tspan>.</text>
+  <text x="840" y="1276" font-size="11.5" font-weight="700" fill="#92400e">Quartz puede disparar dos veces</text>
+  <text x="840" y="1294" font-size="11" fill="#b45309">en un failover. Por eso <tspan font-family="Consolas, monospace">MarkFired()</tspan> es</text>
+  <text x="840" y="1312" font-size="11" fill="#b45309"><tspan font-family="Consolas, monospace">Scheduled→Fired</tspan> y no-op si ya disparó.</text>
+
+  <rect x="1200" y="1072" width="340" height="256" rx="9" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+  <circle cx="1235" cy="1104" r="17" fill="#64748b"/><text x="1235" y="1110" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">4</text>
+  <text x="1264" y="1110" font-size="14" font-weight="700" fill="#334155">Notification entrega</text>
+  <rect x="1220" y="1128" width="300" height="72" rx="6" fill="#fff" stroke="#cbd5e1"/>
+  <text x="1234" y="1150" font-size="10.5" font-family="Consolas, monospace" fill="#334155">UserNotificationPreference</text>
+  <text x="1234" y="1170" font-size="10.5" font-family="Consolas, monospace" fill="#334155">NotificationCategory</text>
+  <text x="1234" y="1190" font-size="10.5" font-family="Consolas, monospace" fill="#475569">fan-out · FCM · email</text>
+  <text x="1220" y="1226" font-size="11.5" fill="#334155">Todo esto <tspan font-weight="700">ya existe y ya funciona</tspan>.</text>
+  <text x="1220" y="1248" font-size="11.5" fill="#334155">Reminder no lo reimplementa.</text>
+  <text x="1220" y="1280" font-size="11.5" font-weight="700" fill="#991b1b">Si Reminder empieza a decidir</text>
+  <text x="1220" y="1298" font-size="11" fill="#b91c1c">«esto va por push y esto por email»,</text>
+  <text x="1220" y="1316" font-size="11" fill="#b91c1c">en 6 meses tenés medio Notification adentro.</text>
+
+  <line x1="410" y1="1200" x2="434" y2="1200" stroke="#0f172a" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="790" y1="1200" x2="814" y2="1200" stroke="#0f172a" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="1170" y1="1200" x2="1194" y2="1200" stroke="#0f172a" stroke-width="2" marker-end="url(#as)"/>
+
+  <!-- ===== BANDA 4 · CONTRATOS + GUARDRAIL ===== -->
+  <rect x="40" y="1374" width="1520" height="300" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="1399" font-size="14" font-weight="700" fill="#475569">④ LA CLAVE PARA QUE NO SE PUDRA CON EL TIEMPO</text>
+
+  <rect x="60" y="1416" width="740" height="240" rx="9" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="80" y="1444" font-size="13.5" font-weight="700" fill="#5b21b6">Reminder define SUS contratos de entrada — no importa los de nadie</text>
+  <rect x="80" y="1458" width="700" height="88" rx="6" fill="#fff" stroke="#ddd6fe"/>
+  <text x="94" y="1480" font-size="10.5" font-family="Consolas, monospace" fill="#5b21b6">reminder.requested.v1     { tenantId, userId, category, targetId, anchorAtUtc, leadMinutes, tz }</text>
+  <text x="94" y="1504" font-size="10.5" font-family="Consolas, monospace" fill="#5b21b6">reminder.target_moved.v1  { tenantId, category, targetId, nuevoAnchorAtUtc }</text>
+  <text x="94" y="1528" font-size="10.5" font-family="Consolas, monospace" fill="#5b21b6">reminder.target_closed.v1 { tenantId, category, targetId }</text>
+  <text x="80" y="1570" font-size="11.5" fill="#312e81">Calendar publica <tspan font-family="Consolas, monospace">appointment_rescheduled.v1</tspan> para los suyos, <tspan font-weight="700">y además</tspan> <tspan font-family="Consolas, monospace">target_moved</tspan>.</text>
+  <text x="80" y="1592" font-size="11.5" fill="#312e81">Reminder nunca hace <tspan font-family="Consolas, monospace">using ...Messaging.CalendarIntegrationEvents</tspan>.</text>
+  <text x="80" y="1620" font-size="11.5" font-weight="700" fill="#5b21b6">El día que Signature o Correspondence quieran recordatorios, hablan estos 3 contratos</text>
+  <text x="80" y="1640" font-size="11.5" font-weight="700" fill="#5b21b6">y Reminder no cambia ni una línea. Mismo criterio que el <tspan font-family="Consolas, monospace">NoteReference</tspan> de Notes.</text>
+
+  <rect x="820" y="1416" width="720" height="240" rx="9" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <text x="840" y="1444" font-size="13.5" font-weight="700" fill="#991b1b">🔒 Guardrail permanente — escribirlo en el ADR desde el día uno</text>
+  <rect x="840" y="1458" width="680" height="56" rx="6" fill="#fff" stroke="#fca5a5"/>
+  <text x="860" y="1482" font-size="12.5" font-weight="700" fill="#991b1b">Reminder es dueño del CUÁNDO. No entrega nada.</text>
+  <text x="860" y="1503" font-size="11.5" fill="#7f1d1d">Al disparar publica <tspan font-family="Consolas, monospace">reminder.due.v1</tspan>. Canal, preferencias, quiet hours y digest son de Notification.</text>
+  <text x="840" y="1544" font-size="12.5" font-weight="700" fill="#991b1b">Y el que ya conocés, de Notes (ADR-018):</text>
+  <text x="840" y="1566" font-size="11.5" fill="#7f1d1d">Ningún microservicio debe llamar a Notes en su write path.</text>
+  <text x="840" y="1600" font-size="12" font-weight="700" fill="#991b1b">YAGNI de v1: nada de «política por defecto»</text>
+  <text x="840" y="1620" font-size="11.5" fill="#7f1d1d">«Siempre avisame 15 min antes de TODAS mis citas» obligaría a Reminder a escuchar a Calendar</text>
+  <text x="840" y="1640" font-size="11.5" fill="#7f1d1d">para enterarse de citas que nadie pidió recordar. Recordatorios explícitos únicamente.</text>
+
+  <!-- ===== BANDA 5 · LO QUE NO CAMBIA, QUARTZ, COSTO ===== -->
+  <rect x="40" y="1690" width="1520" height="348" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="1715" font-size="14" font-weight="700" fill="#475569">⑤ LO QUE NO MIGRA · LO QUE HAY QUE CONFIGURAR · LO QUE SE PAGA</text>
+
+  <rect x="60" y="1732" width="490" height="288" rx="9" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/>
+  <text x="80" y="1760" font-size="13.5" font-weight="700" fill="#166534">✔ NO migra a Reminder — se queda donde está</text>
+  <text x="80" y="1788" font-size="12" font-weight="700" fill="#166534">La regla que decide:</text>
+  <text x="80" y="1808" font-size="11.5" fill="#15803d">¿El usuario lo ve y lo puede posponer? → Reminder.</text>
+  <text x="80" y="1826" font-size="11.5" fill="#15803d">¿Es plomería invisible? → se queda adentro.</text>
+  <rect x="80" y="1842" width="450" height="160" rx="6" fill="#fff" stroke="#86efac"/>
+  <text x="96" y="1864" font-size="11.5" fill="#166534">• <tspan font-family="Consolas, monospace" font-weight="700">Signature</tspan> — <tspan font-family="Consolas, monospace">ReminderScheduler</tspan>, <tspan font-family="Consolas, monospace">ExpirationScheduler</tspan>,</text>
+  <text x="108" y="1882" font-size="11.5" fill="#15803d"><tspan font-family="Consolas, monospace">PurgeScheduler</tspan>. El nudge al firmante al día 3 no</text>
+  <text x="108" y="1900" font-size="11.5" fill="#15803d">es un recordatorio de usuario: nadie lo pospone.</text>
+  <text x="96" y="1924" font-size="11.5" fill="#166534">• <tspan font-family="Consolas, monospace" font-weight="700">Growth</tspan> — <tspan font-family="Consolas, monospace">ReservationExpirySweeper</tspan></text>
+  <text x="96" y="1946" font-size="11.5" fill="#166534">• <tspan font-family="Consolas, monospace" font-weight="700">Connectors</tspan> — jobs de refresh y renovación de watch</text>
+  <text x="96" y="1968" font-size="11.5" fill="#166534">• <tspan font-family="Consolas, monospace" font-weight="700">Postmaster / Subscription</tspan> — limpieza y renovaciones</text>
+  <text x="96" y="1992" font-size="11" font-style="italic" fill="#15803d">Todos son mantenimiento, no recordatorios. Ni se tocan.</text>
+
+  <rect x="570" y="1732" width="490" height="288" rx="9" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="590" y="1760" font-size="13.5" font-weight="700" fill="#5b21b6">⚙ Quartz — las 5 que hay que configurar sí o sí</text>
+  <text x="590" y="1788" font-size="11.5" fill="#312e81"><tspan font-weight="700">1. AdoJobStore</tspan>, no en memoria. Las tablas <tspan font-family="Consolas, monospace">QRTZ_*</tspan> en</text>
+  <text x="606" y="1806" font-size="11.5" fill="#4c1d95">ReminderDB. Sin esto, un reinicio pierde todo lo pendiente.</text>
+  <text x="590" y="1834" font-size="11.5" fill="#312e81"><tspan font-weight="700">2. Política de misfire.</tspan> El servicio estuvo 2 h caído y hay</text>
+  <text x="606" y="1852" font-size="11.5" fill="#4c1d95">40 triggers vencidos: ¿disparan todos de golpe o se</text>
+  <text x="606" y="1870" font-size="11.5" fill="#4c1d95">descartan? Si no lo definís, el default te va a sorprender.</text>
+  <text x="590" y="1898" font-size="11.5" fill="#312e81"><tspan font-weight="700">3. Clustering.</tspan> Con 2 réplicas y sin <tspan font-family="Consolas, monospace">clusterCheckinInterval</tspan></text>
+  <text x="606" y="1916" font-size="11.5" fill="#4c1d95">disparás dos veces. Exige relojes sincronizados.</text>
+  <text x="590" y="1944" font-size="11.5" fill="#312e81"><tspan font-weight="700">4. Multi-tenant.</tspan> Quartz no sabe de tenants: el <tspan font-family="Consolas, monospace">TenantId</tspan></text>
+  <text x="606" y="1962" font-size="11.5" fill="#4c1d95">va en el <tspan font-family="Consolas, monospace">JobDataMap</tspan> y el trigger group como <tspan font-family="Consolas, monospace">tenant:{id}</tspan>,</text>
+  <text x="606" y="1980" font-size="11.5" fill="#4c1d95">para poder pausar o purgar un tenant entero de una.</text>
+  <text x="590" y="2006" font-size="11.5" fill="#312e81"><tspan font-weight="700">5. Un solo tipo de job</tspan> — no una clase por recordatorio.</text>
+
+  <rect x="1080" y="1732" width="460" height="288" rx="9" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+  <text x="1100" y="1760" font-size="13.5" font-weight="700" fill="#92400e">⚠ El costo que se paga por separar</text>
+  <text x="1100" y="1788" font-size="12.5" font-weight="700" fill="#92400e">La ventana del reschedule</text>
+  <rect x="1100" y="1800" width="420" height="94" rx="6" fill="#fff" stroke="#fcd34d"/>
+  <text x="1114" y="1822" font-size="11" fill="#b45309">14:30 — el usuario mueve la cita 15:00 → 17:00</text>
+  <text x="1114" y="1842" font-size="11" fill="#b45309">14:30 — Calendar publica <tspan font-family="Consolas, monospace">target_moved</tspan></text>
+  <text x="1114" y="1862" font-size="11" fill="#b45309">14:45 — si el consumer se atascó, Quartz dispara</text>
+  <text x="1130" y="1880" font-size="11" font-weight="700" fill="#92400e">el aviso viejo, de una cita que ya no existe</text>
+  <text x="1100" y="1920" font-size="11.5" fill="#78350f">Con el reminder dentro de Calendar esto era</text>
+  <text x="1100" y="1938" font-size="11.5" fill="#78350f"><tspan font-weight="700">imposible</tspan> — misma transacción, ventana cero.</text>
+  <text x="1100" y="1962" font-size="11.5" fill="#78350f">No es teórico: ya tuviste 10.412 envelopes</text>
+  <text x="1100" y="1980" font-size="11.5" fill="#78350f">atascados en Correspondence.</text>
+  <text x="1100" y="2006" font-size="11.5" font-weight="700" fill="#92400e">Molesto, no catastrófico — pero va escrito en el</text>
+  <text x="1100" y="2024" font-size="11.5" font-weight="700" fill="#92400e">ADR como consecuencia asumida, no como bug.</text>
+</svg>
