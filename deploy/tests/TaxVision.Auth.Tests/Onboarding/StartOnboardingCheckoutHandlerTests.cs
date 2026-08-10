@@ -22,7 +22,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
     };
 
     // Camino sin código: estos colaboradores nunca se invocan; fallan ruidosamente si se los llamara.
-    private static OnboardingCodeReserver BuildReserver() => new(new ThrowingPricingClient(), new ThrowingGrowthClient());
+    private static OnboardingCodeReserver BuildReserver() =>
+        new(new ThrowingPricingClient(), new ThrowingGrowthClient());
 
     private static OnboardingSuccessCompleter BuildCompleter() =>
         new(

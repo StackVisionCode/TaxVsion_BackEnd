@@ -24,5 +24,6 @@
     <ProjectReference Include="..\..\..\src\Services\Postmaster\TaxVision.Postmaster.Application\TaxVision.Postmaster.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Postmaster\TaxVision.Postmaster.Infrastructure\TaxVision.Postmaster.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Postmaster\TaxVision.Postmaster.Api\TaxVision.Postmaster.Api.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 </Project>

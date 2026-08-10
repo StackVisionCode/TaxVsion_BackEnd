@@ -14,14 +14,7 @@ namespace TaxVision.Billing.Infrastructure.Permissions;
 /// usuario que no cambia de rol no genera ninguno.
 ///
 /// <para>
-/// Toma <see cref="IServiceTokenProvider"/> con el nombre de cliente explícito, no el
-/// <c>IServiceTokenAcquirer</c> compartido: Billing ya lo tiene registrado apuntando a
-/// <c>SubscriptionServiceTokenAcquirer</c> (cliente "Subscription", de RateLimit Fase 2), así que
-/// inyectarlo daría el token equivocado.
-/// </para>
-///
-/// <para>
-/// Usa un cliente M2M propio (<c>billing-worker</c>, audiencia <c>TaxVision.Services</c>) y no los
+/// Usa el cliente de audiencia amplia (<c>billing-worker</c>, <c>TaxVision.Services</c>) y no los
 /// dos que Billing ya tenía: <c>billing-documents</c> y <c>billing-payments</c> se emiten con
 /// audiencia acotada al servicio destino (<c>taxvision-documents</c> / <c>taxvision-payments</c>),
 /// así que Auth los rechaza con 401 al validar sus propios endpoints. Medido en vivo antes de
@@ -34,7 +27,7 @@ internal sealed class PermissionsSnapshotClient(
     ILogger<PermissionsSnapshotClient> logger
 ) : IPermissionsSnapshotClient
 {
-    private const string ClientName = "Auth";
+    private const string ClientName = BillingServiceClientsOptions.PlatformClientName;
 
     private static readonly JsonSerializerOptions Json = new()
     {

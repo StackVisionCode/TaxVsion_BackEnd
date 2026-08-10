@@ -30,6 +30,10 @@ public static class TenantBrandingFileScanResultConsumer
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         var tenant = await repo.GetByIdAsync(msg.TenantId, ct);
         if (tenant is null || tenant.LogoFileId != msg.FileId)
             return;
@@ -80,10 +84,15 @@ public static class TenantBrandingFileScanResultConsumer
         FileInfectedDetectedIntegrationEvent msg,
         ITenantRepository repo,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         ILogger<TaxVision.Tenant.Domain.Tenant> logger,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         var tenant = await repo.GetByIdAsync(msg.TenantId, ct);
         if (tenant is null || tenant.LogoFileId != msg.FileId)
             return;
@@ -101,10 +110,15 @@ public static class TenantBrandingFileScanResultConsumer
         FileBlockedByPolicyIntegrationEvent msg,
         ITenantRepository repo,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         ILogger<TaxVision.Tenant.Domain.Tenant> logger,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         var tenant = await repo.GetByIdAsync(msg.TenantId, ct);
         if (tenant is null || tenant.LogoFileId != msg.FileId)
             return;

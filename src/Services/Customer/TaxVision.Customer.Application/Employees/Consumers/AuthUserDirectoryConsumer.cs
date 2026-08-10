@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Customer.Application.Abstractions;
@@ -16,9 +17,14 @@ public static class AuthUserDirectoryConsumer
         UserRegisteredIntegrationEvent msg,
         ITenantEmployeeDirectoryRepository directory,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         await directory.UpsertAsync(msg.UserId, msg.TenantId, msg.ActorType, isActive: true, ct);
         await unitOfWork.SaveChangesAsync(ct);
     }
@@ -27,9 +33,14 @@ public static class AuthUserDirectoryConsumer
         UserDeactivatedIntegrationEvent msg,
         ITenantEmployeeDirectoryRepository directory,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         await directory.MarkInactiveAsync(msg.UserId, ct);
         await unitOfWork.SaveChangesAsync(ct);
     }
@@ -38,9 +49,14 @@ public static class AuthUserDirectoryConsumer
         UserReactivatedIntegrationEvent msg,
         ITenantEmployeeDirectoryRepository directory,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         await directory.MarkActiveAsync(msg.UserId, ct);
         await unitOfWork.SaveChangesAsync(ct);
     }

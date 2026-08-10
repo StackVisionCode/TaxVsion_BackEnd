@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Options;
@@ -20,9 +21,14 @@ public static class TenantEntitlementsChangedQuotaConsumer
         IStorageLimitRepository repository,
         IOptions<CloudStorageOptions> options,
         IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(message.CorrelationId) ? message.EventId.ToString("N") : message.CorrelationId
+        );
+
         var storageQuotaBytes = GetLong(message.EntitlementValues, "storage.max_bytes", fallback: 0);
         var isSuspended = message.SubscriptionStatus == "Suspended";
 

@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.CloudStorage.Domain\TaxVision.CloudStorage.Domain.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="WolverineFx" Version="6.14.0" />

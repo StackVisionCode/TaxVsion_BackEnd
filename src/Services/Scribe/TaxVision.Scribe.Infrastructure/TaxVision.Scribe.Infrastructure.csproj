@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.Scribe.Application\TaxVision.Scribe.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 
   <ItemGroup>

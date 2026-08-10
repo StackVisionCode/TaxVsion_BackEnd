@@ -16,7 +16,11 @@ namespace TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 /// <see cref="OnboardingInvoiceRequestedIntegrationEvent"/>. Billing crea la Invoice en TODOS los casos
 /// (incl. total $0 sin PaymentId) y Documents la renderiza. Auth NO genera documentos.
 /// </summary>
-public sealed class OnboardingFinalizer(IGrowthOnboardingClient growth, IMessageBus bus, ILogger<OnboardingFinalizer> logger)
+public sealed class OnboardingFinalizer(
+    IGrowthOnboardingClient growth,
+    IMessageBus bus,
+    ILogger<OnboardingFinalizer> logger
+)
 {
     public async Task<Result> FinalizeAsync(OnboardingFinalizeCommand cmd, CancellationToken ct)
     {

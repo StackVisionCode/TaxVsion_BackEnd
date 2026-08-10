@@ -7,3 +7,23 @@
 **/.env
 **/appsettings.Development.json
 tmp/
+
+# ---------------------------------------------------------------------------
+# node_modules era el 96% del contexto de build (866 MB de 899), y se enviaba
+# en las 19 imagenes aunque solo 2 servicios sean Node — y esos dos hacen
+# `npm install` dentro del contenedor, asi que nunca usaron estos archivos.
+# Copiarlos ademas seria incorrecto: son modulos nativos compilados para
+# Windows dentro de una imagen Linux.
+# ---------------------------------------------------------------------------
+**/node_modules/
+
+# Documentacion y artefactos que ninguna imagen necesita para compilar.
+# OJO: deploy/tests/ NO se excluye — las imagenes `migrations` y `tests`
+# restauran y compilan TaxVision.slnx entero, que incluye los 19 proyectos de
+# test. Sin ellos el restore falla por proyecto ausente.
+documents/
+Postman_Collection/
+output/
+dev-keys/
+*.log
+*.md

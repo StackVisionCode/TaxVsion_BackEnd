@@ -8,15 +8,23 @@
   <ItemGroup>
     <Compile Remove="BuildingBlocks.Infrastructure\**\*.cs" />
     <Compile Remove="BuildingBlocks.Web\**\*.cs" />
+    <!--
+      Los contratos de integración son su propio ensamblado (BuildingBlocks.Messaging). Son el
+      folder más volátil del repo y ningún proyecto Domain los consume: dejarlos acá obligaba a
+      recompilar los 18 Domain cada vez que cambiaba un evento.
+    -->
+    <Compile Remove="Messaging\**\*.cs" />
+    <!--
+      Los catálogos de permisos son su propio ensamblado (BuildingBlocks.Authorization): segundo
+      folder más volátil y consumido casi solo por la capa Api.
+    -->
+    <Compile Remove="Authorization\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <!--
-      Solo para [MessageIdentity] en CommunicationIntegrationEvents (Fase Backend 5 de
-      Communication) — mapea el wire-type-name que publica el microservicio Node.js
-      (que no es un CLR type) a un record C#. No trae ningun comportamiento en runtime
-      para los servicios que NO llaman UseWolverine() en su Program.cs (Auth, Customer,
-      etc.) — es puro atributo/metadata a nivel de compilacion.
+      [SagaIdentity] en AggregateRoot y los eventos de onboarding. Se queda aunque Messaging
+      salga del ensamblado, porque Domain/AggregateRoot.cs también lo usa.
     -->
     <PackageReference Include="WolverineFx" Version="6.14.0" />
   </ItemGroup>

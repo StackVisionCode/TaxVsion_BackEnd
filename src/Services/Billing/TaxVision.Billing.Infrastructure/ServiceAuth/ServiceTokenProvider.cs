@@ -25,10 +25,25 @@ public sealed class BillingServiceClientsOptions
 {
     public const string SectionName = "Billing:ServiceClients";
 
+    /// <summary>
+    /// Cliente de audiencia amplia (<c>TaxVision.Services</c>), el que vale para cualquier endpoint
+    /// M2M de la plataforma que solo exija <c>ServiceOnly</c> + <c>ActorType.Service</c> — hoy el
+    /// snapshot de permisos de Auth y el catálogo de plan-rate-limits de Subscription.
+    ///
+    /// <para>
+    /// Se llama "Platform" y no por el servicio destino a propósito: los otros dos clientes de
+    /// Billing (<c>Documents</c>, <c>Payments</c>) sí llevan audiencia acotada al destino, así que
+    /// nombrar este por un destino concreto invitaba a registrar uno por servicio. De hecho pasó:
+    /// el lector de cuotas pedía un cliente "Subscription" que no existía en ninguna config, y el
+    /// token nulo resultante degradaba las cuotas a la base sin escalar por tier, en silencio.
+    /// </para>
+    /// </summary>
+    public const string PlatformClientName = "Platform";
+
     /// <summary>Base de Auth para el grant client-credentials (compartida por todos los clientes).</summary>
     public string AuthBaseUrl { get; set; } = "http://localhost:5124";
 
-    /// <summary>Clientes por nombre (case-insensitive): "Documents", "Payments", …</summary>
+    /// <summary>Clientes por nombre (case-insensitive): "Platform", "Documents", "Payments".</summary>
     public Dictionary<string, ServiceClientCredentials> Clients { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

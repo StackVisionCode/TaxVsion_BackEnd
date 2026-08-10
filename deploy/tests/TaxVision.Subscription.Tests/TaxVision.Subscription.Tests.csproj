@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Subscription\TaxVision.Subscription.Domain\TaxVision.Subscription.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Subscription\TaxVision.Subscription.Application\TaxVision.Subscription.Application.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <!-- RBAC Fase 5.10: agregado para probar el HasQueryFilter global de SubscriptionDbContext directamente. -->
     <ProjectReference Include="..\..\..\src\Services\Subscription\TaxVision.Subscription.Infrastructure\TaxVision.Subscription.Infrastructure.csproj" />
     <!-- ActorType Fase 6: agregado para probar la fitness function AllowActorTypes vía reflexión

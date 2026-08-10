@@ -87,7 +87,10 @@ public sealed class OnboardingSuccessCompleter(
         var gross = onboarding.GrossAmountCents ?? amountPaidCents;
         var discount = onboarding.TotalDiscountCents ?? 0;
         var net = onboarding.NetAmountCents ?? amountPaidCents;
-        var settlement = net == 0 ? "FullyCoveredByCode" : discount > 0 ? "Mixed" : "Paid";
+        var settlement =
+            net == 0 ? "FullyCoveredByCode"
+            : discount > 0 ? "Mixed"
+            : "Paid";
         var reservations = onboarding
             .CodeReservations.OrderBy(r => r.Order)
             .Select(r => new FinalizeReservationDto(

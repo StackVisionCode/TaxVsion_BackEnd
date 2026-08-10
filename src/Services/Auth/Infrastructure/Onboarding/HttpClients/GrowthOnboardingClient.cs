@@ -69,7 +69,9 @@ public sealed class GrowthOnboardingClient(
 
         var dto = await message.Content.ReadFromJsonAsync<QuoteDto>(Json, ct);
         if (dto is null)
-            return Result.Failure<GrowthQuoteResult>(new Error("Growth.Quote.Empty", "Growth returned an empty quote."));
+            return Result.Failure<GrowthQuoteResult>(
+                new Error("Growth.Quote.Empty", "Growth returned an empty quote.")
+            );
 
         return Result.Success(
             new GrowthQuoteResult(
@@ -263,7 +265,13 @@ public sealed class GrowthOnboardingClient(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
-            logger.LogWarning(ex, "Growth call {Path} failed for scope {Scope} ({Corr}).", path, scope, correlationScope);
+            logger.LogWarning(
+                ex,
+                "Growth call {Path} failed for scope {Scope} ({Corr}).",
+                path,
+                scope,
+                correlationScope
+            );
             return Result.Failure<HttpResponseMessage>(new Error("Growth.Unreachable", "Could not reach Growth."));
         }
     }

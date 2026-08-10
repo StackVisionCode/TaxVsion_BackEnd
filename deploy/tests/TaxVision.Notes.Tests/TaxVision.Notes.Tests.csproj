@@ -26,5 +26,6 @@
     <ProjectReference Include="..\..\..\src\Services\Notes\TaxVision.Notes.Application\TaxVision.Notes.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Notes\TaxVision.Notes.Infrastructure\TaxVision.Notes.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Notes\TaxVision.Notes.Api\TaxVision.Notes.Api.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 </Project>

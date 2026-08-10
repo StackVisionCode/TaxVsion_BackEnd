@@ -49,7 +49,11 @@ public static class PlatformOnboardingCodeSeeder
             var hashResult = hasher.Hash(seed.Token);
             if (hashResult.IsFailure)
             {
-                logger.LogWarning("Seed code '{Name}' skipped: invalid token hash ({Code}).", seed.Name, hashResult.Error.Code);
+                logger.LogWarning(
+                    "Seed code '{Name}' skipped: invalid token hash ({Code}).",
+                    seed.Name,
+                    hashResult.Error.Code
+                );
                 continue;
             }
 
@@ -60,7 +64,11 @@ public static class PlatformOnboardingCodeSeeder
             var displayResult = CodeDisplay.FromToken(seed.Token);
             if (displayResult.IsFailure)
             {
-                logger.LogWarning("Seed code '{Name}' skipped: invalid display ({Code}).", seed.Name, displayResult.Error.Code);
+                logger.LogWarning(
+                    "Seed code '{Name}' skipped: invalid display ({Code}).",
+                    seed.Name,
+                    displayResult.Error.Code
+                );
                 continue;
             }
 
@@ -82,12 +90,23 @@ public static class PlatformOnboardingCodeSeeder
             );
             if (definitionResult.IsFailure)
             {
-                logger.LogWarning("Seed code '{Name}' skipped: {Code} - {Message}", seed.Name, definitionResult.Error.Code, definitionResult.Error.Message);
+                logger.LogWarning(
+                    "Seed code '{Name}' skipped: {Code} - {Message}",
+                    seed.Name,
+                    definitionResult.Error.Code,
+                    definitionResult.Error.Message
+                );
                 continue;
             }
 
             var definition = definitionResult.Value;
-            var ruleResult = definition.PublishRuleVersion(seed.Benefit(), minimumPurchase: null, allowStacking: true, actor, nowUtc);
+            var ruleResult = definition.PublishRuleVersion(
+                seed.Benefit(),
+                minimumPurchase: null,
+                allowStacking: true,
+                actor,
+                nowUtc
+            );
             if (ruleResult.IsFailure)
             {
                 logger.LogWarning("Seed code '{Name}' skipped: rule {Code}", seed.Name, ruleResult.Error.Code);

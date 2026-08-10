@@ -31,5 +31,7 @@
     <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Referrals.Application\TaxVision.Referrals.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Growth.Infrastructure\TaxVision.Growth.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Growth.Api\TaxVision.Growth.Api.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
 </Project>

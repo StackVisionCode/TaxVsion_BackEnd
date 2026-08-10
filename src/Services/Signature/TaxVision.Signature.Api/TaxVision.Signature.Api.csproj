@@ -28,5 +28,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
     <ProjectReference Include="..\TaxVision.Signature.Application\TaxVision.Signature.Application.csproj" />
     <ProjectReference Include="..\TaxVision.Signature.Infrastructure\TaxVision.Signature.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
 </Project>

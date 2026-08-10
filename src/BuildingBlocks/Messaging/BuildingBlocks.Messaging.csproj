@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Los contratos de integración salen del núcleo para que un cambio de evento (36 commits en
+    3 meses, el folder más volátil de BuildingBlocks) deje de recompilar los 18 proyectos Domain,
+    que no consumen ni un solo evento. La dirección es Messaging -> núcleo y nunca al revés: si el
+    núcleo referenciara a Messaging, la referencia se heredaría de forma transitiva a todo el que
+    use BuildingBlocks y el split no serviría de nada.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WolverineFx" Version="6.14.0" />
+  </ItemGroup>
+</Project>

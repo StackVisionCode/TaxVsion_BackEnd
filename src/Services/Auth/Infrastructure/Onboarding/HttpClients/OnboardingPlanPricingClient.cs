@@ -60,7 +60,10 @@ public sealed class OnboardingPlanPricingClient(
                     planId
                 );
                 return Result.Failure<OnboardingPlanPrice>(
-                    new Error("Onboarding.Pricing.UnexpectedStatus", $"Subscription returned {(int)response.StatusCode}.")
+                    new Error(
+                        "Onboarding.Pricing.UnexpectedStatus",
+                        $"Subscription returned {(int)response.StatusCode}."
+                    )
                 );
             }
 

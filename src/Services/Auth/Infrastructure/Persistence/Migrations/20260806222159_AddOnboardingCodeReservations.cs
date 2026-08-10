@@ -16,38 +16,44 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 table: "TenantOnboardings",
                 type: "nvarchar(3)",
                 maxLength: 3,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<bool>(
                 name: "FullyCovered",
                 table: "TenantOnboardings",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: false
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "GrossAmountCents",
                 table: "TenantOnboardings",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "NetAmountCents",
                 table: "TenantOnboardings",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ReferralAttributionId",
                 table: "TenantOnboardings",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "TotalDiscountCents",
                 table: "TenantOnboardings",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "OnboardingCodeReservations",
@@ -61,7 +67,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     DiscountCents = table.Column<long>(type: "bigint", nullable: false),
                     SnapshotHash = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                     Order = table.Column<int>(type: "int", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -71,49 +77,40 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         column: x => x.OnboardingId,
                         principalTable: "TenantOnboardings",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_OnboardingCodeReservations_CodeReservationId",
                 table: "OnboardingCodeReservations",
-                column: "CodeReservationId");
+                column: "CodeReservationId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_OnboardingCodeReservations_OnboardingId",
                 table: "OnboardingCodeReservations",
-                column: "OnboardingId");
+                column: "OnboardingId"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "OnboardingCodeReservations");
+            migrationBuilder.DropTable(name: "OnboardingCodeReservations");
 
-            migrationBuilder.DropColumn(
-                name: "Currency",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "Currency", table: "TenantOnboardings");
 
-            migrationBuilder.DropColumn(
-                name: "FullyCovered",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "FullyCovered", table: "TenantOnboardings");
 
-            migrationBuilder.DropColumn(
-                name: "GrossAmountCents",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "GrossAmountCents", table: "TenantOnboardings");
 
-            migrationBuilder.DropColumn(
-                name: "NetAmountCents",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "NetAmountCents", table: "TenantOnboardings");
 
-            migrationBuilder.DropColumn(
-                name: "ReferralAttributionId",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "ReferralAttributionId", table: "TenantOnboardings");
 
-            migrationBuilder.DropColumn(
-                name: "TotalDiscountCents",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "TotalDiscountCents", table: "TenantOnboardings");
         }
     }
 }

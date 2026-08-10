@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.RateLimiting;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.RateLimiting;

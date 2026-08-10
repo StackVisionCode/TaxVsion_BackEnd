@@ -81,7 +81,14 @@ public static class StartOnboardingCheckoutHandler
 
         // 2) Carril $0: cubierto 100% por código → SIN PaymentApp/Stripe.
         if (onboarding.FullyCovered)
-            return await CompleteFullyCoveredAsync(onboarding, successCompleter, planCatalog, unitOfWork, correlation, ct);
+            return await CompleteFullyCoveredAsync(
+                onboarding,
+                successCompleter,
+                planCatalog,
+                unitOfWork,
+                correlation,
+                ct
+            );
 
         // 3) Carril con cobro: PaymentApp cobra el NETO (o el bruto si no hubo códigos).
         var idempotencyKey = $"onboarding-checkout-{onboarding.Id:N}";
@@ -182,11 +189,21 @@ public static class StartOnboardingCheckoutHandler
     {
         var codes = new List<OnboardingCodeInput>();
         if (!string.IsNullOrWhiteSpace(command.ReferralCode))
-            codes.Add(new OnboardingCodeInput(command.ReferralCode.Trim(), OnboardingBenefitType.Referral, command.ReferralCode.Trim()));
+            codes.Add(
+                new OnboardingCodeInput(
+                    command.ReferralCode.Trim(),
+                    OnboardingBenefitType.Referral,
+                    command.ReferralCode.Trim()
+                )
+            );
         if (!string.IsNullOrWhiteSpace(command.PromoCode))
-            codes.Add(new OnboardingCodeInput(command.PromoCode.Trim(), OnboardingBenefitType.Promo, command.PromoCode.Trim()));
+            codes.Add(
+                new OnboardingCodeInput(command.PromoCode.Trim(), OnboardingBenefitType.Promo, command.PromoCode.Trim())
+            );
         if (!string.IsNullOrWhiteSpace(command.GiftCode))
-            codes.Add(new OnboardingCodeInput(command.GiftCode.Trim(), OnboardingBenefitType.Gift, command.GiftCode.Trim()));
+            codes.Add(
+                new OnboardingCodeInput(command.GiftCode.Trim(), OnboardingBenefitType.Gift, command.GiftCode.Trim())
+            );
         return codes;
     }
 }

@@ -11,6 +11,7 @@
     <ProjectReference Include="..\TaxVision.Codes.Application\TaxVision.Codes.Application.csproj" />
     <ProjectReference Include="..\TaxVision.Referrals.Domain\TaxVision.Referrals.Domain.csproj" />
     <ProjectReference Include="..\TaxVision.Referrals.Application\TaxVision.Referrals.Application.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
   </ItemGroup>
 
   <ItemGroup>
