@@ -24,7 +24,11 @@ public sealed class OnboardingPlanPricingClient(
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
-    public async Task<Result<OnboardingPlanPrice>> GetGrossPriceAsync(Guid planId, CancellationToken ct = default)
+    public async Task<Result<OnboardingPlanPrice>> GetGrossPriceAsync(
+        Guid planId,
+        string billingCycle,
+        CancellationToken ct = default
+    )
     {
         var token = await tokenCache.GetOrCreateAsync(
             PlatformTenant.Id,
@@ -38,7 +42,12 @@ public sealed class OnboardingPlanPricingClient(
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"subscriptions/internal/plans/{planId}/pricing");
+            // subscription-api sirve rutas LITERALES sin path-base (verificado: /internal/plans/.../pricing
+            // → 401=existe; /subscriptions/internal/... → 404). El BaseUrl ya es el host.
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"internal/plans/{planId}/pricing?cycle={Uri.EscapeDataString(billingCycle)}"
+            );
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var breaker = resilience.GetOrCreate(nameof(OnboardingPlanPricingClient));
@@ -60,7 +69,7 @@ public sealed class OnboardingPlanPricingClient(
                 ? Result.Failure<OnboardingPlanPrice>(
                     new Error("Onboarding.Pricing.Empty", "Subscription returned an empty pricing response.")
                 )
-                : Result.Success(new OnboardingPlanPrice(dto.MonthlyPriceCents, dto.Currency));
+                : Result.Success(new OnboardingPlanPrice(dto.PriceCents, dto.Currency));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
@@ -71,5 +80,5 @@ public sealed class OnboardingPlanPricingClient(
         }
     }
 
-    private sealed record PricingDto(Guid PlanId, long MonthlyPriceCents, string Currency);
+    private sealed record PricingDto(Guid PlanId, long PriceCents, string Currency);
 }

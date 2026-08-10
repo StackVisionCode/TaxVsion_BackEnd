@@ -7,7 +7,13 @@ namespace TaxVision.Auth.Application.Onboarding.Abstractions;
 /// cotizar los códigos en Growth antes del checkout.</summary>
 public interface IOnboardingPlanPricingClient
 {
-    Task<Result<OnboardingPlanPrice>> GetGrossPriceAsync(Guid planId, CancellationToken ct = default);
+    /// <summary>Bruto del plan para el CICLO elegido ("Monthly"/"Yearly"). El gross del código y el neto
+    /// cobrado deben resolverse con el MISMO ciclo, o el guard net≤bruto de PaymentApp puede rechazar.</summary>
+    Task<Result<OnboardingPlanPrice>> GetGrossPriceAsync(
+        Guid planId,
+        string billingCycle,
+        CancellationToken ct = default
+    );
 }
 
-public sealed record OnboardingPlanPrice(long MonthlyPriceCents, string Currency);
+public sealed record OnboardingPlanPrice(long GrossPriceCents, string Currency);

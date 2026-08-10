@@ -1,12 +1,13 @@
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Application.Plans.Queries;
 
-public sealed record GetInternalPlanPricingQuery(Guid PlanId);
+public sealed record GetInternalPlanPricingQuery(Guid PlanId, BillingCycle BillingCycle);
 
-public sealed record InternalPlanPricingResponse(Guid PlanId, long MonthlyPriceCents, string Currency);
+public sealed record InternalPlanPricingResponse(Guid PlanId, long PriceCents, string Currency, string BillingCycle);
 
 /// <summary>
 /// PayFlow (Fase 16) — cierra el price-trust gap documentado en
@@ -34,17 +35,24 @@ public static class GetInternalPlanPricingHandler
                 new Error("Subscription.Plan.NotFound", "The plan is missing or unpublished.")
             );
 
-        var tier = version.PriceTiers.FirstOrDefault(t =>
-            t.BillingCycle == BillingCycle.Monthly
-            && t.MinQuantity <= 1
-            && (t.MaxQuantity is null || t.MaxQuantity >= 1)
-        );
-        if (tier is null)
+        // Resuelve el precio base (quantity 1) del CICLO pedido (Monthly/Yearly/…), única fuente de verdad
+        // del pricing. Comparte el helper con el job de renovación y la activación self-service.
+        var price = PlanPricing.ResolveBaseSubscriptionPrice(version, query.BillingCycle);
+        if (price is null)
             return Result.Failure<InternalPlanPricingResponse>(
-                new Error("Subscription.Plan.NoMonthlyPrice", "The plan has no base Monthly price tier.")
+                new Error(
+                    "Subscription.Plan.NoPriceForCycle",
+                    $"The plan has no base {query.BillingCycle} price tier."
+                )
             );
 
-        var cents = (long)Math.Round(tier.UnitAmount.Amount * 100m, MidpointRounding.AwayFromZero);
-        return Result.Success(new InternalPlanPricingResponse(plan.Id, cents, tier.UnitAmount.Currency));
+        return Result.Success(
+            new InternalPlanPricingResponse(
+                plan.Id,
+                price.Value.AmountCents,
+                price.Value.Currency,
+                query.BillingCycle.ToString()
+            )
+        );
     }
 }

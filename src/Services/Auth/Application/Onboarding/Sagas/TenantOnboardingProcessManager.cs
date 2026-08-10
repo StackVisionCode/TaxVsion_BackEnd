@@ -44,6 +44,10 @@ public sealed class TenantOnboardingProcessManager : Saga
     public string LastName { get; set; } = default!;
     public Guid PlanId { get; set; }
 
+    /// <summary>Ciclo elegido ("Monthly"/"Yearly") — se lleva en el estado de la saga para activar la
+    /// suscripción con el ciclo correcto (incl. el path de reintento desde el aggregate).</summary>
+    public string BillingCycle { get; set; } = "Monthly";
+
     public static (TenantOnboardingProcessManager, CreateTenantForOnboardingCommand) Start(
         OnboardingProvisioningStartedIntegrationEvent evt
     )
@@ -55,6 +59,7 @@ public sealed class TenantOnboardingProcessManager : Saga
             FirstName = evt.FirstName,
             LastName = evt.LastName,
             PlanId = evt.PlanId,
+            BillingCycle = evt.BillingCycle,
             PasswordHashReference = evt.PasswordHashReference,
         };
 
@@ -128,7 +133,7 @@ public sealed class TenantOnboardingProcessManager : Saga
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        return new ActivateSubscriptionCommand(Id, TenantId!.Value, PlanId);
+        return new ActivateSubscriptionCommand(Id, TenantId!.Value, PlanId, BillingCycle);
     }
 
     public async Task<ProvisionStorageForTenantCommand?> Handle(
@@ -243,7 +248,8 @@ public sealed class TenantOnboardingProcessManager : Saga
             TenantProvisioningStep.Subscription => new ActivateSubscriptionCommand(
                 Id,
                 TenantId!.Value,
-                onboarding.PlanId
+                onboarding.PlanId,
+                onboarding.BillingCycle
             ),
             _ => null,
         };

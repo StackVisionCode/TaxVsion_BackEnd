@@ -29,6 +29,11 @@ public sealed record OnboardingProvisioningStartedIntegrationEvent : Integration
     public required string FirstName { get; init; }
     public required string LastName { get; init; }
     public required Guid PlanId { get; init; }
+
+    /// <summary>Ciclo de facturación elegido ("Monthly"/"Yearly"). Viaja hasta la activación de la
+    /// suscripción para que nazca con el ciclo correcto. Default "Monthly" (compat con eventos en vuelo).</summary>
+    public string BillingCycle { get; init; } = "Monthly";
+
     public required string OfficeName { get; init; }
     public required string RequestedSubdomain { get; init; }
     public required Guid TermsVersionId { get; init; }

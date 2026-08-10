@@ -16,15 +16,25 @@ internal sealed class SubscriptionPlanPricingClient(
     ILogger<SubscriptionPlanPricingClient> logger
 ) : ISubscriptionPlanPricingClient
 {
-    public async Task<Result<PlanMonthlyPrice>> GetMonthlyPriceAsync(Guid planId, CancellationToken ct = default)
+    public async Task<Result<PlanPrice>> GetPriceAsync(
+        Guid planId,
+        string billingCycle,
+        CancellationToken ct = default
+    )
     {
         var token = await tokenAcquirer.GetTokenAsync(PlatformTenant.Id, ct);
         if (string.IsNullOrEmpty(token))
-            return Result.Failure<PlanMonthlyPrice>(
+            return Result.Failure<PlanPrice>(
                 new Error("PaymentApp.Subscription.Auth", "No Subscription credentials available.")
             );
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"internal/plans/{planId}/pricing");
+        // subscription-api sirve rutas LITERALES sin path-base (verificado: /internal/plans/.../pricing →
+        // 401=existe; /subscriptions/internal/... → 404). El BaseUrl (SubscriptionClient__BaseUrl) ya es el
+        // host. ?cycle= resuelve el precio del ciclo elegido.
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"internal/plans/{planId}/pricing?cycle={Uri.EscapeDataString(billingCycle)}"
+        );
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         try
@@ -37,7 +47,7 @@ internal sealed class SubscriptionPlanPricingClient(
                     (int)response.StatusCode,
                     planId
                 );
-                return Result.Failure<PlanMonthlyPrice>(
+                return Result.Failure<PlanPrice>(
                     new Error(
                         "PaymentApp.Subscription.UnexpectedStatus",
                         $"Subscription returned {(int)response.StatusCode}."
@@ -47,19 +57,19 @@ internal sealed class SubscriptionPlanPricingClient(
 
             var payload = await response.Content.ReadFromJsonAsync<PricingDto>(ct);
             return payload is null
-                ? Result.Failure<PlanMonthlyPrice>(
+                ? Result.Failure<PlanPrice>(
                     new Error("PaymentApp.Subscription.EmptyResponse", "Empty response from Subscription.")
                 )
-                : Result.Success(new PlanMonthlyPrice(payload.MonthlyPriceCents, payload.Currency));
+                : Result.Success(new PlanPrice(payload.PriceCents, payload.Currency));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             logger.LogWarning(ex, "Subscription plan pricing request failed for plan {PlanId}.", planId);
-            return Result.Failure<PlanMonthlyPrice>(
+            return Result.Failure<PlanPrice>(
                 new Error("PaymentApp.Subscription.RequestFailed", "Could not reach Subscription.")
             );
         }
     }
 
-    private sealed record PricingDto(Guid PlanId, long MonthlyPriceCents, string Currency);
+    private sealed record PricingDto(Guid PlanId, long PriceCents, string Currency);
 }

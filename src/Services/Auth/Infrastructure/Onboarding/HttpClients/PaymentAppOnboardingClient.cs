@@ -68,6 +68,7 @@ public sealed class PaymentAppOnboardingClient(
                         successUrl = request.SuccessUrl,
                         cancelUrl = request.CancelUrl,
                         idempotencyKey = request.IdempotencyKey,
+                        billingCycle = request.BillingCycle,
                         netAmountCents = request.NetAmountCents,
                         discountAmountCents = request.DiscountAmountCents,
                         currency = request.Currency,

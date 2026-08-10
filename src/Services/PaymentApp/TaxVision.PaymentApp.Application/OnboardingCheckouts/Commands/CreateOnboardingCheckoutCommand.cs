@@ -12,6 +12,8 @@ public sealed record CreateOnboardingCheckoutCommand(
     string SuccessUrl,
     string CancelUrl,
     string IdempotencyKey,
+    // Ciclo elegido ("Monthly"/"Yearly") — resuelve el bruto de ESE ciclo en Subscription.
+    string BillingCycle = "Monthly",
     // Gift/Referral: si un código aplicó descuento parcial, el NETO a cobrar (override del bruto) + el
     // resumen de la reserva. Null = sin código → se cobra el bruto resuelto server-side. El neto se valida
     // contra el bruto (nunca mayor). El carril $0 nunca llega acá (Auth no invoca checkout si net = 0).

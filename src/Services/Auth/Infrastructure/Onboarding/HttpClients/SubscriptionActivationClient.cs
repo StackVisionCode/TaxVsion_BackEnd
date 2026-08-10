@@ -53,6 +53,7 @@ public sealed class SubscriptionActivationClient(
                         onboardingId = request.OnboardingId,
                         tenantId = request.TenantId,
                         planId = request.PlanId,
+                        billingCycle = request.BillingCycle,
                     }
                 ),
             };

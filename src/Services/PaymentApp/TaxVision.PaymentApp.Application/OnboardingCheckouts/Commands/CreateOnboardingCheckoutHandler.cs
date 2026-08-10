@@ -129,7 +129,7 @@ public static class CreateOnboardingCheckoutHandler
         CancellationToken ct
     )
     {
-        var priceResult = await planPricing.GetMonthlyPriceAsync(command.PlanId, ct);
+        var priceResult = await planPricing.GetPriceAsync(command.PlanId, command.BillingCycle, ct);
         if (priceResult.IsFailure)
             return Result.Failure<SaaSPayment>(priceResult.Error);
 
@@ -260,7 +260,7 @@ public static class CreateOnboardingCheckoutHandler
 
     private static Result<SaaSPayment> PrepareNewPayment(
         CreateOnboardingCheckoutCommand command,
-        PlanMonthlyPrice price
+        PlanPrice price
     )
     {
         var keyResult = IdempotencyKey.Create(command.IdempotencyKey);

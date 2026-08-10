@@ -34,6 +34,12 @@ public sealed class TenantOnboarding : BaseEntity
     public DateTime EmailVerifiedAtUtc { get; private set; }
     public string? Phone { get; private set; }
     public Guid PlanId { get; private set; }
+
+    /// <summary>Ciclo de facturación elegido por el comprador ("Monthly"/"Yearly"). Auth es passthrough:
+    /// no interpreta el valor; lo lleva a Subscription (pricing + activación) y PaymentApp (cobro), que
+    /// lo parsean. Default "Monthly".</summary>
+    public string BillingCycle { get; private set; } = "Monthly";
+
     public TenantOnboardingStatus Status { get; private set; }
 
     public Guid? PaymentId { get; private set; }
@@ -99,7 +105,8 @@ public sealed class TenantOnboarding : BaseEntity
         string firstName,
         string lastName,
         string? phone,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? billingCycle = null
     )
     {
         var normalizedEmail = email?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -120,6 +127,7 @@ public sealed class TenantOnboarding : BaseEntity
                 Email = normalizedEmail,
                 EmailVerifiedAtUtc = emailVerifiedAtUtc,
                 PlanId = planId,
+                BillingCycle = string.IsNullOrWhiteSpace(billingCycle) ? "Monthly" : billingCycle.Trim(),
                 FirstName = firstName.Trim(),
                 LastName = lastName.Trim(),
                 Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim(),

@@ -87,7 +87,10 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         );
         Assert.Equal(onboarding.Id, finalize.OnboardingId);
         Assert.Equal(paymentId, finalize.PaymentId);
-        Assert.Equal(4900, finalize.PaidAmountCents);
+        // Sin códigos: el neto cobrado = bruto = lo pagado, sin descuento (SettlementType Paid).
+        Assert.Equal(4900, finalize.GrossAmountCents);
+        Assert.Equal(0, finalize.DiscountAmountCents);
+        Assert.Equal(4900, finalize.NetAmountCents);
     }
 
     [Fact]

@@ -41,6 +41,10 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
 builder.Services.AddGrowthInfrastructure(builder.Configuration);
+
+// Red de seguridad: barre reservas de código vencidas (checkout abandonado) → Expired + libera el hold,
+// para que un código de un solo uso no quede quemado si nadie llamó Cancel.
+builder.Services.AddHostedService<TaxVision.Growth.Infrastructure.Scheduling.ReservationExpirySweeper>();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);

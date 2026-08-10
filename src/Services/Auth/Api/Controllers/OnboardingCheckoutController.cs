@@ -22,7 +22,9 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
         string LastName,
         string? Phone,
         Guid PlanId,
-        Guid EmailVerificationChallengeId
+        Guid EmailVerificationChallengeId,
+        // Ciclo de facturación elegido ("Monthly"/"Yearly"); ausente = Monthly.
+        string? BillingCycle = null
     );
 
     [HttpPost]
@@ -41,7 +43,8 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
                 request.LastName,
                 request.Phone,
                 request.PlanId,
-                request.EmailVerificationChallengeId
+                request.EmailVerificationChallengeId,
+                request.BillingCycle
             ),
             ct
         );

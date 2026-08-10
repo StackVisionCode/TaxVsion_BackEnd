@@ -26,11 +26,11 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
         CancellationToken ct
     )
     {
-        var priceResult = await pricing.GetGrossPriceAsync(onboarding.PlanId, ct);
+        var priceResult = await pricing.GetGrossPriceAsync(onboarding.PlanId, onboarding.BillingCycle, ct);
         if (priceResult.IsFailure)
             return Result.Failure<OnboardingPricingOutcome>(priceResult.Error);
 
-        var gross = priceResult.Value.MonthlyPriceCents;
+        var gross = priceResult.Value.GrossPriceCents;
         var currency = priceResult.Value.Currency;
 
         long residual = gross;

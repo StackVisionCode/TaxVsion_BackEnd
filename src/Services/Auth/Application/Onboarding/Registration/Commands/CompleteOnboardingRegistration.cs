@@ -267,6 +267,7 @@ public static class CompleteOnboardingRegistrationHandler
                 FirstName = onboarding.FirstName,
                 LastName = onboarding.LastName,
                 PlanId = onboarding.PlanId,
+                BillingCycle = onboarding.BillingCycle,
                 OfficeName = onboarding.OfficeName!,
                 RequestedSubdomain = onboarding.RequestedSubdomain!,
                 TermsVersionId = context.TermsVersion.Id,

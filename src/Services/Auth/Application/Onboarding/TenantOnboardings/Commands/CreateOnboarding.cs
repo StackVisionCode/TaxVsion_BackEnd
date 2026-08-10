@@ -11,7 +11,8 @@ public sealed record CreateOnboardingCommand(
     string LastName,
     string? Phone,
     Guid PlanId,
-    Guid EmailVerificationChallengeId
+    Guid EmailVerificationChallengeId,
+    string? BillingCycle = null
 );
 
 public sealed record CreateOnboardingResponse(Guid OnboardingId, string Email, Guid PlanId);
@@ -59,7 +60,8 @@ public static class CreateOnboardingHandler
             command.FirstName,
             command.LastName,
             command.Phone,
-            nowUtc
+            nowUtc,
+            command.BillingCycle
         );
         if (result.IsFailure)
             return Result.Failure<CreateOnboardingResponse>(result.Error);

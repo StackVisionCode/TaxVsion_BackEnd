@@ -24,7 +24,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
     {
         var payments = new FakeSaaSPaymentRepository();
         var provider = new FakePaymentProvider();
-        var pricing = new FakeSubscriptionPlanPricingClient(Result.Success(new PlanMonthlyPrice(4900, "USD")));
+        var pricing = new FakeSubscriptionPlanPricingClient(Result.Success(new PlanPrice(4900, "USD")));
 
         var command = new CreateOnboardingCheckoutCommand(
             Guid.NewGuid(),
@@ -62,7 +62,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
         var payments = new FakeSaaSPaymentRepository();
         var provider = new FakePaymentProvider();
         var pricing = new FakeSubscriptionPlanPricingClient(
-            Result.Failure<PlanMonthlyPrice>(new Error("Subscription.Plan.NotFound", "boom"))
+            Result.Failure<PlanPrice>(new Error("Subscription.Plan.NotFound", "boom"))
         );
 
         var command = new CreateOnboardingCheckoutCommand(
@@ -93,11 +93,14 @@ public sealed class CreateOnboardingCheckoutHandlerTests
         Assert.Null(provider.LastRequest);
     }
 
-    private sealed class FakeSubscriptionPlanPricingClient(Result<PlanMonthlyPrice> result)
+    private sealed class FakeSubscriptionPlanPricingClient(Result<PlanPrice> result)
         : ISubscriptionPlanPricingClient
     {
-        public Task<Result<PlanMonthlyPrice>> GetMonthlyPriceAsync(Guid planId, CancellationToken ct = default) =>
-            Task.FromResult(result);
+        public Task<Result<PlanPrice>> GetPriceAsync(
+            Guid planId,
+            string billingCycle,
+            CancellationToken ct = default
+        ) => Task.FromResult(result);
     }
 
     private sealed class FakeSaaSPaymentRepository : ISaaSPaymentRepository

@@ -17,6 +17,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(onboarding => onboarding.EmailVerifiedAtUtc).IsRequired();
         builder.Property(onboarding => onboarding.Phone).HasMaxLength(32);
         builder.Property(onboarding => onboarding.PlanId).IsRequired();
+        builder.Property(onboarding => onboarding.BillingCycle).HasMaxLength(24).IsRequired().HasDefaultValue("Monthly");
         builder.Property(onboarding => onboarding.Status).HasConversion<string>().HasMaxLength(24).IsRequired();
 
         builder.Property(onboarding => onboarding.PaymentStatus).HasMaxLength(24);

@@ -11,15 +11,15 @@ using Wolverine;
 
 namespace TaxVision.Subscription.Application.Subscriptions.Commands;
 
-public sealed record ActivateFromOnboardingCommand(Guid OnboardingId, Guid TenantId, Guid PlanId);
+public sealed record ActivateFromOnboardingCommand(Guid OnboardingId, Guid TenantId, Guid PlanId, BillingCycle BillingCycle);
 
 /// <summary>
 /// PayFlow (Fase 16) — receptor del <c>POST internal/subscriptions/activate-from-onboarding</c> que
 /// la Saga de Auth (Fase 15, <c>Sagas/Commands/ActivateSubscriptionCommand.cs</c>) invoca. A
 /// diferencia de <c>TenantCreatedConsumer</c> (trial automático), esta suscripción nace directo en
-/// <c>Active</c> — el cliente ya pagó en PaymentApp antes de llegar acá. Billing cycle fijo en
-/// Monthly (el request de la Saga no lleva ese dato — Fase 8's checkout tampoco lo captura hoy;
-/// ampliar esto es trabajo de un plan de precios/checkout distinto, no de esta fase).
+/// <c>Active</c> — el cliente ya pagó en PaymentApp antes de llegar acá. El billing cycle lo elige el
+/// comprador en el onboarding y viaja por toda la cadena hasta acá (Monthly o Yearly); el fin de
+/// período se deriva del ciclo (<c>CalculateNext</c>), no fijo a un mes.
 /// </summary>
 public static class ActivateFromOnboardingHandler
 {
@@ -50,9 +50,9 @@ public static class ActivateFromOnboardingHandler
             command.TenantId,
             plan,
             planVersion,
-            BillingCycle.Monthly,
+            command.BillingCycle,
             periodStartUtc: nowUtc,
-            periodEndUtc: nowUtc.AddMonths(1),
+            periodEndUtc: command.BillingCycle.CalculateNext(nowUtc),
             actorUserId: Guid.Empty,
             nowUtc,
             command.OnboardingId

@@ -5,7 +5,9 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Plans.Queries;
+using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Subscription.Api.Controllers.Internal;
@@ -26,10 +28,17 @@ public sealed class InternalPlanPricingController(IMessageBus bus) : ControllerB
         "M2M-only endpoint queried by PaymentApp to resolve plan pricing server-side — never exposed to the Gateway."
     )]
     [ProducesResponseType<InternalPlanPricingResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetPricing(Guid planId, CancellationToken ct)
+    public async Task<IActionResult> GetPricing(Guid planId, [FromQuery] string? cycle, CancellationToken ct)
     {
+        // ?cycle=Monthly|Yearly|… — ausente/inválido cae a Monthly (compat con callers que aún no lo mandan).
+        if (!PlanPricing.TryParseBillingCycle(cycle, out var parsed))
+            return StatusCode(
+                StatusCodes.Status400BadRequest,
+                new Error("Subscription.Plan.InvalidCycle", $"Unknown billing cycle '{cycle}'.")
+            );
+
         var result = await bus.InvokeAsync<Result<InternalPlanPricingResponse>>(
-            new GetInternalPlanPricingQuery(planId),
+            new GetInternalPlanPricingQuery(planId, parsed ?? BillingCycle.Monthly),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

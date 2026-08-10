@@ -32,7 +32,7 @@ public sealed class ActivateFromOnboardingHandlerTests
         var unitOfWork = new FakeUnitOfWork();
         var bus = new FakeMessageBus();
 
-        var command = new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id);
+        var command = new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id, BillingCycle.Monthly);
 
         var result = await ActivateFromOnboardingHandler.Handle(
             command,
@@ -48,6 +48,7 @@ public sealed class ActivateFromOnboardingHandlerTests
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
         Assert.NotNull(subscriptions.Added);
         Assert.Equal(SubscriptionStatus.Active, subscriptions.Added!.Status);
+        Assert.Equal(BillingCycle.Monthly, subscriptions.Added.BillingCycle);
         Assert.Equal(onboardingId, subscriptions.Added.OnboardingId);
         Assert.NotNull(settingsRepository.Added);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
@@ -58,6 +59,37 @@ public sealed class ActivateFromOnboardingHandlerTests
         Assert.Equal(subscriptions.Added.Id, activated.CreatedSubscriptionId);
 
         Assert.Single(bus.Published.OfType<RecalculateEntitlementsCommand>());
+    }
+
+    [Fact]
+    public async Task Activates_a_yearly_subscription_when_the_cycle_is_yearly()
+    {
+        var tenantId = Guid.NewGuid();
+        var onboardingId = Guid.NewGuid();
+        var plan = CreatePublishedPlan("starter");
+
+        var subscriptions = new FakeSubscriptionRepository();
+        var plans = new FakePlanRepository(plan);
+        var settingsRepository = new FakeSettingsRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        var result = await ActivateFromOnboardingHandler.Handle(
+            new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id, BillingCycle.Yearly),
+            subscriptions,
+            plans,
+            settingsRepository,
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.NotNull(subscriptions.Added);
+        Assert.Equal(BillingCycle.Yearly, subscriptions.Added!.BillingCycle);
+        // El período debe cubrir ~1 año (no un mes) — el fin se deriva del ciclo, no de AddMonths(1).
+        Assert.True(subscriptions.Added.CurrentPeriodEndUtc >= subscriptions.Added.CurrentPeriodStartUtc.AddDays(360));
     }
 
     [Fact]
@@ -75,7 +107,7 @@ public sealed class ActivateFromOnboardingHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await ActivateFromOnboardingHandler.Handle(
-            new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id),
+            new ActivateFromOnboardingCommand(onboardingId, tenantId, plan.Id, BillingCycle.Monthly),
             subscriptions,
             plans,
             settingsRepository,
@@ -102,7 +134,7 @@ public sealed class ActivateFromOnboardingHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await ActivateFromOnboardingHandler.Handle(
-            new ActivateFromOnboardingCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new ActivateFromOnboardingCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), BillingCycle.Monthly),
             subscriptions,
             plans,
             settingsRepository,
@@ -125,7 +157,7 @@ public sealed class ActivateFromOnboardingHandlerTests
             .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Standard, Guid.Empty, DateTime.UtcNow)
             .Value;
         var version = SubscriptionPlanVersion
-            .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly])
+            .Create(plan.Id, versionNumber: 1, trialDaysDefault: 14, [BillingCycle.Monthly, BillingCycle.Yearly])
             .Value;
         plan.AddVersion(version, Guid.Empty, DateTime.UtcNow);
         var publishResult = plan.PublishVersion(version.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);

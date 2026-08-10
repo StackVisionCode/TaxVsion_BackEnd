@@ -28,7 +28,13 @@ public sealed record StartOnboardingCheckoutResponse(
     Guid PaymentId,
     string CheckoutUrl,
     DateTime ExpiresAtUtc,
-    bool FullyCovered = false
+    bool FullyCovered = false,
+    // Desglose para que la UI muestre bruto→descuento→neto. Null cuando no se aplicó ningún código
+    // (el frontend cae al precio del plan del catálogo).
+    long? GrossAmountCents = null,
+    long? DiscountAmountCents = null,
+    long? NetAmountCents = null,
+    string? Currency = null
 );
 
 public static class StartOnboardingCheckoutHandler
@@ -89,6 +95,7 @@ public static class StartOnboardingCheckoutHandler
                 command.SuccessUrl,
                 command.CancelUrl,
                 idempotencyKey,
+                BillingCycle: onboarding.BillingCycle,
                 NetAmountCents: onboarding.NetAmountCents,
                 DiscountAmountCents: onboarding.TotalDiscountCents,
                 Currency: onboarding.Currency,
@@ -113,7 +120,12 @@ public static class StartOnboardingCheckoutHandler
             new StartOnboardingCheckoutResponse(
                 checkoutResult.Value.PaymentId,
                 checkoutResult.Value.CheckoutUrl,
-                checkoutResult.Value.ExpiresAtUtc
+                checkoutResult.Value.ExpiresAtUtc,
+                FullyCovered: false,
+                GrossAmountCents: onboarding.GrossAmountCents,
+                DiscountAmountCents: onboarding.TotalDiscountCents,
+                NetAmountCents: onboarding.NetAmountCents,
+                Currency: onboarding.Currency
             )
         );
     }
@@ -152,7 +164,18 @@ public static class StartOnboardingCheckoutHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(new StartOnboardingCheckoutResponse(Guid.Empty, string.Empty, nowUtc, FullyCovered: true));
+        return Result.Success(
+            new StartOnboardingCheckoutResponse(
+                Guid.Empty,
+                string.Empty,
+                nowUtc,
+                FullyCovered: true,
+                GrossAmountCents: onboarding.GrossAmountCents,
+                DiscountAmountCents: onboarding.TotalDiscountCents,
+                NetAmountCents: onboarding.NetAmountCents,
+                Currency: onboarding.Currency
+            )
+        );
     }
 
     private static List<OnboardingCodeInput> BuildCodeInputs(StartOnboardingCheckoutCommand command)

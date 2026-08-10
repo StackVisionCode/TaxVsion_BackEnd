@@ -353,7 +353,7 @@ public sealed class TenantOnboardingSagaTests
     [Fact]
     public async Task ActivateSubscriptionHandler_publishes_a_step_failed_event_on_failure()
     {
-        var command = new ActivateSubscriptionCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var command = new ActivateSubscriptionCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Monthly");
         var client = new FakeSubscriptionActivationClient(
             Result.Failure(new Error("SubscriptionActivationClient.RequestFailed", "boom"))
         );
@@ -369,7 +369,7 @@ public sealed class TenantOnboardingSagaTests
     [Fact]
     public async Task ActivateSubscriptionHandler_does_not_cascade_on_success()
     {
-        var command = new ActivateSubscriptionCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var command = new ActivateSubscriptionCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Monthly");
         var client = new FakeSubscriptionActivationClient(Result.Success());
         var correlation = new FakeCorrelationContext();
 

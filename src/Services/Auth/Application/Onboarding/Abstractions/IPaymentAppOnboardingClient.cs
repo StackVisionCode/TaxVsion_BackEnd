@@ -23,6 +23,8 @@ public sealed record PaymentAppCheckoutRequest(
     string SuccessUrl,
     string CancelUrl,
     string IdempotencyKey,
+    // Ciclo elegido ("Monthly"/"Yearly") — PaymentApp resuelve el bruto de ESE ciclo en Subscription.
+    string BillingCycle = "Monthly",
     // Gift/Referral: si un código aplicó descuento (parcial), el NETO a cobrar (override del bruto) +
     // el resumen de la reserva para trazabilidad. Null = sin código → PaymentApp resuelve el bruto.
     long? NetAmountCents = null,

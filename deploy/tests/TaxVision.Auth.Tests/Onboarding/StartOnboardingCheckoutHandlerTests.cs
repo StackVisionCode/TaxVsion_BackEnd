@@ -139,8 +139,11 @@ public sealed class StartOnboardingCheckoutHandlerTests
 
     private sealed class ThrowingPricingClient : IOnboardingPlanPricingClient
     {
-        public Task<Result<OnboardingPlanPrice>> GetGrossPriceAsync(Guid planId, CancellationToken ct = default) =>
-            throw new InvalidOperationException("Pricing must not be called in the no-code path.");
+        public Task<Result<OnboardingPlanPrice>> GetGrossPriceAsync(
+            Guid planId,
+            string billingCycle,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("Pricing must not be called in the no-code path.");
     }
 
     private sealed class ThrowingGrowthClient : IGrowthOnboardingClient

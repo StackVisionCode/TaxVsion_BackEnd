@@ -25,6 +25,8 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
         string SuccessUrl,
         string CancelUrl,
         string IdempotencyKey,
+        // Ciclo elegido ("Monthly"/"Yearly"); ausente = Monthly.
+        string? BillingCycle = null,
         // Gift/Referral: neto a cobrar (override del bruto) + resumen de la reserva, si un código aplicó.
         long? NetAmountCents = null,
         long? DiscountAmountCents = null,
@@ -48,6 +50,7 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
                 request.SuccessUrl,
                 request.CancelUrl,
                 request.IdempotencyKey,
+                string.IsNullOrWhiteSpace(request.BillingCycle) ? "Monthly" : request.BillingCycle,
                 request.NetAmountCents,
                 request.DiscountAmountCents,
                 request.Currency,
