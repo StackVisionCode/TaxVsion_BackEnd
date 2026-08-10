@@ -170,7 +170,7 @@ public sealed class GrowthOnboardingClient(
 
     public async Task<Result> CancelAsync(
         Guid reservationId,
-        Guid onboardingId,
+        Guid paymentReferenceId,
         string reason,
         string idempotencyKey,
         CancellationToken ct = default
@@ -179,7 +179,9 @@ public sealed class GrowthOnboardingClient(
         var body = new
         {
             paymentSource = PaymentSourceOnboarding,
-            paymentId = onboardingId,
+            // Debe COINCIDIR con el PaymentId de ReserveAsync (Growth valida reservation.Payment ==
+            // (Onboarding, paymentReferenceId)) — mismo OnboardingPaymentReference.For por orden de código.
+            paymentId = paymentReferenceId,
             reason,
         };
 
@@ -189,7 +191,7 @@ public sealed class GrowthOnboardingClient(
             $"internal/codes/reservations/{reservationId}/cancel",
             body,
             idempotencyKey,
-            onboardingId,
+            paymentReferenceId,
             ct
         );
         if (response.IsFailure)

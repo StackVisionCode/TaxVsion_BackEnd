@@ -91,4 +91,28 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    public sealed record CancelOnboardingRequest(string? Reason = null);
+
+    /// <summary>Cancela explícitamente el onboarding (checkout cancelado por el comprador) y libera al
+    /// instante las reservas de código en Growth, sin esperar el vencimiento de 24h. Anónimo, idempotente.</summary>
+    [HttpPost("{onboardingId:guid}/cancel")]
+    [AllowAnonymous]
+    [EnableRateLimiting("onboarding-checkout-create")]
+    [RateLimitExempt(
+        "Anónimo (Fase 9) — conserva el limiter nativo onboarding-checkout-create, sin JWT que particionar."
+    )]
+    public async Task<IActionResult> Cancel(
+        Guid onboardingId,
+        CancelOnboardingRequest? request,
+        CancellationToken ct
+    )
+    {
+        var result = await bus.InvokeAsync<Result>(
+            new CancelOnboardingCommand(onboardingId, request?.Reason),
+            ct
+        );
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }

@@ -54,10 +54,13 @@ public interface IGrowthOnboardingClient
         CancellationToken ct = default
     );
 
-    /// <summary>Libera una reserva (checkout cancelado/expirado). Idempotente.</summary>
+    /// <summary>Libera una reserva (checkout cancelado explícitamente). Idempotente.
+    /// <paramref name="paymentReferenceId"/> DEBE coincidir con el usado en <see cref="ReserveAsync"/>
+    /// (Growth valida <c>reservation.Payment == (Onboarding, paymentReferenceId)</c>); derivarlo con
+    /// <see cref="OnboardingPaymentReference"/> por orden de código.</summary>
     Task<Result> CancelAsync(
         Guid reservationId,
-        Guid onboardingId,
+        Guid paymentReferenceId,
         string reason,
         string idempotencyKey,
         CancellationToken ct = default
