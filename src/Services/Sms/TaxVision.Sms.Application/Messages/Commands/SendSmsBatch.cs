@@ -45,7 +45,7 @@ public static class SendSmsBatchHandler
         SendSmsBatchCommand command,
         ISmsMessageRepository messages,
         ISmsOptOutRepository optOuts,
-        ISmsAdapterFactory adapters,
+        ISmsProviderRouter router,
         IOptions<SmsOptions> options,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -66,7 +66,9 @@ public static class SendSmsBatchHandler
             ? Guid.NewGuid().ToString("N")
             : command.CorrelationId;
         var batchId = Guid.NewGuid();
-        var provider = adapters.Resolve(options.Value.DefaultProvider);
+        var providers = router.ResolveOrder();
+        if (providers.Count == 0)
+            return Result.Failure<SendSmsBatchResponse>(new Error("sms.noProvider", "No SMS provider is configured."));
         var nowUtc = DateTime.UtcNow;
 
         var results = new List<SmsSendItemResult>(command.Items.Count);
@@ -74,7 +76,7 @@ public static class SendSmsBatchHandler
         foreach (var item in command.Items)
         {
             var result = await ProcessItemAsync(
-                item, command.TenantId, correlationId, batchId, provider, messages, optOuts, bus, nowUtc, logger, ct
+                item, command.TenantId, correlationId, batchId, providers, messages, optOuts, bus, nowUtc, logger, ct
             );
             results.Add(result);
         }
@@ -97,7 +99,7 @@ public static class SendSmsBatchHandler
         Guid tenantId,
         string correlationId,
         Guid batchId,
-        ISmsProvider provider,
+        IReadOnlyList<ISmsProvider> providers,
         ISmsMessageRepository messages,
         ISmsOptOutRepository optOuts,
         IMessageBus bus,
@@ -106,6 +108,8 @@ public static class SendSmsBatchHandler
         CancellationToken ct
     )
     {
+        var primary = providers[0];
+
         // 1) Validaciones de entrada — un item inválido NO aborta el lote.
         if (item.CustomerId == Guid.Empty)
             return Failed(item, SmsErrors.InvalidCustomer.Code);
@@ -128,7 +132,7 @@ public static class SendSmsBatchHandler
         var optOut = await optOuts.GetAsync(tenantId, item.CustomerId, phone.Value, ct);
         if (optOut is { IsOptedOut: true })
         {
-            var suppressed = BuildMessage(tenantId, item, phone, body, correlationId, batchId, provider.Code, mediaPayload, nowUtc);
+            var suppressed = BuildMessage(tenantId, item, phone, body, correlationId, batchId, primary.Code, mediaPayload, nowUtc);
             if (suppressed.IsFailure)
                 return Failed(item, suppressed.Error.Code);
             suppressed.Value.MarkSuppressed("Recipient opted out (STOP).", nowUtc);
@@ -150,52 +154,77 @@ public static class SendSmsBatchHandler
         if (existing is not null)
             return ItemResult(existing, item, null);
 
-        // 4) Validación de media contra capabilities — media no soportada FALLA explícitamente.
-        var mediaError = SmsMediaValidator.Validate(provider.Capabilities, mediaPayload);
+        var mediaInputs = mediaPayload
+            .Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes))
+            .ToList();
 
+        // 4) Failover de PLATAFORMA: intenta cada proveedor en orden. Uno que no soporta la media, o
+        // que rechaza / está caído, deja paso al siguiente; se recuerda el último error para reportarlo.
+        SmsSendResult? accepted = null;
+        ISmsProvider? usedProvider = null;
+        Error? lastError = null;
+        var sendRequest = new SmsSendRequest(
+            tenantId, item.CustomerId, phone.Value, body.Value, mediaPayload, correlationId, idempotencyKey, item.SourceContext
+        );
+
+        foreach (var provider in providers)
+        {
+            var mediaError = SmsMediaValidator.Validate(provider.Capabilities, mediaPayload);
+            if (mediaError is not null)
+            {
+                lastError = mediaError;
+                logger.LogWarning(
+                    "SMS provider {Provider} cannot carry the media for {To} ({Code}); trying next.",
+                    provider.Code, phone.Value, mediaError.Code
+                );
+                continue;
+            }
+
+            var sendResult = await provider.SendAsync(sendRequest, ct);
+            if (sendResult.IsSuccess && sendResult.Value.Accepted)
+            {
+                accepted = sendResult.Value;
+                usedProvider = provider;
+                break;
+            }
+
+            lastError = sendResult.IsFailure
+                ? sendResult.Error
+                : new Error(sendResult.Value.ErrorCode ?? SmsErrors.ProviderRejected.Code, sendResult.Value.ErrorMessage ?? string.Empty);
+            logger.LogWarning(
+                "SMS provider {Provider} did not accept {To} ({Code}); trying next if any.",
+                provider.Code, phone.Value, lastError.Code
+            );
+        }
+
+        // 5) Persistir con el proveedor que envió (o el primario si todos fallaron) + publicar evento.
+        var finalProviderCode = (usedProvider ?? primary).Code;
         var createResult = SmsMessage.Create(
             tenantId, item.CustomerId, phone, body, idempotencyKey, correlationId, batchId,
-            provider.Code, item.SourceContext, mediaPayload
-                .Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes)).ToList(),
-            nowUtc
+            finalProviderCode, item.SourceContext, mediaInputs, nowUtc
         );
         if (createResult.IsFailure)
             return Failed(item, createResult.Error.Code);
         var message = createResult.Value;
 
-        if (mediaError is not null)
+        if (accepted is not null)
         {
-            message.MarkFailed(nowUtc, mediaError.Code, mediaError.Message);
+            message.MarkAccepted(accepted.ProviderMessageId ?? string.Empty, nowUtc);
             await messages.AddAsync(message, ct);
-            await PublishFailed(bus, message, item, correlationId, mediaError.Code, ct);
-            return ItemResult(message, item, null);
+            await bus.PublishAsync(new SmsMessageAcceptedIntegrationEvent
+            {
+                TenantId = tenantId, CorrelationId = correlationId, MessageId = message.Id,
+                CustomerId = item.CustomerId, SourceContext = item.SourceContext,
+                ProviderMessageId = message.ProviderMessageId,
+            });
+            return ItemResult(message, item, message.ProviderMessageId);
         }
 
-        // 5) Transformar + enviar al proveedor.
-        var sendRequest = new SmsSendRequest(
-            tenantId, item.CustomerId, phone.Value, body.Value, mediaPayload, correlationId, idempotencyKey, item.SourceContext
-        );
-        var sendResult = await provider.SendAsync(sendRequest, ct);
-
-        if (sendResult.IsFailure || !sendResult.Value.Accepted)
-        {
-            var code = sendResult.IsFailure ? sendResult.Error.Code : sendResult.Value.ErrorCode ?? SmsErrors.ProviderRejected.Code;
-            var reason = sendResult.IsFailure ? sendResult.Error.Message : sendResult.Value.ErrorMessage;
-            message.MarkFailed(nowUtc, code, reason);
-            await messages.AddAsync(message, ct);
-            await PublishFailed(bus, message, item, correlationId, code, ct);
-            return ItemResult(message, item, null);
-        }
-
-        message.MarkAccepted(sendResult.Value.ProviderMessageId ?? string.Empty, nowUtc);
+        var errorCode = lastError?.Code ?? SmsErrors.ProviderRejected.Code;
+        message.MarkFailed(nowUtc, errorCode, lastError?.Message);
         await messages.AddAsync(message, ct);
-        await bus.PublishAsync(new SmsMessageAcceptedIntegrationEvent
-        {
-            TenantId = tenantId, CorrelationId = correlationId, MessageId = message.Id,
-            CustomerId = item.CustomerId, SourceContext = item.SourceContext,
-            ProviderMessageId = message.ProviderMessageId,
-        });
-        return ItemResult(message, item, message.ProviderMessageId);
+        await PublishFailed(bus, message, item, correlationId, errorCode, ct);
+        return ItemResult(message, item, null);
     }
 
     private static Result<SmsMessage> BuildMessage(

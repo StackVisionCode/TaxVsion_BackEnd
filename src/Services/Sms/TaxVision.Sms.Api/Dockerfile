@@ -5,8 +5,12 @@ WORKDIR /src
 COPY global.json ./
 COPY src/BuildingBlocks/ src/BuildingBlocks/
 COPY src/Services/Sms/ src/Services/Sms/
-RUN dotnet restore "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj"
-RUN dotnet publish "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj" \
+# Cache mount del NuGet global-packages: hace el restore REANUDABLE ante la red intermitente
+# (un reintento reutiliza lo ya bajado en vez de empezar de cero).
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    dotnet restore "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj"
+RUN --mount=type=cache,target=/root/.nuget/packages \
+    dotnet publish "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj" \
     -c Release \
     -o /app/publish \
     --no-restore \

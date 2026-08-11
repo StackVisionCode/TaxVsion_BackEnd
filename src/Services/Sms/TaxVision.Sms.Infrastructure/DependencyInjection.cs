@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Sms.Application;
 using TaxVision.Sms.Application.Abstractions;
 using TaxVision.Sms.Application.Permissions.Abstractions;
+using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Infrastructure.Persistence;
 using TaxVision.Sms.Infrastructure.Persistence.Repositories;
 using TaxVision.Sms.Infrastructure.Providers;
@@ -48,9 +49,15 @@ public static class DependencyInjection
         // Adapters agnósticos (keyed DI por atributo) + factory + secretos de webhook.
         services.AddSmsProviders();
 
-        // Reintentos + circuit-breaker para las llamadas salientes a proveedores (adapter genérico).
+        // Router de plataforma: decide el orden de proveedores (primario + failover) desde la config
+        // del servicio. No lo decide el tenant.
+        services.AddScoped<ISmsProviderRouter, SmsProviderRouter>();
+
+        // Reintentos + circuit-breaker para las llamadas salientes a proveedores (un HttpClient por adapter HTTP).
         services.AddSingleton(_ => new HttpResiliencePipelineRegistry());
         services.AddHttpClient(nameof(Providers.Generic.GenericHttpSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient(nameof(Providers.Textmaxx.TextmaxxSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient(nameof(Providers.Infobip.InfobipSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
 
         return services;
     }

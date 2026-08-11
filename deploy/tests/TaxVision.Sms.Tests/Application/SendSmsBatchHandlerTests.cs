@@ -27,18 +27,24 @@ public sealed class SendSmsBatchHandlerTests
         public FakeMessageBus Bus { get; } = new();
         public SmsOptions Options { get; } = new() { DefaultProvider = "fake", MaxBatchSize = 1000 };
 
-        public Task<BuildingBlocks.Results.Result<SendSmsBatchResponse>> Run(SendSmsBatchCommand command) =>
-            SendSmsBatchHandler.Handle(
+        /// <summary>Cadena de proveedores (failover). Vacía ⇒ solo <see cref="Provider"/>.</summary>
+        public List<ISmsProvider> Order { get; } = [];
+
+        public Task<BuildingBlocks.Results.Result<SendSmsBatchResponse>> Run(SendSmsBatchCommand command)
+        {
+            IReadOnlyList<ISmsProvider> order = Order.Count > 0 ? Order : [Provider];
+            return SendSmsBatchHandler.Handle(
                 command,
                 Messages,
                 OptOuts,
-                new FakeSmsAdapterFactory(Provider),
+                new FakeSmsProviderRouter(order),
                 Microsoft.Extensions.Options.Options.Create(Options),
                 UnitOfWork,
                 Bus,
                 NullLogger<SendSmsBatchCommand>.Instance,
                 CancellationToken.None
             );
+        }
     }
 
     private static SmsSendItemDto Item(
@@ -186,5 +192,82 @@ public sealed class SendSmsBatchHandlerTests
         Assert.Equal(SmsErrors.InvalidDestination.Code, result.Value.Results[1].ErrorCode);
         // Both share the batch + correlation.
         Assert.All(result.Value.Results, _ => Assert.Equal("corr-1", result.Value.CorrelationId));
+    }
+
+    // ─────────── Failover de plataforma ───────────
+
+    [Fact]
+    public async Task Fails_over_to_secondary_when_primary_rejects()
+    {
+        var h = new Harness();
+        var primary = new FakeSmsProvider { Code = "p1", SendImpl = _ => new SmsSendResult(false, null, "providerRejected", "down") };
+        var secondary = new FakeSmsProvider { Code = "p2" }; // default: accepts
+        h.Order.Add(primary);
+        h.Order.Add(secondary);
+
+        var result = await h.Run(Batch(Item()));
+
+        var item = Assert.Single(result.Value.Results);
+        Assert.Equal("Accepted", item.Status);
+        Assert.Equal(1, primary.SendAsyncCallCount);
+        Assert.Equal(1, secondary.SendAsyncCallCount);
+        Assert.Equal("p2", h.Messages.Added[0].ProviderCode); // recorded the provider that actually sent
+    }
+
+    [Fact]
+    public async Task Marks_failed_with_last_error_when_all_providers_reject()
+    {
+        var h = new Harness();
+        var primary = new FakeSmsProvider { Code = "p1", SendImpl = _ => new SmsSendResult(false, null, "providerRejected", "x") };
+        var secondary = new FakeSmsProvider { Code = "p2", SendImpl = _ => new SmsSendResult(false, null, "providerUnavailable", "y") };
+        h.Order.Add(primary);
+        h.Order.Add(secondary);
+
+        var result = await h.Run(Batch(Item()));
+
+        var item = Assert.Single(result.Value.Results);
+        Assert.Equal("Failed", item.Status);
+        Assert.Equal("providerUnavailable", item.ErrorCode); // last provider's error
+        Assert.Equal(1, primary.SendAsyncCallCount);
+        Assert.Equal(1, secondary.SendAsyncCallCount);
+    }
+
+    [Fact]
+    public async Task Does_not_call_secondary_when_primary_accepts()
+    {
+        var h = new Harness();
+        var primary = new FakeSmsProvider { Code = "p1" }; // accepts
+        var secondary = new FakeSmsProvider { Code = "p2" };
+        h.Order.Add(primary);
+        h.Order.Add(secondary);
+
+        var result = await h.Run(Batch(Item()));
+
+        Assert.Equal("Accepted", Assert.Single(result.Value.Results).Status);
+        Assert.Equal(1, primary.SendAsyncCallCount);
+        Assert.Equal(0, secondary.SendAsyncCallCount); // no wasted call
+        Assert.Equal("p1", h.Messages.Added[0].ProviderCode);
+    }
+
+    [Fact]
+    public async Task Fails_over_when_primary_cannot_carry_media()
+    {
+        var h = new Harness();
+        var primary = new FakeSmsProvider
+        {
+            Code = "p1",
+            Capabilities = FakeSmsProvider.FullCapabilities() with { SupportsMedia = false },
+        };
+        var secondary = new FakeSmsProvider { Code = "p2" }; // supports media (default)
+        h.Order.Add(primary);
+        h.Order.Add(secondary);
+        var media = new List<SmsMediaDto> { new("https://x/y.pdf", "application/pdf", "y.pdf", 100) };
+
+        var result = await h.Run(Batch(Item(media: media)));
+
+        Assert.Equal("Accepted", Assert.Single(result.Value.Results).Status);
+        Assert.Equal(0, primary.SendAsyncCallCount); // media invalid for p1 → skipped, never sent as text
+        Assert.Equal(1, secondary.SendAsyncCallCount);
+        Assert.Equal("p2", h.Messages.Added[0].ProviderCode);
     }
 }
