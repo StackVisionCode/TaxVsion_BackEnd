@@ -118,6 +118,12 @@ public static class PermissionCatalog
     public const string ScribeCampaignsWrite = ScribePermissions.CampaignsWrite;
     public const string ScribeRender = ScribePermissions.Render;
 
+    // SMS — envío de SMS/MMS agnóstico de proveedor (bounded context propio, microservicio Sms).
+    // Lo exige "POST /sms/messages" vía [HasPermission(SmsPermissions.Send)]. A diferencia de
+    // ScribeRender, sí lo reciben roles humanos (TenantAdmin/TenantEmployee) además del caller M2M
+    // (un microservicio que envía SMS lo lleva como claim "perm" vía ServiceAuth:Clients de Auth).
+    public const string SmsSend = SmsPermissions.Send;
+
     // Postmaster — envío/entrega de correo, proveedores por tenant y suppression list (bounded
     // context propio, ver microservicio Postmaster). Estos 5 permisos ya los exigían los 3
     // controllers de Postmaster vía [HasPermission(...)], pero nunca se habían sembrado en este
@@ -741,6 +747,18 @@ public static class PermissionCatalog
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
+        ),
+        // SMS — a diferencia de ScribeRender, sí es un permiso humano-asignable: un TenantAdmin lo
+        // recibe vía SystemRoleDefaults (no CustomerPortal, no PlatformOnly, no Dangerous), y el
+        // caller M2M lo lleva como claim "perm" vía ServiceAuth:Clients (config, no rol). El
+        // endpoint "POST /sms/messages" toma el TenantId del TOKEN (no del body), así que no aplica
+        // el riesgo cross-tenant que obligó a marcar ScribeRender como PlatformOnly.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000158"),
+            SmsSend,
+            "sms",
+            "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000029"),
