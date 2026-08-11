@@ -1047,6 +1047,9 @@ services:
       Sms__Providers__infobip__SenderId: ${SMS_INFOBIP_SENDER_ID:-InfoSMS}
       Sms__Providers__infobip__Auth__Credential: ${SMS_INFOBIP_API_KEY:-}
       Sms__Providers__infobip__Webhook__Secret: ${SMS_INFOBIP_WEBHOOK_SECRET:-}
+      # Twilio: Credential = 'AccountSid:AuthToken' (SECRETO). SenderId = número From (+1...) o Messaging Service Sid.
+      Sms__Providers__twilio__Auth__Credential: ${SMS_TWILIO_CREDENTIAL:-}
+      Sms__Providers__twilio__SenderId: ${SMS_TWILIO_FROM:-}
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs

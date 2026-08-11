@@ -97,7 +97,7 @@ public sealed class GenericHttpSmsProvider(
         return Result.Success<IReadOnlyList<SmsSendResult>>(results);
     }
 
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret)
+    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "")
     {
         if (string.IsNullOrEmpty(secret))
             return Result.Success(new SmsSignatureCheck(false, "No webhook secret configured."));

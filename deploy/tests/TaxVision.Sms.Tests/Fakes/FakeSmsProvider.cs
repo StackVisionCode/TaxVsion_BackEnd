@@ -31,7 +31,7 @@ internal sealed class FakeSmsProvider : ISmsProvider
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret) =>
+    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "") =>
         Result.Success(new SmsSignatureCheck(SignatureValid, SignatureValid ? null : "invalid"));
 
     public Result<SmsDeliveryUpdate> ParseDeliveryReceipt(string rawPayload) =>

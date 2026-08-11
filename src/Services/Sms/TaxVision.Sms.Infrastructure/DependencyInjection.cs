@@ -58,6 +58,7 @@ public static class DependencyInjection
         services.AddHttpClient(nameof(Providers.Generic.GenericHttpSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient(nameof(Providers.Textmaxx.TextmaxxSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient(nameof(Providers.Infobip.InfobipSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient(nameof(Providers.Twilio.TwilioSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
 
         return services;
     }

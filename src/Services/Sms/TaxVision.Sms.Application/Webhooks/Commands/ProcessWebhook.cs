@@ -14,7 +14,7 @@ namespace TaxVision.Sms.Application.Webhooks.Commands;
 
 // ───────────────────────── Status / DLR ─────────────────────────
 
-public sealed record ProcessDeliveryReceiptCommand(string ProviderCode, string RawPayload, string SignatureHeader);
+public sealed record ProcessDeliveryReceiptCommand(string ProviderCode, string RawPayload, string SignatureHeader, string RequestUrl = "");
 
 public static class ProcessDeliveryReceiptHandler
 {
@@ -32,7 +32,7 @@ public static class ProcessDeliveryReceiptHandler
     {
         var provider = adapters.Resolve(command.ProviderCode);
 
-        var signature = provider.VerifySignature(command.RawPayload, command.SignatureHeader, secrets.GetSecret(command.ProviderCode) ?? string.Empty);
+        var signature = provider.VerifySignature(command.RawPayload, command.SignatureHeader, secrets.GetSecret(command.ProviderCode) ?? string.Empty, command.RequestUrl);
         if (signature.IsFailure || !signature.Value.IsValid)
             return Result.Failure(new Error("sms.webhook.invalidSignature", "Webhook signature verification failed."));
 
@@ -91,7 +91,7 @@ public static class ProcessDeliveryReceiptHandler
 
 // ───────────────────────── Inbound STOP/START/HELP ─────────────────────────
 
-public sealed record ProcessInboundCommand(string ProviderCode, string RawPayload, string SignatureHeader);
+public sealed record ProcessInboundCommand(string ProviderCode, string RawPayload, string SignatureHeader, string RequestUrl = "");
 
 public static class ProcessInboundHandler
 {
@@ -111,7 +111,7 @@ public static class ProcessInboundHandler
     {
         var provider = adapters.Resolve(command.ProviderCode);
 
-        var signature = provider.VerifySignature(command.RawPayload, command.SignatureHeader, secrets.GetSecret(command.ProviderCode) ?? string.Empty);
+        var signature = provider.VerifySignature(command.RawPayload, command.SignatureHeader, secrets.GetSecret(command.ProviderCode) ?? string.Empty, command.RequestUrl);
         if (signature.IsFailure || !signature.Value.IsValid)
             return Result.Failure(new Error("sms.webhook.invalidSignature", "Webhook signature verification failed."));
 
