@@ -102,6 +102,11 @@ jobs:
           BILLING_DB_CONNECTION=${{ secrets.BILLING_DB_CONNECTION }}
           DOCUMENTS_DB_CONNECTION=${{ secrets.DOCUMENTS_DB_CONNECTION }}
           NOTES_DB_CONNECTION=${{ secrets.NOTES_DB_CONNECTION }}
+          # Sms (servicio nuevo, ago-2026). docker-compose.yml la exige con :? en DOS lugares:
+          # sms-api y el servicio migrations. Sin ella el deploy falla duro, y apply-migrations.sh
+          # (set -eu) muere con "unbound variable" ANTES de migrar NINGUN servicio -- el mismo
+          # sintoma que ya se corrigio para Billing/Documents mas arriba.
+          SMS_DB_CONNECTION=${{ secrets.SMS_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
           # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
           # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
@@ -157,6 +162,22 @@ jobs:
           CONNECTORS_GRAPH_NOTIFICATION_URL=${{ secrets.CONNECTORS_GRAPH_NOTIFICATION_URL }}
           CONNECTORS_GRAPH_WATCH_CLIENT_STATE=${{ secrets.CONNECTORS_GRAPH_WATCH_CLIENT_STATE }}
           CONNECTORS_GMAIL_PUSH_AUDIENCE=${{ secrets.CONNECTORS_GMAIL_PUSH_AUDIENCE }}
+
+          # ---------- Sms (proveedores) ----------
+          # Todas OPCIONALES: docker-compose.yml las declara con :- (default), no con :?.
+          # Sin ellas el servicio arranca con el proveedor "fake" y no manda SMS reales --
+          # arranca sano, no rompe el deploy. La API key de Infobip es SECRETA (Authorization:
+          # App {key}); BaseUrl y SenderId no lo son pero se dejan como secret por comodidad
+          # de rotacion por entorno.
+          SMS_DEFAULT_PROVIDER=${{ secrets.SMS_DEFAULT_PROVIDER }}
+          SMS_PROVIDER_ORDER_0=${{ secrets.SMS_PROVIDER_ORDER_0 }}
+          SMS_PROVIDER_ORDER_1=${{ secrets.SMS_PROVIDER_ORDER_1 }}
+          SMS_PROVIDER_ORDER_2=${{ secrets.SMS_PROVIDER_ORDER_2 }}
+          SMS_INFOBIP_BASE_URL=${{ secrets.SMS_INFOBIP_BASE_URL }}
+          SMS_INFOBIP_SENDER_ID=${{ secrets.SMS_INFOBIP_SENDER_ID }}
+          SMS_INFOBIP_API_KEY=${{ secrets.SMS_INFOBIP_API_KEY }}
+          SMS_INFOBIP_WEBHOOK_SECRET=${{ secrets.SMS_INFOBIP_WEBHOOK_SECRET }}
+          SMS_GENERIC_BASE_URL=${{ secrets.SMS_GENERIC_BASE_URL }}
 
           # ---------- Clientes M2M (ServiceAuth) ----------
           NOTIFICATION_SERVICE_CLIENT_ID=${{ secrets.NOTIFICATION_SERVICE_CLIENT_ID }}
@@ -400,7 +421,7 @@ jobs:
       - name: Provision scoped MinIO service accounts
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
-      - name: Apply .NET EF Core migrations (17 servicios)
+      - name: Apply .NET EF Core migrations (18 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
 
       - name: Apply Communication Prisma migrations
