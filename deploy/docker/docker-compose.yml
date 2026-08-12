@@ -348,6 +348,12 @@ services:
       # por [HasPermission(SmsPermissions.Send)] — el token M2M debe llevar sms.send como claim
       # "perm" (bypass de actor Service en ProjectionPermissionsSource). Mismo patron que scribe.render.
       ServiceAuth__Clients__0__Permissions__4: sms.send
+      ServiceAuth__Clients__0__Permissions__5: catalog.read
+      ServiceAuth__Clients__0__Permissions__6: catalog.write
+      ServiceAuth__Clients__0__Permissions__7: catalog.delete
+      ServiceAuth__Clients__0__Permissions__8: inventory.read
+      ServiceAuth__Clients__0__Permissions__9: inventory.write
+      ServiceAuth__Clients__0__Permissions__10: inventory.adjust
       # Cliente de servicio (M2M) para el worker de Transcripts de Communication (Fase 6):
       # descarga la grabacion, sube el .txt transcrito, mismos permisos de CloudStorage.
       ServiceAuth__Clients__1__ClientId: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}
@@ -1066,6 +1072,72 @@ services:
     networks:
       - taxvision-network
 
+  catalog-api:
+    image: taxvision/catalog-api:dev
+    container_name: taxvision-catalog-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Catalog/TaxVision.Catalog.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CATALOG_DB_CONNECTION:?Set CATALOG_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  inventory-api:
+    image: taxvision/inventory-api:dev
+    container_name: taxvision-inventory-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Inventory/TaxVision.Inventory.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   cloudstorage-api:
     image: taxvision/cloudstorage-api:dev
     container_name: taxvision-cloudstorage-api
@@ -1682,6 +1754,8 @@ services:
       DOCUMENTS_DB_CONNECTION: ${DOCUMENTS_DB_CONNECTION:?Set DOCUMENTS_DB_CONNECTION in .env}
       NOTES_DB_CONNECTION: ${NOTES_DB_CONNECTION:?Set NOTES_DB_CONNECTION in .env}
       SMS_DB_CONNECTION: ${SMS_DB_CONNECTION:?Set SMS_DB_CONNECTION in .env}
+      CATALOG_DB_CONNECTION: ${CATALOG_DB_CONNECTION:?Set CATALOG_DB_CONNECTION in .env}
+      INVENTORY_DB_CONNECTION: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -1749,6 +1823,8 @@ services:
       ReverseProxy__Clusters__documents__Destinations__documents1__Address: http://documents-api:8080/
       ReverseProxy__Clusters__notes__Destinations__notes1__Address: http://notes-api:8080/
       ReverseProxy__Clusters__sms__Destinations__sms1__Address: http://sms-api:8080/
+      ReverseProxy__Clusters__catalog__Destinations__catalog1__Address: http://catalog-api:8080/
+      ReverseProxy__Clusters__inventory__Destinations__inventory1__Address: http://inventory-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

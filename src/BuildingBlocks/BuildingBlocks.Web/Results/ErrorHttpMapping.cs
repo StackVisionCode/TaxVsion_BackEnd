@@ -71,7 +71,12 @@ public static class ErrorHttpMapping
             // no cambia el comportamiento del caller M2M (IPermissionsSnapshotClient trata cualquier
             // no-2xx igual, devuelve null), pero se mapea explícito de todos modos por consistencia
             // con el resto del catálogo.
-            or "Auth.UserNotFound" => StatusCodes.Status404NotFound,
+            or "Auth.UserNotFound"
+            or "catalog.itemNotFound"
+            or "catalog.categoryNotFound"
+            or "inventory.stockLevelNotFound"
+            or "inventory.supplierNotFound"
+            or "inventory.itemSupplierNotFound" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -108,7 +113,10 @@ public static class ErrorHttpMapping
             or "TenantEmailAccount.InvalidTransition"
             or "IncomingEmailAttachment.InvalidTransition"
             or "IncomingEmailAttachment.NotReady"
-            or "Draft.InvalidTransition" => StatusCodes.Status409Conflict,
+            or "Draft.InvalidTransition"
+            or "catalog.duplicateSku"
+            or "catalog.categoryHasChildren"
+            or "inventory.insufficientStock" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"

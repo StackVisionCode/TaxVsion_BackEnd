@@ -124,6 +124,18 @@ public static class PermissionCatalog
     // (un microservicio que envía SMS lo lleva como claim "perm" vía ServiceAuth:Clients de Auth).
     public const string SmsSend = SmsPermissions.Send;
 
+    // Catalog — productos/servicios/categorías (microservicio Catalog). Humano-asignables: TenantAdmin
+    // los recibe vía SystemRoleDefaults; los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
+    public const string CatalogRead = CatalogPermissions.Read;
+    public const string CatalogWrite = CatalogPermissions.Write;
+    public const string CatalogDelete = CatalogPermissions.Delete;
+
+    // Inventory — stock/proveedores/movimientos (microservicio Inventory). Humano-asignables (TenantAdmin
+    // vía defaults); los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
+    public const string InventoryRead = InventoryPermissions.Read;
+    public const string InventoryWrite = InventoryPermissions.Write;
+    public const string InventoryAdjust = InventoryPermissions.Adjust;
+
     // Postmaster — envío/entrega de correo, proveedores por tenant y suppression list (bounded
     // context propio, ver microservicio Postmaster). Estos 5 permisos ya los exigían los 3
     // controllers de Postmaster vía [HasPermission(...)], pero nunca se habían sembrado en este
@@ -760,6 +772,14 @@ public static class PermissionCatalog
             "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
             false
         ),
+        // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).
+        new(new Guid("a1000000-0000-0000-0000-000000000159"), CatalogRead, "catalog", "Ver el catálogo de productos/servicios", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000160"), CatalogWrite, "catalog", "Crear/editar productos, servicios y categorías", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000161"), CatalogDelete, "catalog", "Borrar productos, servicios y categorías", false),
+        // Inventory
+        new(new Guid("a1000000-0000-0000-0000-000000000162"), InventoryRead, "inventory", "Ver stock, proveedores y movimientos", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000163"), InventoryWrite, "inventory", "Gestionar proveedores y umbrales de stock", false),
+        new(new Guid("a1000000-0000-0000-0000-000000000164"), InventoryAdjust, "inventory", "Ajustar stock (registrar movimientos)", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000029"),
             SignatureRequestCreate,
