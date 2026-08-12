@@ -132,6 +132,18 @@ builder.Services.AddHttpClient<IScribeRenderClient, ScribeRenderClient>(
     }
 );
 
+// Reminder Fase 10: recuperación pull del correo de un usuario contra el endpoint interno de Auth,
+// para los usuarios que ya existían cuando se creó el directorio userId → email. Reusa el mismo
+// IServiceTokenAcquirer M2M (ya apunta a Auth) — un acquirer por servicio, un HttpClient por destino.
+builder.Services.AddHttpClient<IUserContactSnapshotClient, UserContactSnapshotClient>(
+    (sp, client) =>
+    {
+        var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+        client.BaseAddress = new Uri(options.AuthBaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(15);
+    }
+);
+
 // PayFlow (Fase 12): cliente HTTP al endpoint one-shot de Auth que resuelve un TokenReference a la
 // URL real de registro — reusa el mismo IServiceTokenAcquirer M2M (apunta a Auth, mismo host que
 // ServiceAuthClientOptions.AuthBaseUrl ya configurado arriba).

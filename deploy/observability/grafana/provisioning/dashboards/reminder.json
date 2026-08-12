@@ -1,0 +1,79 @@
+{
+  "title": "Reminder — Overview",
+  "uid": "taxvision-reminder",
+  "tags": ["taxvision", "reminder"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Recordatorios agendados vs disparados",
+      "description": "Ambos vienen del Meter TaxVision.Reminder. scheduled_total cuenta altas; snooze y reschedule reagendan uno ya contado y no suman.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(reminder_scheduled_total[1h])) by (category)",
+          "legendFormat": "agendados — {{category}}",
+          "refId": "A"
+        },
+        { "expr": "sum(rate(reminder_fired_total[1h])) by (category)", "legendFormat": "disparados — {{category}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Avisos descartados (misfire) — el que importa",
+      "description": "Si sube por grace_exceeded hubo caída del servicio y se descartaron avisos (00_ §8.3). anchor_moved_to_past es distinto: alguien movió la cita hacia atrás y el disparo recalculado ya había pasado.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(reminder_misfired_total[1h])) by (policy)", "legendFormat": "{{policy}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Retraso real del disparo (p50 / p95 / p99)",
+      "description": "Termómetro directo del lag de consumers de 00_ §8.1: distancia entre FireAtUtc y el disparo. Si el p95 se despega del p50, Quartz está recuperándose de una parada.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(reminder_fire_delay_seconds_bucket[1h])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(reminder_fire_delay_seconds_bucket[1h])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(reminder_fire_delay_seconds_bucket[1h])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Cancelaciones por razón",
+      "description": "La razón viene normalizada a user_request / target_closed / other — el endpoint acepta texto libre y etiquetar con el valor crudo haría una serie nueva por cada frase.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(reminder_cancelled_total[1h])) by (reason)", "legendFormat": "{{reason}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Duplicados frenados por la RequestKey (ADR-R-07)",
+      "description": "Si esto es 0 para siempre, la clave de idempotencia está mal construida y no está frenando nada. lookup = reintento normal; unique_index_race = dos peticiones simultáneas de verdad.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(reminder_duplicate_suppressed_total[1h])) by (resolution)",
+          "legendFormat": "{{resolution}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

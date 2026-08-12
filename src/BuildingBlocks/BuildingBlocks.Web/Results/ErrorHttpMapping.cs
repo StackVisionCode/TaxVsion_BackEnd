@@ -67,6 +67,9 @@ public static class ErrorHttpMapping
             // mismo gap exacto que EventTemplateMapping.NotFound tuvo en Scribe Fase 10.5.
             or "Note.NotFound"
             or "Note.AttachmentNotFound"
+            // Reminder Fase 6 — también es la respuesta a un recordatorio ajeno: no hay
+            // Reminder.NotOwner, porque un 403 confirmaría que ese id existe en el tenant.
+            or "Reminder.NotFound"
             // Opción B (recuperación pull de permisos, endpoint interno de Auth) — el status exacto
             // no cambia el comportamiento del caller M2M (IPermissionsSnapshotClient trata cualquier
             // no-2xx igual, devuelve null), pero se mapea explícito de todos modos por consistencia
@@ -216,7 +219,12 @@ public static class ErrorHttpMapping
             or "Note.Deleted"
             or "Note.InvalidTransition"
             or "Note.AttachmentDuplicate"
-            or "Note.AttachmentLimit" => StatusCodes.Status409Conflict,
+            or "Note.AttachmentLimit"
+            // Reminder Fase 6 — conflicto de estado, no de forma: la petición es válida, el
+            // recordatorio simplemente ya no está donde el llamador cree.
+            or "Reminder.InvalidTransition"
+            or "Reminder.DuplicateRequest"
+            or "Reminder.SnoozeLimitReached" => StatusCodes.Status409Conflict,
             "Auth.LockedOut"
             or "Auth.OtpThrottled"
             or "Invitation.ResendLimit"

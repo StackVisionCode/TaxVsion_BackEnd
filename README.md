@@ -8245,3 +8245,187 @@ curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT "http://localhost:15672/ap
 > **Los mensajes muertos caducan.** `DurabilitySettings.DeadLetterQueueExpiration` son 10 días por
 > defecto en Wolverine. Pasado ese plazo no hay nada que drenar — por eso la alerta dispara a los 5
 > minutos y no a los 5 días.
+
+---
+
+# 49. Reminder — Microservicio de recordatorios (plan de 10 fases, CERRADO)
+
+Microservicio independiente para recordatorios de usuario, disparados por **Quartz.NET** con
+`AdoJobStore` sobre su propia base. DB propia, puerto dev **5500**, host interno
+`http://reminder-api:8080`. Ver `ADR_021_Reminder_Bounded_Context.md` (§`documents/architecture/`)
+para el porqué de la decisión y `Implementaciones/Reminder/*.md` para el plan completo de 10 fases.
+
+**Reminder no entrega avisos** (ADR-R-02). Dispara, publica `reminder.due.v1`, y Notification decide
+canal (in-app / push / email), preferencias y agrupación. Esa separación es la razón de que el
+servicio no tenga ni SMTP ni SignalR ni tokens de push.
+
+## 49.1 Endpoints
+
+`RemindersController`, `[AllowActorTypes(TenantEmployee, TenantAdmin, PlatformAdmin)]` — **sin
+CustomerPortal**: un recordatorio pertenece siempre a un usuario del tenant (invariante R1), el
+cliente final no tiene recordatorios propios en v1.
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| POST | `/reminders` | `reminders.write` | `reminder.g.create` | idempotente por `RequestKey` (ADR-R-07) |
+| GET | `/reminders/{id}` | `reminders.read` | `reminder.f.read` | 404 uniforme si es de otro usuario |
+| GET | `/reminders/mine` | `reminders.read` | `reminder.f.read` | |
+| GET | `/reminders/upcoming` | `reminders.read` | `reminder.h.upcoming` | barre rango de `FireAtUtc` |
+| PUT | `/reminders/{id}/schedule` | `reminders.write` | `reminder.g.update` | reprograma y reagenda el trigger |
+| PUT | `/reminders/{id}/subject` | `reminders.write` | `reminder.g.update` | |
+| POST | `/reminders/{id}/snooze` | `reminders.write` | `reminder.g.update` | tope `MaxSnoozeCount` |
+| POST | `/reminders/{id}/dismiss` | `reminders.write` | `reminder.g.update` | terminal |
+| DELETE | `/reminders/{id}` | `reminders.write` | `reminder.g.delete` | cancela (`user_request`), no borra |
+
+No hay permiso de gobernanza (`view_all`/`manage_all`): **nadie edita recordatorios ajenos**. El
+filtro por `UserId` lo aplica el handler, no la capa de permisos.
+
+## 49.2 Permisos (`BuildingBlocks.Authorization.ReminderPermissions`)
+
+`reminders.read`, `reminders.write`. Dos, y a propósito — ver el doc-comment de la clase.
+
+## 49.3 Rate limiting (catálogo `RateLimitPolicyCatalog.Reminder.cs`)
+
+| Política | Categoría | Cuota (tenant+user, overlay tenant) | Algoritmo |
+|---|---|---|---|
+| `reminder.f.read` | F | 300/60s (overlay 3000) | Token bucket |
+| `reminder.g.create` / `reminder.g.update` / `reminder.g.delete` | G | 60/60s (overlay 600) | Token bucket |
+| `reminder.h.upcoming` | H | 20/60s (overlay 100) | Sliding window |
+
+`RateLimit:EnforceTierQuotas: true`. Las cabeceras `X-RateLimit-*` solo salen en la respuesta 429 —
+no en las 200, igual que en el resto del monorepo.
+
+## 49.4 Contratos de integración
+
+**Entrantes** (Reminder consume):
+
+| Evento | Efecto |
+|---|---|
+| `reminder.requested.v1` | crea el recordatorio; `RequestKey` obligatoria (idempotencia) |
+| `reminder.target_moved.v1` | mueve solo los **anclados**; sobre un absoluto es no-op exitoso (invariante R6) |
+| `reminder.target_closed.v1` | cancela los pendientes con razón `target_closed` |
+
+**Saliente**: `reminder.due.v1`, con el contenido completo del aviso — una foto del instante del
+disparo. El consumidor renderiza sin llamar de vuelta a Reminder.
+
+Consumido por Notification (`ReminderDueConsumer`), que despacha **email** (template Scribe
+`reminder.due.v1`), in-app y push, en ese orden — ver §49.7.
+
+## 49.5 Operación de Quartz
+
+`AdoJobStore` sobre la misma base del servicio (tablas `QRTZ_*`), un **solo scheduler compartido**
+por todos los tenants (ADR-R-05): el aislamiento es el *trigger group* `tenant:{id}`, no un scheduler
+por tenant — con miles de tenants eso serían miles de thread pools.
+
+- **Misfire.** Dos umbrales distintos, que se confunden con facilidad:
+  - `MisfireThreshold` de Quartz = **60s**. Cuánto retraso tolera *el scheduler* antes de marcar el
+    trigger como misfired.
+  - `Reminder:MisfireGraceMinutes` = **60 min**. La ventana de negocio. Quartz **siempre** dispara al
+    recuperarse de una caída; es el dominio (`FireOrMiss`) quien decide si el aviso sigue vigente.
+    Pasado ese plazo el recordatorio va a `Missed`, no a `Fired` — avisar «tenías reunión hace 3
+    horas» es ruido.
+- **Clustering.** `SchedulerId = "AUTO"` — obligatorio. Dos réplicas con el mismo `InstanceId` se
+  roban los triggers entre sí y el scheduler entra en checkin loop. `CheckinInterval` 20s,
+  `CheckinMisfireThreshold` 60s.
+- **NTP.** El clustering de Quartz compara timestamps entre réplicas contra la base. Un desfase de
+  reloj entre nodos mayor que `CheckinMisfireThreshold` hace que una réplica declare muerta a otra
+  que está viva y le recupere los triggers. **Las réplicas deben tener el reloj sincronizado.**
+- **Serialización.** `UseSystemTextJsonSerializer` + `UseProperties = true` (JobDataMap solo de
+  strings). El serializador binario por defecto congela los tipos CLR dentro de la fila: renombrar un
+  namespace dejaría triggers imposibles de deserializar.
+- **Despliegue.** `WaitForJobsToComplete = true` — evita que un despliegue corte un disparo a medias
+  y deje el recordatorio sin marcar.
+- **Reconciliación.** `ReminderScheduleReconciliationJob` barre cada 24h los recordatorios activos
+  dentro de `ReconciliationHorizonHours` y reagenda los que perdieron su trigger. **La barrida de
+  arranque hace parecer muerto al job**: si al iniciar no hay nada que reconciliar no loguea nada.
+- **Retención.** `ReminderRetentionJob` purga cada 24h los terminales
+  (`Dismissed`/`Cancelled`/`Missed`) resueltos hace más de `Reminder:RetentionMonths` (default 12;
+  **0 desactiva el barrido**). Filtra por `ResolvedAtUtc`, **no** por `CreatedAtUtc` — un
+  recordatorio creado hace dos años pero cancelado ayer es reciente para soporte. Borra en lotes de
+  500 con tope de 20 por corrida: un primer barrido sobre una tabla vieja podría tocar cientos de
+  miles de filas y bloquear la tabla mientras hay disparos en curso.
+- **Umbral de revisión.** Con **>50.000 filas en `QRTZ_TRIGGERS`** o **>3 réplicas**, revisar el
+  dimensionamiento del thread pool y la contención del row-lock de `QRTZ_LOCKS` (ver §8.2 de
+  `Implementaciones/Reminder/00_*.md`). Por debajo de eso la configuración actual no necesita ajuste.
+
+> **Los jobs y consumers corren SIN tenant en contexto.** El filtro global del `ReminderDbContext` es
+> fail-closed: sin `IgnoreQueryFilters()` + `tenantId` explícito, la consulta devuelve **0 filas
+> siempre** mientras el job se ve perfectamente sano en los logs. Aplica a `ReminderFireJob`,
+> `ReminderScheduleReconciliationJob`, `ReminderRetentionJob` y los tres consumers.
+
+## 49.6 Observabilidad
+
+Meter `TaxVision.Reminder`, registrado vía `AddTaxVisionOpenTelemetry(config, "reminder-service",
+ReminderMetrics.MeterName)`. **Un Meter propio no exporta nada si no se pasa como
+`additionalMeterNames`** — registrar el Meter y exportarlo son dos cosas distintas.
+
+| Instrumento | Tipo | Tags |
+|---|---|---|
+| `reminder.scheduled_total` | Counter | `category` |
+| `reminder.fired_total` | Counter | `category` |
+| `reminder.fire_delay_seconds` | Histogram (s) | — |
+| `reminder.cancelled_total` | Counter | `reason` (**valores cerrados**: `user_request`/`target_closed`/`other`) |
+| `reminder.misfired_total` | Counter | `policy` (`grace_exceeded`/`anchor_moved_to_past`) |
+| `reminder.duplicate_suppressed_total` | Counter | `resolution` (`lookup`/`unique_index_race`) |
+
+`reason` pasa por `ReminderCancellationReasons.ForMetrics(...)` antes de llegar al tag: la razón de
+cancelación es texto libre del usuario y usarla cruda sería una bomba de cardinalidad.
+
+Dashboard: `deploy/observability/grafana/provisioning/dashboards/reminder.json` (5 paneles). Los
+nombres de instrumento van punteados en .NET y **con guion bajo** en las `expr` de Prometheus
+(`reminder_fired_total`). **No hay `/metrics` en ningún servicio .NET del monorepo** — la exportación
+es OTLP push al collector; el `/metrics` existe solo en los servicios Node.
+
+## 49.7 Entrega del aviso (Notification, Fase 8 + 10)
+
+`ReminderDueConsumer` despacha por tres canales, y **el email va primero**. No es cosmético: es el
+único de los tres que puede lanzar (`EnsureRendered` cuando Scribe está caído), y Wolverine reintenta
+el mensaje **entero** — si el email fuera el último, cada reintento volvería a registrar la
+notificación in-app y a reenviar el push hasta llegar a la DLQ.
+
+El correo necesita resolver `userId → email`, que en la Fase 8 no existía. La Fase 10 lo cerró con
+`UserEmailDirectoryEntry` en Notification, alimentada por eventos de Auth **más recuperación pull**
+(`internal/tenants/{tenantId}/users/{userId}/contact`, policy `ServiceOnly`, mismo patrón que
+`PermissionsSnapshotClient`):
+
+| Evento de Auth | Efecto en el directorio |
+|---|---|
+| `UserRegistered` | alta/actualización — es el **único** evento de Auth que trae el correo |
+| `SecurityAlert{EmailChanged}` | **invalidación** (`MarkStale`), no actualización |
+| `UserDeactivated` / `UserReactivated` | cambia si corresponde escribirle, la dirección no |
+
+`UserProfileUpdated` no aparece: solo lleva nombre y apellido. Y `SecurityAlert{EmailChanged}` no se
+puede usar para actualizar porque su `DetailsJson` trae la dirección **anterior** — de ahí que se
+trate como invalidación. **Una fila obsoleta es peor que una ausente**: la ausente dispara la
+recuperación pull, la obsoleta manda el correo a la dirección vieja sin que nadie se entere.
+
+## 49.8 Configuración
+
+```jsonc
+// appsettings.json
+"Authorization": { "PermissionsSource": "Projection" },
+"RateLimit": { "EnforceTierQuotas": true },
+"Reminder": {
+  "MisfireGraceMinutes": 60,      // ventana de gracia del negocio (no la de Quartz)
+  "ReconciliationHorizonHours": 24,
+  "RetentionMonths": 12,          // 0 = el job de retención no borra nada
+  "ServiceAuth": { "AuthBaseUrl": "http://localhost:5124", "ClientId": "", "ClientSecret": "" }
+},
+"SubscriptionClient": { "BaseUrl": "http://localhost:5360" }
+```
+
+Cliente M2M `reminder-worker` en Auth (catálogo de plan-rate-limits de Subscription + recuperación
+pull de permisos). Secreto por user-secrets en local y por `REMINDER_SERVICE_CLIENT_SECRET` en
+compose — **cuidado con `openssl rand` desde Git Bash**: mete un `\r` invisible dentro del valor y el
+M2M da 401 sin ninguna pista.
+
+## 49.9 Fitness functions (`ReminderArchitectureTests`, NetArchTest)
+
+- Toda acción pública lleva `[AllowActorTypes]` y `[RateLimit]`.
+- Controllers sin dependencia directa de Infrastructure.
+- Domain sin Quartz, sin EF Core, sin `TaxVision.Reminder.Infrastructure`.
+- Application sin Infrastructure.
+- Ningún tipo de Reminder referencia un bounded context vecino (`CalendarIntegrationEvents`,
+  `TaskIntegrationEvents`). **Honestidad sobre esta regla**: hoy pasa de forma vacua porque esos
+  namespaces todavía no existen. Queda puesta para que falle el día que alguien los cree y los
+  importe desde aquí.

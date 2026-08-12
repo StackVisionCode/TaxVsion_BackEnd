@@ -205,6 +205,15 @@ public sealed class NotificationDispatcher(
     /// <summary>
     /// Cuenta y seguridad nunca se filtra (locked). Sin un UserId resuelto no hay preferencia
     /// que consultar — se permite el envío (comportamiento preexistente, sin regresión).
+    ///
+    /// <para>
+    /// <b>Cuando el gate apaga un envío deja rastro.</b> Antes no escribía nada: ni log ni fila en
+    /// <c>NotificationLogs</c> — apagaba en silencio. Con eso, un «no me llegan los recordatorios»
+    /// era literalmente indistinguible de un bug de entrega, porque no había dónde mirar. Se
+    /// registra en <c>Information</c> y no en <c>Debug</c> a propósito: es el <b>resultado</b> de una
+    /// decisión del usuario, no ruido de diagnóstico, y es lo que soporte necesita leer en el log del
+    /// request que ya está mirando.
+    /// </para>
     /// </summary>
     private async Task<bool> IsAllowedAsync(
         Guid tenantId,
@@ -219,6 +228,19 @@ public sealed class NotificationDispatcher(
         if (recipientUserId is null)
             return true;
 
-        return await preferences.IsEnabledAsync(tenantId, recipientUserId.Value, category, channel, ct);
+        var enabled = await preferences.IsEnabledAsync(tenantId, recipientUserId.Value, category, channel, ct);
+        if (!enabled)
+        {
+            logger.LogInformation(
+                "Notification suppressed by user preference: tenant {TenantId}, user {UserId}, "
+                    + "category {Category}, channel {Channel}.",
+                tenantId,
+                recipientUserId.Value,
+                category,
+                channel
+            );
+        }
+
+        return enabled;
     }
 }

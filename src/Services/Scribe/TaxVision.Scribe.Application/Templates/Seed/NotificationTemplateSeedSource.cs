@@ -50,6 +50,7 @@ public static class NotificationTemplateSeedSource
             OnboardingOtpRequested,
             OnboardingRegistrationReady,
             OnboardingReceiptReady,
+            ReminderDue,
         ];
 
     private static NotificationTemplateSeed Invitation { get; } =
@@ -654,4 +655,59 @@ public static class NotificationTemplateSeedSource
                 ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
             ]
         );
+
+    /// <summary>
+    /// Reminder Fase 10 — el template que la Fase 8 difirió a propósito: hasta que Notification tuvo
+    /// el directorio <c>userId → email</c>, nadie podía invocarlo y sembrarlo habría sido superficie
+    /// muerta (lección de la Fase 8 de Postmaster, implementada y luego retirada).
+    /// </summary>
+    private static NotificationTemplateSeed ReminderDue { get; } =
+        new(
+            EventKey: "reminder.due.v1",
+            TemplateKey: "reminder.due",
+            Name: "Reminder — Recordatorio vencido",
+            Subject: "{{ title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:22px;color:#1a202c;font-weight:bold;">
+                  {{ title }}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  {{ body }}
+                </td>
+              </tr>
+              {% if snooze_count > 0 %}
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#718096;">
+                  Pospuesto {{ snooze_count }} vez(ces).
+                </td>
+              </tr>
+              {% endif %}
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Abrir {{ product_name }}</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("title", VariableType.String, true, null, "Título del recordatorio (con el sufijo de pospuesto si aplica)."),
+                ("body", VariableType.String, true, null, "Cuerpo del usuario, o la hora del ancla en su zona horaria."),
+                ("category", VariableType.String, true, "General", "General | Calendar | Task | Note."),
+                ("snooze_count", VariableType.Number, true, "0", "Cuántas veces se pospuso."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
+            ]
+        );
+
 }

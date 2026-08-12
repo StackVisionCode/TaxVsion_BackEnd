@@ -12,6 +12,14 @@ monolito distribuido; Reminder nunca es un servicio (mecanismo de scheduling com
 Calendar son los dos subdominios grandes defendibles; **Notes es el más defendible** de los cinco
 como microservicio propio.
 
+> **Nota (2026-08-12) — el veredicto sobre Reminder respondía a otra pregunta.** «Reminder nunca es
+> un servicio» sigue siendo cierto para lo que se estaba evaluando: un *mecanismo de scheduling
+> compartido* reutilizable por Task y Calendar es una biblioteca, no un bounded context. La pregunta
+> distinta — «¿existe un subdominio de negocio *recordatorio de usuario*, con máquina de estados e
+> invariantes propios?» — se respondió que sí, y Reminder se implementó como microservicio
+> independiente. Ver **`ADR_021_Reminder_Bounded_Context.md` §1**. Este ADR **no se revoca**: el
+> `IReminderScheduler` genérico que descartó sigue descartado, y es un non-goal explícito de ADR-021.
+
 ---
 
 ## 1. Decisión

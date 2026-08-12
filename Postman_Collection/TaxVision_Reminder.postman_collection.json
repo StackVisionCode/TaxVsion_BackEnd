@@ -1,0 +1,584 @@
+{
+	"info": {
+		"_postman_id": "b3f1d9c2-6a48-4c17-9e05-3f8c1a72d4b6",
+		"name": "TaxVision - Reminder",
+		"description": "Coleccion del microservicio Reminder de TaxVision (recordatorios de usuario, disparados por Quartz.NET con AdoJobStore). Usa el environment TaxVisionBackEnd (UrlBase apunta al Gateway, puerto dev directo 5500). Un solo controller: RemindersController, [AllowActorTypes(TenantEmployee,TenantAdmin,PlatformAdmin)] — SIN CustomerPortal, porque un recordatorio pertenece siempre a un usuario del tenant (invariante R1) y el cliente final no tiene recordatorios propios en v1. TenantId/UserId siempre del JWT, nunca de body/query. Reminder NO entrega avisos (ADR-R-02): dispara, publica reminder.due.v1, y Notification decide canal/preferencias. Ver ADR_021_Reminder_Bounded_Context.md y README.md #49. 9 endpoints + 5 casos negativos, verificados contra RemindersController.cs.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Recordatorios",
+			"item": [
+				{
+					"name": "Create (absoluto)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Revisar declaracion trimestral\",\n  \"body\": \"Cliente pendiente de firmar el 1040.\",\n  \"category\": \"General\",\n  \"targetId\": null,\n  \"fireAtUtc\": \"{{reminderFireAtUtc}}\",\n  \"anchorAtUtc\": null,\n  \"leadMinutes\": null,\n  \"timeZone\": \"America/New_York\",\n  \"requestKey\": \"{{reminderRequestKey}}\"\n}"
+						},
+						"description": "Requiere reminders.write. Modo ABSOLUTO: fireAtUtc solo, sin el par (anchorAtUtc + leadMinutes). Un recordatorio absoluto IGNORA reminder.target_moved.v1 por diseno (invariante R6). requestKey es OBLIGATORIA (ADR-R-07): sin ella un reintento por timeout de red crea un recordatorio duplicado y el usuario recibe el aviso dos veces. timeZone es IANA y viene en el request (ADR-R-06) — Auth todavia no publica la del usuario. category: General | Calendar | Task | Note; targetId solo puede ser null si category=General."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Dispara en 2 minutos: suficiente para verlo pasar a Fired sin esperar.",
+									"pm.environment.set(\"reminderFireAtUtc\", new Date(Date.now() + 120000).toISOString());",
+									"pm.environment.set(\"reminderRequestKey\", \"postman:\" + Date.now() + \":\" + Math.random().toString(36).slice(2));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201);",
+									"if (pm.response.code === 201) {",
+									"  const body = pm.response.json();",
+									"  pm.environment.set(\"reminderId\", body.id);",
+									"}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create (anclado)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Cita con el cliente\",\n  \"body\": null,\n  \"category\": \"Calendar\",\n  \"targetId\": \"{{reminderTargetId}}\",\n  \"fireAtUtc\": null,\n  \"anchorAtUtc\": \"{{reminderAnchorAtUtc}}\",\n  \"leadMinutes\": 15,\n  \"timeZone\": \"America/New_York\",\n  \"requestKey\": \"{{reminderRequestKey}}\"\n}"
+						},
+						"description": "Modo ANCLADO (ADR-R-03): el par anchorAtUtc + leadMinutes, excluyente con fireAtUtc. Este SI se mueve cuando llega reminder.target_moved.v1 para ese targetId. La distincion no es un detalle de implementacion — es la decision del usuario al crearlo, y sin ella aparece el bug «movi la cita y el aviso se fue con ella cuando yo no queria» o su inverso."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.environment.set(\"reminderAnchorAtUtc\", new Date(Date.now() + 20 * 60000).toISOString());",
+									"pm.environment.set(\"reminderRequestKey\", \"postman:\" + Date.now() + \":\" + Math.random().toString(36).slice(2));",
+									"if (!pm.environment.get(\"reminderTargetId\")) {",
+									"  pm.environment.set(\"reminderTargetId\", \"11111111-2222-3333-4444-555555555555\");",
+									"}"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201);",
+									"if (pm.response.code === 201) {",
+									"  const body = pm.response.json();",
+									"  pm.environment.set(\"reminderAnchoredId\", body.id);",
+									"  pm.test(\"es anclado\", () => body.isAnchored === true);",
+									"}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create (mismo requestKey — idempotente)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Revisar declaracion trimestral\",\n  \"body\": \"Cliente pendiente de firmar el 1040.\",\n  \"category\": \"General\",\n  \"targetId\": null,\n  \"fireAtUtc\": \"{{reminderFireAtUtc}}\",\n  \"anchorAtUtc\": null,\n  \"leadMinutes\": null,\n  \"timeZone\": \"America/New_York\",\n  \"requestKey\": \"{{reminderRequestKey}}\"\n}"
+						},
+						"description": "Correr JUSTO DESPUES de «Create (absoluto)», sin regenerar requestKey. Devuelve 201 con el MISMO id, no crea una segunda fila (ADR-R-07). Esto es lo que simula el reintento del bus: la entrega es at-least-once, y sin idempotencia el usuario recibe el aviso tres veces. El contador reminder.duplicate_suppressed_total{resolution=lookup} sube en este request."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201);",
+									"if (pm.response.code === 201) {",
+									"  pm.test(\"devuelve el mismo recordatorio, no uno nuevo\", () =>",
+									"    pm.response.json().id === pm.environment.get(\"reminderId\"));",
+									"}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get by id",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/{{reminderId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "{{reminderId}}" ]
+						},
+						"description": "Requiere reminders.read. Si el recordatorio es de OTRO usuario del mismo tenant, devuelve 404 uniforme — no 403: existe-pero-no-es-tuyo no se puede distinguir de no-existe desde fuera."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 200\", () => pm.response.code === 200);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Mine",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/mine?status=Scheduled&page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "mine" ],
+							"query": [
+								{ "key": "status", "value": "Scheduled", "description": "Opcional: Scheduled | Snoozed | Fired | Dismissed | Cancelled | Missed. Omitir para todos." },
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20", "description": "Default 20, tope 100." }
+							]
+						},
+						"description": "Requiere reminders.read. Siempre del usuario del JWT — no hay parametro userId, y no lo habra: nadie lista recordatorios ajenos."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 200\", () => pm.response.code === 200);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Upcoming",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/upcoming?page=1&size=20",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "upcoming" ],
+							"query": [
+								{ "key": "fromUtc", "value": null, "disabled": true, "description": "Opcional. Default: ahora." },
+								{ "key": "toUtc", "value": null, "disabled": true, "description": "Opcional. Default: fromUtc + 7 dias." },
+								{ "key": "page", "value": "1" },
+								{ "key": "size", "value": "20" }
+							]
+						},
+						"description": "Requiere reminders.read. Politica de rate limit distinta al resto de lecturas (reminder.h.upcoming, categoria H, 20/60s) porque barre un rango de FireAtUtc sobre el indice (TenantId, UserId, Status, FireAtUtc) — mas caro que leer uno por Id."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 200\", () => pm.response.code === 200);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Update schedule",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/{{reminderId}}/schedule",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "{{reminderId}}", "schedule" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"fireAtUtc\": \"{{reminderFireAtUtc}}\",\n  \"anchorAtUtc\": null,\n  \"leadMinutes\": null\n}"
+						},
+						"description": "Requiere reminders.write. Reprograma Y reagenda el trigger de Quartz en la misma operacion — si solo cambiara la fila, el aviso saldria a la hora vieja. Acepta cambiar de modo: mandar el par (anchorAtUtc + leadMinutes) convierte un absoluto en anclado."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.environment.set(\"reminderFireAtUtc\", new Date(Date.now() + 45 * 60000).toISOString());"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 200\", () => pm.response.code === 200);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Update subject",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/{{reminderId}}/subject",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "{{reminderId}}", "subject" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Revisar declaracion trimestral (urgente)\",\n  \"body\": \"Vence el viernes.\"\n}"
+						},
+						"description": "Requiere reminders.write. Editar el titulo NO reescribe un aviso ya enviado: reminder.due.v1 lleva el contenido completo como foto del instante del disparo."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 200\", () => pm.response.code === 200);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Snooze",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/{{reminderId}}/snooze",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "{{reminderId}}", "snooze" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"minutes\": 10\n}"
+						},
+						"description": "Requiere reminders.write. Solo sobre un recordatorio ya Fired (o Snoozed): posponer uno que todavia no sono es una transicion invalida. Hay tope de posposiciones (MaxSnoozeCount) — pasado el tope devuelve el error de dominio, no un 500. SnoozeCount viaja en reminder.due.v1 para textos del tipo «(pospuesto 2 veces)»."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 si ya sono, 409/400 si sigue Scheduled\", () =>",
+									"  [200, 400, 409].includes(pm.response.code));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Dismiss",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/{{reminderId}}/dismiss",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "{{reminderId}}", "dismiss" ]
+						},
+						"description": "Requiere reminders.write. Sin body. Terminal: escribe ResolvedAtUtc, que es el campo por el que filtra el job de retencion. Solo desde Fired o Snoozed — descartar algo que aun no sono no tiene sentido de negocio."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 si ya sono, 409/400 si sigue Scheduled\", () =>",
+									"  [200, 400, 409].includes(pm.response.code));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Cancel (DELETE)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/{{reminderAnchoredId}}",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "{{reminderAnchoredId}}" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"user_request\"\n}"
+						},
+						"description": "Requiere reminders.write. DELETE NO borra la fila: transiciona a Cancelled y deja el historial. Se expone como DELETE porque para el usuario es «quitar el recordatorio». reason es OBLIGATORIA — sin ella soporte no puede distinguir «lo cancele yo» de «se completo la tarea». Valores conocidos: user_request | target_closed; cualquier otro texto se acepta pero cae a `other` en el tag de la metrica (evitar bomba de cardinalidad)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 200\", () => pm.response.code === 200);" ]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Casos negativos",
+			"item": [
+				{
+					"name": "Create sin token (401)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"sin token\",\n  \"category\": \"General\",\n  \"fireAtUtc\": \"2030-01-01T12:00:00Z\",\n  \"timeZone\": \"UTC\",\n  \"requestKey\": \"negativo-sin-token\"\n}"
+						},
+						"description": "Capa 1: [Authorize] global. Sin Authorization no se llega ni al filtro de actor type."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 401\", () => pm.response.code === 401);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create con token de CustomerPortal (403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{customerPortalAccessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"desde el portal\",\n  \"category\": \"General\",\n  \"fireAtUtc\": \"2030-01-01T12:00:00Z\",\n  \"timeZone\": \"UTC\",\n  \"requestKey\": \"negativo-portal\"\n}"
+						},
+						"description": "Capa 2: [AllowActorTypes(TenantEmployee,TenantAdmin,PlatformAdmin)] — CustomerPortal NO esta en la lista. Reminder no tiene ningun endpoint de portal, y no es un olvido: invariante R1, el recordatorio es siempre de un usuario del tenant. Requiere {{customerPortalAccessToken}} de un login de portal real."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 403 (o 401 si no hay token de portal cargado)\", () =>",
+									"  [401, 403].includes(pm.response.code));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create sin requestKey (400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"sin clave de idempotencia\",\n  \"category\": \"General\",\n  \"fireAtUtc\": \"2030-01-01T12:00:00Z\",\n  \"timeZone\": \"UTC\",\n  \"requestKey\": null\n}"
+						},
+						"description": "ADR-R-07: requestKey es obligatoria y la pone el cliente. Es la unica defensa contra el redelivery del bus, que es at-least-once — el fallo mas probable de todo el diseno."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 400\", () => pm.response.code === 400);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create con los dos modos a la vez (400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"ambiguo\",\n  \"category\": \"General\",\n  \"fireAtUtc\": \"2030-01-01T12:00:00Z\",\n  \"anchorAtUtc\": \"2030-01-01T13:00:00Z\",\n  \"leadMinutes\": 15,\n  \"timeZone\": \"UTC\",\n  \"requestKey\": \"negativo-ambos-modos\"\n}"
+						},
+						"description": "Absoluto y anclado son EXCLUYENTES (ADR-R-03). Mandar los dos no es «uno gana»: es una peticion ambigua y el dominio la rechaza."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 400\", () => pm.response.code === 400);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "Create con zona horaria invalida (400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" },
+							{ "key": "Content-Type", "value": "application/json", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders" ]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"zona inventada\",\n  \"category\": \"General\",\n  \"fireAtUtc\": \"2030-01-01T12:00:00Z\",\n  \"timeZone\": \"Mars/Olympus_Mons\",\n  \"requestKey\": \"negativo-tz\"\n}"
+						},
+						"description": "Validada con BuildingBlocks.TimeZones.IanaTimeZone.TryNormalize, que ya resuelve el mapeo IANA<->Windows. Aceptar cualquier string dejaria recordatorios que no se pueden renderizar en hora local."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [ "pm.test(\"status 400\", () => pm.response.code === 400);" ]
+							}
+						}
+					]
+				},
+				{
+					"name": "429 en upcoming (rate limit categoria H)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{accessToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{UrlBase}}/reminders/upcoming",
+							"host": [ "{{UrlBase}}" ],
+							"path": [ "reminders", "upcoming" ]
+						},
+						"description": "Correr con el Collection Runner ~120 iteraciones seguidas (cuota base 20/60s, escalada por tier con EnforceTierQuotas=true, overlay de tenant 100). OJO: las cabeceras X-RateLimit-* solo aparecen en la respuesta 429, NO en las 200 — buscarlas en un 200 y no encontrarlas no es un bug."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 429) {",
+									"  pm.test(\"trae Retry-After\", () => pm.response.headers.has(\"Retry-After\"));",
+									"  pm.test(\"trae X-RateLimit-Policy\", () => pm.response.headers.has(\"X-RateLimit-Policy\"));",
+									"  pm.test(\"trae X-RateLimit-Remaining\", () => pm.response.headers.has(\"X-RateLimit-Remaining\"));",
+									"} else {",
+									"  pm.test(\"200 mientras no se agota la cuota\", () => pm.response.code === 200);",
+									"}"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}

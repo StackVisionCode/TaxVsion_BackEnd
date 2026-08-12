@@ -124,4 +124,10 @@ apply_migration \
   "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj" \
   "$SMS_DB_CONNECTION"
 
+apply_migration \
+  "Reminder" \
+  "src/Services/Reminder/TaxVision.Reminder.Infrastructure/TaxVision.Reminder.Infrastructure.csproj" \
+  "src/Services/Reminder/TaxVision.Reminder.Api/TaxVision.Reminder.Api.csproj" \
+  "$REMINDER_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

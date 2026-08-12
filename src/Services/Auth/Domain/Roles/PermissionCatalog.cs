@@ -157,6 +157,13 @@ public static class PermissionCatalog
     // el autor, chequeado en Application — ver ADR-06); ViewAll es gobernanza: un TenantAdmin
     // puede leer/archivar/borrar notas ajenas, pero NUNCA editar su contenido (no hay override de
     // Manage). PortalRead es exclusivo del cliente final leyendo sus propias notas ClientVisible.
+    // Reminder — recordatorios personales sobre tareas, eventos, notas o sueltos (bounded context
+    // propio, microservicio Reminder). Un recordatorio pertenece siempre a un usuario del tenant,
+    // así que no hay variante de portal ni permiso de gobernanza: nadie ve ni edita recordatorios
+    // ajenos, y ese filtro por UserId lo aplica el handler, no el permiso.
+    public const string RemindersRead = ReminderPermissions.Read;
+    public const string RemindersWrite = ReminderPermissions.Write;
+
     public const string NotesRead = NotesPermissions.Read;
     public const string NotesManage = NotesPermissions.Manage;
     public const string NotesViewAll = NotesPermissions.ViewAll;
@@ -1621,6 +1628,23 @@ public static class PermissionCatalog
             "El cliente puede ver sus notas marcadas como visibles para el cliente",
             true
         ),
+        // Reminder — sin AllowedActorTypes explícito a propósito: la inferencia por defecto de
+        // Permission da [TenantEmployee, TenantAdmin, PlatformAdmin], que es exactamente lo que
+        // pide el diseño. Marcarlo a mano sería duplicar la regla y arriesgarse a que se desincronice.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000159"),
+            RemindersRead,
+            "reminders",
+            "Ver los recordatorios propios",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000160"),
+            RemindersWrite,
+            "reminders",
+            "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios",
+            false
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -1743,6 +1767,12 @@ public static class PermissionCatalog
                 PaymentClientConnectAccountRead,
                 PaymentClientPayoutRead,
                 PaymentClientRecurringRead,
+                // Reminder sí entra en el bundle por defecto del empleado, a diferencia de Notes:
+                // un recordatorio es del propio usuario (Reminder.UserId), no un recurso compartido
+                // del tenant. Sin estos dos permisos un empleado no podría ni crearse un
+                // recordatorio propio — el servicio le quedaría inservible.
+                RemindersRead,
+                RemindersWrite,
             ],
             Role.SystemCustomerPortal =>
             [

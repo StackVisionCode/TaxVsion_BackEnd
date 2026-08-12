@@ -78,6 +78,11 @@ public static class DependencyInjection
 
         // Fase 5 — el interruptor que consulta NotificationDispatcher antes de cada envío.
         services.AddScoped<IUserNotificationPreferenceRepository, UserNotificationPreferenceRepository>();
+
+        // Reminder Fase 10 — directorio userId → email. El resolver (Application) compone este repo
+        // con la recuperación pull contra Auth, que se registra en Program.cs por ser un HttpClient.
+        services.AddScoped<IUserEmailDirectoryRepository, UserEmailDirectoryRepository>();
+        services.AddScoped<UserEmailResolver>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<ISmsSender, LoggingSmsSender>();
 

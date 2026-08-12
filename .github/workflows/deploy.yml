@@ -107,6 +107,9 @@ jobs:
           # (set -eu) muere con "unbound variable" ANTES de migrar NINGUN servicio -- el mismo
           # sintoma que ya se corrigio para Billing/Documents mas arriba.
           SMS_DB_CONNECTION=${{ secrets.SMS_DB_CONNECTION }}
+          # Reminder (servicio nuevo, ago-2026). Mismo contrato que Sms: docker-compose.yml la
+          # exige con :? en reminder-api y en el servicio migrations.
+          REMINDER_DB_CONNECTION=${{ secrets.REMINDER_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
           # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
           # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
@@ -242,6 +245,11 @@ jobs:
           # catalogo de plan-rate-limits de Subscription; sin este, ambos fallan en silencio.
           BILLING_PLATFORM_CLIENT_ID=${{ secrets.BILLING_PLATFORM_CLIENT_ID }}
           BILLING_PLATFORM_CLIENT_SECRET=${{ secrets.BILLING_PLATFORM_CLIENT_SECRET }}
+
+          # Reminder: mismo caso — sin esto las cuotas nunca escalan por tier (todos los tenants
+          # se quedan con la cuota base) y la recuperacion pull de permisos queda fail-closed.
+          REMINDER_SERVICE_CLIENT_ID=${{ secrets.REMINDER_SERVICE_CLIENT_ID }}
+          REMINDER_SERVICE_CLIENT_SECRET=${{ secrets.REMINDER_SERVICE_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}
@@ -421,7 +429,7 @@ jobs:
       - name: Provision scoped MinIO service accounts
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
-      - name: Apply .NET EF Core migrations (18 servicios)
+      - name: Apply .NET EF Core migrations (19 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
 
       - name: Apply Communication Prisma migrations

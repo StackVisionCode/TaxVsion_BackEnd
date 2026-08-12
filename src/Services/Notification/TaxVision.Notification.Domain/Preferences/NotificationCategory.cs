@@ -13,4 +13,11 @@ public enum NotificationCategory
     StorageAndQuota,
     Billing,
     Collaboration,
+
+    /// <summary>
+    /// Recordatorios personales (Reminder Fase 8). Categoría propia y no <c>Collaboration</c>: el
+    /// usuario se los puso a sí mismo, así que apagarlos no le hace perder nada que otro le haya
+    /// mandado — es exactamente la distinción que hace útil una pantalla de preferencias.
+    /// </summary>
+    Reminders,
 }

@@ -96,6 +96,13 @@
     <Project Path="src/Services/Sms/TaxVision.Sms.Domain/TaxVision.Sms.Domain.csproj" />
     <Project Path="src/Services/Sms/TaxVision.Sms.Infrastructure/TaxVision.Sms.Infrastructure.csproj" />
   </Folder>
+  <!-- ReminderService -->
+  <Folder Name="/src/Services/Reminder/">
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Api/TaxVision.Reminder.Api.csproj" />
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Application/TaxVision.Reminder.Application.csproj" />
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Domain/TaxVision.Reminder.Domain.csproj" />
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Infrastructure/TaxVision.Reminder.Infrastructure.csproj" />
+  </Folder>
   <!-- PostmasterService -->
   <Folder Name="/src/Services/Postmaster/">
     <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Api/TaxVision.Postmaster.Api.csproj" />
@@ -155,6 +162,7 @@
     <Project Path="deploy/tests/TaxVision.PaymentApp.Tests/TaxVision.PaymentApp.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentClient.Tests/TaxVision.PaymentClient.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Postmaster.Tests/TaxVision.Postmaster.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Reminder.Tests/TaxVision.Reminder.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Scribe.Tests/TaxVision.Scribe.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Signature.Tests/TaxVision.Signature.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Sms.Tests/TaxVision.Sms.Tests.csproj" />

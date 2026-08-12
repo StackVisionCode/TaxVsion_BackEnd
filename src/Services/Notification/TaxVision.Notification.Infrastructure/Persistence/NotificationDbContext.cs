@@ -7,6 +7,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Notification.Domain.Authorization;
+using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Emailing.Campaigns;
 using TaxVision.Notification.Domain.Emailing.Configurations;
 using TaxVision.Notification.Domain.Emailing.Layouts;
@@ -49,6 +50,12 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     public DbSet<NotificationRecipientRolePermissionsProjection> NotificationRecipientRolePermissionsProjections =>
         Set<NotificationRecipientRolePermissionsProjection>();
     public DbSet<UserNotificationPreference> UserNotificationPreferences => Set<UserNotificationPreference>();
+
+    /// <summary>
+    /// Reminder Fase 10 — el primer directorio <c>userId → email</c> del servicio. Hasta ahora
+    /// Notification solo sabía escribirle a quien viniera con la dirección dentro del propio evento.
+    /// </summary>
+    public DbSet<UserEmailDirectoryEntry> UserEmailDirectoryEntries => Set<UserEmailDirectoryEntry>();
 
     // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady.
     public DbSet<OnboardingReceiptLookup> OnboardingReceiptLookups => Set<OnboardingReceiptLookup>();

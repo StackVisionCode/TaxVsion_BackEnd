@@ -473,6 +473,11 @@ services:
       # escalar por tier) y la recuperación pull de permisos (Billing fail-closed).
       ServiceAuth__Clients__21__ClientId: ${BILLING_PLATFORM_CLIENT_ID:-billing-worker}
       ServiceAuth__Clients__21__Secret: ${BILLING_PLATFORM_CLIENT_SECRET:-}
+      # Reminder Fase 4 — sin Permissions ni Scopes a proposito: los dos destinos que consume
+      # (internal/plan-rate-limits de Subscription y permissions-snapshot de Auth) exigen solo
+      # actor_type=Service via la policy ServiceOnly.
+      ServiceAuth__Clients__22__ClientId: ${REMINDER_SERVICE_CLIENT_ID:-reminder-worker}
+      ServiceAuth__Clients__22__Secret: ${REMINDER_SERVICE_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1047,6 +1052,45 @@ services:
       Sms__Providers__infobip__SenderId: ${SMS_INFOBIP_SENDER_ID:-InfoSMS}
       Sms__Providers__infobip__Auth__Credential: ${SMS_INFOBIP_API_KEY:-}
       Sms__Providers__infobip__Webhook__Secret: ${SMS_INFOBIP_WEBHOOK_SECRET:-}
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
+  reminder-api:
+    image: taxvision/reminder-api:dev
+    container_name: taxvision-reminder-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Reminder/TaxVision.Reminder.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${REMINDER_DB_CONNECTION:?Set REMINDER_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # M2M: catalogo de plan-rate-limits (Subscription) + recuperacion pull de permisos (Auth).
+      Reminder__ServiceAuth__AuthBaseUrl: http://auth-api:8080
+      Reminder__ServiceAuth__ClientId: ${REMINDER_SERVICE_CLIENT_ID:-reminder-worker}
+      Reminder__ServiceAuth__ClientSecret: ${REMINDER_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     volumes:
       - taxvision-logs:/app/Logs
@@ -1679,6 +1723,7 @@ services:
       DOCUMENTS_DB_CONNECTION: ${DOCUMENTS_DB_CONNECTION:?Set DOCUMENTS_DB_CONNECTION in .env}
       NOTES_DB_CONNECTION: ${NOTES_DB_CONNECTION:?Set NOTES_DB_CONNECTION in .env}
       SMS_DB_CONNECTION: ${SMS_DB_CONNECTION:?Set SMS_DB_CONNECTION in .env}
+      REMINDER_DB_CONNECTION: ${REMINDER_DB_CONNECTION:?Set REMINDER_DB_CONNECTION in .env}
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -1746,6 +1791,7 @@ services:
       ReverseProxy__Clusters__documents__Destinations__documents1__Address: http://documents-api:8080/
       ReverseProxy__Clusters__notes__Destinations__notes1__Address: http://notes-api:8080/
       ReverseProxy__Clusters__sms__Destinations__sms1__Address: http://sms-api:8080/
+      ReverseProxy__Clusters__reminder__Destinations__reminder1__Address: http://reminder-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1768,6 +1814,8 @@ services:
       - billing-api
       - documents-api
       - notes-api
+      - sms-api
+      - reminder-api
       - otel-collector
     networks:
       - taxvision-network
