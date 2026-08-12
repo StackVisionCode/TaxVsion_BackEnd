@@ -56,8 +56,8 @@ public static class DependencyInjection
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
-        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(sp =>
-            new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
                 sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
                 sp.GetRequiredService<EfTenantPlanCodeReader>()
             )

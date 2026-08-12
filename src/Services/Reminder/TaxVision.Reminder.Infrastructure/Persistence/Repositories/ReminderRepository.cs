@@ -78,20 +78,18 @@ public sealed class ReminderRepository(ReminderDbContext context) : IReminderRep
         CancellationToken ct = default
     )
     {
-        var query = context.Reminders.IgnoreQueryFilters().Where(r =>
-            r.TenantId == tenantId
-            && r.UserId == userId
-            && PendingFireStatuses.Contains(r.Status)
-            && r.Schedule.FireAtUtc >= fromUtc
-            && r.Schedule.FireAtUtc <= toUtc
-        );
+        var query = context
+            .Reminders.IgnoreQueryFilters()
+            .Where(r =>
+                r.TenantId == tenantId
+                && r.UserId == userId
+                && PendingFireStatuses.Contains(r.Status)
+                && r.Schedule.FireAtUtc >= fromUtc
+                && r.Schedule.FireAtUtc <= toUtc
+            );
 
         var total = await query.CountAsync(ct);
-        var items = await query
-            .OrderBy(r => r.Schedule.FireAtUtc)
-            .Skip((page - 1) * size)
-            .Take(size)
-            .ToListAsync(ct);
+        var items = await query.OrderBy(r => r.Schedule.FireAtUtc).Skip((page - 1) * size).Take(size).ToListAsync(ct);
 
         return new PagedResult<ReminderAggregate>(items, page, size, total);
     }

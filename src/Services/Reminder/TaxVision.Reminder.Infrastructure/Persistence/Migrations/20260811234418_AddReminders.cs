@@ -33,23 +33,26 @@ namespace TaxVision.Reminder.Infrastructure.Persistence.Migrations
                     CancellationReason = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     SnoozeCount = table.Column<int>(type: "int", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Reminders", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reminders_Category_TargetId",
                 table: "Reminders",
-                columns: new[] { "Category", "TargetId" });
+                columns: new[] { "Category", "TargetId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_Reminders_TenantId_RequestKey",
                 table: "Reminders",
                 columns: new[] { "TenantId", "RequestKey" },
-                unique: true);
+                unique: true
+            );
 
             // Los dos índices que siguen no se pueden declarar en ReminderConfiguration: cruzan
             // columnas de la raíz (TenantId/UserId/Status) con FireAtUtc, que pertenece al owned
@@ -79,8 +82,7 @@ namespace TaxVision.Reminder.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "Reminders");
+            migrationBuilder.DropTable(name: "Reminders");
         }
     }
 }

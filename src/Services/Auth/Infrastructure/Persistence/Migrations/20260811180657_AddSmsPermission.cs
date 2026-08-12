@@ -16,12 +16,38 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 table: "OnboardingSagas",
                 type: "nvarchar(max)",
                 nullable: false,
-                defaultValue: "");
+                defaultValue: ""
+            );
 
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "MinPlanTier", "Module", "PlatformOnly" },
-                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000158"), "TenantEmployee,TenantAdmin,PlatformAdmin", "sms.send", "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS", true, false, false, 0, "sms", false });
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "MinPlanTier",
+                    "Module",
+                    "PlatformOnly",
+                },
+                values: new object[]
+                {
+                    new Guid("a1000000-0000-0000-0000-000000000158"),
+                    "TenantEmployee,TenantAdmin,PlatformAdmin",
+                    "sms.send",
+                    "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
+                    true,
+                    false,
+                    false,
+                    0,
+                    "sms",
+                    false,
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -30,11 +56,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000158"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000158")
+            );
 
-            migrationBuilder.DropColumn(
-                name: "BillingCycle",
-                table: "OnboardingSagas");
+            migrationBuilder.DropColumn(name: "BillingCycle", table: "OnboardingSagas");
         }
     }
 }

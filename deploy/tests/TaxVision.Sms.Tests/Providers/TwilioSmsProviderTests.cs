@@ -85,7 +85,10 @@ public sealed class TwilioSmsProviderTests
         var auth = handler.LastRequest!.Headers.Authorization!;
         Assert.Equal("Basic", auth.Scheme);
         Assert.Equal(Convert.ToBase64String(Encoding.UTF8.GetBytes($"{AccountSid}:{AuthToken}")), auth.Parameter);
-        Assert.Equal("https://api.twilio.test/2010-04-01/Accounts/AC123/Messages.json", handler.LastRequest.RequestUri!.ToString());
+        Assert.Equal(
+            "https://api.twilio.test/2010-04-01/Accounts/AC123/Messages.json",
+            handler.LastRequest.RequestUri!.ToString()
+        );
         Assert.Contains("Body=hola", handler.LastBody);
         Assert.Contains("To=", handler.LastBody);
     }

@@ -35,7 +35,13 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
     public async Task<IActionResult> Create([FromBody] CreateCategoryRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<CategoryDto>>(
-            new CreateCategoryCommand(tenant.TenantId, UserId, request.Name, request.Description, request.ParentCategoryId),
+            new CreateCategoryCommand(
+                tenant.TenantId,
+                UserId,
+                request.Name,
+                request.Description,
+                request.ParentCategoryId
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -82,7 +88,10 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
     [RateLimit("catalog.g.write")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result>(new SetCategoryActiveCommand(tenant.TenantId, id, request.IsActive), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new SetCategoryActiveCommand(tenant.TenantId, id, request.IsActive),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

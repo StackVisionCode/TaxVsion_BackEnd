@@ -56,8 +56,17 @@ public sealed class SmsMessageTests
     public void Create_rejects_empty_tenant()
     {
         var result = SmsMessage.Create(
-            Guid.Empty, Guid.NewGuid(), PhoneE164.Create("+18095551234").Value, SmsBody.Create("hi").Value,
-            "idem", "corr", Guid.NewGuid(), "fake", null, [], Now
+            Guid.Empty,
+            Guid.NewGuid(),
+            PhoneE164.Create("+18095551234").Value,
+            SmsBody.Create("hi").Value,
+            "idem",
+            "corr",
+            Guid.NewGuid(),
+            "fake",
+            null,
+            [],
+            Now
         );
 
         Assert.True(result.IsFailure);
@@ -68,8 +77,17 @@ public sealed class SmsMessageTests
     public void Create_rejects_empty_customer()
     {
         var result = SmsMessage.Create(
-            Guid.NewGuid(), Guid.Empty, PhoneE164.Create("+18095551234").Value, SmsBody.Create("hi").Value,
-            "idem", "corr", Guid.NewGuid(), "fake", null, [], Now
+            Guid.NewGuid(),
+            Guid.Empty,
+            PhoneE164.Create("+18095551234").Value,
+            SmsBody.Create("hi").Value,
+            "idem",
+            "corr",
+            Guid.NewGuid(),
+            "fake",
+            null,
+            [],
+            Now
         );
 
         Assert.True(result.IsFailure);
@@ -83,8 +101,17 @@ public sealed class SmsMessageTests
     public void Create_rejects_blank_idempotency_key(string? key)
     {
         var result = SmsMessage.Create(
-            Guid.NewGuid(), Guid.NewGuid(), PhoneE164.Create("+18095551234").Value, SmsBody.Create("hi").Value,
-            key!, "corr", Guid.NewGuid(), "fake", null, [], Now
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            PhoneE164.Create("+18095551234").Value,
+            SmsBody.Create("hi").Value,
+            key!,
+            "corr",
+            Guid.NewGuid(),
+            "fake",
+            null,
+            [],
+            Now
         );
 
         Assert.True(result.IsFailure);

@@ -21,25 +21,26 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     IsStale = table.Column<bool>(type: "bit", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_UserEmailDirectoryEntries", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserEmailDirectoryEntries_TenantId_UserId",
                 table: "UserEmailDirectoryEntries",
                 columns: new[] { "TenantId", "UserId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "UserEmailDirectoryEntries");
+            migrationBuilder.DropTable(name: "UserEmailDirectoryEntries");
         }
     }
 }

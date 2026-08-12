@@ -21,7 +21,11 @@ public static class CatalogItemCreatedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             // Solo se abre un nivel de stock para ítems que declaran rastreo (productos con TrackInventory).
             if (!evt.TrackInventory)
@@ -37,7 +41,11 @@ public static class CatalogItemCreatedConsumer
 
             await stock.AddStockLevelAsync(created.Value, ct);
             await unitOfWork.SaveChangesAsync(ct);
-            logger.LogInformation("StockLevel opened for catalog item {ItemId} (tenant {TenantId}).", evt.ItemId, evt.TenantId);
+            logger.LogInformation(
+                "StockLevel opened for catalog item {ItemId} (tenant {TenantId}).",
+                evt.ItemId,
+                evt.TenantId
+            );
         }
     }
 }
@@ -53,7 +61,11 @@ public static class CatalogItemDeactivatedConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             var level = await stock.GetByCatalogItemAsync(evt.TenantId, evt.ItemId, ct);
             if (level is null)

@@ -16,9 +16,11 @@ internal sealed class FakeCatalogItemRepository : ICatalogItemRepository
 
     public Task<bool> SkuExistsAsync(Guid tenantId, string sku, Guid? excludeId, CancellationToken ct = default) =>
         Task.FromResult(
-            Store.Concat(Added).Any(i =>
-                i.TenantId == tenantId && !i.IsDeleted && i.Sku == sku && (excludeId == null || i.Id != excludeId)
-            )
+            Store
+                .Concat(Added)
+                .Any(i =>
+                    i.TenantId == tenantId && !i.IsDeleted && i.Sku == sku && (excludeId == null || i.Id != excludeId)
+                )
         );
 
     public Task<(IReadOnlyList<CatalogItem> Items, int Total)> ListAsync(

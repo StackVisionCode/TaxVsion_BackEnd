@@ -11,7 +11,11 @@ public sealed class UserPermissionsProjectionRepository(CatalogDbContext db)
     : IUserPermissionsProjectionRepository,
         IUserPermissionsProjectionReader
 {
-    public async Task<UserPermissionsProjection?> GetAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+    public async Task<UserPermissionsProjection?> GetAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    ) =>
         await db
             .UserPermissionsProjections.IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.UserId == userId, ct);
@@ -52,7 +56,11 @@ public sealed class UserPermissionsProjectionRepository(CatalogDbContext db)
 
 public sealed class RolePermissionsProjectionRepository(CatalogDbContext db) : IRolePermissionsProjectionRepository
 {
-    public async Task<RolePermissionsProjection?> GetAsync(Guid tenantId, Guid roleId, CancellationToken ct = default) =>
+    public async Task<RolePermissionsProjection?> GetAsync(
+        Guid tenantId,
+        Guid roleId,
+        CancellationToken ct = default
+    ) =>
         await db
             .RolePermissionsProjections.IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == roleId, ct);

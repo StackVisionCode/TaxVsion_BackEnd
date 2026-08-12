@@ -69,7 +69,9 @@ public sealed class SmsMessage : TenantEntity
             To = to.Value,
             Body = body.Value,
             IdempotencyKey = idempotencyKey.Trim(),
-            CorrelationId = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId.Trim(),
+            CorrelationId = string.IsNullOrWhiteSpace(correlationId)
+                ? Guid.NewGuid().ToString("N")
+                : correlationId.Trim(),
             BatchId = batchId,
             ProviderCode = providerCode,
             SourceContext = string.IsNullOrWhiteSpace(sourceContext) ? null : sourceContext.Trim(),

@@ -38,7 +38,10 @@ public sealed class ReminderRequestedConsumerTests
 
         // Category = Task exige TargetId (invariante T2); el aggregate lo rechaza y el consumer no
         // debe reintentarlo: reintentar no lo va a hacer válido.
-        var evt = Requested("task-created:sin-target") with { Category = nameof(ReminderCategory.Task) };
+        var evt = Requested("task-created:sin-target") with
+        {
+            Category = nameof(ReminderCategory.Task),
+        };
 
         await Handle(evt, reminders, scheduler);
 

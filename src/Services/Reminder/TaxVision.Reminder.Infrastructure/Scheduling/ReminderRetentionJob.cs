@@ -91,7 +91,9 @@ public sealed class ReminderRetentionJob(
         {
             var removed = await db
                 .Reminders.IgnoreQueryFilters()
-                .Where(r => TerminalStatuses.Contains(r.Status) && r.ResolvedAtUtc != null && r.ResolvedAtUtc < cutoffUtc)
+                .Where(r =>
+                    TerminalStatuses.Contains(r.Status) && r.ResolvedAtUtc != null && r.ResolvedAtUtc < cutoffUtc
+                )
                 .OrderBy(r => r.ResolvedAtUtc)
                 .Take(BatchSize)
                 .ExecuteDeleteAsync(ct);

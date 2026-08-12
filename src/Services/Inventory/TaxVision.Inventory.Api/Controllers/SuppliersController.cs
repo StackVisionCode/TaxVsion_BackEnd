@@ -19,7 +19,14 @@ namespace TaxVision.Inventory.Api.Controllers;
 [AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
 public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {
-    public sealed record SupplierRequest(string Name, string? ContactName, string? Email, string? Phone, string? Address, string? TaxId);
+    public sealed record SupplierRequest(
+        string Name,
+        string? ContactName,
+        string? Email,
+        string? Phone,
+        string? Address,
+        string? TaxId
+    );
 
     public sealed record SetActiveRequest(bool IsActive);
 
@@ -31,7 +38,19 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
     [ProducesResponseType<SupplierDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] SupplierRequest r, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<SupplierDto>>(new CreateSupplierCommand(tenant.TenantId, UserId, r.Name, r.ContactName, r.Email, r.Phone, r.Address, r.TaxId), ct);
+        var result = await bus.InvokeAsync<Result<SupplierDto>>(
+            new CreateSupplierCommand(
+                tenant.TenantId,
+                UserId,
+                r.Name,
+                r.ContactName,
+                r.Email,
+                r.Phone,
+                r.Address,
+                r.TaxId
+            ),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -41,7 +60,10 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
     [ProducesResponseType<IReadOnlyList<SupplierDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] bool activeOnly = false, CancellationToken ct = default)
     {
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<SupplierDto>>>(new ListSuppliersQuery(tenant.TenantId, activeOnly), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<SupplierDto>>>(
+            new ListSuppliersQuery(tenant.TenantId, activeOnly),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -61,7 +83,10 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
     [ProducesResponseType<SupplierDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] SupplierRequest r, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<SupplierDto>>(new UpdateSupplierCommand(tenant.TenantId, id, r.Name, r.ContactName, r.Email, r.Phone, r.Address, r.TaxId), ct);
+        var result = await bus.InvokeAsync<Result<SupplierDto>>(
+            new UpdateSupplierCommand(tenant.TenantId, id, r.Name, r.ContactName, r.Email, r.Phone, r.Address, r.TaxId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -90,7 +115,15 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 [AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
 public sealed class ItemSuppliersController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {
-    public sealed record UpsertRequest(Guid CatalogItemId, Guid SupplierId, string? SupplierSku, decimal? PriceAmount, string? PriceCurrency, int? LeadTimeDays, bool IsPreferred);
+    public sealed record UpsertRequest(
+        Guid CatalogItemId,
+        Guid SupplierId,
+        string? SupplierSku,
+        decimal? PriceAmount,
+        string? PriceCurrency,
+        int? LeadTimeDays,
+        bool IsPreferred
+    );
 
     [HttpPost]
     [HasPermission(InventoryPermissions.Write)]
@@ -99,7 +132,17 @@ public sealed class ItemSuppliersController(IMessageBus bus, ITenantContext tena
     public async Task<IActionResult> Upsert([FromBody] UpsertRequest r, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<ItemSupplierDto>>(
-            new UpsertItemSupplierCommand(tenant.TenantId, r.CatalogItemId, r.SupplierId, r.SupplierSku, r.PriceAmount, r.PriceCurrency, r.LeadTimeDays, r.IsPreferred), ct
+            new UpsertItemSupplierCommand(
+                tenant.TenantId,
+                r.CatalogItemId,
+                r.SupplierId,
+                r.SupplierSku,
+                r.PriceAmount,
+                r.PriceCurrency,
+                r.LeadTimeDays,
+                r.IsPreferred
+            ),
+            ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -110,7 +153,10 @@ public sealed class ItemSuppliersController(IMessageBus bus, ITenantContext tena
     [ProducesResponseType<IReadOnlyList<ItemSupplierDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] Guid catalogItemId, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<ItemSupplierDto>>>(new ListItemSuppliersQuery(tenant.TenantId, catalogItemId), ct);
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<ItemSupplierDto>>>(
+            new ListItemSuppliersQuery(tenant.TenantId, catalogItemId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

@@ -20,7 +20,10 @@ namespace TaxVision.Sms.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddSmsInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddSmsInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration
+    )
     {
         var connectionString =
             configuration.GetConnectionString("Default")
@@ -59,10 +62,22 @@ public static class DependencyInjection
 
         // Reintentos + circuit-breaker para las llamadas salientes a proveedores (un HttpClient por adapter HTTP).
         services.AddSingleton(_ => new HttpResiliencePipelineRegistry());
-        services.AddHttpClient(nameof(Providers.Generic.GenericHttpSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
-        services.AddHttpClient(nameof(Providers.Textmaxx.TextmaxxSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
-        services.AddHttpClient(nameof(Providers.Infobip.InfobipSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
-        services.AddHttpClient(nameof(Providers.Twilio.TwilioSmsProvider), http => http.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient(
+            nameof(Providers.Generic.GenericHttpSmsProvider),
+            http => http.Timeout = TimeSpan.FromSeconds(30)
+        );
+        services.AddHttpClient(
+            nameof(Providers.Textmaxx.TextmaxxSmsProvider),
+            http => http.Timeout = TimeSpan.FromSeconds(30)
+        );
+        services.AddHttpClient(
+            nameof(Providers.Infobip.InfobipSmsProvider),
+            http => http.Timeout = TimeSpan.FromSeconds(30)
+        );
+        services.AddHttpClient(
+            nameof(Providers.Twilio.TwilioSmsProvider),
+            http => http.Timeout = TimeSpan.FromSeconds(30)
+        );
 
         AddRateLimitTierQuotas(services, configuration);
 
@@ -78,8 +93,8 @@ public static class DependencyInjection
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
-        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(sp =>
-            new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
                 sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
                 sp.GetRequiredService<EfTenantPlanCodeReader>()
             )

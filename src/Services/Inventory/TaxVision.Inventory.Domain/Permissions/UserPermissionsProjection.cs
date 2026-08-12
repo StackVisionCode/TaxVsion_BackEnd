@@ -16,7 +16,13 @@ public sealed class UserPermissionsProjection : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static UserPermissionsProjection Create(Guid tenantId, Guid userId, int permissionsVersion, IReadOnlyCollection<string> permissionCodes, IReadOnlyCollection<Guid> roleIds)
+    public static UserPermissionsProjection Create(
+        Guid tenantId,
+        Guid userId,
+        int permissionsVersion,
+        IReadOnlyCollection<string> permissionCodes,
+        IReadOnlyCollection<Guid> roleIds
+    )
     {
         var now = DateTime.UtcNow;
         var projection = new UserPermissionsProjection
@@ -34,7 +40,11 @@ public sealed class UserPermissionsProjection : TenantEntity
         return projection;
     }
 
-    public void ApplyIfNewer(int permissionsVersion, IReadOnlyCollection<string> permissionCodes, IReadOnlyCollection<Guid> roleIds)
+    public void ApplyIfNewer(
+        int permissionsVersion,
+        IReadOnlyCollection<string> permissionCodes,
+        IReadOnlyCollection<Guid> roleIds
+    )
     {
         if (permissionsVersion < PermissionsVersion)
             return;
@@ -59,7 +69,9 @@ public sealed class UserPermissionsProjection : TenantEntity
 
     private static string SerializeRoleIds(IReadOnlyCollection<Guid> roleIds) => JsonSerializer.Serialize(roleIds);
 
-    private static IReadOnlyList<string> DeserializeCodes(string json) => JsonSerializer.Deserialize<List<string>>(json) ?? [];
+    private static IReadOnlyList<string> DeserializeCodes(string json) =>
+        JsonSerializer.Deserialize<List<string>>(json) ?? [];
 
-    private static IReadOnlyList<Guid> DeserializeRoleIds(string json) => JsonSerializer.Deserialize<List<Guid>>(json) ?? [];
+    private static IReadOnlyList<Guid> DeserializeRoleIds(string json) =>
+        JsonSerializer.Deserialize<List<Guid>>(json) ?? [];
 }

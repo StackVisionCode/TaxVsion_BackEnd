@@ -16,15 +16,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 type: "nvarchar(24)",
                 maxLength: 24,
                 nullable: false,
-                defaultValue: "Monthly");
+                defaultValue: "Monthly"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "BillingCycle",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "BillingCycle", table: "TenantOnboardings");
         }
     }
 }

@@ -44,7 +44,10 @@ public sealed class InfobipSmsProvider(
     private const string DefaultSendPath = "/sms/2/text/advanced";
 
     // Encoder relajado: emite '+' del E.164 literal (no +) para un body limpio y legible.
-    private static readonly JsonSerializerOptions BodyJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static readonly JsonSerializerOptions BodyJson = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     public string Code => ProviderCode;
 
@@ -96,7 +99,8 @@ public sealed class InfobipSmsProvider(
             if (!parsed)
                 return Result.Success(new SmsSendResult(false, null, "providerRejected", payload));
 
-            var rejected = string.Equals(groupName, "REJECTED", StringComparison.OrdinalIgnoreCase)
+            var rejected =
+                string.Equals(groupName, "REJECTED", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(groupName, "UNDELIVERABLE", StringComparison.OrdinalIgnoreCase);
             if (rejected)
                 return Result.Success(new SmsSendResult(false, messageId, "providerRejected", groupName));
@@ -123,7 +127,12 @@ public sealed class InfobipSmsProvider(
         return Result.Success<IReadOnlyList<SmsSendResult>>(results);
     }
 
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "")
+    public Result<SmsSignatureCheck> VerifySignature(
+        string rawPayload,
+        string signatureHeader,
+        string secret,
+        string requestUrl = ""
+    )
     {
         if (string.IsNullOrEmpty(secret))
             return Result.Success(new SmsSignatureCheck(false, "No webhook secret configured for Infobip."));
@@ -158,7 +167,9 @@ public sealed class InfobipSmsProvider(
                 _ => SmsCanonicalStatus.Accepted, // PENDING / en tránsito
             };
             var eventType = (r.TryGetProperty("status", out var st2) ? GetString(st2, "name") : null) ?? groupName!;
-            var failureCode = status is SmsCanonicalStatus.Failed or SmsCanonicalStatus.Undeliverable ? groupName : null;
+            var failureCode = status is SmsCanonicalStatus.Failed or SmsCanonicalStatus.Undeliverable
+                ? groupName
+                : null;
             return Result.Success(new SmsDeliveryUpdate(messageId!, eventType, status, failureCode, null));
         }
         catch (JsonException)
@@ -173,12 +184,16 @@ public sealed class InfobipSmsProvider(
         {
             using var doc = JsonDocument.Parse(rawPayload);
             if (!TryFirst(doc.RootElement, "results", out var r))
-                return Result.Failure<SmsInboundMessage>(new Error("sms.webhook.malformed", "Malformed inbound payload."));
+                return Result.Failure<SmsInboundMessage>(
+                    new Error("sms.webhook.malformed", "Malformed inbound payload.")
+                );
 
             var from = GetString(r, "from");
             var text = GetString(r, "text") ?? string.Empty;
             if (string.IsNullOrWhiteSpace(from))
-                return Result.Failure<SmsInboundMessage>(new Error("sms.webhook.malformed", "Malformed inbound payload."));
+                return Result.Failure<SmsInboundMessage>(
+                    new Error("sms.webhook.malformed", "Malformed inbound payload.")
+                );
 
             var keyword = text.Trim().ToUpperInvariant() switch
             {
@@ -192,13 +207,16 @@ public sealed class InfobipSmsProvider(
         }
         catch (JsonException)
         {
-            return Result.Failure<SmsInboundMessage>(new Error("sms.webhook.malformed", "Unparseable inbound payload."));
+            return Result.Failure<SmsInboundMessage>(
+                new Error("sms.webhook.malformed", "Unparseable inbound payload.")
+            );
         }
     }
 
     private static string BuildUrl(SmsProviderConfig config)
     {
-        var path = string.IsNullOrWhiteSpace(config.SendPath) || config.SendPath == "/" ? DefaultSendPath : config.SendPath;
+        var path =
+            string.IsNullOrWhiteSpace(config.SendPath) || config.SendPath == "/" ? DefaultSendPath : config.SendPath;
         return config.BaseUrl.TrimEnd('/') + "/" + path.TrimStart('/');
     }
 
@@ -243,10 +261,12 @@ public sealed class InfobipSmsProvider(
     private static bool TryFirst(JsonElement root, string arrayName, out JsonElement first)
     {
         first = default;
-        if (root.ValueKind != JsonValueKind.Object
+        if (
+            root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty(arrayName, out var arr)
             || arr.ValueKind != JsonValueKind.Array
-            || arr.GetArrayLength() == 0)
+            || arr.GetArrayLength() == 0
+        )
             return false;
         first = arr[0];
         return true;

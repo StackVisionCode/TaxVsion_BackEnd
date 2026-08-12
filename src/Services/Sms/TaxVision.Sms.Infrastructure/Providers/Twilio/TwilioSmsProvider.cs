@@ -66,7 +66,9 @@ public sealed class TwilioSmsProvider(
         var config = Config;
         var (accountSid, _) = SplitCredential(config.Auth.Credential);
         if (string.IsNullOrWhiteSpace(accountSid))
-            return Result.Success(new SmsSendResult(false, null, "providerRejected", "Twilio AccountSid is not configured."));
+            return Result.Success(
+                new SmsSendResult(false, null, "providerRejected", "Twilio AccountSid is not configured.")
+            );
 
         var http = httpClientFactory.CreateClient(nameof(TwilioSmsProvider));
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl(config, accountSid))
@@ -87,12 +89,20 @@ public sealed class TwilioSmsProvider(
             if (!response.IsSuccessStatusCode)
             {
                 var (code, message) = ParseError(payload);
-                logger.LogWarning("Twilio returned {StatusCode} for {To} (code {Code}).", (int)response.StatusCode, request.To, code);
-                return Result.Success(new SmsSendResult(false, null, code ?? CanonicalError(response.StatusCode), message ?? payload));
+                logger.LogWarning(
+                    "Twilio returned {StatusCode} for {To} (code {Code}).",
+                    (int)response.StatusCode,
+                    request.To,
+                    code
+                );
+                return Result.Success(
+                    new SmsSendResult(false, null, code ?? CanonicalError(response.StatusCode), message ?? payload)
+                );
             }
 
             var (sid, status, errorCode) = ParseSendResponse(payload);
-            var rejected = errorCode is not null
+            var rejected =
+                errorCode is not null
                 || string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(status, "undelivered", StringComparison.OrdinalIgnoreCase);
             if (rejected)
@@ -120,13 +130,20 @@ public sealed class TwilioSmsProvider(
 
     /// <summary>Valida la firma real de Twilio: <c>base64(HMAC-SHA1(authToken, url + Σ(key+value) ordenados))</c>.
     /// El authToken sale de la credencial del propio adapter (parte tras ':'), no del webhook secret genérico.</summary>
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "")
+    public Result<SmsSignatureCheck> VerifySignature(
+        string rawPayload,
+        string signatureHeader,
+        string secret,
+        string requestUrl = ""
+    )
     {
         var (_, authToken) = SplitCredential(Config.Auth.Credential);
         if (string.IsNullOrEmpty(authToken))
             return Result.Success(new SmsSignatureCheck(false, "No Twilio auth token configured."));
         if (string.IsNullOrWhiteSpace(requestUrl))
-            return Result.Success(new SmsSignatureCheck(false, "Twilio signature validation requires the request URL."));
+            return Result.Success(
+                new SmsSignatureCheck(false, "Twilio signature validation requires the request URL.")
+            );
 
         var form = ParseForm(rawPayload);
         var data = new StringBuilder(requestUrl);
@@ -151,7 +168,9 @@ public sealed class TwilioSmsProvider(
         var messageSid = form.GetValueOrDefault("MessageSid") ?? form.GetValueOrDefault("SmsSid");
         var rawStatus = form.GetValueOrDefault("MessageStatus") ?? form.GetValueOrDefault("SmsStatus");
         if (string.IsNullOrWhiteSpace(messageSid) || string.IsNullOrWhiteSpace(rawStatus))
-            return Result.Failure<SmsDeliveryUpdate>(new Error("sms.webhook.malformed", "Malformed Twilio DLR payload."));
+            return Result.Failure<SmsDeliveryUpdate>(
+                new Error("sms.webhook.malformed", "Malformed Twilio DLR payload.")
+            );
 
         var status = rawStatus!.ToLowerInvariant() switch
         {
@@ -170,7 +189,9 @@ public sealed class TwilioSmsProvider(
         var from = form.GetValueOrDefault("From");
         var text = form.GetValueOrDefault("Body") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(from))
-            return Result.Failure<SmsInboundMessage>(new Error("sms.webhook.malformed", "Malformed Twilio inbound payload."));
+            return Result.Failure<SmsInboundMessage>(
+                new Error("sms.webhook.malformed", "Malformed Twilio inbound payload.")
+            );
 
         var keyword = text.Trim().ToUpperInvariant() switch
         {
@@ -179,7 +200,8 @@ public sealed class TwilioSmsProvider(
             "HELP" => SmsInboundKeyword.Help,
             _ => SmsInboundKeyword.Unknown,
         };
-        var messageSid = form.GetValueOrDefault("MessageSid") ?? form.GetValueOrDefault("SmsSid") ?? Guid.NewGuid().ToString("N");
+        var messageSid =
+            form.GetValueOrDefault("MessageSid") ?? form.GetValueOrDefault("SmsSid") ?? Guid.NewGuid().ToString("N");
         return Result.Success(new SmsInboundMessage(from!, keyword, text.Trim(), "inbound", messageSid, null, null));
     }
 
@@ -217,9 +239,11 @@ public sealed class TwilioSmsProvider(
             var root = doc.RootElement;
             var sid = GetString(root, "sid");
             var status = GetString(root, "status");
-            var errorCode = root.TryGetProperty("error_code", out var ec) && ec.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
-                ? ec.ToString()
-                : null;
+            var errorCode =
+                root.TryGetProperty("error_code", out var ec)
+                && ec.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+                    ? ec.ToString()
+                    : null;
             return (sid, status, errorCode);
         }
         catch (JsonException)
@@ -234,9 +258,11 @@ public sealed class TwilioSmsProvider(
         {
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
-            var code = root.TryGetProperty("code", out var c) && c.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
-                ? c.ToString()
-                : null;
+            var code =
+                root.TryGetProperty("code", out var c)
+                && c.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+                    ? c.ToString()
+                    : null;
             return (code, GetString(root, "message"));
         }
         catch (JsonException)

@@ -20,13 +20,30 @@ public static class UserRolesChangedPermissionsProjectionConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             var existing = await repository.GetAsync(evt.TenantId, evt.UserId, ct);
             if (existing is null)
             {
-                await repository.AddAsync(UserPermissionsProjection.Create(evt.TenantId, evt.UserId, evt.PermissionsVersion, evt.PermissionCodes, evt.RoleIds), ct);
-                logger.LogInformation("UserPermissionsProjection created for {UserId} version {Version}.", evt.UserId, evt.PermissionsVersion);
+                await repository.AddAsync(
+                    UserPermissionsProjection.Create(
+                        evt.TenantId,
+                        evt.UserId,
+                        evt.PermissionsVersion,
+                        evt.PermissionCodes,
+                        evt.RoleIds
+                    ),
+                    ct
+                );
+                logger.LogInformation(
+                    "UserPermissionsProjection created for {UserId} version {Version}.",
+                    evt.UserId,
+                    evt.PermissionsVersion
+                );
             }
             else
             {
@@ -49,7 +66,11 @@ public static class RolePermissionsChangedPermissionsProjectionConsumer
         CancellationToken ct
     )
     {
-        using (correlation.Push(string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId))
+        using (
+            correlation.Push(
+                string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId
+            )
+        )
         {
             var roleProjection = await UpsertRoleProjectionAsync(evt, roleRepository, ct);
 
@@ -62,16 +83,30 @@ public static class RolePermissionsChangedPermissionsProjectionConsumer
 
             await ReapplyPermissionsUnionAsync(evt.TenantId, roleProjection, affectedUsers, roleRepository, ct);
             await unitOfWork.SaveChangesAsync(ct);
-            logger.LogInformation("RolePermissionsChanged: recomputed union for {Count} user(s) of role {RoleId}.", affectedUsers.Count, evt.RoleId);
+            logger.LogInformation(
+                "RolePermissionsChanged: recomputed union for {Count} user(s) of role {RoleId}.",
+                affectedUsers.Count,
+                evt.RoleId
+            );
         }
     }
 
-    private static async Task<RolePermissionsProjection> UpsertRoleProjectionAsync(RolePermissionsChangedIntegrationEvent evt, IRolePermissionsProjectionRepository roleRepository, CancellationToken ct)
+    private static async Task<RolePermissionsProjection> UpsertRoleProjectionAsync(
+        RolePermissionsChangedIntegrationEvent evt,
+        IRolePermissionsProjectionRepository roleRepository,
+        CancellationToken ct
+    )
     {
         var existing = await roleRepository.GetAsync(evt.TenantId, evt.RoleId, ct);
         if (existing is null)
         {
-            var created = RolePermissionsProjection.Create(evt.TenantId, evt.RoleId, evt.RoleName, evt.PermissionsVersion, evt.PermissionCodes);
+            var created = RolePermissionsProjection.Create(
+                evt.TenantId,
+                evt.RoleId,
+                evt.RoleName,
+                evt.PermissionsVersion,
+                evt.PermissionCodes
+            );
             await roleRepository.AddAsync(created, ct);
             return created;
         }
@@ -79,10 +114,21 @@ public static class RolePermissionsChangedPermissionsProjectionConsumer
         return existing;
     }
 
-    private static async Task ReapplyPermissionsUnionAsync(Guid tenantId, RolePermissionsProjection changedRole, IReadOnlyList<UserPermissionsProjection> affectedUsers, IRolePermissionsProjectionRepository roleRepository, CancellationToken ct)
+    private static async Task ReapplyPermissionsUnionAsync(
+        Guid tenantId,
+        RolePermissionsProjection changedRole,
+        IReadOnlyList<UserPermissionsProjection> affectedUsers,
+        IRolePermissionsProjectionRepository roleRepository,
+        CancellationToken ct
+    )
     {
-        var otherRoleIds = affectedUsers.SelectMany(u => u.RoleIds()).Where(r => r != changedRole.Id).Distinct().ToList();
-        var otherRoles = otherRoleIds.Count == 0 ? [] : await roleRepository.FindByRoleIdsAsync(tenantId, otherRoleIds, ct);
+        var otherRoleIds = affectedUsers
+            .SelectMany(u => u.RoleIds())
+            .Where(r => r != changedRole.Id)
+            .Distinct()
+            .ToList();
+        var otherRoles =
+            otherRoleIds.Count == 0 ? [] : await roleRepository.FindByRoleIdsAsync(tenantId, otherRoleIds, ct);
         var rolesById = otherRoles.ToDictionary(r => r.Id, r => r);
         rolesById[changedRole.Id] = changedRole;
 

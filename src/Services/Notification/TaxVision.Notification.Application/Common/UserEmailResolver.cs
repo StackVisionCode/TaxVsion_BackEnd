@@ -47,7 +47,10 @@ public sealed class UserEmailResolver(
         }
 
         if (local is null)
-            await directory.AddAsync(Domain.Directory.UserEmailDirectoryEntry.Create(tenantId, userId, remote.Email, remote.IsActive), ct);
+            await directory.AddAsync(
+                Domain.Directory.UserEmailDirectoryEntry.Create(tenantId, userId, remote.Email, remote.IsActive),
+                ct
+            );
         else
             local.UpdateEmail(remote.Email, remote.IsActive);
 

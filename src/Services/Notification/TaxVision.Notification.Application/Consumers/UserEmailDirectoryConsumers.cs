@@ -36,10 +36,7 @@ public static class UserEmailDirectoryUpsertConsumer
         {
             var existing = await directory.FindAsync(evt.TenantId, evt.UserId, ct);
             if (existing is null)
-                await directory.AddAsync(
-                    UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email),
-                    ct
-                );
+                await directory.AddAsync(UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email), ct);
             else
                 existing.UpdateEmail(evt.Email, isActive: true);
 
@@ -89,7 +86,16 @@ public static class UserEmailDirectoryDeactivationConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => await UserEmailDirectoryConsumerHelpers.SetActiveAsync(evt.TenantId, evt.UserId, false, directory, unitOfWork, correlation, ct);
+    ) =>
+        await UserEmailDirectoryConsumerHelpers.SetActiveAsync(
+            evt.TenantId,
+            evt.UserId,
+            false,
+            directory,
+            unitOfWork,
+            correlation,
+            ct
+        );
 }
 
 public static class UserEmailDirectoryReactivationConsumer
@@ -100,7 +106,16 @@ public static class UserEmailDirectoryReactivationConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => await UserEmailDirectoryConsumerHelpers.SetActiveAsync(evt.TenantId, evt.UserId, true, directory, unitOfWork, correlation, ct);
+    ) =>
+        await UserEmailDirectoryConsumerHelpers.SetActiveAsync(
+            evt.TenantId,
+            evt.UserId,
+            true,
+            directory,
+            unitOfWork,
+            correlation,
+            ct
+        );
 }
 
 internal static class UserEmailDirectoryConsumerHelpers

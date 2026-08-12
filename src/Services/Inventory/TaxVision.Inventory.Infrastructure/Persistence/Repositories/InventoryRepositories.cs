@@ -11,7 +11,9 @@ namespace TaxVision.Inventory.Infrastructure.Persistence.Repositories;
 public sealed class StockRepository(InventoryDbContext db) : IStockRepository
 {
     public Task<StockLevel?> GetByCatalogItemAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default) =>
-        db.StockLevels.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.CatalogItemId == catalogItemId, ct);
+        db
+            .StockLevels.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.CatalogItemId == catalogItemId, ct);
 
     public async Task AddStockLevelAsync(StockLevel level, CancellationToken ct = default) =>
         await db.StockLevels.AddAsync(level, ct);
@@ -20,7 +22,12 @@ public sealed class StockRepository(InventoryDbContext db) : IStockRepository
         await db.StockMovements.AddAsync(movement, ct);
 
     public async Task<(IReadOnlyList<StockLevel> Items, int Total)> ListStockLevelsAsync(
-        Guid tenantId, bool lowStockOnly, int page, int pageSize, CancellationToken ct = default)
+        Guid tenantId,
+        bool lowStockOnly,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
         var query = db.StockLevels.IgnoreQueryFilters().AsNoTracking().Where(s => s.TenantId == tenantId);
         if (lowStockOnly)
@@ -31,13 +38,22 @@ public sealed class StockRepository(InventoryDbContext db) : IStockRepository
     }
 
     public async Task<(IReadOnlyList<StockMovement> Items, int Total)> ListMovementsAsync(
-        Guid tenantId, Guid? catalogItemId, int page, int pageSize, CancellationToken ct = default)
+        Guid tenantId,
+        Guid? catalogItemId,
+        int page,
+        int pageSize,
+        CancellationToken ct = default
+    )
     {
         var query = db.StockMovements.IgnoreQueryFilters().AsNoTracking().Where(m => m.TenantId == tenantId);
         if (catalogItemId is { } cid)
             query = query.Where(m => m.CatalogItemId == cid);
         var total = await query.CountAsync(ct);
-        var rows = await query.OrderByDescending(m => m.MovedAtUtc).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var rows = await query
+            .OrderByDescending(m => m.MovedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
         return (rows, total);
     }
 }
@@ -45,7 +61,9 @@ public sealed class StockRepository(InventoryDbContext db) : IStockRepository
 public sealed class SupplierRepository(InventoryDbContext db) : ISupplierRepository
 {
     public Task<Supplier?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
-        db.Suppliers.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.TenantId == tenantId && !s.IsDeleted && s.Id == id, ct);
+        db
+            .Suppliers.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.TenantId == tenantId && !s.IsDeleted && s.Id == id, ct);
 
     public async Task<IReadOnlyList<Supplier>> ListAsync(Guid tenantId, bool activeOnly, CancellationToken ct = default)
     {
@@ -64,11 +82,29 @@ public sealed class ItemSupplierRepository(InventoryDbContext db) : IItemSupplie
     public Task<ItemSupplier?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
         db.ItemSuppliers.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
 
-    public Task<ItemSupplier?> GetAsync(Guid tenantId, Guid catalogItemId, Guid supplierId, CancellationToken ct = default) =>
-        db.ItemSuppliers.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CatalogItemId == catalogItemId && x.SupplierId == supplierId, ct);
+    public Task<ItemSupplier?> GetAsync(
+        Guid tenantId,
+        Guid catalogItemId,
+        Guid supplierId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .ItemSuppliers.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.CatalogItemId == catalogItemId && x.SupplierId == supplierId,
+                ct
+            );
 
-    public async Task<IReadOnlyList<ItemSupplier>> ListByItemAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default) =>
-        await db.ItemSuppliers.IgnoreQueryFilters().AsNoTracking().Where(x => x.TenantId == tenantId && x.CatalogItemId == catalogItemId).ToListAsync(ct);
+    public async Task<IReadOnlyList<ItemSupplier>> ListByItemAsync(
+        Guid tenantId,
+        Guid catalogItemId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .ItemSuppliers.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.CatalogItemId == catalogItemId)
+            .ToListAsync(ct);
 
     public async Task AddAsync(ItemSupplier link, CancellationToken ct = default) =>
         await db.ItemSuppliers.AddAsync(link, ct);

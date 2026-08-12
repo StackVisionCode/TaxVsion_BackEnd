@@ -13,7 +13,8 @@ namespace TaxVision.Sms.Infrastructure.Providers.Fake;
 /// `Sms:Providers:fake:Capabilities` (para probar media-no-soportada, etc.); si no hay config, defaults amplios.
 /// </summary>
 [SmsProvider("fake")]
-public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogger<FakeSmsProvider> logger) : ISmsProvider
+public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogger<FakeSmsProvider> logger)
+    : ISmsProvider
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
@@ -55,14 +56,23 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
     public Task<Result<SmsSendResult>> SendAsync(SmsSendRequest request, CancellationToken ct = default)
     {
         if (request.Body.Contains("[REJECT]", StringComparison.OrdinalIgnoreCase))
-            return Task.FromResult(Result.Success(new SmsSendResult(false, null, "providerRejected", "Simulated rejection.")));
+            return Task.FromResult(
+                Result.Success(new SmsSendResult(false, null, "providerRejected", "Simulated rejection."))
+            );
 
         var providerMessageId = "fake-" + Guid.NewGuid().ToString("N");
-        logger.LogInformation("FakeSmsProvider accepted message to {To} as {ProviderMessageId}.", request.To, providerMessageId);
+        logger.LogInformation(
+            "FakeSmsProvider accepted message to {To} as {ProviderMessageId}.",
+            request.To,
+            providerMessageId
+        );
         return Task.FromResult(Result.Success(new SmsSendResult(true, providerMessageId, null, null)));
     }
 
-    public async Task<Result<IReadOnlyList<SmsSendResult>>> SendBatchAsync(IReadOnlyList<SmsSendRequest> requests, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<SmsSendResult>>> SendBatchAsync(
+        IReadOnlyList<SmsSendRequest> requests,
+        CancellationToken ct = default
+    )
     {
         var results = new List<SmsSendResult>(requests.Count);
         foreach (var r in requests)
@@ -71,8 +81,12 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
     }
 
     // Dev: la firma siempre es válida (no hay proveedor real firmando).
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "") =>
-        Result.Success(new SmsSignatureCheck(true, null));
+    public Result<SmsSignatureCheck> VerifySignature(
+        string rawPayload,
+        string signatureHeader,
+        string secret,
+        string requestUrl = ""
+    ) => Result.Success(new SmsSignatureCheck(true, null));
 
     public Result<SmsDeliveryUpdate> ParseDeliveryReceipt(string rawPayload)
     {
@@ -89,8 +103,15 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
                 "undeliverable" => SmsCanonicalStatus.Undeliverable,
                 _ => SmsCanonicalStatus.Accepted,
             };
-            return Result.Success(new SmsDeliveryUpdate(
-                dto.ProviderMessageId, dto.EventType ?? dto.Status ?? "status", status, dto.FailureCode, dto.FailureReason));
+            return Result.Success(
+                new SmsDeliveryUpdate(
+                    dto.ProviderMessageId,
+                    dto.EventType ?? dto.Status ?? "status",
+                    status,
+                    dto.FailureCode,
+                    dto.FailureReason
+                )
+            );
         }
         catch (JsonException)
         {
@@ -104,7 +125,9 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
         {
             var dto = JsonSerializer.Deserialize<FakeInbound>(rawPayload, Json);
             if (dto is null || string.IsNullOrWhiteSpace(dto.From))
-                return Result.Failure<SmsInboundMessage>(new Error("sms.webhook.malformed", "Malformed inbound payload."));
+                return Result.Failure<SmsInboundMessage>(
+                    new Error("sms.webhook.malformed", "Malformed inbound payload.")
+                );
 
             var raw = (dto.Keyword ?? dto.Text ?? string.Empty).Trim();
             var keyword = raw.ToUpperInvariant() switch
@@ -114,10 +137,17 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
                 "HELP" => SmsInboundKeyword.Help,
                 _ => SmsInboundKeyword.Unknown,
             };
-            return Result.Success(new SmsInboundMessage(
-                dto.From, keyword, raw, "inbound",
-                dto.ProviderMessageId ?? Guid.NewGuid().ToString("N"),
-                dto.TenantId, dto.CustomerId));
+            return Result.Success(
+                new SmsInboundMessage(
+                    dto.From,
+                    keyword,
+                    raw,
+                    "inbound",
+                    dto.ProviderMessageId ?? Guid.NewGuid().ToString("N"),
+                    dto.TenantId,
+                    dto.CustomerId
+                )
+            );
         }
         catch (JsonException)
         {
@@ -125,7 +155,20 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
         }
     }
 
-    private sealed record FakeDlr(string? ProviderMessageId, string? Status, string? EventType, string? FailureCode, string? FailureReason);
+    private sealed record FakeDlr(
+        string? ProviderMessageId,
+        string? Status,
+        string? EventType,
+        string? FailureCode,
+        string? FailureReason
+    );
 
-    private sealed record FakeInbound(string? From, string? Keyword, string? Text, string? ProviderMessageId, Guid? TenantId, Guid? CustomerId);
+    private sealed record FakeInbound(
+        string? From,
+        string? Keyword,
+        string? Text,
+        string? ProviderMessageId,
+        Guid? TenantId,
+        Guid? CustomerId
+    );
 }

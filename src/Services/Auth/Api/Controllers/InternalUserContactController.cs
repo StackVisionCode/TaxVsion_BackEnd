@@ -23,7 +23,9 @@ namespace TaxVision.Auth.Api.Controllers;
 public sealed class InternalUserContactController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
-    [RateLimitExempt("M2M ServiceOnly (recuperación pull del directorio de correo) — nunca expuesto al Gateway público.")]
+    [RateLimitExempt(
+        "M2M ServiceOnly (recuperación pull del directorio de correo) — nunca expuesto al Gateway público."
+    )]
     [ProducesResponseType<UserContactResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid tenantId, Guid userId, CancellationToken ct)
     {

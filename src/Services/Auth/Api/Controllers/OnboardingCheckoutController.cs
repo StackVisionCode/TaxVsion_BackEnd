@@ -102,16 +102,9 @@ public sealed class OnboardingCheckoutController(IMessageBus bus) : ControllerBa
     [RateLimitExempt(
         "Anónimo (Fase 9) — conserva el limiter nativo onboarding-checkout-create, sin JWT que particionar."
     )]
-    public async Task<IActionResult> Cancel(
-        Guid onboardingId,
-        CancelOnboardingRequest? request,
-        CancellationToken ct
-    )
+    public async Task<IActionResult> Cancel(Guid onboardingId, CancelOnboardingRequest? request, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result>(
-            new CancelOnboardingCommand(onboardingId, request?.Reason),
-            ct
-        );
+        var result = await bus.InvokeAsync<Result>(new CancelOnboardingCommand(onboardingId, request?.Reason), ct);
 
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

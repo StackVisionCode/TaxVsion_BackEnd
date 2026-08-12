@@ -31,7 +31,8 @@ public sealed class SmsProviderRouterTests
         // y caer al DefaultProvider, no dejar la ruta vacía.
         var router = Build(
             new SmsOptions { DefaultProvider = "twilio", ProviderOrder = ["", "", ""] },
-            "twilio", "infobip"
+            "twilio",
+            "infobip"
         );
 
         var order = router.ResolveOrder();
@@ -45,7 +46,8 @@ public sealed class SmsProviderRouterTests
     {
         var router = Build(
             new SmsOptions { DefaultProvider = "fake", ProviderOrder = ["infobip", "textmaxx"] },
-            "infobip", "textmaxx"
+            "infobip",
+            "textmaxx"
         );
 
         var order = router.ResolveOrder();
@@ -60,7 +62,8 @@ public sealed class SmsProviderRouterTests
     {
         var router = Build(
             new SmsOptions { DefaultProvider = "fake", ProviderOrder = ["infobip", "infobip", "textmaxx"] },
-            "infobip", "textmaxx"
+            "infobip",
+            "textmaxx"
         );
 
         var order = router.ResolveOrder();

@@ -9,11 +9,7 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Repositories;
 // explícito, con el tenantId del evento como filtro real.
 public sealed class UserEmailDirectoryRepository(NotificationDbContext db) : IUserEmailDirectoryRepository
 {
-    public async Task<UserEmailDirectoryEntry?> FindAsync(
-        Guid tenantId,
-        Guid userId,
-        CancellationToken ct = default
-    ) =>
+    public async Task<UserEmailDirectoryEntry?> FindAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
         await db
             .UserEmailDirectoryEntries.IgnoreQueryFilters()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.UserId == userId, ct);

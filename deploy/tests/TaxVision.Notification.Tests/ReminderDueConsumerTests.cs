@@ -4,10 +4,10 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
+using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -50,7 +50,11 @@ public sealed class ReminderDueConsumerTests
     [Fact]
     public async Task Sin_fila_local_el_correo_sale_igual_recuperando_la_direccion_de_Auth()
     {
-        var harness = new Harness(preferencesEnabled: true, withActiveDevice: true, pullEmail: "recuperado@example.com");
+        var harness = new Harness(
+            preferencesEnabled: true,
+            withActiveDevice: true,
+            pullEmail: "recuperado@example.com"
+        );
 
         await Handle(harness, Due());
 
@@ -297,7 +301,13 @@ public sealed class ReminderDueConsumerTests
         {
             Queued.Add(request);
             return Task.FromResult(
-                new EmailDispatchResult(Guid.NewGuid(), Guid.NewGuid(), NotificationDispatchAttemptStatus.Sent, null, null)
+                new EmailDispatchResult(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    NotificationDispatchAttemptStatus.Sent,
+                    null,
+                    null
+                )
             );
         }
     }

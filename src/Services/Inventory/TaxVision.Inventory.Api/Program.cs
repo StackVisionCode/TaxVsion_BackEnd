@@ -42,7 +42,10 @@ builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
 // RBAC — [HasPermission] inventory.* en los controllers.
-builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddSingleton<
+    Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider,
+    PermissionPolicyProvider
+>();
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Rate limiting tiered — [RateLimit] por endpoint (cuota por tenant/usuario, políticas inventory.*).
@@ -89,13 +92,19 @@ builder.Host.UseWolverine(options =>
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
 
     // Consumers estáticos — registro EXPLÍCITO por tipo (la discovery convencional no siempre los levanta).
-    options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.Permissions.Consumers.UserRolesChangedPermissionsProjectionConsumer));
-    options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.Permissions.Consumers.RolePermissionsChangedPermissionsProjectionConsumer));
+    options.Discovery.IncludeType(
+        typeof(TaxVision.Inventory.Application.Permissions.Consumers.UserRolesChangedPermissionsProjectionConsumer)
+    );
+    options.Discovery.IncludeType(
+        typeof(TaxVision.Inventory.Application.Permissions.Consumers.RolePermissionsChangedPermissionsProjectionConsumer)
+    );
     options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.Consumers.CatalogItemCreatedConsumer));
     options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.Consumers.CatalogItemDeactivatedConsumer));
 
     // RateLimit Fase 2 — consumer que mantiene la proyección de plan-code al día desde Subscription.
-    options.Discovery.IncludeType(typeof(TaxVision.Inventory.Application.RateLimiting.Consumers.TenantPlanCodeProjectionConsumer));
+    options.Discovery.IncludeType(
+        typeof(TaxVision.Inventory.Application.RateLimiting.Consumers.TenantPlanCodeProjectionConsumer)
+    );
 
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 

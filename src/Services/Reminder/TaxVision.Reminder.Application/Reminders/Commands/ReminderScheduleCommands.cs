@@ -35,10 +35,9 @@ public static class UpdateReminderScheduleHandler
             return Result.Failure<ReminderResponse>(found.Error);
 
         var nowUtc = DateTime.UtcNow;
-        var schedule =
-            command is { AnchorAtUtc: { } anchor, LeadMinutes: { } lead }
-                ? ReminderSchedule.Anchored(anchor, lead, nowUtc)
-                : ReminderSchedule.Absolute(command.FireAtUtc ?? default, nowUtc);
+        var schedule = command is { AnchorAtUtc: { } anchor, LeadMinutes: { } lead }
+            ? ReminderSchedule.Anchored(anchor, lead, nowUtc)
+            : ReminderSchedule.Absolute(command.FireAtUtc ?? default, nowUtc);
         if (schedule.IsFailure)
             return Result.Failure<ReminderResponse>(schedule.Error);
 

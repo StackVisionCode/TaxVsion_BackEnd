@@ -33,7 +33,11 @@ public static class UserRolesChangedPermissionsProjectionConsumer
             if (existing is null)
             {
                 var projection = UserPermissionsProjection.Create(
-                    evt.TenantId, evt.UserId, evt.PermissionsVersion, evt.PermissionCodes, evt.RoleIds
+                    evt.TenantId,
+                    evt.UserId,
+                    evt.PermissionsVersion,
+                    evt.PermissionCodes,
+                    evt.RoleIds
                 );
                 await repository.AddAsync(projection, ct);
                 logger.LogInformation(
@@ -99,7 +103,11 @@ public static class RolePermissionsChangedPermissionsProjectionConsumer
         if (existing is null)
         {
             var created = RolePermissionsProjection.Create(
-                evt.TenantId, evt.RoleId, evt.RoleName, evt.PermissionsVersion, evt.PermissionCodes
+                evt.TenantId,
+                evt.RoleId,
+                evt.RoleName,
+                evt.PermissionsVersion,
+                evt.PermissionCodes
             );
             await roleRepository.AddAsync(created, ct);
             return created;

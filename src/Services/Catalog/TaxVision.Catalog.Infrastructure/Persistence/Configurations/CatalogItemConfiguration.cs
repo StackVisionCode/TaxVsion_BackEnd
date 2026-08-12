@@ -28,26 +28,39 @@ public sealed class CatalogItemConfiguration : IEntityTypeConfiguration<CatalogI
         builder.Property(i => i.UpdatedAtUtc).IsRequired();
 
         // Precio (multi-moneda) como owned type → columnas Price_Amount / Price_Currency.
-        builder.OwnsOne(i => i.Price, price =>
-        {
-            price.Property(p => p.Amount).HasColumnName("Price_Amount").HasColumnType("decimal(18,2)").IsRequired();
-            price.Property(p => p.Currency).HasColumnName("Price_Currency").HasMaxLength(3).IsRequired();
-        });
+        builder.OwnsOne(
+            i => i.Price,
+            price =>
+            {
+                price.Property(p => p.Amount).HasColumnName("Price_Amount").HasColumnType("decimal(18,2)").IsRequired();
+                price.Property(p => p.Currency).HasColumnName("Price_Currency").HasMaxLength(3).IsRequired();
+            }
+        );
         builder.Navigation(i => i.Price).IsRequired();
 
         // Costo opcional (owned nullable) → Cost_Amount / Cost_Currency.
-        builder.OwnsOne(i => i.Cost, cost =>
-        {
-            cost.Property(c => c.Amount).HasColumnName("Cost_Amount").HasColumnType("decimal(18,2)");
-            cost.Property(c => c.Currency).HasColumnName("Cost_Currency").HasMaxLength(3);
-        });
+        builder.OwnsOne(
+            i => i.Cost,
+            cost =>
+            {
+                cost.Property(c => c.Amount).HasColumnName("Cost_Amount").HasColumnType("decimal(18,2)");
+                cost.Property(c => c.Currency).HasColumnName("Cost_Currency").HasMaxLength(3);
+            }
+        );
 
         // Atributos (EAV) como colección hija.
-        builder.HasMany(i => i.Attributes).WithOne().HasForeignKey(a => a.CatalogItemId).OnDelete(DeleteBehavior.Cascade);
-        builder.Metadata.FindNavigation(nameof(CatalogItem.Attributes))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+        builder
+            .HasMany(i => i.Attributes)
+            .WithOne()
+            .HasForeignKey(a => a.CatalogItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder
+            .Metadata.FindNavigation(nameof(CatalogItem.Attributes))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
 
         // Unicidad de SKU por tenant: índice único FILTRADO (solo activos con SKU). La garantía real.
-        builder.HasIndex(i => new { i.TenantId, i.Sku })
+        builder
+            .HasIndex(i => new { i.TenantId, i.Sku })
             .IsUnique()
             .HasFilter("[Sku] IS NOT NULL AND [IsDeleted] = 0")
             .HasDatabaseName("UX_CatalogItems_Tenant_Sku");

@@ -45,7 +45,10 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 // RBAC — [HasPermission] catalog.* en los controllers. PermissionPolicyProvider construye la policy
 // contra IUserPermissionsSource; AddUserPermissionsSource elige ProjectionPermissionsSource
 // (Authorization:PermissionsSource="Projection"). Service token → claim "perm"; humano → proyección local.
-builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddSingleton<
+    Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider,
+    PermissionPolicyProvider
+>();
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Rate limiting tiered — [RateLimit] por endpoint (cuota por tenant/usuario, políticas catalog.*).

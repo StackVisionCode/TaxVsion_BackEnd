@@ -29,11 +29,7 @@ public sealed class UserContactSnapshotClient(
         PropertyNameCaseInsensitive = true,
     };
 
-    public async Task<RemoteUserContact?> FetchContactAsync(
-        Guid tenantId,
-        Guid userId,
-        CancellationToken ct = default
-    )
+    public async Task<RemoteUserContact?> FetchContactAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
     {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrEmpty(token))

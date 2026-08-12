@@ -73,7 +73,11 @@ public interface IReminderRepository
     /// <c>RequestKey</c> ya existe. Devuelve <c>null</c> deliberadamente — «no existe» es el caso
     /// normal y esperado del alta, no un fallo.
     /// </summary>
-    Task<ReminderAggregate?> FindByRequestKeyAsync(Guid tenantId, RequestKey requestKey, CancellationToken ct = default);
+    Task<ReminderAggregate?> FindByRequestKeyAsync(
+        Guid tenantId,
+        RequestKey requestKey,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Resuelve <c>reminder.target_moved.v1</c> / <c>target_closed.v1</c>: todos los recordatorios

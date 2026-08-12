@@ -34,8 +34,12 @@ public static class DependencyInjection
 
         // RBAC Fase 7 — proyección local de permisos.
         services.AddScoped<UserPermissionsProjectionRepository>();
-        services.AddScoped<IUserPermissionsProjectionRepository>(sp => sp.GetRequiredService<UserPermissionsProjectionRepository>());
-        services.AddScoped<IUserPermissionsProjectionReader>(sp => sp.GetRequiredService<UserPermissionsProjectionRepository>());
+        services.AddScoped<IUserPermissionsProjectionRepository>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<UserPermissionsProjectionRepository>()
+        );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
         AddRateLimitTierQuotas(services, configuration);
@@ -52,8 +56,8 @@ public static class DependencyInjection
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
-        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(sp =>
-            new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
                 sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
                 sp.GetRequiredService<EfTenantPlanCodeReader>()
             )

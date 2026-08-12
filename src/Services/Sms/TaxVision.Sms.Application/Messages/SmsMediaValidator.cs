@@ -25,7 +25,11 @@ public static class SmsMediaValidator
 
         foreach (var item in media)
         {
-            if (item.SizeBytes is { } size && capabilities.MaxMediaSizeBytes > 0 && size > capabilities.MaxMediaSizeBytes)
+            if (
+                item.SizeBytes is { } size
+                && capabilities.MaxMediaSizeBytes > 0
+                && size > capabilities.MaxMediaSizeBytes
+            )
                 return SmsErrors.MediaTooLarge;
 
             if (capabilities.AllowedMediaTypes.Count > 0 && !capabilities.AllowedMediaTypes.Contains(item.ContentType))

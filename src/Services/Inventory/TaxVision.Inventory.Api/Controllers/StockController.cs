@@ -34,7 +34,16 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
     public async Task<IActionResult> Adjust(Guid catalogItemId, [FromBody] AdjustRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<StockLevelDto>>(
-            new AdjustStockCommand(tenant.TenantId, UserId, catalogItemId, request.Type, request.Quantity, request.Reference, request.Notes), ct
+            new AdjustStockCommand(
+                tenant.TenantId,
+                UserId,
+                catalogItemId,
+                request.Type,
+                request.Quantity,
+                request.Reference,
+                request.Notes
+            ),
+            ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -43,10 +52,21 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
     [HasPermission(InventoryPermissions.Write)]
     [RateLimit("inventory.g.write")]
     [ProducesResponseType<StockLevelDto>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> SetThresholds(Guid catalogItemId, [FromBody] ThresholdsRequest request, CancellationToken ct)
+    public async Task<IActionResult> SetThresholds(
+        Guid catalogItemId,
+        [FromBody] ThresholdsRequest request,
+        CancellationToken ct
+    )
     {
         var result = await bus.InvokeAsync<Result<StockLevelDto>>(
-            new SetStockThresholdsCommand(tenant.TenantId, catalogItemId, request.MinLevel, request.MaxLevel, request.ReorderPoint), ct
+            new SetStockThresholdsCommand(
+                tenant.TenantId,
+                catalogItemId,
+                request.MinLevel,
+                request.MaxLevel,
+                request.ReorderPoint
+            ),
+            ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -55,9 +75,17 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
     [HasPermission(InventoryPermissions.Read)]
     [RateLimit("inventory.f.read")]
     [ProducesResponseType<PagedResult<StockMovementDto>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Movements([FromQuery] Guid? catalogItemId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    public async Task<IActionResult> Movements(
+        [FromQuery] Guid? catalogItemId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default
+    )
     {
-        var result = await bus.InvokeAsync<Result<PagedResult<StockMovementDto>>>(new ListStockMovementsQuery(tenant.TenantId, catalogItemId, page, pageSize), ct);
+        var result = await bus.InvokeAsync<Result<PagedResult<StockMovementDto>>>(
+            new ListStockMovementsQuery(tenant.TenantId, catalogItemId, page, pageSize),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -67,7 +95,10 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
     [ProducesResponseType<StockLevelDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid catalogItemId, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<StockLevelDto>>(new GetStockLevelQuery(tenant.TenantId, catalogItemId), ct);
+        var result = await bus.InvokeAsync<Result<StockLevelDto>>(
+            new GetStockLevelQuery(tenant.TenantId, catalogItemId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -75,9 +106,17 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
     [HasPermission(InventoryPermissions.Read)]
     [RateLimit("inventory.f.read")]
     [ProducesResponseType<PagedResult<StockLevelDto>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> List([FromQuery] bool lowStockOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    public async Task<IActionResult> List(
+        [FromQuery] bool lowStockOnly = false,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default
+    )
     {
-        var result = await bus.InvokeAsync<Result<PagedResult<StockLevelDto>>>(new ListStockLevelsQuery(tenant.TenantId, lowStockOnly, page, pageSize), ct);
+        var result = await bus.InvokeAsync<Result<PagedResult<StockLevelDto>>>(
+            new ListStockLevelsQuery(tenant.TenantId, lowStockOnly, page, pageSize),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

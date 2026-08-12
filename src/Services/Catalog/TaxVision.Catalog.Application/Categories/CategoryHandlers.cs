@@ -17,7 +17,13 @@ public sealed record CreateCategoryCommand(
     Guid? ParentCategoryId
 );
 
-public sealed record UpdateCategoryCommand(Guid TenantId, Guid Id, string Name, string? Description, Guid? ParentCategoryId);
+public sealed record UpdateCategoryCommand(
+    Guid TenantId,
+    Guid Id,
+    string Name,
+    string? Description,
+    Guid? ParentCategoryId
+);
 
 public sealed record SetCategoryActiveCommand(Guid TenantId, Guid Id, bool IsActive);
 
@@ -32,13 +38,20 @@ public static class CreateCategoryHandler
         CancellationToken ct
     )
     {
-        if (command.ParentCategoryId is { } parent
+        if (
+            command.ParentCategoryId is { } parent
             && parent != Guid.Empty
-            && !await categories.ExistsAsync(command.TenantId, parent, ct))
+            && !await categories.ExistsAsync(command.TenantId, parent, ct)
+        )
             return Result.Failure<CategoryDto>(CatalogErrors.CategoryNotFound);
 
         var created = Category.Create(
-            command.TenantId, command.TaxUserId, command.Name, command.Description, command.ParentCategoryId, DateTime.UtcNow
+            command.TenantId,
+            command.TaxUserId,
+            command.Name,
+            command.Description,
+            command.ParentCategoryId,
+            DateTime.UtcNow
         );
         if (created.IsFailure)
             return Result.Failure<CategoryDto>(created.Error);
@@ -62,9 +75,11 @@ public static class UpdateCategoryHandler
         if (category is null)
             return Result.Failure<CategoryDto>(CatalogErrors.CategoryNotFound);
 
-        if (command.ParentCategoryId is { } parent
+        if (
+            command.ParentCategoryId is { } parent
             && parent != Guid.Empty
-            && !await categories.ExistsAsync(command.TenantId, parent, ct))
+            && !await categories.ExistsAsync(command.TenantId, parent, ct)
+        )
             return Result.Failure<CategoryDto>(CatalogErrors.CategoryNotFound);
 
         var updated = category.Update(command.Name, command.Description, command.ParentCategoryId, DateTime.UtcNow);

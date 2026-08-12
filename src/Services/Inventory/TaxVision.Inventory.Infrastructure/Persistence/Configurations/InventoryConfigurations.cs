@@ -21,7 +21,8 @@ public sealed class StockLevelConfiguration : IEntityTypeConfiguration<StockLeve
         builder.Property(s => s.CreatedAtUtc).IsRequired();
         builder.Property(s => s.UpdatedAtUtc).IsRequired();
 
-        builder.HasIndex(s => new { s.TenantId, s.CatalogItemId })
+        builder
+            .HasIndex(s => new { s.TenantId, s.CatalogItemId })
             .IsUnique()
             .HasDatabaseName("UX_StockLevels_Tenant_CatalogItem");
         builder.HasIndex(s => new { s.TenantId, s.IsTracked });
@@ -45,7 +46,12 @@ public sealed class StockMovementConfiguration : IEntityTypeConfiguration<StockM
         builder.Property(m => m.MovedByUserId).IsRequired();
         builder.Property(m => m.MovedAtUtc).IsRequired();
 
-        builder.HasIndex(m => new { m.TenantId, m.CatalogItemId, m.MovedAtUtc });
+        builder.HasIndex(m => new
+        {
+            m.TenantId,
+            m.CatalogItemId,
+            m.MovedAtUtc,
+        });
     }
 }
 
@@ -87,13 +93,22 @@ public sealed class ItemSupplierConfiguration : IEntityTypeConfiguration<ItemSup
         builder.Property(x => x.CreatedAtUtc).IsRequired();
         builder.Property(x => x.UpdatedAtUtc).IsRequired();
 
-        builder.OwnsOne(x => x.SupplierPrice, price =>
-        {
-            price.Property(p => p.Amount).HasColumnName("SupplierPrice_Amount").HasColumnType("decimal(18,2)");
-            price.Property(p => p.Currency).HasColumnName("SupplierPrice_Currency").HasMaxLength(3);
-        });
+        builder.OwnsOne(
+            x => x.SupplierPrice,
+            price =>
+            {
+                price.Property(p => p.Amount).HasColumnName("SupplierPrice_Amount").HasColumnType("decimal(18,2)");
+                price.Property(p => p.Currency).HasColumnName("SupplierPrice_Currency").HasMaxLength(3);
+            }
+        );
 
-        builder.HasIndex(x => new { x.TenantId, x.CatalogItemId, x.SupplierId })
+        builder
+            .HasIndex(x => new
+            {
+                x.TenantId,
+                x.CatalogItemId,
+                x.SupplierId,
+            })
             .IsUnique()
             .HasDatabaseName("UX_ItemSuppliers_Tenant_Item_Supplier");
         builder.HasIndex(x => new { x.TenantId, x.SupplierId });

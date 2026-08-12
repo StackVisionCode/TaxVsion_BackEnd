@@ -93,8 +93,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
         Assert.Null(provider.LastRequest);
     }
 
-    private sealed class FakeSubscriptionPlanPricingClient(Result<PlanPrice> result)
-        : ISubscriptionPlanPricingClient
+    private sealed class FakeSubscriptionPlanPricingClient(Result<PlanPrice> result) : ISubscriptionPlanPricingClient
     {
         public Task<Result<PlanPrice>> GetPriceAsync(
             Guid planId,

@@ -56,16 +56,52 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page,
 public static class InventoryMappings
 {
     public static StockLevelDto ToDto(this StockLevel s) =>
-        new(s.CatalogItemId, s.QuantityOnHand, s.MinLevel, s.MaxLevel, s.ReorderPoint, s.IsTracked, s.IsLowStock, s.UpdatedAtUtc);
+        new(
+            s.CatalogItemId,
+            s.QuantityOnHand,
+            s.MinLevel,
+            s.MaxLevel,
+            s.ReorderPoint,
+            s.IsTracked,
+            s.IsLowStock,
+            s.UpdatedAtUtc
+        );
 
     public static StockMovementDto ToDto(this StockMovement m) =>
-        new(m.Id, m.CatalogItemId, m.Type.ToString(), m.Quantity, m.PreviousQuantity, m.NewQuantity, m.Reference, m.Notes, m.MovedAtUtc);
+        new(
+            m.Id,
+            m.CatalogItemId,
+            m.Type.ToString(),
+            m.Quantity,
+            m.PreviousQuantity,
+            m.NewQuantity,
+            m.Reference,
+            m.Notes,
+            m.MovedAtUtc
+        );
 
     public static SupplierDto ToDto(this Supplier s) =>
-        new(s.Id, s.Name, s.ContactName, s.Email, s.Phone, s.Address, s.TaxId, s.IsActive, s.CreatedAtUtc, s.UpdatedAtUtc);
+        new(
+            s.Id,
+            s.Name,
+            s.ContactName,
+            s.Email,
+            s.Phone,
+            s.Address,
+            s.TaxId,
+            s.IsActive,
+            s.CreatedAtUtc,
+            s.UpdatedAtUtc
+        );
 
     public static ItemSupplierDto ToDto(this ItemSupplier x) =>
-        new(x.Id, x.CatalogItemId, x.SupplierId, x.SupplierSku,
+        new(
+            x.Id,
+            x.CatalogItemId,
+            x.SupplierId,
+            x.SupplierSku,
             x.SupplierPrice is null ? null : new MoneyDto(x.SupplierPrice.Amount, x.SupplierPrice.Currency),
-            x.LeadTimeDays, x.IsPreferred);
+            x.LeadTimeDays,
+            x.IsPreferred
+        );
 }

@@ -33,12 +33,7 @@ public sealed record SmsSendRequest(
 );
 
 /// <summary>Resultado de un envío. <see cref="ProviderMessageId"/> liga el DLR posterior con este envío.</summary>
-public sealed record SmsSendResult(
-    bool Accepted,
-    string? ProviderMessageId,
-    string? ErrorCode,
-    string? ErrorMessage
-);
+public sealed record SmsSendResult(bool Accepted, string? ProviderMessageId, string? ErrorCode, string? ErrorMessage);
 
 /// <summary>Resultado de verificar la firma del webhook.</summary>
 public sealed record SmsSignatureCheck(bool IsValid, string? Reason);

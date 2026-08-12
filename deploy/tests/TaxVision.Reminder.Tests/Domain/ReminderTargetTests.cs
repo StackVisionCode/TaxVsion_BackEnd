@@ -30,10 +30,7 @@ public sealed class ReminderTargetTests
     public void NoGeneral_SinTargetUtil_Falla(string? targetId)
     {
         // T2 — Guid.Empty no es un objetivo, aunque técnicamente sea un Guid.
-        var result = ReminderTarget.Create(
-            ReminderCategory.Task,
-            targetId is null ? null : Guid.Parse(targetId)
-        );
+        var result = ReminderTarget.Create(ReminderCategory.Task, targetId is null ? null : Guid.Parse(targetId));
 
         Assert.True(result.IsFailure);
         Assert.Equal("Reminder.Target.TargetRequired", result.Error.Code);

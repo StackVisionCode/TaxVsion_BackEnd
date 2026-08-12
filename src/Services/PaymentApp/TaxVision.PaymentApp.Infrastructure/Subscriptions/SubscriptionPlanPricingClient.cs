@@ -16,11 +16,7 @@ internal sealed class SubscriptionPlanPricingClient(
     ILogger<SubscriptionPlanPricingClient> logger
 ) : ISubscriptionPlanPricingClient
 {
-    public async Task<Result<PlanPrice>> GetPriceAsync(
-        Guid planId,
-        string billingCycle,
-        CancellationToken ct = default
-    )
+    public async Task<Result<PlanPrice>> GetPriceAsync(Guid planId, string billingCycle, CancellationToken ct = default)
     {
         var token = await tokenAcquirer.GetTokenAsync(PlatformTenant.Id, ct);
         if (string.IsNullOrEmpty(token))

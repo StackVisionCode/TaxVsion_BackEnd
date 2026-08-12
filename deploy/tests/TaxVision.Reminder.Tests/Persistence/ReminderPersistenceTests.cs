@@ -130,7 +130,9 @@ public sealed class ReminderPersistenceTests
         // El job de la Fase 5 corre sin tenant en contexto. Sin IgnoreQueryFilters() esto
         // devolvería solo el del tenant actual (o 0 filas fuera de un request) y el job parecería
         // sano sin hacer nada — el bug que este test existe para impedir.
-        var due = await repository.ListScheduledWithinHorizonAsync(new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc));
+        var due = await repository.ListScheduledWithinHorizonAsync(
+            new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc)
+        );
 
         Assert.Equal(2, due.Count);
         Assert.Contains(due, r => r.TenantId == firstTenantId);

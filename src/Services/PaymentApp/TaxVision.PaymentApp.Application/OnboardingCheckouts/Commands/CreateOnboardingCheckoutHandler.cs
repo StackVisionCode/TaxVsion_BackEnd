@@ -258,10 +258,7 @@ public static class CreateOnboardingCheckoutHandler
         await unitOfWork.SaveChangesAsync(ct);
     }
 
-    private static Result<SaaSPayment> PrepareNewPayment(
-        CreateOnboardingCheckoutCommand command,
-        PlanPrice price
-    )
+    private static Result<SaaSPayment> PrepareNewPayment(CreateOnboardingCheckoutCommand command, PlanPrice price)
     {
         var keyResult = IdempotencyKey.Create(command.IdempotencyKey);
         if (keyResult.IsFailure)

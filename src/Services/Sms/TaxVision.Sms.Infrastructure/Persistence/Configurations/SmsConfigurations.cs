@@ -35,9 +35,21 @@ public sealed class SmsMessageConfiguration : IEntityTypeConfiguration<SmsMessag
         builder.HasMany(m => m.Media).WithOne().HasForeignKey(x => x.SmsMessageId).OnDelete(DeleteBehavior.Cascade);
         builder.Metadata.FindNavigation(nameof(SmsMessage.Media))!.SetPropertyAccessMode(PropertyAccessMode.Field);
 
-        builder.HasIndex(m => new { m.TenantId, m.IdempotencyKey }).IsUnique().HasDatabaseName("UX_SmsMessages_Tenant_Idempotency");
-        builder.HasIndex(m => new { m.TenantId, m.CustomerId, m.CreatedAtUtc }).HasDatabaseName("IX_SmsMessages_Tenant_Customer_Created");
-        builder.HasIndex(m => new { m.ProviderCode, m.ProviderMessageId }).HasDatabaseName("IX_SmsMessages_Provider_MessageId");
+        builder
+            .HasIndex(m => new { m.TenantId, m.IdempotencyKey })
+            .IsUnique()
+            .HasDatabaseName("UX_SmsMessages_Tenant_Idempotency");
+        builder
+            .HasIndex(m => new
+            {
+                m.TenantId,
+                m.CustomerId,
+                m.CreatedAtUtc,
+            })
+            .HasDatabaseName("IX_SmsMessages_Tenant_Customer_Created");
+        builder
+            .HasIndex(m => new { m.ProviderCode, m.ProviderMessageId })
+            .HasDatabaseName("IX_SmsMessages_Provider_MessageId");
         builder.HasIndex(m => m.CorrelationId).HasDatabaseName("IX_SmsMessages_CorrelationId");
         builder.HasIndex(m => m.BatchId).HasDatabaseName("IX_SmsMessages_BatchId");
         builder.HasIndex(m => m.To).HasDatabaseName("IX_SmsMessages_To");
@@ -73,7 +85,15 @@ public sealed class SmsOptOutConfiguration : IEntityTypeConfiguration<SmsOptOut>
         builder.Property(x => x.LastKeyword).HasMaxLength(16);
         builder.Property(x => x.UpdatedAtUtc).IsRequired();
 
-        builder.HasIndex(x => new { x.TenantId, x.CustomerId, x.PhoneE164 }).IsUnique().HasDatabaseName("UX_SmsOptOuts_Tenant_Customer_Phone");
+        builder
+            .HasIndex(x => new
+            {
+                x.TenantId,
+                x.CustomerId,
+                x.PhoneE164,
+            })
+            .IsUnique()
+            .HasDatabaseName("UX_SmsOptOuts_Tenant_Customer_Phone");
         builder.HasIndex(x => new { x.TenantId, x.PhoneE164 }).HasDatabaseName("IX_SmsOptOuts_Tenant_Phone");
     }
 }
@@ -90,6 +110,14 @@ public sealed class ProcessedWebhookConfiguration : IEntityTypeConfiguration<Pro
         builder.Property(x => x.PayloadHash).HasMaxLength(128);
         builder.Property(x => x.ProcessedAtUtc).IsRequired();
 
-        builder.HasIndex(x => new { x.ProviderCode, x.ProviderMessageId, x.EventType }).IsUnique().HasDatabaseName("UX_ProcessedWebhooks_Provider_MessageId_EventType");
+        builder
+            .HasIndex(x => new
+            {
+                x.ProviderCode,
+                x.ProviderMessageId,
+                x.EventType,
+            })
+            .IsUnique()
+            .HasDatabaseName("UX_ProcessedWebhooks_Provider_MessageId_EventType");
     }
 }

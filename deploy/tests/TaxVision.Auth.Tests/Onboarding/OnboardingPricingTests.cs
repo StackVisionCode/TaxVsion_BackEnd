@@ -289,10 +289,7 @@ public sealed class OnboardingPricingTests
     {
         var onboardingId = Guid.NewGuid();
 
-        Assert.Equal(
-            OnboardingPaymentReference.For(onboardingId, 0),
-            OnboardingPaymentReference.For(onboardingId, 0)
-        );
+        Assert.Equal(OnboardingPaymentReference.For(onboardingId, 0), OnboardingPaymentReference.For(onboardingId, 0));
     }
 
     [Fact]

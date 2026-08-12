@@ -80,8 +80,19 @@ public static class CreateCatalogItemHandler
             return Result.Failure<CatalogItemDto>(CatalogErrors.DuplicateSku);
 
         var created = CatalogItem.Create(
-            command.TenantId, command.TaxUserId, command.Name, command.Description, command.Sku, command.Barcode,
-            command.CategoryId, command.Kind, price, cost, command.Unit, command.TrackInventory, command.ImageUrl,
+            command.TenantId,
+            command.TaxUserId,
+            command.Name,
+            command.Description,
+            command.Sku,
+            command.Barcode,
+            command.CategoryId,
+            command.Kind,
+            price,
+            cost,
+            command.Unit,
+            command.TrackInventory,
+            command.ImageUrl,
             DateTime.UtcNow
         );
         if (created.IsFailure)
@@ -94,18 +105,20 @@ public static class CreateCatalogItemHandler
         await items.AddAsync(item, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(new CatalogItemCreatedIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            ItemId = item.Id,
-            CategoryId = item.CategoryId,
-            Name = item.Name,
-            Sku = item.Sku,
-            Kind = item.Kind.ToString(),
-            TrackInventory = item.TrackInventory,
-            UnitPrice = item.Price.Amount,
-            Currency = item.Price.Currency,
-        });
+        await bus.PublishAsync(
+            new CatalogItemCreatedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                ItemId = item.Id,
+                CategoryId = item.CategoryId,
+                Name = item.Name,
+                Sku = item.Sku,
+                Kind = item.Kind.ToString(),
+                TrackInventory = item.TrackInventory,
+                UnitPrice = item.Price.Amount,
+                Currency = item.Price.Currency,
+            }
+        );
         return Result.Success(item.ToDto());
     }
 
@@ -149,7 +162,12 @@ public static class UpdateCatalogItemHandler
             return Result.Failure<CatalogItemDto>(CatalogErrors.CategoryNotFound);
 
         var updated = item.Update(
-            command.Name, command.Description, command.Barcode, command.CategoryId, command.Unit, command.ImageUrl,
+            command.Name,
+            command.Description,
+            command.Barcode,
+            command.CategoryId,
+            command.Unit,
+            command.ImageUrl,
             DateTime.UtcNow
         );
         if (updated.IsFailure)
@@ -160,13 +178,15 @@ public static class UpdateCatalogItemHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(new CatalogItemUpdatedIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            ItemId = item.Id,
-            Name = item.Name,
-            CategoryId = item.CategoryId,
-        });
+        await bus.PublishAsync(
+            new CatalogItemUpdatedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                ItemId = item.Id,
+                Name = item.Name,
+                CategoryId = item.CategoryId,
+            }
+        );
         return Result.Success(item.ToDto());
     }
 }
@@ -186,7 +206,10 @@ public static class ChangeCatalogItemPriceHandler
             return Result.Failure<CatalogItemDto>(CatalogErrors.ItemNotFound);
 
         var money = CreateCatalogItemHandler.BuildMoney(
-            command.PriceAmount, command.PriceCurrency, command.CostAmount, command.CostCurrency
+            command.PriceAmount,
+            command.PriceCurrency,
+            command.CostAmount,
+            command.CostCurrency
         );
         if (money.IsFailure)
             return Result.Failure<CatalogItemDto>(money.Error);
@@ -194,13 +217,15 @@ public static class ChangeCatalogItemPriceHandler
         item.ChangePrice(money.Value.Price, money.Value.Cost, DateTime.UtcNow);
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(new CatalogItemPriceChangedIntegrationEvent
-        {
-            TenantId = command.TenantId,
-            ItemId = item.Id,
-            UnitPrice = item.Price.Amount,
-            Currency = item.Price.Currency,
-        });
+        await bus.PublishAsync(
+            new CatalogItemPriceChangedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                ItemId = item.Id,
+                UnitPrice = item.Price.Amount,
+                Currency = item.Price.Currency,
+            }
+        );
         return Result.Success(item.ToDto());
     }
 }
@@ -223,7 +248,9 @@ public static class SetCatalogItemActiveHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         if (!command.IsActive)
-            await bus.PublishAsync(new CatalogItemDeactivatedIntegrationEvent { TenantId = command.TenantId, ItemId = item.Id });
+            await bus.PublishAsync(
+                new CatalogItemDeactivatedIntegrationEvent { TenantId = command.TenantId, ItemId = item.Id }
+            );
         return Result.Success();
     }
 }
@@ -246,7 +273,9 @@ public static class DeleteCatalogItemHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         // Borrado (soft) = desactivado para los consumidores (Inventory/Billing).
-        await bus.PublishAsync(new CatalogItemDeactivatedIntegrationEvent { TenantId = command.TenantId, ItemId = item.Id });
+        await bus.PublishAsync(
+            new CatalogItemDeactivatedIntegrationEvent { TenantId = command.TenantId, ItemId = item.Id }
+        );
         return Result.Success();
     }
 }
@@ -273,9 +302,7 @@ public static class GetCatalogItemHandler
     )
     {
         var item = await items.GetByIdAsync(query.TenantId, query.Id, ct);
-        return item is null
-            ? Result.Failure<CatalogItemDto>(CatalogErrors.ItemNotFound)
-            : Result.Success(item.ToDto());
+        return item is null ? Result.Failure<CatalogItemDto>(CatalogErrors.ItemNotFound) : Result.Success(item.ToDto());
     }
 }
 
@@ -290,7 +317,15 @@ public static class ListCatalogItemsHandler
         var page = query.Page < 1 ? 1 : query.Page;
         var pageSize = query.PageSize is < 1 or > 200 ? 50 : query.PageSize;
 
-        var (rows, total) = await items.ListAsync(query.TenantId, query.CategoryId, query.Search, query.ActiveOnly, page, pageSize, ct);
+        var (rows, total) = await items.ListAsync(
+            query.TenantId,
+            query.CategoryId,
+            query.Search,
+            query.ActiveOnly,
+            page,
+            pageSize,
+            ct
+        );
         var dtos = rows.Select(i => i.ToDto()).ToList();
         return Result.Success(new PagedResult<CatalogItemDto>(dtos, total, page, pageSize));
     }

@@ -1,6 +1,6 @@
+using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using TaxVision.Sms.Application.Abstractions;
 using TaxVision.Sms.Application.Providers;
@@ -14,7 +14,12 @@ namespace TaxVision.Sms.Application.Webhooks.Commands;
 
 // ───────────────────────── Status / DLR ─────────────────────────
 
-public sealed record ProcessDeliveryReceiptCommand(string ProviderCode, string RawPayload, string SignatureHeader, string RequestUrl = "");
+public sealed record ProcessDeliveryReceiptCommand(
+    string ProviderCode,
+    string RawPayload,
+    string SignatureHeader,
+    string RequestUrl = ""
+);
 
 public static class ProcessDeliveryReceiptHandler
 {
@@ -32,7 +37,12 @@ public static class ProcessDeliveryReceiptHandler
     {
         var provider = adapters.Resolve(command.ProviderCode);
 
-        var signature = provider.VerifySignature(command.RawPayload, command.SignatureHeader, secrets.GetSecret(command.ProviderCode) ?? string.Empty, command.RequestUrl);
+        var signature = provider.VerifySignature(
+            command.RawPayload,
+            command.SignatureHeader,
+            secrets.GetSecret(command.ProviderCode) ?? string.Empty,
+            command.RequestUrl
+        );
         if (signature.IsFailure || !signature.Value.IsValid)
             return Result.Failure(new Error("sms.webhook.invalidSignature", "Webhook signature verification failed."));
 
@@ -61,28 +71,54 @@ public static class ProcessDeliveryReceiptHandler
         {
             SmsCanonicalStatus.Delivered => message.MarkDelivered(nowUtc),
             SmsCanonicalStatus.Failed => message.MarkFailed(nowUtc, update.FailureCode, update.FailureReason),
-            SmsCanonicalStatus.Undeliverable => message.MarkUndeliverable(nowUtc, update.FailureCode, update.FailureReason),
+            SmsCanonicalStatus.Undeliverable => message.MarkUndeliverable(
+                nowUtc,
+                update.FailureCode,
+                update.FailureReason
+            ),
             SmsCanonicalStatus.Accepted => message.MarkAccepted(update.ProviderMessageId, nowUtc),
             _ => Result.Success(),
         };
         // Una transición inválida (estado ya avanzado) no rompe el webhook; se registra la dedup igual.
 
-        await processed.AddAsync(new ProcessedWebhook(command.ProviderCode, update.ProviderMessageId, update.EventType, message.TenantId, null, nowUtc), ct);
+        await processed.AddAsync(
+            new ProcessedWebhook(
+                command.ProviderCode,
+                update.ProviderMessageId,
+                update.EventType,
+                message.TenantId,
+                null,
+                nowUtc
+            ),
+            ct
+        );
 
         bus.TenantId = message.TenantId.ToString();
         if (message.Status == SmsMessageStatus.Delivered)
-            await bus.PublishAsync(new SmsMessageDeliveredIntegrationEvent
-            {
-                TenantId = message.TenantId, CorrelationId = message.CorrelationId, MessageId = message.Id,
-                CustomerId = message.CustomerId, SourceContext = message.SourceContext, ProviderMessageId = message.ProviderMessageId,
-            });
+            await bus.PublishAsync(
+                new SmsMessageDeliveredIntegrationEvent
+                {
+                    TenantId = message.TenantId,
+                    CorrelationId = message.CorrelationId,
+                    MessageId = message.Id,
+                    CustomerId = message.CustomerId,
+                    SourceContext = message.SourceContext,
+                    ProviderMessageId = message.ProviderMessageId,
+                }
+            );
         else if (message.Status is SmsMessageStatus.Failed or SmsMessageStatus.Undeliverable)
-            await bus.PublishAsync(new SmsMessageFailedIntegrationEvent
-            {
-                TenantId = message.TenantId, CorrelationId = message.CorrelationId, MessageId = message.Id,
-                CustomerId = message.CustomerId, SourceContext = message.SourceContext,
-                ProviderMessageId = message.ProviderMessageId, FailureCode = message.FailureCode,
-            });
+            await bus.PublishAsync(
+                new SmsMessageFailedIntegrationEvent
+                {
+                    TenantId = message.TenantId,
+                    CorrelationId = message.CorrelationId,
+                    MessageId = message.Id,
+                    CustomerId = message.CustomerId,
+                    SourceContext = message.SourceContext,
+                    ProviderMessageId = message.ProviderMessageId,
+                    FailureCode = message.FailureCode,
+                }
+            );
 
         await unitOfWork.SaveChangesAsync(ct);
         return transition.IsSuccess ? Result.Success() : Result.Success();
@@ -91,7 +127,12 @@ public static class ProcessDeliveryReceiptHandler
 
 // ───────────────────────── Inbound STOP/START/HELP ─────────────────────────
 
-public sealed record ProcessInboundCommand(string ProviderCode, string RawPayload, string SignatureHeader, string RequestUrl = "");
+public sealed record ProcessInboundCommand(
+    string ProviderCode,
+    string RawPayload,
+    string SignatureHeader,
+    string RequestUrl = ""
+);
 
 public static class ProcessInboundHandler
 {
@@ -111,7 +152,12 @@ public static class ProcessInboundHandler
     {
         var provider = adapters.Resolve(command.ProviderCode);
 
-        var signature = provider.VerifySignature(command.RawPayload, command.SignatureHeader, secrets.GetSecret(command.ProviderCode) ?? string.Empty, command.RequestUrl);
+        var signature = provider.VerifySignature(
+            command.RawPayload,
+            command.SignatureHeader,
+            secrets.GetSecret(command.ProviderCode) ?? string.Empty,
+            command.RequestUrl
+        );
         if (signature.IsFailure || !signature.Value.IsValid)
             return Result.Failure(new Error("sms.webhook.invalidSignature", "Webhook signature verification failed."));
 
@@ -139,9 +185,21 @@ public static class ProcessInboundHandler
             {
                 logger.LogWarning(
                     "SMS inbound {Keyword} from {Phone} ({Provider}) could not be resolved to a tenant/customer; ignored (operational).",
-                    inbound.Keyword, phone.Value, command.ProviderCode
+                    inbound.Keyword,
+                    phone.Value,
+                    command.ProviderCode
                 );
-                await processed.AddAsync(new ProcessedWebhook(command.ProviderCode, inbound.ProviderMessageId, InboundEventType, null, null, DateTime.UtcNow), ct);
+                await processed.AddAsync(
+                    new ProcessedWebhook(
+                        command.ProviderCode,
+                        inbound.ProviderMessageId,
+                        InboundEventType,
+                        null,
+                        null,
+                        DateTime.UtcNow
+                    ),
+                    ct
+                );
                 await unitOfWork.SaveChangesAsync(ct);
                 return Result.Success();
             }
@@ -172,7 +230,17 @@ public static class ProcessInboundHandler
                 break;
         }
 
-        await processed.AddAsync(new ProcessedWebhook(command.ProviderCode, inbound.ProviderMessageId, InboundEventType, tenantId, null, nowUtc), ct);
+        await processed.AddAsync(
+            new ProcessedWebhook(
+                command.ProviderCode,
+                inbound.ProviderMessageId,
+                InboundEventType,
+                tenantId,
+                null,
+                nowUtc
+            ),
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

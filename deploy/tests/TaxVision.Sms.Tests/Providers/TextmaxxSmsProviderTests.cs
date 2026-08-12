@@ -41,15 +41,18 @@ public sealed class TextmaxxSmsProviderTests
             BodyFormat = "form",
             SenderId = "TAXV",
             Auth = new SmsAuthConfig { Type = "basic", Credential = "cli:tok" },
-            RequestMap = new SmsRequestMap { To = "to", From = "from", Body = "message" },
+            RequestMap = new SmsRequestMap
+            {
+                To = "to",
+                From = "from",
+                Body = "message",
+            },
             ResponseMap = new SmsResponseMap { ProviderMessageIdPath = "id" },
         };
 
     private static TextmaxxSmsProvider Build(CapturingHandler handler)
     {
-        var options = Options.Create(
-            new SmsProvidersOptions { Providers = { ["textmaxx"] = TextmaxxConfig() } }
-        );
+        var options = Options.Create(new SmsProvidersOptions { Providers = { ["textmaxx"] = TextmaxxConfig() } });
         return new TextmaxxSmsProvider(
             new SingleClientFactory(handler),
             options,
@@ -95,7 +98,10 @@ public sealed class TextmaxxSmsProviderTests
     {
         var handler = new CapturingHandler
         {
-            Response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new StringContent("down") },
+            Response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new StringContent("down"),
+            },
         };
         var provider = Build(handler);
 

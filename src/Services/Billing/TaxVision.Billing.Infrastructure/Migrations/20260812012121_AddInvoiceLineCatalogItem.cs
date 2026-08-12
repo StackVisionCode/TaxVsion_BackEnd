@@ -16,16 +16,14 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 schema: "billing",
                 table: "InvoiceLineItems",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "CatalogItemId",
-                schema: "billing",
-                table: "InvoiceLineItems");
+            migrationBuilder.DropColumn(name: "CatalogItemId", schema: "billing", table: "InvoiceLineItems");
         }
     }
 }

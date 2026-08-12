@@ -63,7 +63,9 @@ public sealed class ReminderConfiguration : IEntityTypeConfiguration<ReminderAgg
                 // Índice 3 de 4 — resuelve target_moved/target_closed. Queda declarado DENTRO del
                 // owned type, sin TenantId, por la misma limitación de EF que se documenta abajo.
                 // El filtro global fail-closed acota por tenant antes de tocar este índice.
-                target.HasIndex(t => new { t.Category, t.TargetId }).HasDatabaseName("IX_Reminders_Category_TargetId");
+                target
+                    .HasIndex(t => new { t.Category, t.TargetId })
+                    .HasDatabaseName("IX_Reminders_Category_TargetId");
             }
         );
         builder.Navigation(r => r.Target).IsRequired();

@@ -18,7 +18,11 @@ internal sealed class FakeSmsMessageRepository : ISmsMessageRepository
 
     public void SeedLatestByPhone(SmsMessage? message) => _latestByPhone = message;
 
-    public Task<SmsMessage?> GetByIdempotencyKeyAsync(Guid tenantId, string idempotencyKey, CancellationToken ct = default) =>
+    public Task<SmsMessage?> GetByIdempotencyKeyAsync(
+        Guid tenantId,
+        string idempotencyKey,
+        CancellationToken ct = default
+    ) =>
         Task.FromResult(
             _byIdempotency.FirstOrDefault(m => m.TenantId == tenantId && m.IdempotencyKey == idempotencyKey)
         );
@@ -51,7 +55,12 @@ internal sealed class FakeSmsOptOutRepository : ISmsOptOutRepository
 
     public void Seed(SmsOptOut optOut) => _seed.Add(optOut);
 
-    public Task<SmsOptOut?> GetAsync(Guid tenantId, Guid customerId, string phoneE164, CancellationToken ct = default) =>
+    public Task<SmsOptOut?> GetAsync(
+        Guid tenantId,
+        Guid customerId,
+        string phoneE164,
+        CancellationToken ct = default
+    ) =>
         Task.FromResult(
             _seed
                 .Concat(Added)
@@ -59,9 +68,7 @@ internal sealed class FakeSmsOptOutRepository : ISmsOptOutRepository
         );
 
     public Task<SmsOptOut?> GetByTenantAndPhoneAsync(Guid tenantId, string phoneE164, CancellationToken ct = default) =>
-        Task.FromResult(
-            _seed.Concat(Added).FirstOrDefault(o => o.TenantId == tenantId && o.PhoneE164 == phoneE164)
-        );
+        Task.FromResult(_seed.Concat(Added).FirstOrDefault(o => o.TenantId == tenantId && o.PhoneE164 == phoneE164));
 
     public Task AddAsync(SmsOptOut optOut, CancellationToken ct = default)
     {
@@ -88,9 +95,11 @@ internal sealed class FakeProcessedWebhookRepository : IProcessedWebhookReposito
     ) =>
         Task.FromResult(
             _seen.Contains(Key(providerCode, providerMessageId, eventType))
-            || Added.Any(p =>
-                p.ProviderCode == providerCode && p.ProviderMessageId == providerMessageId && p.EventType == eventType
-            )
+                || Added.Any(p =>
+                    p.ProviderCode == providerCode
+                    && p.ProviderMessageId == providerMessageId
+                    && p.EventType == eventType
+                )
         );
 
     public Task AddAsync(ProcessedWebhook processed, CancellationToken ct = default)

@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
+using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Sms.Application.Abstractions;
@@ -76,7 +76,17 @@ public static class SendSmsBatchHandler
         foreach (var item in command.Items)
         {
             var result = await ProcessItemAsync(
-                item, command.TenantId, correlationId, batchId, providers, messages, optOuts, bus, nowUtc, logger, ct
+                item,
+                command.TenantId,
+                correlationId,
+                batchId,
+                providers,
+                messages,
+                optOuts,
+                bus,
+                nowUtc,
+                logger,
+                ct
             );
             results.Add(result);
         }
@@ -132,16 +142,31 @@ public static class SendSmsBatchHandler
         var optOut = await optOuts.GetAsync(tenantId, item.CustomerId, phone.Value, ct);
         if (optOut is { IsOptedOut: true })
         {
-            var suppressed = BuildMessage(tenantId, item, phone, body, correlationId, batchId, primary.Code, mediaPayload, nowUtc);
+            var suppressed = BuildMessage(
+                tenantId,
+                item,
+                phone,
+                body,
+                correlationId,
+                batchId,
+                primary.Code,
+                mediaPayload,
+                nowUtc
+            );
             if (suppressed.IsFailure)
                 return Failed(item, suppressed.Error.Code);
             suppressed.Value.MarkSuppressed("Recipient opted out (STOP).", nowUtc);
             await messages.AddAsync(suppressed.Value, ct);
-            await bus.PublishAsync(new SmsMessageSuppressedIntegrationEvent
-            {
-                TenantId = tenantId, CorrelationId = correlationId, MessageId = suppressed.Value.Id,
-                CustomerId = item.CustomerId, SourceContext = item.SourceContext,
-            });
+            await bus.PublishAsync(
+                new SmsMessageSuppressedIntegrationEvent
+                {
+                    TenantId = tenantId,
+                    CorrelationId = correlationId,
+                    MessageId = suppressed.Value.Id,
+                    CustomerId = item.CustomerId,
+                    SourceContext = item.SourceContext,
+                }
+            );
             return ItemResult(suppressed.Value, item, null);
         }
 
@@ -164,7 +189,14 @@ public static class SendSmsBatchHandler
         ISmsProvider? usedProvider = null;
         Error? lastError = null;
         var sendRequest = new SmsSendRequest(
-            tenantId, item.CustomerId, phone.Value, body.Value, mediaPayload, correlationId, idempotencyKey, item.SourceContext
+            tenantId,
+            item.CustomerId,
+            phone.Value,
+            body.Value,
+            mediaPayload,
+            correlationId,
+            idempotencyKey,
+            item.SourceContext
         );
 
         foreach (var provider in providers)
@@ -175,7 +207,9 @@ public static class SendSmsBatchHandler
                 lastError = mediaError;
                 logger.LogWarning(
                     "SMS provider {Provider} cannot carry the media for {To} ({Code}); trying next.",
-                    provider.Code, phone.Value, mediaError.Code
+                    provider.Code,
+                    phone.Value,
+                    mediaError.Code
                 );
                 continue;
             }
@@ -190,18 +224,32 @@ public static class SendSmsBatchHandler
 
             lastError = sendResult.IsFailure
                 ? sendResult.Error
-                : new Error(sendResult.Value.ErrorCode ?? SmsErrors.ProviderRejected.Code, sendResult.Value.ErrorMessage ?? string.Empty);
+                : new Error(
+                    sendResult.Value.ErrorCode ?? SmsErrors.ProviderRejected.Code,
+                    sendResult.Value.ErrorMessage ?? string.Empty
+                );
             logger.LogWarning(
                 "SMS provider {Provider} did not accept {To} ({Code}); trying next if any.",
-                provider.Code, phone.Value, lastError.Code
+                provider.Code,
+                phone.Value,
+                lastError.Code
             );
         }
 
         // 5) Persistir con el proveedor que envió (o el primario si todos fallaron) + publicar evento.
         var finalProviderCode = (usedProvider ?? primary).Code;
         var createResult = SmsMessage.Create(
-            tenantId, item.CustomerId, phone, body, idempotencyKey, correlationId, batchId,
-            finalProviderCode, item.SourceContext, mediaInputs, nowUtc
+            tenantId,
+            item.CustomerId,
+            phone,
+            body,
+            idempotencyKey,
+            correlationId,
+            batchId,
+            finalProviderCode,
+            item.SourceContext,
+            mediaInputs,
+            nowUtc
         );
         if (createResult.IsFailure)
             return Failed(item, createResult.Error.Code);
@@ -211,12 +259,17 @@ public static class SendSmsBatchHandler
         {
             message.MarkAccepted(accepted.ProviderMessageId ?? string.Empty, nowUtc);
             await messages.AddAsync(message, ct);
-            await bus.PublishAsync(new SmsMessageAcceptedIntegrationEvent
-            {
-                TenantId = tenantId, CorrelationId = correlationId, MessageId = message.Id,
-                CustomerId = item.CustomerId, SourceContext = item.SourceContext,
-                ProviderMessageId = message.ProviderMessageId,
-            });
+            await bus.PublishAsync(
+                new SmsMessageAcceptedIntegrationEvent
+                {
+                    TenantId = tenantId,
+                    CorrelationId = correlationId,
+                    MessageId = message.Id,
+                    CustomerId = item.CustomerId,
+                    SourceContext = item.SourceContext,
+                    ProviderMessageId = message.ProviderMessageId,
+                }
+            );
             return ItemResult(message, item, message.ProviderMessageId);
         }
 
@@ -228,31 +281,62 @@ public static class SendSmsBatchHandler
     }
 
     private static Result<SmsMessage> BuildMessage(
-        Guid tenantId, SmsSendItemDto item, PhoneE164 phone, SmsBody body, string correlationId,
-        Guid batchId, string providerCode, IReadOnlyList<SmsMediaPayload> media, DateTime nowUtc
+        Guid tenantId,
+        SmsSendItemDto item,
+        PhoneE164 phone,
+        SmsBody body,
+        string correlationId,
+        Guid batchId,
+        string providerCode,
+        IReadOnlyList<SmsMediaPayload> media,
+        DateTime nowUtc
     ) =>
         SmsMessage.Create(
-            tenantId, item.CustomerId, phone, body,
+            tenantId,
+            item.CustomerId,
+            phone,
+            body,
             string.IsNullOrWhiteSpace(item.IdempotencyKey)
                 ? DeriveIdempotencyKey(tenantId, item.CustomerId, phone.Value, body.Value, media)
                 : item.IdempotencyKey.Trim(),
-            correlationId, batchId, providerCode, item.SourceContext,
+            correlationId,
+            batchId,
+            providerCode,
+            item.SourceContext,
             media.Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes)).ToList(),
             nowUtc
         );
 
     private static async Task PublishFailed(
-        IMessageBus bus, SmsMessage message, SmsSendItemDto item, string correlationId, string? code, CancellationToken ct
+        IMessageBus bus,
+        SmsMessage message,
+        SmsSendItemDto item,
+        string correlationId,
+        string? code,
+        CancellationToken ct
     ) =>
-        await bus.PublishAsync(new SmsMessageFailedIntegrationEvent
-        {
-            TenantId = message.TenantId, CorrelationId = correlationId, MessageId = message.Id,
-            CustomerId = item.CustomerId, SourceContext = item.SourceContext,
-            ProviderMessageId = message.ProviderMessageId, FailureCode = code,
-        });
+        await bus.PublishAsync(
+            new SmsMessageFailedIntegrationEvent
+            {
+                TenantId = message.TenantId,
+                CorrelationId = correlationId,
+                MessageId = message.Id,
+                CustomerId = item.CustomerId,
+                SourceContext = item.SourceContext,
+                ProviderMessageId = message.ProviderMessageId,
+                FailureCode = code,
+            }
+        );
 
     private static SmsSendItemResult ItemResult(SmsMessage message, SmsSendItemDto item, string? providerMessageId) =>
-        new(message.Id, item.CustomerId, message.To, message.Status.ToString(), providerMessageId ?? message.ProviderMessageId, message.FailureCode);
+        new(
+            message.Id,
+            item.CustomerId,
+            message.To,
+            message.Status.ToString(),
+            providerMessageId ?? message.ProviderMessageId,
+            message.FailureCode
+        );
 
     private static SmsSendItemResult Failed(SmsSendItemDto item, string errorCode) =>
         new(null, item.CustomerId, item.To, "Failed", null, errorCode);
@@ -260,10 +344,17 @@ public static class SendSmsBatchHandler
     /// <summary>Clave idempotente determinística cuando el caller no la manda. La media se canonicaliza
     /// (orden estable) para que el mismo contenido lógico produzca la misma clave.</summary>
     private static string DeriveIdempotencyKey(
-        Guid tenantId, Guid customerId, string to, string body, IReadOnlyList<SmsMediaPayload> media
+        Guid tenantId,
+        Guid customerId,
+        string to,
+        string body,
+        IReadOnlyList<SmsMediaPayload> media
     )
     {
-        var mediaCanon = string.Join("|", media.Select(m => $"{m.Url}:{m.ContentType}:{m.SizeBytes}").OrderBy(s => s, StringComparer.Ordinal));
+        var mediaCanon = string.Join(
+            "|",
+            media.Select(m => $"{m.Url}:{m.ContentType}:{m.SizeBytes}").OrderBy(s => s, StringComparer.Ordinal)
+        );
         var canonical = $"{tenantId:N}|{customerId:N}|{to}|{body}|{mediaCanon}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
         return "auto-" + Convert.ToHexStringLower(hash);

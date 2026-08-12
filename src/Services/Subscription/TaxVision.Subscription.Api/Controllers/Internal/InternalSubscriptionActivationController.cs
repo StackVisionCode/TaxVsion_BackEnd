@@ -21,7 +21,12 @@ namespace TaxVision.Subscription.Api.Controllers.Internal;
 public sealed class InternalSubscriptionActivationController(IMessageBus bus) : ControllerBase
 {
     // BillingCycle opcional (Monthly|Yearly|…); ausente/inválido cae a Monthly para compat con callers viejos.
-    public sealed record ActivateFromOnboardingRequest(Guid OnboardingId, Guid TenantId, Guid PlanId, string? BillingCycle = null);
+    public sealed record ActivateFromOnboardingRequest(
+        Guid OnboardingId,
+        Guid TenantId,
+        Guid PlanId,
+        string? BillingCycle = null
+    );
 
     /// <summary>Fase 4.10 (rate limiting) — M2M-only ([AllowActorTypes(ActorType.Service)],
     /// nunca expuesto al Gateway), mismo patrón que Postmaster Fase 4.4/Connectors Fase 4.8.</summary>

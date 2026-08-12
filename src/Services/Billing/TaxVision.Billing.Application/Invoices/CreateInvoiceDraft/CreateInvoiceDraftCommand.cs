@@ -40,4 +40,10 @@ public sealed record InvoiceAddressInput(
     string Country
 );
 
-public sealed record InvoiceLineInput(string Description, int Quantity, long UnitAmountCents, int TaxBasisPoints, Guid? CatalogItemId = null);
+public sealed record InvoiceLineInput(
+    string Description,
+    int Quantity,
+    long UnitAmountCents,
+    int TaxBasisPoints,
+    Guid? CatalogItemId = null
+);

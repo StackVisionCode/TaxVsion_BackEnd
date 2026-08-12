@@ -32,7 +32,9 @@ public static class CancelOnboardingHandler
         if (onboarding.Status == TenantOnboardingStatus.Cancelled)
             return Result.Success(); // idempotente
 
-        var reason = string.IsNullOrWhiteSpace(command.Reason) ? "Buyer cancelled the checkout." : command.Reason.Trim();
+        var reason = string.IsNullOrWhiteSpace(command.Reason)
+            ? "Buyer cancelled the checkout."
+            : command.Reason.Trim();
 
         // Cancel() valida el estado: rechaza si ya está pagado/provisionado (no se libera un código de un
         // onboarding que ya completó). Recién si la transición es válida liberamos las reservas.

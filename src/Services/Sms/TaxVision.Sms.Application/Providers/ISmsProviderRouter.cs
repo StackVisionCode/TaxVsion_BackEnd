@@ -26,9 +26,7 @@ public sealed class SmsProviderRouter(ISmsAdapterFactory factory, IOptions<SmsOp
         // Filtra vacíos PRIMERO: los slots de env (Sms__ProviderOrder__0/1/2) llegan como cadenas
         // vacías cuando no se usan, no ausentes — sin este filtro, [""], ["",""] contarían como
         // "orden configurada" y, al descartarse todas, dejarían la lista vacía (sms.noProvider).
-        var fromOrder = (options.Value.ProviderOrder ?? [])
-            .Where(code => !string.IsNullOrWhiteSpace(code))
-            .ToList();
+        var fromOrder = (options.Value.ProviderOrder ?? []).Where(code => !string.IsNullOrWhiteSpace(code)).ToList();
 
         var configured = fromOrder.Count > 0 ? fromOrder : [options.Value.DefaultProvider];
 

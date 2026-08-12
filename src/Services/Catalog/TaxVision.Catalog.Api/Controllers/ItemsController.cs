@@ -51,7 +51,12 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
         IReadOnlyList<AttributeRequest>? Attributes
     );
 
-    public sealed record ChangePriceRequest(decimal PriceAmount, string PriceCurrency, decimal? CostAmount, string? CostCurrency);
+    public sealed record ChangePriceRequest(
+        decimal PriceAmount,
+        string PriceCurrency,
+        decimal? CostAmount,
+        string? CostCurrency
+    );
 
     public sealed record SetActiveRequest(bool IsActive);
 
@@ -68,9 +73,22 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
     {
         var result = await bus.InvokeAsync<Result<CatalogItemDto>>(
             new CreateCatalogItemCommand(
-                tenant.TenantId, UserId, request.Name, request.Description, request.Sku, request.Barcode,
-                request.CategoryId, request.Kind, request.PriceAmount, request.PriceCurrency, request.CostAmount,
-                request.CostCurrency, request.Unit, request.TrackInventory, request.ImageUrl, Map(request.Attributes)
+                tenant.TenantId,
+                UserId,
+                request.Name,
+                request.Description,
+                request.Sku,
+                request.Barcode,
+                request.CategoryId,
+                request.Kind,
+                request.PriceAmount,
+                request.PriceCurrency,
+                request.CostAmount,
+                request.CostCurrency,
+                request.Unit,
+                request.TrackInventory,
+                request.ImageUrl,
+                Map(request.Attributes)
             ),
             ct
         );
@@ -115,8 +133,15 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
     {
         var result = await bus.InvokeAsync<Result<CatalogItemDto>>(
             new UpdateCatalogItemCommand(
-                tenant.TenantId, id, request.Name, request.Description, request.Barcode, request.CategoryId,
-                request.Unit, request.ImageUrl, Map(request.Attributes)
+                tenant.TenantId,
+                id,
+                request.Name,
+                request.Description,
+                request.Barcode,
+                request.CategoryId,
+                request.Unit,
+                request.ImageUrl,
+                Map(request.Attributes)
             ),
             ct
         );
@@ -130,7 +155,14 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
     public async Task<IActionResult> ChangePrice(Guid id, [FromBody] ChangePriceRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<CatalogItemDto>>(
-            new ChangeCatalogItemPriceCommand(tenant.TenantId, id, request.PriceAmount, request.PriceCurrency, request.CostAmount, request.CostCurrency),
+            new ChangeCatalogItemPriceCommand(
+                tenant.TenantId,
+                id,
+                request.PriceAmount,
+                request.PriceCurrency,
+                request.CostAmount,
+                request.CostCurrency
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -141,7 +173,10 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
     [RateLimit("catalog.g.write")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result>(new SetCatalogItemActiveCommand(tenant.TenantId, id, request.IsActive), ct);
+        var result = await bus.InvokeAsync<Result>(
+            new SetCatalogItemActiveCommand(tenant.TenantId, id, request.IsActive),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

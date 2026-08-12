@@ -12,11 +12,11 @@ using BuildingBlocks.Web.Observability;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
-using Microsoft.AspNetCore.Authorization;
-using StackExchange.Redis;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Reminder.Application;
 using TaxVision.Reminder.Infrastructure;
 using TaxVision.Reminder.Infrastructure.Observability;
@@ -47,6 +47,7 @@ builder.Services.AddReminderInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
+
 // ReminderMetrics.MeterName va como meter adicional: AddTaxVisionOpenTelemetry solo registra
 // AddMeter(serviceName), y un Meter propio no declarado acá no exporta absolutamente nada — los
 // contadores suben en memoria y el panel queda vacío sin ningún error.

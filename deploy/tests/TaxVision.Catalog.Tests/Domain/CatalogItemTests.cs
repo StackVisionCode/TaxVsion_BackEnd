@@ -13,7 +13,9 @@ public sealed class CatalogItemTests
     private static Money Price => Money.Create(100, "USD").Value;
 
     private static CatalogItem NewProduct(string? sku = "SKU-1", ItemKind kind = ItemKind.Product, bool track = true) =>
-        CatalogItem.Create(Tenant, User, "Widget", "desc", sku, "BC-1", Category, kind, Price, null, "unit", track, null, Now).Value;
+        CatalogItem
+            .Create(Tenant, User, "Widget", "desc", sku, "BC-1", Category, kind, Price, null, "unit", track, null, Now)
+            .Value;
 
     [Fact]
     public void Create_snapshots_fields_and_starts_active()
@@ -31,7 +33,24 @@ public sealed class CatalogItemTests
     [Fact]
     public void Create_uppercases_and_trims_sku()
     {
-        var item = CatalogItem.Create(Tenant, User, "W", null, "  abc-9 ", null, Category, ItemKind.Product, Price, null, null, true, null, Now).Value;
+        var item = CatalogItem
+            .Create(
+                Tenant,
+                User,
+                "W",
+                null,
+                "  abc-9 ",
+                null,
+                Category,
+                ItemKind.Product,
+                Price,
+                null,
+                null,
+                true,
+                null,
+                Now
+            )
+            .Value;
         Assert.Equal("ABC-9", item.Sku);
     }
 
@@ -54,7 +73,22 @@ public sealed class CatalogItemTests
     [InlineData("   ")]
     public void Create_rejects_blank_name(string name)
     {
-        var r = CatalogItem.Create(Tenant, User, name, null, null, null, Category, ItemKind.Product, Price, null, null, true, null, Now);
+        var r = CatalogItem.Create(
+            Tenant,
+            User,
+            name,
+            null,
+            null,
+            null,
+            Category,
+            ItemKind.Product,
+            Price,
+            null,
+            null,
+            true,
+            null,
+            Now
+        );
         Assert.True(r.IsFailure);
         Assert.Equal(CatalogErrors.InvalidName.Code, r.Error.Code);
     }
@@ -62,17 +96,70 @@ public sealed class CatalogItemTests
     [Fact]
     public void Create_rejects_empty_tenant_and_category()
     {
-        Assert.Equal(CatalogErrors.InvalidTenant.Code,
-            CatalogItem.Create(Guid.Empty, User, "W", null, null, null, Category, ItemKind.Product, Price, null, null, true, null, Now).Error.Code);
-        Assert.Equal(CatalogErrors.InvalidCategory.Code,
-            CatalogItem.Create(Tenant, User, "W", null, null, null, Guid.Empty, ItemKind.Product, Price, null, null, true, null, Now).Error.Code);
+        Assert.Equal(
+            CatalogErrors.InvalidTenant.Code,
+            CatalogItem
+                .Create(
+                    Guid.Empty,
+                    User,
+                    "W",
+                    null,
+                    null,
+                    null,
+                    Category,
+                    ItemKind.Product,
+                    Price,
+                    null,
+                    null,
+                    true,
+                    null,
+                    Now
+                )
+                .Error.Code
+        );
+        Assert.Equal(
+            CatalogErrors.InvalidCategory.Code,
+            CatalogItem
+                .Create(
+                    Tenant,
+                    User,
+                    "W",
+                    null,
+                    null,
+                    null,
+                    Guid.Empty,
+                    ItemKind.Product,
+                    Price,
+                    null,
+                    null,
+                    true,
+                    null,
+                    Now
+                )
+                .Error.Code
+        );
     }
 
     [Fact]
     public void Create_rejects_sku_over_max_length()
     {
         var longSku = new string('a', CatalogItem.SkuMax + 1);
-        var r = CatalogItem.Create(Tenant, User, "W", null, longSku, null, Category, ItemKind.Product, Price, null, null, true, null, Now);
+        var r = CatalogItem.Create(
+            Tenant,
+            User,
+            "W",
+            null,
+            longSku,
+            null,
+            Category,
+            ItemKind.Product,
+            Price,
+            null,
+            null,
+            true,
+            null,
+            Now
+        );
         Assert.True(r.IsFailure);
         Assert.Equal(CatalogErrors.InvalidSku.Code, r.Error.Code);
     }

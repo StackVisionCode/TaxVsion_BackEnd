@@ -115,10 +115,21 @@ public sealed class SendSmsBatchHandlerTests
     public async Task Existing_idempotency_key_returns_existing_without_resending()
     {
         var h = new Harness();
-        var existing = SmsMessage.Create(
-            Tenant, Customer, PhoneE164.Create(Phone).Value, SmsBody.Create("hi").Value,
-            "idem-1", "corr-old", Guid.NewGuid(), "fake", "docs", [], DateTime.UtcNow
-        ).Value;
+        var existing = SmsMessage
+            .Create(
+                Tenant,
+                Customer,
+                PhoneE164.Create(Phone).Value,
+                SmsBody.Create("hi").Value,
+                "idem-1",
+                "corr-old",
+                Guid.NewGuid(),
+                "fake",
+                "docs",
+                [],
+                DateTime.UtcNow
+            )
+            .Value;
         h.Messages.SeedForIdempotency(existing);
 
         var result = await h.Run(Batch(Item(idempotencyKey: "idem-1")));
@@ -179,10 +190,7 @@ public sealed class SendSmsBatchHandlerTests
         var h = new Harness();
 
         var result = await h.Run(
-            Batch(
-                Item(to: Phone, idempotencyKey: "ok"),
-                Item(to: "bad-phone", idempotencyKey: "bad")
-            )
+            Batch(Item(to: Phone, idempotencyKey: "ok"), Item(to: "bad-phone", idempotencyKey: "bad"))
         );
 
         Assert.True(result.IsSuccess);
@@ -200,7 +208,11 @@ public sealed class SendSmsBatchHandlerTests
     public async Task Fails_over_to_secondary_when_primary_rejects()
     {
         var h = new Harness();
-        var primary = new FakeSmsProvider { Code = "p1", SendImpl = _ => new SmsSendResult(false, null, "providerRejected", "down") };
+        var primary = new FakeSmsProvider
+        {
+            Code = "p1",
+            SendImpl = _ => new SmsSendResult(false, null, "providerRejected", "down"),
+        };
         var secondary = new FakeSmsProvider { Code = "p2" }; // default: accepts
         h.Order.Add(primary);
         h.Order.Add(secondary);
@@ -218,8 +230,16 @@ public sealed class SendSmsBatchHandlerTests
     public async Task Marks_failed_with_last_error_when_all_providers_reject()
     {
         var h = new Harness();
-        var primary = new FakeSmsProvider { Code = "p1", SendImpl = _ => new SmsSendResult(false, null, "providerRejected", "x") };
-        var secondary = new FakeSmsProvider { Code = "p2", SendImpl = _ => new SmsSendResult(false, null, "providerUnavailable", "y") };
+        var primary = new FakeSmsProvider
+        {
+            Code = "p1",
+            SendImpl = _ => new SmsSendResult(false, null, "providerRejected", "x"),
+        };
+        var secondary = new FakeSmsProvider
+        {
+            Code = "p2",
+            SendImpl = _ => new SmsSendResult(false, null, "providerUnavailable", "y"),
+        };
         h.Order.Add(primary);
         h.Order.Add(secondary);
 

@@ -59,8 +59,16 @@ public static class AdjustStockHandler
 
         await stock.AddMovementAsync(
             new StockMovement(
-                command.TenantId, command.CatalogItemId, command.Type, command.Quantity,
-                move.Value.Previous, move.Value.New, command.Reference, command.Notes, command.UserId, nowUtc
+                command.TenantId,
+                command.CatalogItemId,
+                command.Type,
+                command.Quantity,
+                move.Value.Previous,
+                move.Value.New,
+                command.Reference,
+                command.Notes,
+                command.UserId,
+                nowUtc
             ),
             ct
         );
@@ -82,7 +90,15 @@ public static class SetStockThresholdsHandler
         var level = await stock.GetByCatalogItemAsync(command.TenantId, command.CatalogItemId, ct);
         if (level is null)
         {
-            var created = StockLevel.Create(command.TenantId, command.CatalogItemId, 0, command.MinLevel, command.MaxLevel, command.ReorderPoint, nowUtc);
+            var created = StockLevel.Create(
+                command.TenantId,
+                command.CatalogItemId,
+                0,
+                command.MinLevel,
+                command.MaxLevel,
+                command.ReorderPoint,
+                nowUtc
+            );
             if (created.IsFailure)
                 return Result.Failure<StockLevelDto>(created.Error);
             await stock.AddStockLevelAsync(created.Value, ct);
@@ -106,7 +122,11 @@ public sealed record ListStockMovementsQuery(Guid TenantId, Guid? CatalogItemId,
 
 public static class GetStockLevelHandler
 {
-    public static async Task<Result<StockLevelDto>> Handle(GetStockLevelQuery query, IStockRepository stock, CancellationToken ct)
+    public static async Task<Result<StockLevelDto>> Handle(
+        GetStockLevelQuery query,
+        IStockRepository stock,
+        CancellationToken ct
+    )
     {
         var level = await stock.GetByCatalogItemAsync(query.TenantId, query.CatalogItemId, ct);
         return level is null
@@ -117,22 +137,34 @@ public static class GetStockLevelHandler
 
 public static class ListStockLevelsHandler
 {
-    public static async Task<Result<PagedResult<StockLevelDto>>> Handle(ListStockLevelsQuery query, IStockRepository stock, CancellationToken ct)
+    public static async Task<Result<PagedResult<StockLevelDto>>> Handle(
+        ListStockLevelsQuery query,
+        IStockRepository stock,
+        CancellationToken ct
+    )
     {
         var page = query.Page < 1 ? 1 : query.Page;
         var pageSize = query.PageSize is < 1 or > 200 ? 50 : query.PageSize;
         var (rows, total) = await stock.ListStockLevelsAsync(query.TenantId, query.LowStockOnly, page, pageSize, ct);
-        return Result.Success(new PagedResult<StockLevelDto>(rows.Select(r => r.ToDto()).ToList(), total, page, pageSize));
+        return Result.Success(
+            new PagedResult<StockLevelDto>(rows.Select(r => r.ToDto()).ToList(), total, page, pageSize)
+        );
     }
 }
 
 public static class ListStockMovementsHandler
 {
-    public static async Task<Result<PagedResult<StockMovementDto>>> Handle(ListStockMovementsQuery query, IStockRepository stock, CancellationToken ct)
+    public static async Task<Result<PagedResult<StockMovementDto>>> Handle(
+        ListStockMovementsQuery query,
+        IStockRepository stock,
+        CancellationToken ct
+    )
     {
         var page = query.Page < 1 ? 1 : query.Page;
         var pageSize = query.PageSize is < 1 or > 200 ? 50 : query.PageSize;
         var (rows, total) = await stock.ListMovementsAsync(query.TenantId, query.CatalogItemId, page, pageSize, ct);
-        return Result.Success(new PagedResult<StockMovementDto>(rows.Select(r => r.ToDto()).ToList(), total, page, pageSize));
+        return Result.Success(
+            new PagedResult<StockMovementDto>(rows.Select(r => r.ToDto()).ToList(), total, page, pageSize)
+        );
     }
 }

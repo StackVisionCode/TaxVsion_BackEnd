@@ -61,8 +61,14 @@ public sealed class StockLevelTests
     [Fact]
     public void Create_rejects_empty_item_and_negative_qty()
     {
-        Assert.Equal(InventoryErrors.InvalidCatalogItem.Code, StockLevel.Create(Tenant, Guid.Empty, 0, 0, 0, 0, Now).Error.Code);
-        Assert.Equal(InventoryErrors.InvalidQuantity.Code, StockLevel.Create(Tenant, Item, -1, 0, 0, 0, Now).Error.Code);
+        Assert.Equal(
+            InventoryErrors.InvalidCatalogItem.Code,
+            StockLevel.Create(Tenant, Guid.Empty, 0, 0, 0, 0, Now).Error.Code
+        );
+        Assert.Equal(
+            InventoryErrors.InvalidQuantity.Code,
+            StockLevel.Create(Tenant, Item, -1, 0, 0, 0, Now).Error.Code
+        );
     }
 }
 
@@ -85,13 +91,18 @@ public sealed class SupplierAndLinkTests
     [Fact]
     public void Supplier_rejects_blank_name()
     {
-        Assert.Equal(InventoryErrors.InvalidName.Code, Supplier.Create(Tenant, Guid.NewGuid(), "  ", null, null, null, null, null, Now).Error.Code);
+        Assert.Equal(
+            InventoryErrors.InvalidName.Code,
+            Supplier.Create(Tenant, Guid.NewGuid(), "  ", null, null, null, null, null, Now).Error.Code
+        );
     }
 
     [Fact]
     public void ItemSupplier_create_with_price()
     {
-        var link = ItemSupplier.Create(Tenant, Guid.NewGuid(), Guid.NewGuid(), "SUP-1", Money.Create(50, "USD").Value, 7, true, Now).Value;
+        var link = ItemSupplier
+            .Create(Tenant, Guid.NewGuid(), Guid.NewGuid(), "SUP-1", Money.Create(50, "USD").Value, 7, true, Now)
+            .Value;
         Assert.Equal("USD", link.SupplierPrice!.Currency);
         Assert.Equal(7, link.LeadTimeDays);
         Assert.True(link.IsPreferred);

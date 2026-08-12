@@ -11,14 +11,14 @@ namespace TaxVision.Catalog.Infrastructure.Persistence.Repositories;
 public sealed class CatalogItemRepository(CatalogDbContext db) : ICatalogItemRepository
 {
     public Task<CatalogItem?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
-        db.CatalogItems
-            .IgnoreQueryFilters()
+        db
+            .CatalogItems.IgnoreQueryFilters()
             .Include(i => i.Attributes)
             .FirstOrDefaultAsync(i => i.TenantId == tenantId && !i.IsDeleted && i.Id == id, ct);
 
     public Task<bool> SkuExistsAsync(Guid tenantId, string sku, Guid? excludeId, CancellationToken ct = default) =>
-        db.CatalogItems
-            .IgnoreQueryFilters()
+        db
+            .CatalogItems.IgnoreQueryFilters()
             .AnyAsync(
                 i => i.TenantId == tenantId && !i.IsDeleted && i.Sku == sku && (excludeId == null || i.Id != excludeId),
                 ct
@@ -34,8 +34,8 @@ public sealed class CatalogItemRepository(CatalogDbContext db) : ICatalogItemRep
         CancellationToken ct = default
     )
     {
-        var query = db.CatalogItems
-            .IgnoreQueryFilters()
+        var query = db
+            .CatalogItems.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(i => i.TenantId == tenantId && !i.IsDeleted);
 
@@ -47,17 +47,15 @@ public sealed class CatalogItemRepository(CatalogDbContext db) : ICatalogItemRep
         {
             var term = search.Trim();
             query = query.Where(i =>
-                i.Name.Contains(term) || (i.Sku != null && i.Sku.Contains(term)) || (i.Barcode != null && i.Barcode.Contains(term))
+                i.Name.Contains(term)
+                || (i.Sku != null && i.Sku.Contains(term))
+                || (i.Barcode != null && i.Barcode.Contains(term))
             );
         }
 
         var total = await query.CountAsync(ct);
         // Lista liviana: no incluye atributos (se ven en el GET individual).
-        var rows = await query
-            .OrderBy(i => i.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
+        var rows = await query.OrderBy(i => i.Name).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return (rows, total);
     }
 
@@ -68,27 +66,27 @@ public sealed class CatalogItemRepository(CatalogDbContext db) : ICatalogItemRep
 public sealed class CategoryRepository(CatalogDbContext db) : ICategoryRepository
 {
     public Task<Category?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default) =>
-        db.Categories
-            .IgnoreQueryFilters()
+        db
+            .Categories.IgnoreQueryFilters()
             .FirstOrDefaultAsync(c => c.TenantId == tenantId && !c.IsDeleted && c.Id == id, ct);
 
     public Task<bool> ExistsAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default) =>
-        db.Categories
-            .IgnoreQueryFilters()
+        db
+            .Categories.IgnoreQueryFilters()
             .AnyAsync(c => c.TenantId == tenantId && !c.IsDeleted && c.Id == categoryId, ct);
 
     public async Task<bool> HasChildrenAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default) =>
-        await db.Categories
-            .IgnoreQueryFilters()
+        await db
+            .Categories.IgnoreQueryFilters()
             .AnyAsync(c => c.TenantId == tenantId && !c.IsDeleted && c.ParentCategoryId == categoryId, ct)
-        || await db.CatalogItems
-            .IgnoreQueryFilters()
+        || await db
+            .CatalogItems.IgnoreQueryFilters()
             .AnyAsync(i => i.TenantId == tenantId && !i.IsDeleted && i.CategoryId == categoryId, ct);
 
     public async Task<IReadOnlyList<Category>> ListAsync(Guid tenantId, bool activeOnly, CancellationToken ct = default)
     {
-        var query = db.Categories
-            .IgnoreQueryFilters()
+        var query = db
+            .Categories.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(c => c.TenantId == tenantId && !c.IsDeleted);
         if (activeOnly)

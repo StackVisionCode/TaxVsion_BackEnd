@@ -13,7 +13,13 @@ public sealed class RolePermissionsProjection : TenantEntity
     public int PermissionsVersion { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static RolePermissionsProjection Create(Guid tenantId, Guid roleId, string roleName, int permissionsVersion, IReadOnlyCollection<string> permissionCodes)
+    public static RolePermissionsProjection Create(
+        Guid tenantId,
+        Guid roleId,
+        string roleName,
+        int permissionsVersion,
+        IReadOnlyCollection<string> permissionCodes
+    )
     {
         var projection = new RolePermissionsProjection
         {
@@ -37,7 +43,8 @@ public sealed class RolePermissionsProjection : TenantEntity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    public IReadOnlyList<string> PermissionCodes() => JsonSerializer.Deserialize<List<string>>(PermissionCodesJson) ?? [];
+    public IReadOnlyList<string> PermissionCodes() =>
+        JsonSerializer.Deserialize<List<string>>(PermissionCodesJson) ?? [];
 
     private static string Serialize(IReadOnlyCollection<string> codes) => JsonSerializer.Serialize(codes);
 }

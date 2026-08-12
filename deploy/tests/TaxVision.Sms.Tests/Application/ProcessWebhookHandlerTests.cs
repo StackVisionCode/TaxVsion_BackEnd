@@ -18,10 +18,21 @@ public sealed class ProcessWebhookHandlerTests
 
     private static SmsMessage AcceptedMessage(string providerMessageId)
     {
-        var msg = SmsMessage.Create(
-            Tenant, Customer, PhoneE164.Create(Phone).Value, SmsBody.Create("hi").Value,
-            "idem-1", "corr-1", Guid.NewGuid(), ProviderCode, "docs", [], DateTime.UtcNow
-        ).Value;
+        var msg = SmsMessage
+            .Create(
+                Tenant,
+                Customer,
+                PhoneE164.Create(Phone).Value,
+                SmsBody.Create("hi").Value,
+                "idem-1",
+                "corr-1",
+                Guid.NewGuid(),
+                ProviderCode,
+                "docs",
+                [],
+                DateTime.UtcNow
+            )
+            .Value;
         msg.MarkAccepted(providerMessageId, DateTime.UtcNow);
         return msg;
     }
@@ -34,10 +45,14 @@ public sealed class ProcessWebhookHandlerTests
         var provider = new FakeSmsProvider { SignatureValid = false };
         var result = await ProcessDeliveryReceiptHandler.Handle(
             new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider), new FakeSmsWebhookSecrets(),
-            new FakeProcessedWebhookRepository(), new FakeSmsMessageRepository(),
-            new FakeUnitOfWork(), new FakeMessageBus(),
-            NullLogger<ProcessDeliveryReceiptCommand>.Instance, CancellationToken.None
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            new FakeProcessedWebhookRepository(),
+            new FakeSmsMessageRepository(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+            CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
@@ -59,9 +74,14 @@ public sealed class ProcessWebhookHandlerTests
 
         var result = await ProcessDeliveryReceiptHandler.Handle(
             new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider), new FakeSmsWebhookSecrets(),
-            processed, messages, new FakeUnitOfWork(), bus,
-            NullLogger<ProcessDeliveryReceiptCommand>.Instance, CancellationToken.None
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            processed,
+            messages,
+            new FakeUnitOfWork(),
+            bus,
+            NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+            CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
@@ -86,9 +106,14 @@ public sealed class ProcessWebhookHandlerTests
 
         var result = await ProcessDeliveryReceiptHandler.Handle(
             new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider), new FakeSmsWebhookSecrets(),
-            processed, messages, new FakeUnitOfWork(), bus,
-            NullLogger<ProcessDeliveryReceiptCommand>.Instance, CancellationToken.None
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            processed,
+            messages,
+            new FakeUnitOfWork(),
+            bus,
+            NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+            CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
@@ -107,10 +132,14 @@ public sealed class ProcessWebhookHandlerTests
 
         var result = await ProcessDeliveryReceiptHandler.Handle(
             new ProcessDeliveryReceiptCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider), new FakeSmsWebhookSecrets(),
-            new FakeProcessedWebhookRepository(), new FakeSmsMessageRepository(),
-            new FakeUnitOfWork(), bus,
-            NullLogger<ProcessDeliveryReceiptCommand>.Instance, CancellationToken.None
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            new FakeProcessedWebhookRepository(),
+            new FakeSmsMessageRepository(),
+            new FakeUnitOfWork(),
+            bus,
+            NullLogger<ProcessDeliveryReceiptCommand>.Instance,
+            CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
@@ -124,16 +153,28 @@ public sealed class ProcessWebhookHandlerTests
     {
         var provider = new FakeSmsProvider
         {
-            InboundMessage = new SmsInboundMessage(Phone, SmsInboundKeyword.Stop, "STOP", "inbound", "in-1", Tenant, Customer),
+            InboundMessage = new SmsInboundMessage(
+                Phone,
+                SmsInboundKeyword.Stop,
+                "STOP",
+                "inbound",
+                "in-1",
+                Tenant,
+                Customer
+            ),
         };
         var optOuts = new FakeSmsOptOutRepository();
 
         var result = await ProcessInboundHandler.Handle(
             new ProcessInboundCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider), new FakeSmsWebhookSecrets(),
-            new FakeProcessedWebhookRepository(), new FakeSmsMessageRepository(),
-            optOuts, new FakeUnitOfWork(),
-            NullLogger<ProcessInboundCommand>.Instance, CancellationToken.None
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            new FakeProcessedWebhookRepository(),
+            new FakeSmsMessageRepository(),
+            optOuts,
+            new FakeUnitOfWork(),
+            NullLogger<ProcessInboundCommand>.Instance,
+            CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
@@ -150,16 +191,28 @@ public sealed class ProcessWebhookHandlerTests
         messages.SeedLatestByPhone(last);
         var provider = new FakeSmsProvider
         {
-            InboundMessage = new SmsInboundMessage(Phone, SmsInboundKeyword.Stop, "STOP", "inbound", "in-2", null, null),
+            InboundMessage = new SmsInboundMessage(
+                Phone,
+                SmsInboundKeyword.Stop,
+                "STOP",
+                "inbound",
+                "in-2",
+                null,
+                null
+            ),
         };
         var optOuts = new FakeSmsOptOutRepository();
 
         var result = await ProcessInboundHandler.Handle(
             new ProcessInboundCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider), new FakeSmsWebhookSecrets(),
-            new FakeProcessedWebhookRepository(), messages,
-            optOuts, new FakeUnitOfWork(),
-            NullLogger<ProcessInboundCommand>.Instance, CancellationToken.None
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            new FakeProcessedWebhookRepository(),
+            messages,
+            optOuts,
+            new FakeUnitOfWork(),
+            NullLogger<ProcessInboundCommand>.Instance,
+            CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
@@ -173,17 +226,29 @@ public sealed class ProcessWebhookHandlerTests
     {
         var provider = new FakeSmsProvider
         {
-            InboundMessage = new SmsInboundMessage(Phone, SmsInboundKeyword.Stop, "STOP", "inbound", "in-3", null, null),
+            InboundMessage = new SmsInboundMessage(
+                Phone,
+                SmsInboundKeyword.Stop,
+                "STOP",
+                "inbound",
+                "in-3",
+                null,
+                null
+            ),
         };
         var optOuts = new FakeSmsOptOutRepository();
         var processed = new FakeProcessedWebhookRepository();
 
         var result = await ProcessInboundHandler.Handle(
             new ProcessInboundCommand(ProviderCode, "{}", "sig"),
-            new FakeSmsAdapterFactory(provider), new FakeSmsWebhookSecrets(),
-            processed, new FakeSmsMessageRepository(), // GetLatestByPhone → null
-            optOuts, new FakeUnitOfWork(),
-            NullLogger<ProcessInboundCommand>.Instance, CancellationToken.None
+            new FakeSmsAdapterFactory(provider),
+            new FakeSmsWebhookSecrets(),
+            processed,
+            new FakeSmsMessageRepository(), // GetLatestByPhone → null
+            optOuts,
+            new FakeUnitOfWork(),
+            NullLogger<ProcessInboundCommand>.Instance,
+            CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);

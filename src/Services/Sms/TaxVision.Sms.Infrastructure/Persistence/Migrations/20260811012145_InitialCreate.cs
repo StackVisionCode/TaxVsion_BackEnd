@@ -21,12 +21,13 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     ProviderMessageId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     EventType = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     PayloadHash = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
-                    ProcessedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    ProcessedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_processedWebhooks", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "smsMessages",
@@ -50,12 +51,13 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     DeliveredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     FailedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_smsMessages", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "smsOptOuts",
@@ -69,12 +71,13 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     OptedOutAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     OptedInAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_smsOptOuts", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "smsMedia",
@@ -87,7 +90,7 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     FileName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     SizeBytes = table.Column<long>(type: "bigint", nullable: true),
                     ProviderMediaId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -97,77 +100,73 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                         column: x => x.SmsMessageId,
                         principalTable: "smsMessages",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_ProcessedWebhooks_Provider_MessageId_EventType",
                 table: "processedWebhooks",
                 columns: new[] { "ProviderCode", "ProviderMessageId", "EventType" },
-                unique: true);
+                unique: true
+            );
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SmsMedia_SmsMessageId",
-                table: "smsMedia",
-                column: "SmsMessageId");
+            migrationBuilder.CreateIndex(name: "IX_SmsMedia_SmsMessageId", table: "smsMedia", column: "SmsMessageId");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SmsMessages_BatchId",
-                table: "smsMessages",
-                column: "BatchId");
+            migrationBuilder.CreateIndex(name: "IX_SmsMessages_BatchId", table: "smsMessages", column: "BatchId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_SmsMessages_CorrelationId",
                 table: "smsMessages",
-                column: "CorrelationId");
+                column: "CorrelationId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SmsMessages_Provider_MessageId",
                 table: "smsMessages",
-                columns: new[] { "ProviderCode", "ProviderMessageId" });
+                columns: new[] { "ProviderCode", "ProviderMessageId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SmsMessages_Tenant_Customer_Created",
                 table: "smsMessages",
-                columns: new[] { "TenantId", "CustomerId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CustomerId", "CreatedAtUtc" }
+            );
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SmsMessages_To",
-                table: "smsMessages",
-                column: "To");
+            migrationBuilder.CreateIndex(name: "IX_SmsMessages_To", table: "smsMessages", column: "To");
 
             migrationBuilder.CreateIndex(
                 name: "UX_SmsMessages_Tenant_Idempotency",
                 table: "smsMessages",
                 columns: new[] { "TenantId", "IdempotencyKey" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SmsOptOuts_Tenant_Phone",
                 table: "smsOptOuts",
-                columns: new[] { "TenantId", "PhoneE164" });
+                columns: new[] { "TenantId", "PhoneE164" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_SmsOptOuts_Tenant_Customer_Phone",
                 table: "smsOptOuts",
                 columns: new[] { "TenantId", "CustomerId", "PhoneE164" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "processedWebhooks");
+            migrationBuilder.DropTable(name: "processedWebhooks");
 
-            migrationBuilder.DropTable(
-                name: "smsMedia");
+            migrationBuilder.DropTable(name: "smsMedia");
 
-            migrationBuilder.DropTable(
-                name: "smsOptOuts");
+            migrationBuilder.DropTable(name: "smsOptOuts");
 
-            migrationBuilder.DropTable(
-                name: "smsMessages");
+            migrationBuilder.DropTable(name: "smsMessages");
         }
     }
 }

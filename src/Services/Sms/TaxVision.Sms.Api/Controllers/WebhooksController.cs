@@ -22,7 +22,8 @@ public sealed class WebhooksController(IMessageBus bus) : ControllerBase
     {
         var rawBody = await ReadBodyAsync(ct);
         var result = await bus.InvokeAsync<Result>(
-            new ProcessDeliveryReceiptCommand(provider, rawBody, ReadSignature(), BuildPublicUrl()), ct
+            new ProcessDeliveryReceiptCommand(provider, rawBody, ReadSignature(), BuildPublicUrl()),
+            ct
         );
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -32,7 +33,8 @@ public sealed class WebhooksController(IMessageBus bus) : ControllerBase
     {
         var rawBody = await ReadBodyAsync(ct);
         var result = await bus.InvokeAsync<Result>(
-            new ProcessInboundCommand(provider, rawBody, ReadSignature(), BuildPublicUrl()), ct
+            new ProcessInboundCommand(provider, rawBody, ReadSignature(), BuildPublicUrl()),
+            ct
         );
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -56,12 +58,14 @@ public sealed class WebhooksController(IMessageBus bus) : ControllerBase
     /// se cae a los del request. Proveedores que firman solo el body ignoran esto.</summary>
     private string BuildPublicUrl()
     {
-        var scheme = Request.Headers.TryGetValue("X-Forwarded-Proto", out var proto) && !string.IsNullOrWhiteSpace(proto)
-            ? proto.ToString().Split(',')[0].Trim()
-            : Request.Scheme;
-        var host = Request.Headers.TryGetValue("X-Forwarded-Host", out var fhost) && !string.IsNullOrWhiteSpace(fhost)
-            ? fhost.ToString().Split(',')[0].Trim()
-            : Request.Host.Value;
+        var scheme =
+            Request.Headers.TryGetValue("X-Forwarded-Proto", out var proto) && !string.IsNullOrWhiteSpace(proto)
+                ? proto.ToString().Split(',')[0].Trim()
+                : Request.Scheme;
+        var host =
+            Request.Headers.TryGetValue("X-Forwarded-Host", out var fhost) && !string.IsNullOrWhiteSpace(fhost)
+                ? fhost.ToString().Split(',')[0].Trim()
+                : Request.Host.Value;
         return $"{scheme}://{host}{Request.PathBase}{Request.Path}{Request.QueryString}";
     }
 }

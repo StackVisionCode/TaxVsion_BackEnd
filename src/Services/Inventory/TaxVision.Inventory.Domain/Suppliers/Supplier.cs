@@ -58,7 +58,15 @@ public sealed class Supplier : TenantEntity
         return Result.Success(supplier);
     }
 
-    public Result Update(string name, string? contactName, string? email, string? phone, string? address, string? taxId, DateTime nowUtc)
+    public Result Update(
+        string name,
+        string? contactName,
+        string? email,
+        string? phone,
+        string? address,
+        string? taxId,
+        DateTime nowUtc
+    )
     {
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > NameMax)
             return Result.Failure(InventoryErrors.InvalidName);

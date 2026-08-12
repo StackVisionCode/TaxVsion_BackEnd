@@ -46,7 +46,10 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 // "perm:sms.send" contra IUserPermissionsSource; AddUserPermissionsSource elige ProjectionPermissionsSource
 // (Authorization:PermissionsSource="Projection") — un token M2M satisface el permiso vía su claim "perm"
 // (bypass de actor Service), un usuario humano vía la proyección local mantenida por los eventos de Auth.
-builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+builder.Services.AddSingleton<
+    Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider,
+    PermissionPolicyProvider
+>();
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Rate limiting tiered — [RateLimit("sms.h.send")] en MessagesController (cuota por tenant/usuario).

@@ -701,13 +701,24 @@ public static class NotificationTemplateSeedSource
             """,
             Variables:
             [
-                ("title", VariableType.String, true, null, "Título del recordatorio (con el sufijo de pospuesto si aplica)."),
-                ("body", VariableType.String, true, null, "Cuerpo del usuario, o la hora del ancla en su zona horaria."),
+                (
+                    "title",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Título del recordatorio (con el sufijo de pospuesto si aplica)."
+                ),
+                (
+                    "body",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Cuerpo del usuario, o la hora del ancla en su zona horaria."
+                ),
                 ("category", VariableType.String, true, "General", "General | Calendar | Task | Note."),
                 ("snooze_count", VariableType.Number, true, "0", "Cuántas veces se pospuso."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
                 ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
             ]
         );
-
 }

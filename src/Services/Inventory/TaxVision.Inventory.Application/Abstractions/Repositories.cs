@@ -46,7 +46,11 @@ public interface IItemSupplierRepository
 
     Task<ItemSupplier?> GetAsync(Guid tenantId, Guid catalogItemId, Guid supplierId, CancellationToken ct = default);
 
-    Task<IReadOnlyList<ItemSupplier>> ListByItemAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default);
+    Task<IReadOnlyList<ItemSupplier>> ListByItemAsync(
+        Guid tenantId,
+        Guid catalogItemId,
+        CancellationToken ct = default
+    );
 
     Task AddAsync(ItemSupplier link, CancellationToken ct = default);
 

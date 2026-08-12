@@ -11,7 +11,12 @@ using Wolverine;
 
 namespace TaxVision.Subscription.Application.Subscriptions.Commands;
 
-public sealed record ActivateFromOnboardingCommand(Guid OnboardingId, Guid TenantId, Guid PlanId, BillingCycle BillingCycle);
+public sealed record ActivateFromOnboardingCommand(
+    Guid OnboardingId,
+    Guid TenantId,
+    Guid PlanId,
+    BillingCycle BillingCycle
+);
 
 /// <summary>
 /// PayFlow (Fase 16) — receptor del <c>POST internal/subscriptions/activate-from-onboarding</c> que

@@ -16,7 +16,10 @@ public sealed class CategoryHandlerTests
     {
         var repo = new FakeCategoryRepository();
         var result = await CreateCategoryHandler.Handle(
-            new CreateCategoryCommand(Tenant, User, "Child", null, Guid.NewGuid()), repo, new FakeUnitOfWork(), CancellationToken.None
+            new CreateCategoryCommand(Tenant, User, "Child", null, Guid.NewGuid()),
+            repo,
+            new FakeUnitOfWork(),
+            CancellationToken.None
         );
         Assert.True(result.IsFailure);
         Assert.Equal(CatalogErrors.CategoryNotFound.Code, result.Error.Code);
@@ -28,7 +31,10 @@ public sealed class CategoryHandlerTests
         var repo = new FakeCategoryRepository();
         var uow = new FakeUnitOfWork();
         var result = await CreateCategoryHandler.Handle(
-            new CreateCategoryCommand(Tenant, User, "Services", "desc", null), repo, uow, CancellationToken.None
+            new CreateCategoryCommand(Tenant, User, "Services", "desc", null),
+            repo,
+            uow,
+            CancellationToken.None
         );
         Assert.True(result.IsSuccess);
         Assert.Equal("Services", result.Value.Name);
@@ -42,7 +48,12 @@ public sealed class CategoryHandlerTests
         var repo = new FakeCategoryRepository { HasChildrenResult = true };
         var cat = Category.Create(Tenant, User, "Parent", null, null, Now).Value;
         repo.Seed(cat);
-        var result = await DeleteCategoryHandler.Handle(new DeleteCategoryCommand(Tenant, cat.Id), repo, new FakeUnitOfWork(), CancellationToken.None);
+        var result = await DeleteCategoryHandler.Handle(
+            new DeleteCategoryCommand(Tenant, cat.Id),
+            repo,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
         Assert.True(result.IsFailure);
         Assert.Equal(CatalogErrors.CategoryHasChildren.Code, result.Error.Code);
     }
@@ -53,7 +64,12 @@ public sealed class CategoryHandlerTests
         var repo = new FakeCategoryRepository { HasChildrenResult = false };
         var cat = Category.Create(Tenant, User, "Leaf", null, null, Now).Value;
         repo.Seed(cat);
-        var result = await DeleteCategoryHandler.Handle(new DeleteCategoryCommand(Tenant, cat.Id), repo, new FakeUnitOfWork(), CancellationToken.None);
+        var result = await DeleteCategoryHandler.Handle(
+            new DeleteCategoryCommand(Tenant, cat.Id),
+            repo,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
         Assert.True(result.IsSuccess);
         Assert.True(cat.IsDeleted);
     }
@@ -64,7 +80,11 @@ public sealed class CategoryHandlerTests
         var repo = new FakeCategoryRepository();
         repo.Seed(Category.Create(Tenant, User, "A", null, null, Now).Value);
         repo.Seed(Category.Create(Tenant, User, "B", null, null, Now).Value);
-        var result = await ListCategoriesHandler.Handle(new ListCategoriesQuery(Tenant, false), repo, CancellationToken.None);
+        var result = await ListCategoriesHandler.Handle(
+            new ListCategoriesQuery(Tenant, false),
+            repo,
+            CancellationToken.None
+        );
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value.Count);
     }

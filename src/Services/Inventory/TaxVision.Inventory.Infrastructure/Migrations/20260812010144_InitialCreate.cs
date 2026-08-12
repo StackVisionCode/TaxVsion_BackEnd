@@ -25,12 +25,13 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                     IsPreferred = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ItemSuppliers", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "StockLevels",
@@ -45,12 +46,13 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                     IsTracked = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_StockLevels", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "StockMovements",
@@ -66,12 +68,13 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                     Notes = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
                     MovedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     MovedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_StockMovements", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "Suppliers",
@@ -90,60 +93,63 @@ namespace TaxVision.Inventory.Infrastructure.Migrations
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Suppliers", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ItemSuppliers_TenantId_SupplierId",
                 table: "ItemSuppliers",
-                columns: new[] { "TenantId", "SupplierId" });
+                columns: new[] { "TenantId", "SupplierId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_ItemSuppliers_Tenant_Item_Supplier",
                 table: "ItemSuppliers",
                 columns: new[] { "TenantId", "CatalogItemId", "SupplierId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_StockLevels_TenantId_IsTracked",
                 table: "StockLevels",
-                columns: new[] { "TenantId", "IsTracked" });
+                columns: new[] { "TenantId", "IsTracked" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_StockLevels_Tenant_CatalogItem",
                 table: "StockLevels",
                 columns: new[] { "TenantId", "CatalogItemId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_StockMovements_TenantId_CatalogItemId_MovedAtUtc",
                 table: "StockMovements",
-                columns: new[] { "TenantId", "CatalogItemId", "MovedAtUtc" });
+                columns: new[] { "TenantId", "CatalogItemId", "MovedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Suppliers_TenantId_IsActive",
                 table: "Suppliers",
-                columns: new[] { "TenantId", "IsActive" });
+                columns: new[] { "TenantId", "IsActive" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "ItemSuppliers");
+            migrationBuilder.DropTable(name: "ItemSuppliers");
 
-            migrationBuilder.DropTable(
-                name: "StockLevels");
+            migrationBuilder.DropTable(name: "StockLevels");
 
-            migrationBuilder.DropTable(
-                name: "StockMovements");
+            migrationBuilder.DropTable(name: "StockMovements");
 
-            migrationBuilder.DropTable(
-                name: "Suppliers");
+            migrationBuilder.DropTable(name: "Suppliers");
         }
     }
 }

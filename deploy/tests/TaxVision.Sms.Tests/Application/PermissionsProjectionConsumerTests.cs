@@ -29,8 +29,12 @@ public sealed class PermissionsProjectionConsumerTests
         };
 
         await UserRolesChangedPermissionsProjectionConsumer.Handle(
-            evt, users, uow, new FakeCorrelationContext(),
-            NullLogger<UserPermissionsProjection>.Instance, CancellationToken.None
+            evt,
+            users,
+            uow,
+            new FakeCorrelationContext(),
+            NullLogger<UserPermissionsProjection>.Instance,
+            CancellationToken.None
         );
 
         var stored = await users.GetAsync(Tenant, User);
@@ -56,8 +60,12 @@ public sealed class PermissionsProjectionConsumerTests
         };
 
         await UserRolesChangedPermissionsProjectionConsumer.Handle(
-            evt, users, new FakeUnitOfWork(), new FakeCorrelationContext(),
-            NullLogger<UserPermissionsProjection>.Instance, CancellationToken.None
+            evt,
+            users,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<UserPermissionsProjection>.Instance,
+            CancellationToken.None
         );
 
         var stored = await users.GetAsync(Tenant, User);
@@ -85,8 +93,13 @@ public sealed class PermissionsProjectionConsumerTests
         };
 
         await RolePermissionsChangedPermissionsProjectionConsumer.Handle(
-            evt, roles, users, new FakeUnitOfWork(), new FakeCorrelationContext(),
-            NullLogger<RolePermissionsProjection>.Instance, CancellationToken.None
+            evt,
+            roles,
+            users,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<RolePermissionsProjection>.Instance,
+            CancellationToken.None
         );
 
         var stored = await users.GetAsync(Tenant, User);

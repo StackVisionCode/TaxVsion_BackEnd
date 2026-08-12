@@ -149,7 +149,8 @@ public sealed class InfobipSmsProviderTests
     public void ParseInbound_reads_from_and_keyword()
     {
         var provider = Build(new CapturingHandler());
-        var payload = "{\"results\":[{\"from\":\"+18095551234\",\"to\":\"12345\",\"text\":\"STOP\",\"messageId\":\"mo-1\"}]}";
+        var payload =
+            "{\"results\":[{\"from\":\"+18095551234\",\"to\":\"12345\",\"text\":\"STOP\",\"messageId\":\"mo-1\"}]}";
 
         var result = provider.ParseInbound(payload);
 

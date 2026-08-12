@@ -780,13 +780,49 @@ public static class PermissionCatalog
             false
         ),
         // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).
-        new(new Guid("a1000000-0000-0000-0000-000000000159"), CatalogRead, "catalog", "Ver el catálogo de productos/servicios", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000160"), CatalogWrite, "catalog", "Crear/editar productos, servicios y categorías", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000161"), CatalogDelete, "catalog", "Borrar productos, servicios y categorías", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000159"),
+            CatalogRead,
+            "catalog",
+            "Ver el catálogo de productos/servicios",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000160"),
+            CatalogWrite,
+            "catalog",
+            "Crear/editar productos, servicios y categorías",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000161"),
+            CatalogDelete,
+            "catalog",
+            "Borrar productos, servicios y categorías",
+            false
+        ),
         // Inventory
-        new(new Guid("a1000000-0000-0000-0000-000000000162"), InventoryRead, "inventory", "Ver stock, proveedores y movimientos", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000163"), InventoryWrite, "inventory", "Gestionar proveedores y umbrales de stock", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000164"), InventoryAdjust, "inventory", "Ajustar stock (registrar movimientos)", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000162"),
+            InventoryRead,
+            "inventory",
+            "Ver stock, proveedores y movimientos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000163"),
+            InventoryWrite,
+            "inventory",
+            "Gestionar proveedores y umbrales de stock",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000164"),
+            InventoryAdjust,
+            "inventory",
+            "Ajustar stock (registrar movimientos)",
+            false
+        ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000029"),
             SignatureRequestCreate,

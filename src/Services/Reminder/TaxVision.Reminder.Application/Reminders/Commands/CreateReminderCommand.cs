@@ -108,7 +108,11 @@ public static class CreateReminderHandler
         return Result.Success(ReminderResponse.From(reminder));
     }
 
-    private static Result<ReminderAggregate> Build(CreateReminderCommand command, RequestKey requestKey, DateTime nowUtc)
+    private static Result<ReminderAggregate> Build(
+        CreateReminderCommand command,
+        RequestKey requestKey,
+        DateTime nowUtc
+    )
     {
         var subject = ReminderSubject.Create(command.Title, command.Body);
         if (subject.IsFailure)

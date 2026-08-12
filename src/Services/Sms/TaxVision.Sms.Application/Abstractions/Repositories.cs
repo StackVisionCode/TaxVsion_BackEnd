@@ -45,7 +45,12 @@ public interface ISmsOptOutRepository
 public interface IProcessedWebhookRepository
 {
     /// <summary>Dedup anti-replay por `(providerCode, providerMessageId, eventType)`.</summary>
-    Task<bool> ExistsAsync(string providerCode, string providerMessageId, string eventType, CancellationToken ct = default);
+    Task<bool> ExistsAsync(
+        string providerCode,
+        string providerMessageId,
+        string eventType,
+        CancellationToken ct = default
+    );
 
     Task AddAsync(ProcessedWebhook processed, CancellationToken ct = default);
 }

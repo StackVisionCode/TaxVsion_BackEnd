@@ -32,29 +32,50 @@ internal sealed class FakeMessageBus : IMessageBus
 
     public IDestinationEndpoint EndpointFor(Uri uri) => throw new NotImplementedException();
 
-    public Task InvokeForTenantAsync(string tenantId, object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public Task InvokeForTenantAsync(
+        string tenantId,
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotImplementedException();
 
-    public Task<T> InvokeForTenantAsync<T>(string tenantId, object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public Task<T> InvokeForTenantAsync<T>(
+        string tenantId,
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotImplementedException();
 
     public string? TenantId { get; set; }
 
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotImplementedException();
 
-    public Task InvokeAsync(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public Task InvokeAsync(
+        object message,
+        DeliveryOptions options,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotImplementedException();
 
     public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public Task<T> InvokeAsync<T>(
+        object message,
+        DeliveryOptions options,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => throw new NotImplementedException();
 
-    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(object message, CancellationToken cancellation = default) =>
-        throw new NotImplementedException();
+    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
+        object message,
+        CancellationToken cancellation = default
+    ) => throw new NotImplementedException();
 
-    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(object message, DeliveryOptions options, CancellationToken cancellation = default) =>
-        throw new NotImplementedException();
+    public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
+        object message,
+        DeliveryOptions options,
+        CancellationToken cancellation = default
+    ) => throw new NotImplementedException();
 }

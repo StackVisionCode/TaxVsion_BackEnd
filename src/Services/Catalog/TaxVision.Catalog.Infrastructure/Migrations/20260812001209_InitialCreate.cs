@@ -35,12 +35,13 @@ namespace TaxVision.Catalog.Infrastructure.Migrations
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CatalogItems", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "Categories",
@@ -56,7 +57,7 @@ namespace TaxVision.Catalog.Infrastructure.Migrations
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
                     DeletedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -66,8 +67,10 @@ namespace TaxVision.Catalog.Infrastructure.Migrations
                         column: x => x.ParentCategoryId,
                         principalTable: "Categories",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "CatalogItemAttributes",
@@ -77,7 +80,7 @@ namespace TaxVision.Catalog.Infrastructure.Migrations
                     CatalogItemId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Key = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     Value = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: false),
-                    ValueType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true)
+                    ValueType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
                 },
                 constraints: table =>
                 {
@@ -87,58 +90,64 @@ namespace TaxVision.Catalog.Infrastructure.Migrations
                         column: x => x.CatalogItemId,
                         principalTable: "CatalogItems",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CatalogItemAttributes_CatalogItemId_Key",
                 table: "CatalogItemAttributes",
-                columns: new[] { "CatalogItemId", "Key" });
+                columns: new[] { "CatalogItemId", "Key" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CatalogItems_TenantId_CategoryId",
                 table: "CatalogItems",
-                columns: new[] { "TenantId", "CategoryId" });
+                columns: new[] { "TenantId", "CategoryId" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CatalogItems_TenantId_IsActive",
                 table: "CatalogItems",
-                columns: new[] { "TenantId", "IsActive" });
+                columns: new[] { "TenantId", "IsActive" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_CatalogItems_Tenant_Sku",
                 table: "CatalogItems",
                 columns: new[] { "TenantId", "Sku" },
                 unique: true,
-                filter: "[Sku] IS NOT NULL AND [IsDeleted] = 0");
+                filter: "[Sku] IS NOT NULL AND [IsDeleted] = 0"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Categories_ParentCategoryId",
                 table: "Categories",
-                column: "ParentCategoryId");
+                column: "ParentCategoryId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Categories_TenantId_IsActive",
                 table: "Categories",
-                columns: new[] { "TenantId", "IsActive" });
+                columns: new[] { "TenantId", "IsActive" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Categories_TenantId_ParentCategoryId",
                 table: "Categories",
-                columns: new[] { "TenantId", "ParentCategoryId" });
+                columns: new[] { "TenantId", "ParentCategoryId" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CatalogItemAttributes");
+            migrationBuilder.DropTable(name: "CatalogItemAttributes");
 
-            migrationBuilder.DropTable(
-                name: "Categories");
+            migrationBuilder.DropTable(name: "Categories");
 
-            migrationBuilder.DropTable(
-                name: "CatalogItems");
+            migrationBuilder.DropTable(name: "CatalogItems");
         }
     }
 }

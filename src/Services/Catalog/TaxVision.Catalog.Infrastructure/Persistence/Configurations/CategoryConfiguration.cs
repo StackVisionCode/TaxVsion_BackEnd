@@ -21,10 +21,7 @@ public sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
         builder.Property(c => c.UpdatedAtUtc).IsRequired();
 
         // Árbol self-reference (Restrict: no borrar un padre con hijos vía cascada).
-        builder.HasOne<Category>()
-            .WithMany()
-            .HasForeignKey(c => c.ParentCategoryId)
-            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Category>().WithMany().HasForeignKey(c => c.ParentCategoryId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(c => new { c.TenantId, c.ParentCategoryId });
         builder.HasIndex(c => new { c.TenantId, c.IsActive });

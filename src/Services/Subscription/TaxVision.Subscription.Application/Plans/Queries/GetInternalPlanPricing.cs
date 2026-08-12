@@ -40,10 +40,7 @@ public static class GetInternalPlanPricingHandler
         var price = PlanPricing.ResolveBaseSubscriptionPrice(version, query.BillingCycle);
         if (price is null)
             return Result.Failure<InternalPlanPricingResponse>(
-                new Error(
-                    "Subscription.Plan.NoPriceForCycle",
-                    $"The plan has no base {query.BillingCycle} price tier."
-                )
+                new Error("Subscription.Plan.NoPriceForCycle", $"The plan has no base {query.BillingCycle} price tier.")
             );
 
         return Result.Success(

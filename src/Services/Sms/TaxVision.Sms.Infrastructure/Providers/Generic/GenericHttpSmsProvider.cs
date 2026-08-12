@@ -74,21 +74,31 @@ public sealed class GenericHttpSmsProvider(
 
             if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning("Generic SMS provider returned {StatusCode} for {To}.", (int)response.StatusCode, request.To);
+                logger.LogWarning(
+                    "Generic SMS provider returned {StatusCode} for {To}.",
+                    (int)response.StatusCode,
+                    request.To
+                );
                 return Result.Success(new SmsSendResult(false, null, SmsCanonicalError(response.StatusCode), payload));
             }
 
-            var providerMessageId = ExtractString(payload, config.ResponseMap.ProviderMessageIdPath) ?? Guid.NewGuid().ToString("N");
+            var providerMessageId =
+                ExtractString(payload, config.ResponseMap.ProviderMessageIdPath) ?? Guid.NewGuid().ToString("N");
             return Result.Success(new SmsSendResult(true, providerMessageId, null, null));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or BrokenCircuitException)
         {
             logger.LogWarning(ex, "Generic SMS provider request failed for {To}.", request.To);
-            return Result.Success(new SmsSendResult(false, null, "providerUnavailable", "Could not reach the SMS provider."));
+            return Result.Success(
+                new SmsSendResult(false, null, "providerUnavailable", "Could not reach the SMS provider.")
+            );
         }
     }
 
-    public async Task<Result<IReadOnlyList<SmsSendResult>>> SendBatchAsync(IReadOnlyList<SmsSendRequest> requests, CancellationToken ct = default)
+    public async Task<Result<IReadOnlyList<SmsSendResult>>> SendBatchAsync(
+        IReadOnlyList<SmsSendRequest> requests,
+        CancellationToken ct = default
+    )
     {
         // Sin bulk nativo configurado: loop por mensaje.
         var results = new List<SmsSendResult>(requests.Count);
@@ -97,7 +107,12 @@ public sealed class GenericHttpSmsProvider(
         return Result.Success<IReadOnlyList<SmsSendResult>>(results);
     }
 
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "")
+    public Result<SmsSignatureCheck> VerifySignature(
+        string rawPayload,
+        string signatureHeader,
+        string secret,
+        string requestUrl = ""
+    )
     {
         if (string.IsNullOrEmpty(secret))
             return Result.Success(new SmsSignatureCheck(false, "No webhook secret configured."));
@@ -148,7 +163,9 @@ public sealed class GenericHttpSmsProvider(
             _ => SmsInboundKeyword.Unknown,
         };
         var providerMessageId = ExtractString(rawPayload, w.ProviderMessageIdPath) ?? Guid.NewGuid().ToString("N");
-        return Result.Success(new SmsInboundMessage(from!, keyword, text.Trim(), "inbound", providerMessageId, null, null));
+        return Result.Success(
+            new SmsInboundMessage(from!, keyword, text.Trim(), "inbound", providerMessageId, null, null)
+        );
     }
 
     private static string BuildUrl(SmsProviderConfig config) =>

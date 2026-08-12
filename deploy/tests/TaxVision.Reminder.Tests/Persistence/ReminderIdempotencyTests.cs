@@ -37,7 +37,10 @@ public sealed class ReminderIdempotencyTests
     }
 
     private static ReminderDbContext CreateContext() =>
-        new(new DbContextOptionsBuilder<ReminderDbContext>().UseSqlServer(ConnectionString).Options, new NoTenantContext());
+        new(
+            new DbContextOptionsBuilder<ReminderDbContext>().UseSqlServer(ConnectionString).Options,
+            new NoTenantContext()
+        );
 
     private static ReminderAggregate NewReminder(Guid tenantId, string requestKey)
     {

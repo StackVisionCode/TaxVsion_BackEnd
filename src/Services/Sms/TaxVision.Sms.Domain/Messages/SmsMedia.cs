@@ -18,7 +18,14 @@ public sealed class SmsMedia : BaseEntity
 
     private SmsMedia() { }
 
-    internal SmsMedia(Guid smsMessageId, string url, string contentType, string? fileName, long? sizeBytes, DateTime nowUtc)
+    internal SmsMedia(
+        Guid smsMessageId,
+        string url,
+        string contentType,
+        string? fileName,
+        long? sizeBytes,
+        DateTime nowUtc
+    )
     {
         SmsMessageId = smsMessageId;
         Url = url;
