@@ -18,8 +18,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "MinPlanTier", "Module", "PlatformOnly" },
                 values: new object[,]
                 {
-                    { new Guid("a1000000-0000-0000-0000-000000000159"), "TenantEmployee,TenantAdmin,PlatformAdmin", "reminders.read", "Ver los recordatorios propios", true, false, false, 0, "reminders", false },
-                    { new Guid("a1000000-0000-0000-0000-000000000160"), "TenantEmployee,TenantAdmin,PlatformAdmin", "reminders.write", "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios", true, false, false, 0, "reminders", false }
+                    { new Guid("a1000000-0000-0000-0000-000000000165"), "TenantEmployee,TenantAdmin,PlatformAdmin", "reminders.read", "Ver los recordatorios propios", true, false, false, 0, "reminders", false },
+                    { new Guid("a1000000-0000-0000-0000-000000000166"), "TenantEmployee,TenantAdmin,PlatformAdmin", "reminders.write", "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios", true, false, false, 0, "reminders", false }
                 });
         }
 
@@ -29,12 +29,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000159"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000165"));
 
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000160"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000166"));
         }
     }
 }

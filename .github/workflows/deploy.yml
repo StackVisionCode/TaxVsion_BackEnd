@@ -110,6 +110,10 @@ jobs:
           # Reminder (servicio nuevo, ago-2026). Mismo contrato que Sms: docker-compose.yml la
           # exige con :? en reminder-api y en el servicio migrations.
           REMINDER_DB_CONNECTION=${{ secrets.REMINDER_DB_CONNECTION }}
+          # Catalog e Inventory (servicios nuevos, ago-2026). Mismo contrato que Sms/Reminder:
+          # docker-compose.yml las exige con :? en catalog-api/inventory-api y en migrations.
+          CATALOG_DB_CONNECTION=${{ secrets.CATALOG_DB_CONNECTION }}
+          INVENTORY_DB_CONNECTION=${{ secrets.INVENTORY_DB_CONNECTION }}
           MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
           # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
           # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.

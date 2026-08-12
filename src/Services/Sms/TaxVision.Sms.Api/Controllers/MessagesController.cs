@@ -4,6 +4,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -36,6 +37,7 @@ public sealed class MessagesController(IMessageBus bus, ITenantContext tenant, I
 
     [HttpPost("messages")]
     [HasPermission(SmsPermissions.Send)]
+    [RateLimit("sms.h.send")]
     [ProducesResponseType<SendSmsBatchResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Send([FromBody] SendMessagesRequest request, CancellationToken ct)
     {

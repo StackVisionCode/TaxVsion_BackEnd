@@ -25,6 +25,22 @@ public sealed class SmsProviderRouterTests
     }
 
     [Fact]
+    public void Blank_order_entries_fall_back_to_default_provider()
+    {
+        // Los slots de env vacíos (Sms__ProviderOrder__0/1/2) llegan como ["","",""] — deben ignorarse
+        // y caer al DefaultProvider, no dejar la ruta vacía.
+        var router = Build(
+            new SmsOptions { DefaultProvider = "twilio", ProviderOrder = ["", "", ""] },
+            "twilio", "infobip"
+        );
+
+        var order = router.ResolveOrder();
+
+        Assert.Single(order);
+        Assert.Equal("twilio", order[0].Code);
+    }
+
+    [Fact]
     public void Provider_order_is_honored_in_sequence()
     {
         var router = Build(

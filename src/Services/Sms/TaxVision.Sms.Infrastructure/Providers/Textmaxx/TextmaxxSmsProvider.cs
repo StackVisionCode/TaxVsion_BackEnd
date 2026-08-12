@@ -110,7 +110,7 @@ public sealed class TextmaxxSmsProvider(
         return Result.Success<IReadOnlyList<SmsSendResult>>(results);
     }
 
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret)
+    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "")
     {
         // Textmaxx legado NO firmaba webhooks. Si se pone un proxy firmante delante y se configura
         // Webhook.Secret, se valida por HMAC-SHA256; sin secreto, se rechaza (fail-closed).

@@ -400,7 +400,6 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.OwnsMany("TaxVision.Billing.Domain.Invoices.InvoiceAdjustmentLine", "Adjustments", b1 =>
                         {
                             b1.Property<Guid>("Id")
-                                .ValueGeneratedOnAdd()
                                 .HasColumnType("uniqueidentifier");
 
                             b1.Property<string>("Amount")
@@ -440,6 +439,9 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         {
                             b1.Property<Guid>("Id")
                                 .ValueGeneratedOnAdd()
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<Guid?>("CatalogItemId")
                                 .HasColumnType("uniqueidentifier");
 
                             b1.Property<string>("Description")

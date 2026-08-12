@@ -26,8 +26,15 @@ public interface ISmsProvider
         CancellationToken ct = default
     );
 
-    /// <summary>Verifica la firma (HMAC/etc.) del webhook con el secreto del proveedor.</summary>
-    Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret);
+    /// <summary>Verifica la firma del webhook. <paramref name="requestUrl"/> es la URL pública exacta a la
+    /// que el proveedor hizo POST — algunos esquemas (ej. Twilio: HMAC-SHA1 sobre URL + params ordenados)
+    /// la necesitan; los que firman solo el body la ignoran. Default vacío para no romper llamadas legadas.</summary>
+    Result<SmsSignatureCheck> VerifySignature(
+        string rawPayload,
+        string signatureHeader,
+        string secret,
+        string requestUrl = ""
+    );
 
     /// <summary>Transforma el DLR/estado del proveedor al modelo canónico.</summary>
     Result<SmsDeliveryUpdate> ParseDeliveryReceipt(string rawPayload);

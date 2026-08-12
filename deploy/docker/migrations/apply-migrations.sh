@@ -130,4 +130,16 @@ apply_migration \
   "src/Services/Reminder/TaxVision.Reminder.Api/TaxVision.Reminder.Api.csproj" \
   "$REMINDER_DB_CONNECTION"
 
+apply_migration \
+  "Catalog" \
+  "src/Services/Catalog/TaxVision.Catalog.Infrastructure/TaxVision.Catalog.Infrastructure.csproj" \
+  "src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" \
+  "$CATALOG_DB_CONNECTION"
+
+apply_migration \
+  "Inventory" \
+  "src/Services/Inventory/TaxVision.Inventory.Infrastructure/TaxVision.Inventory.Infrastructure.csproj" \
+  "src/Services/Inventory/TaxVision.Inventory.Api/TaxVision.Inventory.Api.csproj" \
+  "$INVENTORY_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

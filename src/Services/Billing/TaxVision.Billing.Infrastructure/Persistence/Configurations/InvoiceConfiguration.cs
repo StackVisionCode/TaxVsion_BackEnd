@@ -72,6 +72,8 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
                 lb.Property(l => l.UnitAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
                 lb.Property(l => l.TaxAmount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
                 lb.Property(l => l.LineTotal).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
+                // Referencia débil al ítem del catálogo (sin FK cross-service). Nullable.
+                lb.Property(l => l.CatalogItemId);
             }
         );
 

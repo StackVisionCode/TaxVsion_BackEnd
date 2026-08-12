@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Sms.Domain.Messages;
 using TaxVision.Sms.Domain.OptOut;
 using TaxVision.Sms.Domain.Permissions;
+using TaxVision.Sms.Domain.RateLimiting;
 using TaxVision.Sms.Domain.Webhooks;
 
 namespace TaxVision.Sms.Infrastructure.Persistence;
@@ -28,6 +29,9 @@ public sealed class SmsDbContext(DbContextOptions<SmsDbContext> options, ITenant
     // ProjectionPermissionsSource para autorizar [HasPermission] sin llamar a Auth en el hot path.
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de plan-code (mantenida por los eventos de Subscription).
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

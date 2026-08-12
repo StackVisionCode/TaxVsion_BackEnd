@@ -103,6 +103,20 @@
     <Project Path="src/Services/Reminder/TaxVision.Reminder.Domain/TaxVision.Reminder.Domain.csproj" />
     <Project Path="src/Services/Reminder/TaxVision.Reminder.Infrastructure/TaxVision.Reminder.Infrastructure.csproj" />
   </Folder>
+  <!-- CatalogService -->
+  <Folder Name="/src/Services/Catalog/">
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" />
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Application/TaxVision.Catalog.Application.csproj" />
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Domain/TaxVision.Catalog.Domain.csproj" />
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Infrastructure/TaxVision.Catalog.Infrastructure.csproj" />
+  </Folder>
+  <!-- InventoryService -->
+  <Folder Name="/src/Services/Inventory/">
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Api/TaxVision.Inventory.Api.csproj" />
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Application/TaxVision.Inventory.Application.csproj" />
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Domain/TaxVision.Inventory.Domain.csproj" />
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Infrastructure/TaxVision.Inventory.Infrastructure.csproj" />
+  </Folder>
   <!-- PostmasterService -->
   <Folder Name="/src/Services/Postmaster/">
     <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Api/TaxVision.Postmaster.Api.csproj" />
@@ -150,6 +164,8 @@
     <Project Path="deploy/tests/TaxVision.BuildingBlocks.Tests/TaxVision.BuildingBlocks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Billing.Tests/TaxVision.Billing.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Catalog.Tests/TaxVision.Catalog.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Inventory.Tests/TaxVision.Inventory.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Documents.Tests/TaxVision.Documents.Tests.csproj" />

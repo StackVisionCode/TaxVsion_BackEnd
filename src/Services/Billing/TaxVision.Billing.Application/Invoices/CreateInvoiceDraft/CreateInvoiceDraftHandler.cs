@@ -51,7 +51,7 @@ public static class CreateInvoiceDraftHandler
         }
 
         var lines = command
-            .Lines.Select(l => new DraftInvoiceLine(l.Description, l.Quantity, l.UnitAmountCents, l.TaxBasisPoints))
+            .Lines.Select(l => new DraftInvoiceLine(l.Description, l.Quantity, l.UnitAmountCents, l.TaxBasisPoints, l.CatalogItemId))
             .ToList();
 
         var result = Invoice.CreateDraft(

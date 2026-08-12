@@ -71,7 +71,7 @@ public sealed class FakeSmsProvider(IOptions<SmsProvidersOptions> options, ILogg
     }
 
     // Dev: la firma siempre es válida (no hay proveedor real firmando).
-    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret) =>
+    public Result<SmsSignatureCheck> VerifySignature(string rawPayload, string signatureHeader, string secret, string requestUrl = "") =>
         Result.Success(new SmsSignatureCheck(true, null));
 
     public Result<SmsDeliveryUpdate> ParseDeliveryReceipt(string rawPayload)

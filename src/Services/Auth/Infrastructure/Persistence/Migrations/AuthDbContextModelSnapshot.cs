@@ -1660,6 +1660,84 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000159"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "catalog.read",
+                            Description = "Ver el catálogo de productos/servicios",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "catalog",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000160"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "catalog.write",
+                            Description = "Crear/editar productos, servicios y categorías",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "catalog",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000161"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "catalog.delete",
+                            Description = "Borrar productos, servicios y categorías",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "catalog",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000162"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "inventory.read",
+                            Description = "Ver stock, proveedores y movimientos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "inventory",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000163"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "inventory.write",
+                            Description = "Gestionar proveedores y umbrales de stock",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "inventory",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000164"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "inventory.adjust",
+                            Description = "Ajustar stock (registrar movimientos)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "inventory",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000029"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "signature.request.create",
@@ -3025,7 +3103,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000159"),
+                            Id = new Guid("a1000000-0000-0000-0000-000000000165"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "reminders.read",
                             Description = "Ver los recordatorios propios",
@@ -3038,7 +3116,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000160"),
+                            Id = new Guid("a1000000-0000-0000-0000-000000000166"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "reminders.write",
                             Description = "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios",
