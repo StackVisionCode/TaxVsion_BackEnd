@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,7 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 
     [HttpPost]
     [HasPermission(InventoryPermissions.Write)]
+    [RateLimit("inventory.g.write")]
     [ProducesResponseType<SupplierDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] SupplierRequest r, CancellationToken ct)
     {
@@ -35,6 +37,7 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 
     [HttpGet]
     [HasPermission(InventoryPermissions.Read)]
+    [RateLimit("inventory.f.read")]
     [ProducesResponseType<IReadOnlyList<SupplierDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] bool activeOnly = false, CancellationToken ct = default)
     {
@@ -44,6 +47,7 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 
     [HttpGet("{id:guid}")]
     [HasPermission(InventoryPermissions.Read)]
+    [RateLimit("inventory.f.read")]
     [ProducesResponseType<SupplierDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
@@ -53,6 +57,7 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 
     [HttpPut("{id:guid}")]
     [HasPermission(InventoryPermissions.Write)]
+    [RateLimit("inventory.g.write")]
     [ProducesResponseType<SupplierDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] SupplierRequest r, CancellationToken ct)
     {
@@ -62,6 +67,7 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 
     [HttpPut("{id:guid}/active")]
     [HasPermission(InventoryPermissions.Write)]
+    [RateLimit("inventory.g.write")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest r, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new SetSupplierActiveCommand(tenant.TenantId, id, r.IsActive), ct);
@@ -70,6 +76,7 @@ public sealed class SuppliersController(IMessageBus bus, ITenantContext tenant) 
 
     [HttpDelete("{id:guid}")]
     [HasPermission(InventoryPermissions.Write)]
+    [RateLimit("inventory.g.write")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new DeleteSupplierCommand(tenant.TenantId, id), ct);
@@ -87,6 +94,7 @@ public sealed class ItemSuppliersController(IMessageBus bus, ITenantContext tena
 
     [HttpPost]
     [HasPermission(InventoryPermissions.Write)]
+    [RateLimit("inventory.g.write")]
     [ProducesResponseType<ItemSupplierDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Upsert([FromBody] UpsertRequest r, CancellationToken ct)
     {
@@ -98,6 +106,7 @@ public sealed class ItemSuppliersController(IMessageBus bus, ITenantContext tena
 
     [HttpGet]
     [HasPermission(InventoryPermissions.Read)]
+    [RateLimit("inventory.f.read")]
     [ProducesResponseType<IReadOnlyList<ItemSupplierDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] Guid catalogItemId, CancellationToken ct)
     {
@@ -107,6 +116,7 @@ public sealed class ItemSuppliersController(IMessageBus bus, ITenantContext tena
 
     [HttpDelete("{id:guid}")]
     [HasPermission(InventoryPermissions.Write)]
+    [RateLimit("inventory.g.write")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new DeleteItemSupplierCommand(tenant.TenantId, id), ct);

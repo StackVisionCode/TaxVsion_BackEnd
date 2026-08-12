@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +29,7 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpPost("{catalogItemId:guid}/adjust")]
     [HasPermission(InventoryPermissions.Adjust)]
+    [RateLimit("inventory.g.adjust")]
     [ProducesResponseType<StockLevelDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Adjust(Guid catalogItemId, [FromBody] AdjustRequest request, CancellationToken ct)
     {
@@ -39,6 +41,7 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpPut("{catalogItemId:guid}/thresholds")]
     [HasPermission(InventoryPermissions.Write)]
+    [RateLimit("inventory.g.write")]
     [ProducesResponseType<StockLevelDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SetThresholds(Guid catalogItemId, [FromBody] ThresholdsRequest request, CancellationToken ct)
     {
@@ -50,6 +53,7 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpGet("movements")]
     [HasPermission(InventoryPermissions.Read)]
+    [RateLimit("inventory.f.read")]
     [ProducesResponseType<PagedResult<StockMovementDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Movements([FromQuery] Guid? catalogItemId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
     {
@@ -59,6 +63,7 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpGet("{catalogItemId:guid}")]
     [HasPermission(InventoryPermissions.Read)]
+    [RateLimit("inventory.f.read")]
     [ProducesResponseType<StockLevelDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid catalogItemId, CancellationToken ct)
     {
@@ -68,6 +73,7 @@ public sealed class StockController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpGet]
     [HasPermission(InventoryPermissions.Read)]
+    [RateLimit("inventory.f.read")]
     [ProducesResponseType<PagedResult<StockLevelDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] bool lowStockOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
     {

@@ -16,6 +16,10 @@ public sealed class InvoiceLineItem : BaseEntity
     public Money TaxAmount { get; private set; } = null!;
     public Money LineTotal { get; private set; } = null!;
 
+    /// <summary>Referencia DÉBIL (sin FK cross-service) al ítem del catálogo del que se snapshoteó esta
+    /// línea, si vino de Catalog. Solo trazabilidad — el precio/desc quedan congelados acá igual.</summary>
+    public Guid? CatalogItemId { get; private set; }
+
     private InvoiceLineItem() { }
 
     // NOTE (scaffold B1): fábrica y validación completas se implementan en B2.
@@ -26,7 +30,8 @@ public sealed class InvoiceLineItem : BaseEntity
         Money unitAmount,
         int taxBasisPoints,
         Money taxAmount,
-        Money lineTotal
+        Money lineTotal,
+        Guid? catalogItemId = null
     )
     {
         InvoiceId = invoiceId;
@@ -36,5 +41,6 @@ public sealed class InvoiceLineItem : BaseEntity
         TaxBasisPoints = taxBasisPoints;
         TaxAmount = taxAmount;
         LineTotal = lineTotal;
+        CatalogItemId = catalogItemId;
     }
 }

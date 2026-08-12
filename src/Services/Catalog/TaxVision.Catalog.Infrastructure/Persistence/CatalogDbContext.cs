@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Catalog.Domain.Categories;
 using TaxVision.Catalog.Domain.Items;
 using TaxVision.Catalog.Domain.Permissions;
+using TaxVision.Catalog.Domain.RateLimiting;
 
 namespace TaxVision.Catalog.Infrastructure.Persistence;
 
@@ -25,6 +26,9 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options,
     // RBAC Fase 7 — proyección local de permisos (mantenida por los eventos de Auth).
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de plan-code (mantenida por los eventos de Subscription).
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

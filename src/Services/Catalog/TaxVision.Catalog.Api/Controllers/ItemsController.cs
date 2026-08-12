@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -61,6 +62,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpPost]
     [HasPermission(CatalogPermissions.Write)]
+    [RateLimit("catalog.g.write")]
     [ProducesResponseType<CatalogItemDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateItemRequest request, CancellationToken ct)
     {
@@ -77,6 +79,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpGet]
     [HasPermission(CatalogPermissions.Read)]
+    [RateLimit("catalog.f.read")]
     [ProducesResponseType<PagedResult<CatalogItemDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] Guid? categoryId,
@@ -96,6 +99,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpGet("{id:guid}")]
     [HasPermission(CatalogPermissions.Read)]
+    [RateLimit("catalog.f.read")]
     [ProducesResponseType<CatalogItemDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
@@ -105,6 +109,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpPut("{id:guid}")]
     [HasPermission(CatalogPermissions.Write)]
+    [RateLimit("catalog.g.write")]
     [ProducesResponseType<CatalogItemDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateItemRequest request, CancellationToken ct)
     {
@@ -120,6 +125,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpPut("{id:guid}/price")]
     [HasPermission(CatalogPermissions.Write)]
+    [RateLimit("catalog.g.write")]
     [ProducesResponseType<CatalogItemDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ChangePrice(Guid id, [FromBody] ChangePriceRequest request, CancellationToken ct)
     {
@@ -132,6 +138,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpPut("{id:guid}/active")]
     [HasPermission(CatalogPermissions.Write)]
+    [RateLimit("catalog.g.write")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new SetCatalogItemActiveCommand(tenant.TenantId, id, request.IsActive), ct);
@@ -140,6 +147,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
 
     [HttpDelete("{id:guid}")]
     [HasPermission(CatalogPermissions.Delete)]
+    [RateLimit("catalog.g.write")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new DeleteCatalogItemCommand(tenant.TenantId, id), ct);

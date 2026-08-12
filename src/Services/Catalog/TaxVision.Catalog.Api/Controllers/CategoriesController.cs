@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,7 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
 
     [HttpPost]
     [HasPermission(CatalogPermissions.Write)]
+    [RateLimit("catalog.g.write")]
     [ProducesResponseType<CategoryDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create([FromBody] CreateCategoryRequest request, CancellationToken ct)
     {
@@ -41,6 +43,7 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
 
     [HttpGet]
     [HasPermission(CatalogPermissions.Read)]
+    [RateLimit("catalog.f.read")]
     [ProducesResponseType<IReadOnlyList<CategoryDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] bool activeOnly = false, CancellationToken ct = default)
     {
@@ -53,6 +56,7 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
 
     [HttpGet("{id:guid}")]
     [HasPermission(CatalogPermissions.Read)]
+    [RateLimit("catalog.f.read")]
     [ProducesResponseType<CategoryDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
@@ -62,6 +66,7 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
 
     [HttpPut("{id:guid}")]
     [HasPermission(CatalogPermissions.Write)]
+    [RateLimit("catalog.g.write")]
     [ProducesResponseType<CategoryDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCategoryRequest request, CancellationToken ct)
     {
@@ -74,6 +79,7 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
 
     [HttpPut("{id:guid}/active")]
     [HasPermission(CatalogPermissions.Write)]
+    [RateLimit("catalog.g.write")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new SetCategoryActiveCommand(tenant.TenantId, id, request.IsActive), ct);
@@ -82,6 +88,7 @@ public sealed class CategoriesController(IMessageBus bus, ITenantContext tenant)
 
     [HttpDelete("{id:guid}")]
     [HasPermission(CatalogPermissions.Delete)]
+    [RateLimit("catalog.g.write")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result>(new DeleteCategoryCommand(tenant.TenantId, id), ct);

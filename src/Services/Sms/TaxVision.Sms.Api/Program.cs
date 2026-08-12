@@ -9,11 +9,13 @@ using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Middleware;
 using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Sms.Application;
 using TaxVision.Sms.Infrastructure;
 using TaxVision.Sms.Infrastructure.Persistence;
@@ -47,6 +49,35 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
+// Rate limiting tiered — [RateLimit("sms.h.send")] en MessagesController (cuota por tenant/usuario).
+// AddTieredRateLimiting auto-registra el contador Redis desde IConnectionMultiplexer, que hay que
+// registrar explícito (AddRedisCache solo aporta IDistributedCache). La escala por plan (tier-aware,
+// TenantPlanCodeProjection) llega en la Fase 2; hoy hace fail-open a la cuota base. Los webhooks
+// (WebhooksController) quedan fuera: son anónimos y los cubre el gate por-IP del Gateway.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+
+// RateLimit Fase 2 — escala por plan. Flag OFF por default (fail-open a la cuota base sin escalar,
+// vía Null*Reader del TryAdd de AddTieredRateLimiting) hasta que un entorno provisione las credenciales
+// M2M (ServiceAuthClient) + la URL del catálogo de Subscription y lo encienda. Debe ir ANTES de
+// AddTieredRateLimiting para ganar el registro sobre los defaults Null.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+builder.Services.AddTieredRateLimiting();
+
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "sms-service");
 
 var rabbitUri = new Uri(
@@ -72,6 +103,11 @@ builder.Host.UseWolverine(options =>
     );
     options.Discovery.IncludeType(
         typeof(TaxVision.Sms.Application.Permissions.Consumers.RolePermissionsChangedPermissionsProjectionConsumer)
+    );
+
+    // RateLimit Fase 2 — consumer que mantiene la proyección de plan-code al día desde Subscription.
+    options.Discovery.IncludeType(
+        typeof(TaxVision.Sms.Application.RateLimiting.Consumers.TenantPlanCodeProjectionConsumer)
     );
 
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;

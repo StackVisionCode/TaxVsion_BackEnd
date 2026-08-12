@@ -7,6 +7,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Inventory.Domain.Permissions;
+using TaxVision.Inventory.Domain.RateLimiting;
 using TaxVision.Inventory.Domain.Stock;
 using TaxVision.Inventory.Domain.Suppliers;
 
@@ -27,6 +28,9 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
     // RBAC Fase 7 — proyección local de permisos.
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de plan-code (mantenida por los eventos de Subscription).
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -152,7 +152,8 @@ public sealed class Invoice : AggregateRoot
                     Money.Create(line.UnitAmountCents, cur).Value,
                     line.TaxBasisPoints,
                     Money.Create(lineTax, cur).Value,
-                    Money.Create(lineTotal, cur).Value
+                    Money.Create(lineTotal, cur).Value,
+                    line.CatalogItemId
                 )
             );
 
@@ -425,7 +426,7 @@ public sealed class Invoice : AggregateRoot
 
 /// <summary>Línea de entrada para crear un borrador. El impuesto se deriva de los basis points;
 /// Billing no recalcula reglas fiscales, solo el prorrateo aritmético.</summary>
-public sealed record DraftInvoiceLine(string Description, int Quantity, long UnitAmountCents, int TaxBasisPoints);
+public sealed record DraftInvoiceLine(string Description, int Quantity, long UnitAmountCents, int TaxBasisPoints, Guid? CatalogItemId = null);
 
 /// <summary>Ajuste (descuento) de entrada para la factura de onboarding. <see cref="AmountCents"/> es la
 /// magnitud positiva del descuento; la suma de todos debe igualar el descuento total.</summary>
