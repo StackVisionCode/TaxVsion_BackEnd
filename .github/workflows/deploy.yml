@@ -110,6 +110,9 @@ jobs:
           # Reminder (servicio nuevo, ago-2026). Mismo contrato que Sms: docker-compose.yml la
           # exige con :? en reminder-api y en el servicio migrations.
           REMINDER_DB_CONNECTION=${{ secrets.REMINDER_DB_CONNECTION }}
+          # Tasks (servicio nuevo, ago-2026). Mismo contrato: docker-compose.yml la exige con :?
+          # en tasks-api y en el servicio migrations.
+          TASKS_DB_CONNECTION=${{ secrets.TASKS_DB_CONNECTION }}
           # Catalog e Inventory (servicios nuevos, ago-2026). Mismo contrato que Sms/Reminder:
           # docker-compose.yml las exige con :? en catalog-api/inventory-api y en migrations.
           CATALOG_DB_CONNECTION=${{ secrets.CATALOG_DB_CONNECTION }}
@@ -254,6 +257,10 @@ jobs:
           # se quedan con la cuota base) y la recuperacion pull de permisos queda fail-closed.
           REMINDER_SERVICE_CLIENT_ID=${{ secrets.REMINDER_SERVICE_CLIENT_ID }}
           REMINDER_SERVICE_CLIENT_SECRET=${{ secrets.REMINDER_SERVICE_CLIENT_SECRET }}
+
+          # Tasks: idem — cuotas sin escalar por tier y permisos fail-closed si falta.
+          TASKS_SERVICE_CLIENT_ID=${{ secrets.TASKS_SERVICE_CLIENT_ID }}
+          TASKS_SERVICE_CLIENT_SECRET=${{ secrets.TASKS_SERVICE_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}

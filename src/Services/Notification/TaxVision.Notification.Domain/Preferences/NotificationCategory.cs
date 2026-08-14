@@ -20,4 +20,11 @@ public enum NotificationCategory
     /// mandado — es exactamente la distinción que hace útil una pantalla de preferencias.
     /// </summary>
     Reminders,
+
+    /// <summary>
+    /// Lo que la firma le pide al cliente y el cliente todavía no mandó. Categoría propia y no
+    /// <c>DocumentsAndSignatures</c>: el destinatario es el cliente, no el personal, y silenciarla no
+    /// debe apagarle los avisos de firma que sí tiene que ver.
+    /// </summary>
+    ClientRequests,
 }

@@ -181,6 +181,19 @@ public static class PermissionCatalog
     public const string NotesViewAll = NotesPermissions.ViewAll;
     public const string NotesPortalRead = NotesPermissions.PortalRead;
 
+    // Task — trabajo interno de la firma (bounded context propio, microservicio Task). A diferencia
+    // de Reminder, acá SÍ hay gobernanza: ManageAll es el override del supervisor que cierra o
+    // reasigna la tarea de otro. Assign existe aparte de Write porque poner trabajo en la bandeja
+    // ajena no es lo mismo que crear el propio. Sin variante de portal: el cliente final nunca ve
+    // la lista de tareas — lo que le llega sale por Notification.
+    public const string TasksRead = TasksPermissions.Read;
+    public const string TasksWrite = TasksPermissions.Write;
+    public const string TasksAssign = TasksPermissions.Assign;
+    public const string TasksManageAll = TasksPermissions.ManageAll;
+    public const string TasksTemplatesManage = TasksPermissions.TemplatesManage;
+    public const string TasksClientRequestsManage = TasksPermissions.ClientRequestsManage;
+    public const string TasksPortalClientRequests = TasksPermissions.PortalClientRequests;
+
     // Portal del cliente final
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
@@ -1701,6 +1714,58 @@ public static class PermissionCatalog
             "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios",
             false
         ),
+        // Task — los cinco sin AllowedActorTypes explícito, incluido ManageAll. La inferencia por
+        // defecto da [TenantEmployee, TenantAdmin, PlatformAdmin] y eso es lo correcto acá, a
+        // diferencia de NotesViewAll (que sí excluye a TenantEmployee): en una firma fiscal el
+        // supervisor que revisa y desatasca es normalmente un preparador senior, no el admin del
+        // tenant. Restringirlo a TenantAdmin dejaría al override sin poder otorgarse nunca a quien
+        // de verdad lo ejerce. Lo que sí se hace es dejarlo FUERA del bundle por defecto del
+        // empleado: se otorga por rol explícito.
+        new(new Guid("a1000000-0000-0000-0000-000000000167"), TasksRead, "tasks", "Ver las tareas del tenant", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000168"),
+            TasksWrite,
+            "tasks",
+            "Crear, editar, cerrar y reabrir tareas propias o asignadas a uno mismo",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000169"),
+            TasksAssign,
+            "tasks",
+            "Asignar una tarea a otra persona del tenant (sin restricción de dirección)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000170"),
+            TasksManageAll,
+            "tasks",
+            "Cerrar, editar o reasignar la tarea de cualquier usuario del tenant (supervisión)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000171"),
+            TasksTemplatesManage,
+            "tasks",
+            "Crear y editar las plantillas de tarea de la firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000172"),
+            TasksClientRequestsManage,
+            "tasks",
+            "Pedirle documentacion al cliente y cerrar lo que mande",
+            false
+        ),
+        // El unico de este modulo cuyo destinatario esta fuera de la firma: el cliente ve su lista
+        // de pedidos, no la tarea interna de la que salieron.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000173"),
+            TasksPortalClientRequests,
+            "tasks",
+            "El cliente ve sus pedidos y registra lo que sube",
+            true
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -1829,10 +1894,23 @@ public static class PermissionCatalog
                 // recordatorio propio — el servicio le quedaría inservible.
                 RemindersRead,
                 RemindersWrite,
+                // Task: los tres operativos entran en el bundle del empleado. Assign también, y no
+                // es una concesión: el flujo estrella del servicio es «preparar → revisión interna»,
+                // donde el preparador le pasa la tarea al revisor. Sin tasks.assign por defecto ese
+                // flujo no existe el día uno (§2.2 del modelo). Quedan fuera manage_all (override de
+                // supervisión, por rol explícito) y templates.manage (configuración de la firma,
+                // reservada a TenantAdmin — mismo criterio que ScribeTemplatesWrite).
+                TasksRead,
+                TasksWrite,
+                TasksAssign,
+                // Quien pide el documento es quien cierra lo que llega: separarlo obligaria a que
+                // otra persona valide cada W-2, que no es como trabaja una firma.
+                TasksClientRequestsManage,
             ],
             Role.SystemCustomerPortal =>
             [
                 PortalFoldersView,
+                TasksPortalClientRequests,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,

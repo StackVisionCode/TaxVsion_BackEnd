@@ -3126,6 +3126,97 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "reminders",
                             PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000167"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.read",
+                            Description = "Ver las tareas del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000168"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.write",
+                            Description = "Crear, editar, cerrar y reabrir tareas propias o asignadas a uno mismo",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000169"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.assign",
+                            Description = "Asignar una tarea a otra persona del tenant (sin restricción de dirección)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000170"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.manage_all",
+                            Description = "Cerrar, editar o reasignar la tarea de cualquier usuario del tenant (supervisión)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000171"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.templates.manage",
+                            Description = "Crear y editar las plantillas de tarea de la firma",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000172"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.client_requests.manage",
+                            Description = "Pedirle documentacion al cliente y cerrar lo que mande",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000173"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "tasks.portal.client_requests",
+                            Description = "El cliente ve sus pedidos y registra lo que sube",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
                         });
                 });
 

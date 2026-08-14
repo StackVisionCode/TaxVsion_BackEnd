@@ -70,6 +70,15 @@ public static class ErrorHttpMapping
             // Reminder Fase 6 — también es la respuesta a un recordatorio ajeno: no hay
             // Reminder.NotOwner, porque un 403 confirmaría que ese id existe en el tenant.
             or "Reminder.NotFound"
+            or "Task.NotFound"
+            or "Task.Dependency.NotFound"
+            or "Task.Timer.NotFound"
+            or "Task.Label.NotFound"
+            or "Task.Attachment.NotFound"
+            or "Task.Template.NotFound"
+            // El pedido de otro cliente responde igual que uno inexistente: distinguirlos le
+            // confirmaria al cliente que ese pedido existe.
+            or "ClientRequest.NotFound"
             // Opción B (recuperación pull de permisos, endpoint interno de Auth) — el status exacto
             // no cambia el comportamiento del caller M2M (IPermissionsSnapshotClient trata cualquier
             // no-2xx igual, devuelve null), pero se mapea explícito de todos modos por consistencia
@@ -204,6 +213,8 @@ public static class ErrorHttpMapping
             or "ShareLink.PublicSharingDisabled"
             or "ShareLink.ElevatedPermissionRequiresManage"
             or "Note.Forbidden"
+            or "Task.Forbidden"
+            or "Task.Timer.NotOwner"
             or "Auth.UserInactive" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
@@ -232,7 +243,23 @@ public static class ErrorHttpMapping
             // recordatorio simplemente ya no está donde el llamador cree.
             or "Reminder.InvalidTransition"
             or "Reminder.DuplicateRequest"
-            or "Reminder.SnoozeLimitReached" => StatusCodes.Status409Conflict,
+            or "Reminder.SnoozeLimitReached"
+            // Task: conflicto de estado, no de forma. BlockedByDependencies y HasOpenSubtasks son
+            // retriables — los dos contadores bajan de forma eventual, así que el segundo intento
+            // puede pasar; con 400 el llamador dejaría de reintentar.
+            or "Task.BlockedByDependencies"
+            or "Task.HasOpenSubtasks"
+            or "Task.InvalidTransition"
+            or "Task.CannotAddSubtaskToClosedParent"
+            or "Task.MaxDepthExceeded"
+            or "Task.TooManyChildren"
+            or "Task.WaitingOnClient.TaskClosed"
+            or "Task.Dependency.Cycle"
+            or "Task.Dependency.Duplicate"
+            or "Task.Dependency.AncestorOfSelf"
+            or "Task.Label.CodeTaken"
+            or "Task.Timer.AlreadyRunning"
+            or "Task.Timer.NotRunning" => StatusCodes.Status409Conflict,
             "Auth.LockedOut"
             or "Auth.OtpThrottled"
             or "Invitation.ResendLimit"

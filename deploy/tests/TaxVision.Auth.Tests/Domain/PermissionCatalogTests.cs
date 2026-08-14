@@ -1,5 +1,6 @@
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Tests.Domain;
 
@@ -224,5 +225,69 @@ public sealed class PermissionCatalogTests
         var tenantModule = PermissionCatalog.All.Where(definition => definition.Module == "tenant").ToArray();
         Assert.Equal(2, tenantModule.Length);
         Assert.Equal(tenantModule.Length, tenantModule.Select(definition => definition.Code).Distinct().Count());
+    }
+
+    /// <summary>
+    /// Task Fase 3 — fija la decisión de reparto del bundle, que es lo único de este módulo que no
+    /// se puede leer del propio código sin ambigüedad. <c>tasks.assign</c> SÍ entra por defecto (el
+    /// flujo estrella es «preparar → revisión interna», y sin él no existe el día uno);
+    /// <c>manage_all</c> y <c>templates.manage</c> NO (override de supervisión y configuración de la
+    /// firma, ambos por rol explícito).
+    /// </summary>
+    [Fact]
+    public void Employee_defaults_include_task_assign_but_never_the_supervisor_override()
+    {
+        var defaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+
+        Assert.Contains(PermissionCatalog.TasksRead, defaults);
+        Assert.Contains(PermissionCatalog.TasksWrite, defaults);
+        Assert.Contains(PermissionCatalog.TasksAssign, defaults);
+        Assert.DoesNotContain(PermissionCatalog.TasksManageAll, defaults);
+        Assert.DoesNotContain(PermissionCatalog.TasksTemplatesManage, defaults);
+    }
+
+    /// <summary>
+    /// Ningún permiso de Task llega al portal del cliente: la lista de tareas es trabajo interno de
+    /// la firma. Lo que el cliente recibe sale por Notification, no por un endpoint de Task.
+    ///
+    /// <para>
+    /// Se afirma sobre el <see cref="Permission"/> sembrado, no sobre el
+    /// <see cref="PermissionCatalog.PermissionDefinition"/>: en el record del catálogo
+    /// <c>AllowedActorTypes</c> es <b>null</b> cuando no se declara explícito — la inferencia corre
+    /// dentro de <see cref="Permission.Seed"/>. Afirmar sobre el record medía otra cosa que la que
+    /// enforza el filtro.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Task_permissions_never_reach_the_customer_portal()
+    {
+        var seeded = PermissionCatalog
+            .All.Where(definition => definition.Module == "tasks")
+            .Select(definition =>
+                Permission.Seed(
+                    definition.Id,
+                    definition.Code,
+                    definition.Module,
+                    definition.Description,
+                    definition.IsCustomerPortal,
+                    definition.MinPlanTier,
+                    definition.IsAssignableByTenant,
+                    definition.PlatformOnly,
+                    definition.AllowedActorTypes,
+                    definition.IsDangerous
+                )
+            )
+            .ToArray();
+
+        Assert.Equal(5, seeded.Length);
+        Assert.All(seeded, permission => Assert.False(permission.IsCustomerPortal));
+        Assert.All(
+            seeded,
+            permission => Assert.DoesNotContain(UserActorType.CustomerPortal, permission.AllowedActorTypes)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal),
+            code => code.StartsWith("tasks.", StringComparison.Ordinal)
+        );
     }
 }

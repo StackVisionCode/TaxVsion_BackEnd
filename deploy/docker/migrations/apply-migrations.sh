@@ -131,6 +131,12 @@ apply_migration \
   "$REMINDER_DB_CONNECTION"
 
 apply_migration \
+  "Tasks" \
+  "src/Services/Tasks/TaxVision.Tasks.Infrastructure/TaxVision.Tasks.Infrastructure.csproj" \
+  "src/Services/Tasks/TaxVision.Tasks.Api/TaxVision.Tasks.Api.csproj" \
+  "$TASKS_DB_CONNECTION"
+
+apply_migration \
   "Catalog" \
   "src/Services/Catalog/TaxVision.Catalog.Infrastructure/TaxVision.Catalog.Infrastructure.csproj" \
   "src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" \

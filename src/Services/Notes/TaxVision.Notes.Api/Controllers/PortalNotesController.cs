@@ -41,6 +41,16 @@ public sealed class PortalNotesController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
+        if (!User.TryGetCustomerId(out var customerId))
+            return Forbid();
+
+        // El cliente lee sus notas y nada más. Antes bastaba con cambiar el targetId de la query
+        // para leer las de otro cliente del tenant, y los demás targets —Task, SignatureRequest— son
+        // objetos internos sin ninguna comprobación de pertenencia que hacer. Fail-closed: si mañana
+        // hace falta abrir otro target, se abre con su propia regla, no dejándolo pasar.
+        if (targetType != NoteTargetType.Customer || targetId != customerId)
+            return NotFound();
+
         var result = await bus.InvokeAsync<PagedResult<NoteResponse>>(
             new ListClientVisibleNotesQuery(tenantId, targetType, targetId, NormalizePage(page), NormalizeSize(size)),
             ct

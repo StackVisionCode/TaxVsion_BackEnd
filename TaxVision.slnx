@@ -103,6 +103,13 @@
     <Project Path="src/Services/Reminder/TaxVision.Reminder.Domain/TaxVision.Reminder.Domain.csproj" />
     <Project Path="src/Services/Reminder/TaxVision.Reminder.Infrastructure/TaxVision.Reminder.Infrastructure.csproj" />
   </Folder>
+  <!-- TasksService -->
+  <Folder Name="/src/Services/Tasks/">
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Api/TaxVision.Tasks.Api.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Application/TaxVision.Tasks.Application.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Domain/TaxVision.Tasks.Domain.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Infrastructure/TaxVision.Tasks.Infrastructure.csproj" />
+  </Folder>
   <!-- CatalogService -->
   <Folder Name="/src/Services/Catalog/">
     <Project Path="src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" />
@@ -183,6 +190,7 @@
     <Project Path="deploy/tests/TaxVision.Signature.Tests/TaxVision.Signature.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Sms.Tests/TaxVision.Sms.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Subscription.Tests/TaxVision.Subscription.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Tasks.Tests/TaxVision.Tasks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />
   </Folder>
 </Solution>

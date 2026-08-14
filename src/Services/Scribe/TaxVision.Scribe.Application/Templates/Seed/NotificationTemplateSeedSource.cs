@@ -51,6 +51,9 @@ public static class NotificationTemplateSeedSource
             OnboardingRegistrationReady,
             OnboardingReceiptReady,
             ReminderDue,
+            TaskWaitingOnClient,
+            ClientRequestCreated,
+            ClientRequestDocumentRejected,
         ];
 
     private static NotificationTemplateSeed Invitation { get; } =
@@ -653,6 +656,154 @@ public static class NotificationTemplateSeedSource
                     "Link mediador de descarga del recibo (Auth), nunca vence."
                 ),
                 ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
+            ]
+        );
+
+    /// <summary>
+    /// El único correo de este catálogo cuyo destinatario es el <b>cliente</b> y no personal de la
+    /// firma. Por eso no lleva enlace al panel interno: el botón va al portal donde el cliente sube
+    /// lo que le pidieron.
+    /// </summary>
+    /// <summary>
+    /// El pedido concreto que el cliente ve en su lista del portal. Distinto de
+    /// <c>task.waiting_on_client.v1</c>: aquél avisa de que falta algo, éste es la entrada de la
+    /// lista con su propio enlace para subir.
+    /// </summary>
+    private static NotificationTemplateSeed ClientRequestCreated { get; } =
+        new(
+            EventKey: "task.client_request_created.v1",
+            TemplateKey: "task.client_request_created.v1",
+            Name: "Task — Tu contador te pidió documentación",
+            Subject: "{{ product_name }} — {{ request_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola {{ customer_name }},</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Tu contador necesita que le envíes:</td></tr>
+              <tr><td style="padding:8px 12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;"><strong>{{ request_title }}</strong>{% if request_details %}<br/>{{ request_details }}{% endif %}</td></tr>
+              {% if due_at_utc %}
+              <tr><td style="padding-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Te agradecemos enviarlo antes del <strong>{{ due_at_utc }}</strong>.</td></tr>
+              {% endif %}
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Subir en mi portal</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Nombre del cliente, del directorio local."),
+                ("request_title", VariableType.String, true, null, "Qué se le pide, en el idioma del cliente."),
+                ("request_details", VariableType.String, false, null, "Detalle opcional del pedido."),
+                ("due_at_utc", VariableType.String, false, null, "La fecha que se le dio al cliente."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    /// <summary>
+    /// El archivo del cliente no pasó el escaneo.
+    ///
+    /// <para>
+    /// <b>Aquí no entra el motivo técnico.</b> «Tiene un virus» no le dice al cliente qué hacer y da
+    /// información de la infraestructura; el preparador sí recibe el motivo real, por otro canal.
+    /// </para>
+    /// </summary>
+    private static NotificationTemplateSeed ClientRequestDocumentRejected { get; } =
+        new(
+            EventKey: "task.client_request_document_rejected.v1",
+            TemplateKey: "task.client_request_document_rejected.v1",
+            Name: "Task — No pudimos procesar tu archivo",
+            Subject: "{{ product_name }} — No pudimos procesar {{ document_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola {{ customer_name }},</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">{{ client_message }}</td></tr>
+              <tr><td style="padding:8px 12px;background-color:#fffaf0;border-left:3px solid #dd6b20;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">Archivo: <strong>{{ document_name }}</strong><br/>Pedido: {{ request_title }}</td></tr>
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Volver a subirlo</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Nombre del cliente, del directorio local."),
+                ("document_name", VariableType.String, true, null, "Nombre del archivo que subió."),
+                ("request_title", VariableType.String, true, null, "A qué pedido corresponde."),
+                (
+                    "client_message",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Mensaje accionable para el cliente. Nunca el motivo técnico del rechazo."
+                ),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed TaskWaitingOnClient { get; } =
+        new(
+            EventKey: "task.waiting_on_client.v1",
+            TemplateKey: "task.waiting_on_client.v1",
+            Name: "Task — Documentación pendiente del cliente",
+            Subject: "{{ product_name }} — Nos falta documentación tuya",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola {{ customer_name }},</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Para seguir con <strong>{{ task_title }}</strong>{% if tax_year %} (año fiscal {{ tax_year }}){% endif %} necesitamos que nos envíes:</td></tr>
+              <tr><td style="padding:8px 12px;margin-bottom:12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">{{ expected_items }}</td></tr>
+              {% if client_due_at_utc %}
+              <tr><td style="padding-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Te agradecemos enviarlo antes del <strong>{{ client_due_at_utc }}</strong>.</td></tr>
+              {% endif %}
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Subir documentos</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Nombre del cliente, del directorio local."),
+                ("task_title", VariableType.String, true, null, "Título de la tarea que quedó esperando."),
+                (
+                    "expected_items",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Qué se le pide al cliente, tal como lo escribió el preparador."
+                ),
+                (
+                    "client_due_at_utc",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Para cuándo se le pide; distinta del vencimiento de la tarea."
+                ),
+                ("tax_year", VariableType.Number, false, null, "Año fiscal de la tarea, si tiene."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
             ]
         );
 

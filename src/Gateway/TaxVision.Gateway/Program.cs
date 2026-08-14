@@ -31,6 +31,7 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionGatewayRateLimiting(builder.Configuration);
 builder.Services.AddLoadShedding(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "gateway");
+
 // GW-06 — el readiness del Gateway es *self*: los 4 HttpEndpointHealthCheck manuales que
 // consultaban auth/tenant/customer/cloudstorage se eliminaron. Si /health/ready fallara porque 1 de
 // 18 servicios esta caido, el orquestador sacaria el Gateway del balanceador y convertiria una
@@ -61,6 +62,7 @@ app.UseCors("spa");
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
+
 // Capa 1 (Fase 5 del plan de rate limiting) — después de auth para poder leer tenant_id del JWT
 // ya validado; antes de la Capa 3 (TenantPropagationMiddleware) y del ruteo a health checks/YARP.
 // La propia excluye /health/* de la medición y del shedding.

@@ -8,6 +8,16 @@ public sealed record FileAvailableIntegrationEvent : IntegrationEvent
     public required long SizeBytes { get; init; }
     public required string ChecksumSha256 { get; init; }
     public required Guid CreatedBy { get; init; }
+
+    // Los tres opcionales, no `required`: un envelope ya escrito en el outbox durable no trae estos
+    // miembros, y exigirlos lo dejaría sin poder deserializar tras el deploy. Sin ellos el consumidor
+    // sólo sabe QUÉ archivo llegó, no de quién es — que es lo que necesita quien no originó la subida.
+    /// <summary>Debe matchear el enum OwnerType de CloudStorage.Domain — misma convención que SaveFileRequested.</summary>
+    public string? OwnerType { get; init; }
+
+    public Guid? OwnerId { get; init; }
+
+    public Guid? FolderId { get; init; }
 }
 
 public sealed record FileInfectedDetectedIntegrationEvent : IntegrationEvent

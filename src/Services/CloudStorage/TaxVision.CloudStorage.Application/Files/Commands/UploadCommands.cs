@@ -429,6 +429,9 @@ public static class ScanFileHandler
                         SizeBytes = file.SizeBytes,
                         ChecksumSha256 = inspected.Sha256,
                         CreatedBy = file.CreatedBy,
+                        OwnerType = file.OwnerType.ToString(),
+                        OwnerId = file.OwnerId,
+                        FolderId = file.FolderId,
                         CorrelationId = command.CorrelationId,
                     }
                 );

@@ -61,45 +61,108 @@ public static class CreateReminderHandler
         CancellationToken ct
     )
     {
+        var built = await ValidateAndBuildAsync(command, reminders, metrics, ct);
+        if (built.IsFailure)
+            return Result.Failure<ReminderResponse>(built.Error);
+
+        // Un aggregate nulo con Success significa "ya existía": el duplicado se resolvió por lookup
+        // y la respuesta ya viaja dentro del Result.
+        if (built.Value.Existing is { } existing)
+            return Result.Success(ReminderResponse.From(existing));
+
+        var persisted = await PersistWithIdempotencyAsync(
+            built.Value,
+            command,
+            reminders,
+            unitOfWork,
+            metrics,
+            logger,
+            ct
+        );
+        if (persisted.IsFailure)
+            return Result.Failure<ReminderResponse>(persisted.Error);
+
+        if (persisted.Value.LostTheRace is { } winner)
+            return Result.Success(ReminderResponse.From(winner));
+
+        return await SchedulePersistedReminderAsync(built.Value.Reminder!, scheduler, metrics, ct);
+    }
+
+    /// <summary>
+    /// Valida el <c>RequestKey</c>, corta si ya existe un recordatorio con esa clave (camino feliz
+    /// de la idempotencia) y arma el aggregate.
+    /// </summary>
+    private static async Task<Result<BuildOutcome>> ValidateAndBuildAsync(
+        CreateReminderCommand command,
+        IReminderRepository reminders,
+        IReminderMetrics metrics,
+        CancellationToken ct
+    )
+    {
         var requestKey = RequestKey.Create(command.RequestKey);
         if (requestKey.IsFailure)
-            return Result.Failure<ReminderResponse>(requestKey.Error);
+            return Result.Failure<BuildOutcome>(requestKey.Error);
 
         var existing = await reminders.FindByRequestKeyAsync(command.TenantId, requestKey.Value, ct);
         if (existing is not null)
         {
             metrics.RecordDuplicateSuppressed(ReminderDuplicateResolutions.Lookup);
-            return Result.Success(ReminderResponse.From(existing));
+            return Result.Success(new BuildOutcome(null, requestKey.Value, existing));
         }
 
-        var nowUtc = DateTime.UtcNow;
-        var buildResult = Build(command, requestKey.Value, nowUtc);
-        if (buildResult.IsFailure)
-            return Result.Failure<ReminderResponse>(buildResult.Error);
+        var built = Build(command, requestKey.Value, DateTime.UtcNow);
+        return built.IsFailure
+            ? Result.Failure<BuildOutcome>(built.Error)
+            : Result.Success(new BuildOutcome(built.Value, requestKey.Value, null));
+    }
 
-        var reminder = buildResult.Value;
-        reminders.Add(reminder);
+    /// <summary>
+    /// Persiste y resuelve la carrera del índice único: dos altas concurrentes con el mismo
+    /// <c>RequestKey</c> pasan las dos el lookup de arriba, y solo una gana el INSERT. La perdedora
+    /// no es un error — devuelve el recordatorio ganador.
+    /// </summary>
+    private static async Task<Result<PersistOutcome>> PersistWithIdempotencyAsync(
+        BuildOutcome built,
+        CreateReminderCommand command,
+        IReminderRepository reminders,
+        IUnitOfWork unitOfWork,
+        IReminderMetrics metrics,
+        ILogger<ReminderAggregate> logger,
+        CancellationToken ct
+    )
+    {
+        reminders.Add(built.Reminder!);
 
         try
         {
             await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success(new PersistOutcome(null));
         }
         catch (ConflictException)
         {
-            var winner = await reminders.FindByRequestKeyAsync(command.TenantId, requestKey.Value, ct);
+            var winner = await reminders.FindByRequestKeyAsync(command.TenantId, built.RequestKey, ct);
             if (winner is null)
-                return Result.Failure<ReminderResponse>(ReminderErrors.DuplicateRequest);
+                return Result.Failure<PersistOutcome>(ReminderErrors.DuplicateRequest);
 
             metrics.RecordDuplicateSuppressed(ReminderDuplicateResolutions.UniqueIndexRace);
             logger.LogInformation(
                 "Concurrent create with request key {RequestKey} for tenant {TenantId}; returning the winner {ReminderId}.",
-                requestKey.Value.Value,
+                built.RequestKey.Value,
                 command.TenantId,
                 winner.Id
             );
-            return Result.Success(ReminderResponse.From(winner));
+            return Result.Success(new PersistOutcome(winner));
         }
+    }
 
+    /// <summary>Agenda en Quartz (ADR-R-04) y cuenta el alta.</summary>
+    private static async Task<Result<ReminderResponse>> SchedulePersistedReminderAsync(
+        ReminderAggregate reminder,
+        IReminderScheduler scheduler,
+        IReminderMetrics metrics,
+        CancellationToken ct
+    )
+    {
         await scheduler.ScheduleAsync(reminder.TenantId, reminder.Id, reminder.Schedule.FireAtUtc, ct);
 
         // Solo el alta cuenta como "agendado". Snooze y reschedule reagendan un recordatorio que ya
@@ -107,6 +170,14 @@ public static class CreateReminderHandler
         metrics.RecordScheduled(reminder.Target.Category);
         return Result.Success(ReminderResponse.From(reminder));
     }
+
+    private readonly record struct BuildOutcome(
+        ReminderAggregate? Reminder,
+        RequestKey RequestKey,
+        ReminderAggregate? Existing
+    );
+
+    private readonly record struct PersistOutcome(ReminderAggregate? LostTheRace);
 
     private static Result<ReminderAggregate> Build(
         CreateReminderCommand command,

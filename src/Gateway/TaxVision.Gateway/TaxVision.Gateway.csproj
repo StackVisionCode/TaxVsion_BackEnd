@@ -22,5 +22,4 @@
          correccion del p99: se testea directo en vez de inferirlo desde GetSnapshot. -->
     <InternalsVisibleTo Include="TaxVision.Gateway.Tests" />
   </ItemGroup>
-
 </Project>

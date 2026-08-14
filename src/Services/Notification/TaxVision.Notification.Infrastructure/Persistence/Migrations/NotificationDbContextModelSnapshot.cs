@@ -96,6 +96,42 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("AuthzUserPermissionsProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Notification.Domain.Directory.CustomerEmailDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerEmailDirectoryEntries", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Notification.Domain.Directory.UserEmailDirectoryEntry", b =>
                 {
                     b.Property<Guid>("Id")

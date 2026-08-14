@@ -1,0 +1,2558 @@
+{
+  "info": {
+    "name": "TaxVision - Task",
+    "description": "Tareas, dependencias, subtareas, timers, series recurrentes, plantillas fiscales y adjuntos. Task nunca guarda bytes: los adjuntos son referencias a CloudStorage.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Tareas",
+      "item": [
+        {
+          "name": "Crear tarea",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Preparar 1040 de Perez\",\n  \"description\": null,\n  \"priority\": \"High\",\n  \"assigneeUserId\": null,\n  \"customerId\": \"{{customerId}}\",\n  \"taxYear\": 2025,\n  \"dueAtUtc\": \"2026-04-15T16:00:00Z\",\n  \"dueTimeZoneId\": \"America/New_York\",\n  \"dueIsStatutory\": true,\n  \"estimatedHours\": 3\n}"
+            }
+          }
+        },
+        {
+          "name": "Obtener por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mis tareas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/mine?page=1&pageSize=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "mine"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Por cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/by-customer/{{customerId}}?page=1&pageSize=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "by-customer",
+                "{{customerId}}"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Buscar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/search?term=1040&page=1&pageSize=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "term",
+                  "value": "1040"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tablero",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/board",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "board"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vista calendario",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/calendar?fromUtc=2026-01-01T00:00:00Z&toUtc=2026-12-31T00:00:00Z",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "calendar"
+              ],
+              "query": [
+                {
+                  "key": "fromUtc",
+                  "value": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "key": "toUtc",
+                  "value": "2026-12-31T00:00:00Z"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Esperando al cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/waiting-on-client?page=1&pageSize=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "waiting-on-client"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Editar titulo y descripcion",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Preparar 1040 de Perez (2025)\",\n  \"description\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "Cambiar prioridad",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/priority",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "priority"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"Urgent\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Cambiar vencimiento",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/due",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "due"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dueAtUtc\": \"2026-04-15T16:00:00Z\",\n  \"timeZoneId\": \"America/New_York\",\n  \"isStatutory\": true,\n  \"statutoryChangeReason\": \"Prorroga del IRS\"\n}"
+            },
+            "description": "Mover una fecha legal exige motivo: queda en el registro de por que se movio."
+          }
+        },
+        {
+          "name": "Asignar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/assignee",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "assignee"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigneeUserId\": \"{{userId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Desasignar",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/assignee",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "assignee"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Iniciar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/start",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "start"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Completar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/complete",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "complete"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reabrir",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/reopen",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "reopen"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancelar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"El cliente se fue\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Borrar",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pedir documentos al cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/wait-on-client",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "wait-on-client"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedItems\": \"W-2 y 1099 de 2025\",\n  \"clientDueAtUtc\": \"2026-03-01T16:00:00Z\"\n}"
+            },
+            "description": "Manda el correo al cliente y pide a Reminder que avise al preparador si no llega."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dependencias y subtareas",
+      "item": [
+        {
+          "name": "Agregar dependencia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/dependencies",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "dependencies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dependsOnTaskId\": \"{{blockerTaskId}}\"\n}"
+            },
+            "description": "El ciclo se rechaza al crear la arista, no al ejecutar."
+          }
+        },
+        {
+          "name": "Quitar dependencia",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/dependencies/{{blockerTaskId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "dependencies",
+                "{{blockerTaskId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ver el grafo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/graph",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "graph"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Crear subtarea",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/subtasks",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "subtasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Revisar deducciones\",\n  \"description\": null,\n  \"priority\": \"Normal\",\n  \"assigneeUserId\": null,\n  \"dueAtUtc\": null,\n  \"dueTimeZoneId\": null,\n  \"dueIsStatutory\": false,\n  \"estimatedHours\": null\n}"
+            },
+            "description": "Una subtarea es una tarea con padre: tiene su propio asignado, vencimiento y timer."
+          }
+        },
+        {
+          "name": "Listar subtareas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/subtasks?page=1&pageSize=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "subtasks"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Timers",
+      "item": [
+        {
+          "name": "Arrancar el reloj",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/timer/start",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "timer",
+                "start"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isBillable\": true\n}"
+            },
+            "description": "Lo arranca la persona, nunca el sistema: crear o asignar no imputa horas."
+          }
+        },
+        {
+          "name": "Parar el reloj",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/timer/{{timerId}}/stop",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "timer",
+                "{{timerId}}",
+                "stop"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Timers de la tarea",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/timers",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "timers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reporte de horas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/timers/report?fromUtc=2026-01-01T00:00:00Z&toUtc=2026-12-31T00:00:00Z",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "timers",
+                "report"
+              ],
+              "query": [
+                {
+                  "key": "fromUtc",
+                  "value": "2026-01-01T00:00:00Z"
+                },
+                {
+                  "key": "toUtc",
+                  "value": "2026-12-31T00:00:00Z"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Series",
+      "item": [
+        {
+          "name": "Crear serie trimestral",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/series",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "series"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"941 trimestral\",\n  \"description\": null,\n  \"priority\": \"High\",\n  \"customerId\": null,\n  \"taxYear\": 2026,\n  \"estimatedHours\": 2,\n  \"assigneeUserId\": \"{{userId}}\",\n  \"isStatutory\": true,\n  \"rule\": \"FREQ=YEARLY;BYMONTH=1,4,7,10;BYMONTHDAY=31\",\n  \"timeZoneId\": \"America/New_York\",\n  \"mode\": \"FixedSchedule\",\n  \"anchorUtc\": \"2026-04-30T16:00:00Z\",\n  \"endsAtUtc\": null,\n  \"maxOccurrences\": null\n}"
+            },
+            "description": "FixedSchedule: la siguiente sale del calendario aunque la anterior se cerrara tarde. AfterCompletion cuenta desde que se completo."
+          }
+        },
+        {
+          "name": "Obtener serie",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/series/{{seriesId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "series",
+                "{{seriesId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar series",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/series?page=1&pageSize=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "series"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pausar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/series/{{seriesId}}/pause",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "series",
+                "{{seriesId}}",
+                "pause"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reanudar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/series/{{seriesId}}/resume",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "series",
+                "{{seriesId}}",
+                "resume"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Terminar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/series/{{seriesId}}/end",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "series",
+                "{{seriesId}}",
+                "end"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Plantillas",
+      "item": [
+        {
+          "name": "Instalar el catalogo estandar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates/install-standard",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates",
+                "install-standard"
+              ]
+            },
+            "description": "Idempotente por nombre: 1040 individual, 1040-ES trimestral y 941 trimestral."
+          }
+        },
+        {
+          "name": "Listar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates?onlyActive=true",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates"
+              ],
+              "query": [
+                {
+                  "key": "onlyActive",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener por id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates/{{templateId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates",
+                "{{templateId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Crear plantilla",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Auditoria interna\",\n  \"description\": \"Revision anual de la carpeta del cliente.\",\n  \"recurrenceRule\": null,\n  \"recurrenceTimeZoneId\": null,\n  \"recurrenceMode\": \"FixedSchedule\",\n  \"steps\": [\n    {\n      \"order\": 1,\n      \"title\": \"Reunir papeles\",\n      \"description\": null,\n      \"priority\": \"Normal\",\n      \"estimatedHours\": 1,\n      \"dueOffsetDays\": -30,\n      \"isStatutory\": false,\n      \"dependsOnStepOrder\": null,\n      \"parentStepOrder\": null,\n      \"suggestedRoleName\": null\n    },\n    {\n      \"order\": 2,\n      \"title\": \"Revisar\",\n      \"description\": null,\n      \"priority\": \"High\",\n      \"estimatedHours\": 2,\n      \"dueOffsetDays\": 0,\n      \"isStatutory\": false,\n      \"dependsOnStepOrder\": 1,\n      \"parentStepOrder\": null,\n      \"suggestedRoleName\": null\n    }\n  ]\n}"
+            },
+            "description": "Con recurrenceRule la plantilla abre una serie en vez de instanciar el grafo, y exige un solo paso."
+          }
+        },
+        {
+          "name": "Editar el guion",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates/{{templateId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates",
+                "{{templateId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Auditoria interna\",\n  \"description\": null,\n  \"recurrenceRule\": null,\n  \"recurrenceTimeZoneId\": null,\n  \"recurrenceMode\": \"FixedSchedule\",\n  \"steps\": [\n    {\n      \"order\": 1,\n      \"title\": \"Reunir papeles\",\n      \"description\": null,\n      \"priority\": \"Normal\",\n      \"estimatedHours\": 1,\n      \"dueOffsetDays\": -20,\n      \"isStatutory\": false,\n      \"dependsOnStepOrder\": null,\n      \"parentStepOrder\": null,\n      \"suggestedRoleName\": null\n    }\n  ]\n}"
+            },
+            "description": "No toca las tareas ya creadas: el encargo en curso sigue con el guion con el que empezo."
+          }
+        },
+        {
+          "name": "Archivos de referencia del guion",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates/{{templateId}}/attachments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates",
+                "{{templateId}}",
+                "attachments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attachments\": [\n    {\n      \"fileId\": \"{{fileId}}\",\n      \"displayName\": \"checklist.pdf\",\n      \"contentType\": \"application/pdf\",\n      \"sizeBytes\": 20480,\n      \"stepOrder\": null\n    }\n  ]\n}"
+            },
+            "description": "Viajan a cada instancia con el mismo fileId: un objeto en CloudStorage, N referencias. Sin stepOrder cuelgan del primer paso."
+          }
+        },
+        {
+          "name": "Aplicar a un cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates/{{templateId}}/apply",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates",
+                "{{templateId}}",
+                "apply"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigneeUserId\": null,\n  \"customerId\": \"{{customerId}}\",\n  \"taxYear\": 2025,\n  \"dueAtUtc\": \"2026-04-15T16:00:00Z\",\n  \"timeZoneId\": \"America/New_York\",\n  \"allowDuplicate\": false\n}"
+            },
+            "description": "Pide tasks.write y no templates.manage: es el gesto diario del preparador."
+          }
+        },
+        {
+          "name": "Retirar plantilla",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates/{{templateId}}/active",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates",
+                "{{templateId}}",
+                "active"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Adjuntos",
+      "item": [
+        {
+          "name": "Enlazar archivo existente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/attachments/link",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "attachments",
+                "link"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"displayName\": \"W-2 2025.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 20480\n}"
+            },
+            "description": "Nace Available: el archivo ya esta en CloudStorage y ya fue escaneado. Es el caso dominante."
+          }
+        },
+        {
+          "name": "Registrar archivo recien subido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/attachments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "attachments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"displayName\": \"1099.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 10240\n}"
+            },
+            "description": "Nace Pending y espera el veredicto. El frontend sube a CloudStorage con su propio token."
+          }
+        },
+        {
+          "name": "Listar (con los de las subtareas)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/attachments?includeDescendants=true",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "attachments"
+              ],
+              "query": [
+                {
+                  "key": "includeDescendants",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Desadjuntar",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/attachments/{{fileId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "attachments",
+                "{{fileId}}"
+              ]
+            },
+            "description": "Quita la referencia; el archivo sigue en CloudStorage, que es su dueno."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Etiquetas del tenant",
+      "item": [
+        {
+          "name": "Taxonomias del tenant",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/taxonomies",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "taxonomies"
+              ]
+            },
+            "description": "El motor lee el enum; estas etiquetas son de presentacion."
+          }
+        },
+        {
+          "name": "Crear etiqueta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/labels",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "labels"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"esperando-docs\",\n  \"displayName\": \"Esperando documentos\",\n  \"color\": \"#F59E0B\",\n  \"mapsToStatus\": \"WaitingOnClient\",\n  \"sortOrder\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "Editar etiqueta",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/labels/{{labelId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "labels",
+                "{{labelId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"esperando-docs\",\n  \"displayName\": \"Esperando papeles\",\n  \"color\": \"#F59E0B\",\n  \"mapsToStatus\": \"WaitingOnClient\",\n  \"sortOrder\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "Borrar etiqueta",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/labels/{{labelId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "labels",
+                "{{labelId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portal del cliente",
+      "description": "Lo que la firma le pide al cliente. ClientRequest es un agregado aparte de la tarea: el cliente no ve el asignado, las notas internas ni las horas imputadas. Los dos endpoints de portal derivan el cliente del token, nunca de la peticion.",
+      "item": [
+        {
+          "name": "Crear pedido al cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/client-requests",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "client-requests"
+              ]
+            },
+            "description": "Permiso tasks.client_requests.manage. taskId es opcional: el pedido puede existir sin tarea.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"taskId\": \"{{taskId}}\",\n  \"title\": \"Enviar el W-2 de 2025\",\n  \"details\": \"Necesitamos el formulario completo, las dos paginas.\",\n  \"dueAtUtc\": \"2026-09-15T00:00:00Z\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 creado\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.collectionVariables.set(\"clientRequestId\", b.id);",
+                  "pm.test(\"nace Pending\", () => pm.expect(b.status).to.eql(\"Pending\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ver los pedidos de una tarea",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/client-requests/by-task/{{taskId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "client-requests",
+                "by-task",
+                "{{taskId}}"
+              ]
+            },
+            "description": "Vista del staff: incluye requestedByUserId y el motivo tecnico de un rechazo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Portal · Mis pendientes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{PortalAccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/portal/client-requests?onlyOpen=true",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "portal",
+                "client-requests"
+              ],
+              "query": [
+                {
+                  "key": "onlyOpen",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Token de cuenta de portal. El customerId sale del token: no se acepta por query."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"sin datos internos\", () => {",
+                  "  const items = pm.response.json();",
+                  "  items.forEach(i => pm.expect(i).to.not.have.property(\"requestedByUserId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Portal · Subir un documento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{PortalAccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/portal/client-requests/{{clientRequestId}}/documents",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "portal",
+                "client-requests",
+                "{{clientRequestId}}",
+                "documents"
+              ]
+            },
+            "description": "El byte se sube antes a CloudStorage; aqui solo viaja el fileId. Queda Submitted: el cliente nunca cierra el pedido.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"displayName\": \"W-2 2025.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 184320\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"queda Submitted\", () => pm.expect(pm.response.json().status).to.eql(\"Submitted\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolver el pedido (aceptar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/client-requests/{{clientRequestId}}/resolve",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "client-requests",
+                "{{clientRequestId}}",
+                "resolve"
+              ]
+            },
+            "description": "Accept=1, Reject=2, Cancel=3. Rechazar exige nota. Solo el staff cierra.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution\": \"Accept\",\n  \"note\": \"Recibido y verificado.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Accepted\", () => pm.expect(pm.response.json().status).to.eql(\"Accepted\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Casos negativos",
+      "item": [
+        {
+          "name": "Sin token -> 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer ",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/mine",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "mine"
+              ]
+            },
+            "description": "Ningun endpoint de Task es publico."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 sin token\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token de CustomerPortal -> 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerPortalToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/mine",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "mine"
+              ]
+            },
+            "description": "v1 es solo staff. Que el cliente vea el objeto interno seria ClientRequest, fase 12."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 para CustomerPortal\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token de servicio (M2M) -> 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{serviceToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/mine",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "mine"
+              ]
+            },
+            "description": "Task no expone superficie M2M: ningun servicio lee tareas por HTTP."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 para ActorType.Service\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sin tasks.templates.manage -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{readOnlyToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"X\",\n  \"description\": null,\n  \"recurrenceRule\": null,\n  \"recurrenceTimeZoneId\": null,\n  \"recurrenceMode\": \"FixedSchedule\",\n  \"steps\": []\n}"
+            },
+            "description": "Editar el guion es de quien define como trabaja la firma; aplicarlo no."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 sin permiso de plantillas\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aplicar dos veces al mismo cliente y anio -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/templates/{{templateId}}/apply",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "templates",
+                "{{templateId}}",
+                "apply"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigneeUserId\": null,\n  \"customerId\": \"{{customerId}}\",\n  \"taxYear\": 2025,\n  \"dueAtUtc\": \"2026-04-15T16:00:00Z\",\n  \"timeZoneId\": \"America/New_York\",\n  \"allowDuplicate\": false\n}"
+            },
+            "description": "Task.Template.AlreadyApplied. Un 1040 enmendado pide allowDuplicate explicito."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Task.Template.AlreadyApplied\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mismo archivo dos veces -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{taskId}}/attachments/link",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{taskId}}",
+                "attachments",
+                "link"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"displayName\": \"duplicado.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 10\n}"
+            },
+            "description": "Task.Attachment.Duplicate. Tras desadjuntar si se puede volver a enlazar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Task.Attachment.Duplicate\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adjuntar a una tarea cerrada -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{closedTaskId}}/attachments/link",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{closedTaskId}}",
+                "attachments",
+                "link"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"displayName\": \"tarde.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 10\n}"
+            },
+            "description": "Task.Attachment.TaskClosed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Task.Attachment.TaskClosed\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Iniciar una tarea bloqueada -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{blockedTaskId}}/start",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{blockedTaskId}}",
+                "start"
+              ]
+            },
+            "description": "Task.BlockedByDependencies: es conflicto de estado, no peticion mal formada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409 bloqueada por dependencias\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ciclo de dependencias -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{blockerTaskId}}/dependencies",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{blockerTaskId}}",
+                "dependencies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dependsOnTaskId\": \"{{taskId}}\"\n}"
+            },
+            "description": "Task.Dependency.Cycle, rechazado al crear la arista."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Task.Dependency.Cycle\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tarea de otro tenant -> 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/{{otherTenantTaskId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "{{otherTenantTaskId}}"
+              ]
+            },
+            "description": "404 y no 403: confirmar que existe ya seria una fuga."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 cross-tenant\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Portal leyendo un pedido ajeno -> 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{PortalAccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/portal/client-requests/{{otherCustomerRequestId}}/documents",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "portal",
+                "client-requests",
+                "{{otherCustomerRequestId}}",
+                "documents"
+              ]
+            },
+            "description": "Un pedido de otro cliente responde 404, el mismo codigo que uno inexistente: un 403 confirmaria que existe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fileId\": \"{{fileId}}\",\n  \"displayName\": \"x.pdf\",\n  \"contentType\": \"application/pdf\",\n  \"sizeBytes\": 1024\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 y no 403\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Token de staff contra el portal -> 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/portal/client-requests",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "portal",
+                "client-requests"
+              ]
+            },
+            "description": "Los endpoints de portal solo admiten actor CustomerPortal."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazar sin nota -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{AccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/client-requests/{{clientRequestId}}/resolve",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "client-requests",
+                "{{clientRequestId}}",
+                "resolve"
+              ]
+            },
+            "description": "Rechazar sin motivo deja al cliente sin saber que corregir.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution\": \"Reject\",\n  \"note\": null\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "UrlBase",
+      "value": "http://localhost:5047"
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "blockerTaskId",
+      "value": ""
+    },
+    {
+      "key": "blockedTaskId",
+      "value": ""
+    },
+    {
+      "key": "closedTaskId",
+      "value": ""
+    },
+    {
+      "key": "otherTenantTaskId",
+      "value": ""
+    },
+    {
+      "key": "timerId",
+      "value": ""
+    },
+    {
+      "key": "seriesId",
+      "value": ""
+    },
+    {
+      "key": "templateId",
+      "value": ""
+    },
+    {
+      "key": "labelId",
+      "value": ""
+    },
+    {
+      "key": "customerId",
+      "value": ""
+    },
+    {
+      "key": "fileId",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "clientRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "otherCustomerRequestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "PortalAccessToken",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

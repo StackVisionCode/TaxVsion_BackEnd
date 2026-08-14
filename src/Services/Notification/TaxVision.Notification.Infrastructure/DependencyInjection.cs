@@ -9,8 +9,10 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Authorization.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Application.Email.Sending;
 using TaxVision.Notification.Application.RateLimiting.Abstractions;
+using TaxVision.Notification.Infrastructure.Directory;
 using TaxVision.Notification.Infrastructure.Email;
 using TaxVision.Notification.Infrastructure.Permissions;
 using TaxVision.Notification.Infrastructure.Persistence;
@@ -55,6 +57,8 @@ public static class DependencyInjection
         >();
         services.AddScoped<IRecipientResolver, RecipientResolver>();
 
+        AddCustomerDirectoryReconciliation(services, configuration);
+
         // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady
         // (ver OnboardingReceiptLookup). El cliente M2M al endpoint one-shot de tokens de Auth se
         // registra en Program.cs (necesita HttpClient con BaseAddress, igual que Scribe/CloudStorage).
@@ -82,6 +86,7 @@ public static class DependencyInjection
         // Reminder Fase 10 — directorio userId → email. El resolver (Application) compone este repo
         // con la recuperación pull contra Auth, que se registra en Program.cs por ser un HttpClient.
         services.AddScoped<IUserEmailDirectoryRepository, UserEmailDirectoryRepository>();
+        services.AddScoped<ICustomerEmailDirectoryRepository, CustomerEmailDirectoryRepository>();
         services.AddScoped<UserEmailResolver>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
         services.AddScoped<ISmsSender, LoggingSmsSender>();
@@ -203,6 +208,30 @@ public static class DependencyInjection
     // Program.cs, ANTES de AddTieredRateLimiting(). El forwarding de
     // BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer ya existe en Program.cs (no se
     // duplica acá).
+    /// <summary>
+    /// El directorio de clientes se llenaba sólo por eventos, así que los clientes anteriores al
+    /// consumer nunca entraban y un evento perdido dejaba un hueco permanente. Sin nadie que repase
+    /// la fuente, el correo al cliente se salta en silencio.
+    /// </summary>
+    private static void AddCustomerDirectoryReconciliation(IServiceCollection services, IConfiguration configuration)
+    {
+        services
+            .AddOptions<NotificationCustomerClientOptions>()
+            .Bind(configuration.GetSection(NotificationCustomerClientOptions.SectionName));
+
+        services.AddHttpClient<INotificationCustomerClient, NotificationCustomerClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<NotificationCustomerClientOptions>>().Value;
+                var baseUrl = options.BaseUrl.TrimEnd('/');
+                http.BaseAddress = new Uri($"{baseUrl}/");
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        services.AddHostedService<CustomerDirectoryReconciliationJob>();
+    }
+
     private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration config)
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();

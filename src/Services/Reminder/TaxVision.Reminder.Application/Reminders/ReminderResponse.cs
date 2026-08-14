@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using TaxVision.Reminder.Domain.Reminders;
 using TaxVision.Reminder.Domain.ValueObjects;
 
@@ -47,4 +48,13 @@ public sealed record ReminderResponse(
             reminder.CancellationReason,
             reminder.SnoozeCount
         );
+
+    /// <summary>
+    /// Mapea una página conservando <c>Page</c>/<c>Size</c>/<c>TotalCount</c> del repositorio. Vive
+    /// acá y no en un handler porque lo usan los dos listados: dejarlo en uno obligaba al otro a
+    /// llamarlo, y eso es lo que ataba <c>ListUpcomingRemindersHandler</c> a
+    /// <c>ListMyRemindersHandler</c> sin ninguna relación de negocio entre ellos.
+    /// </summary>
+    public static PagedResult<ReminderResponse> FromPage(PagedResult<ReminderAggregate> page) =>
+        new(page.Items.Select(From).ToList(), page.Page, page.Size, page.TotalCount);
 }

@@ -8429,3 +8429,195 @@ M2M da 401 sin ninguna pista.
   `TaskIntegrationEvents`). **Honestidad sobre esta regla**: hoy pasa de forma vacua porque esos
   namespaces todavía no existen. Queda puesta para que falle el día que alguien los cree y los
   importe desde aquí.
+
+---
+
+# 50. Task — Microservicio de tareas (plan de 11 fases, CERRADO)
+
+El motor de trabajo de la firma: tareas con dependencias, subtareas, series recurrentes, plantillas
+fiscales y adjuntos por referencia. DB propia (`TaxVision_Tasks`), puerto dev **5510**, host interno
+`http://tasks-api:8080`, ruta `/tasks/*`. Ver `ADR_022_Task_Bounded_Context.md` y
+`Implementaciones/Task/*.md`.
+
+**Task no entrega avisos ni guarda bytes.** Publica eventos y pide recordatorios a Reminder; los
+archivos viven en CloudStorage y aquí sólo se guarda su `fileId`.
+
+## 50.1 Endpoints
+
+| Método | Ruta | Permiso |
+|---|---|---|
+| POST/GET/PATCH/DELETE | `/tasks`, `/tasks/{id}` | `tasks.write` / `tasks.read` |
+| POST | `/tasks/{id}/start`, `/complete`, `/cancel`, `/reopen` | `tasks.write` |
+| POST | `/tasks/{id}/waiting-on-client` | `tasks.write` |
+| POST/DELETE | `/tasks/{id}/dependencies` | `tasks.write` |
+| POST/GET | `/tasks/{id}/timers` | `tasks.write` / `tasks.read` |
+| POST/GET | `/tasks/series` | `tasks.write` / `tasks.read` |
+| GET/POST/PUT | `/tasks/templates` | `tasks.read` / `tasks.templates.manage` |
+| POST | `/tasks/templates/install-standard` | `tasks.templates.manage` |
+| PUT | `/tasks/templates/{id}/attachments` | `tasks.templates.manage` |
+| POST | `/tasks/templates/{id}/apply` | **`tasks.write`** — es el gesto diario del preparador |
+| POST | `/tasks/{id}/attachments`, `/attachments/link` | `tasks.write` |
+| GET | `/tasks/{id}/attachments?includeDescendants=` | `tasks.read` |
+| DELETE | `/tasks/{id}/attachments/{fileId}` | `tasks.write` |
+
+## 50.2 El motor de dependencias: qué es eventual y cuál es la ventana
+
+`OpenBlockerCount` y `OpenSubtaskCount` **se llevan en la fila**, no se recalculan al leer: un listado
+de 200 tareas no puede pagar un `COUNT` por fila. La contrapartida es que son un contador y los
+contadores derivan.
+
+- **Al cerrar una tarea**, el descuento de sus sucesoras y de su padre ocurre en la misma transacción.
+- **La deriva** aparece cuando un consumer se reintenta o una arista se crea contra una tarea que se
+  cerró en paralelo. La ventana es de segundos.
+- **`CounterReconciliationJob`** recalcula y corrige, y **cada corrección sube
+  `task.reconciliation_corrections_total`**. Ese contador es el termómetro del motor: cero sostenido
+  es la única lectura sana. Si sube, algo se está perdiendo, no «se está arreglando solo».
+
+Un ciclo se rechaza **al crear la arista** (`TaskDependencyGraph.EnsureNoCycle`, bajo `UPDLOCK` sobre
+las aristas del tenant), no al ejecutar: dos peticiones simultáneas que cerrarían el ciclo entre las
+dos, la gana una sola.
+
+## 50.3 Adjuntos — el veredicto del escaneo llega una sola vez
+
+Dos caminos, y la diferencia importa:
+
+- **Enlazar** (`/attachments/link`) → nace `Available`. El archivo ya está en CloudStorage y ya fue
+  escaneado. **No pasa por `Pending`**: esperar un `FileAvailable` publicado hace semanas lo dejaría
+  colgado para siempre.
+- **Subir** (`/attachments`) → nace `Pending` y espera el veredicto.
+
+`TaskFileScanResultConsumer` escucha los 4 eventos de CloudStorage
+(`Available`/`Infected`/`BlockedByPolicy`/`Deleted`). Un `fileId` que no es de ninguna tarea sale en
+silencio: el exchange trae los archivos de todo el monorepo y tirar excepción llenaría la DLQ de
+eventos ajenos.
+
+**`StaleAttachmentJob`** cierra el hueco que el evento no cubre: un adjunto creado *después* de que
+el veredicto se publicó no lo recibe nunca. El job barre los `Pending` que pasan la gracia
+(`Tasks:StaleAttachments:GraceMinutes`, 10 por defecto) y pregunta por
+`GET /storage/internal/files/{id}/scan-status` — endpoint M2M de CloudStorage que devuelve el estado
+y nada más. Ante 404, timeout o 5xx no toca el adjunto: una respuesta ambigua no justifica
+desadjuntar.
+
+Un adjunto **nunca bloquea completar** una tarea. Si el escaneo lo rechaza después del cierre, sale
+`task.attachment_rejected.v1` y Notification avisa **a quien lo adjuntó** —para entonces nadie está
+mirando esa tarea—.
+
+Desadjuntar **no borra el archivo**: CloudStorage es su dueño y otros servicios pueden referenciarlo.
+`TaskRetentionJob` sólo purga las filas de referencia ya desadjuntadas con más de
+`Tasks:Retention:DetachedAttachmentMonths` (12 por defecto). Las tareas cerradas no se purgan: son el
+registro del encargo fiscal.
+
+## 50.4 Plantillas
+
+Una plantilla es el guion de un encargo. Aplicarla instancia el grafo entero —N tareas + M aristas—
+en una sola transacción, con las fechas colgando del vencimiento por su offset. Sólo el primer paso
+nace ejecutable.
+
+`POST /tasks/templates/install-standard` copia el catálogo estándar al tenant (1040 individual,
+1040-ES trimestral, 941 trimestral) y es idempotente por nombre.
+
+**Las trimestrales no son grafos**: llevan `recurrenceRule`, y aplicarlas abre una `TaskSeries` con su
+único paso de blueprint en vez de instanciar cuatro tareas de golpe. En enero nadie quiere ver en su
+lista el pago de septiembre.
+
+Los archivos de referencia del guion (`PUT /templates/{id}/attachments`) viajan a cada instancia como
+`FromTemplate`/`Available` **con el mismo `fileId`**: un objeto en CloudStorage, N referencias.
+
+## 50.5 Configuración
+
+| Clave | Default | Para qué |
+|---|---|---|
+| `Tasks:Customer:BaseUrl` | `http://localhost:5263` | directorio local de clientes |
+| `Tasks:CloudStorage:BaseUrl` | `http://localhost:5330` | estado del escaneo (sólo metadatos) |
+| `Tasks:StaleAttachments:GraceMinutes` | `10` | antes de eso el escaneo puede seguir en curso |
+| `Tasks:StaleAttachments:IntervalMinutes` | `5` | cada cuánto barre |
+| `Tasks:Retention:DetachedAttachmentMonths` | `12` | cubre una temporada fiscal completa |
+
+El cliente M2M `tasks-worker` necesita `cloudstorage.file.view`. Sin ese permiso el barrido recibe 403
+y los adjuntos se quedan en `Pending` sin que nada falle a la vista.
+
+## 50.6 Observabilidad
+
+`Meter` **`TaxVision.Tasks`**, registrado como `additionalMeterNames` — un Meter propio que no se
+declara ahí no exporta nada y el panel queda vacío sin un solo error.
+
+`task.created_total{has_customer}` · `task.completed_total{has_customer}` · `task.blocked_total` ·
+`task.dependency_cycle_rejected_total` · **`task.reconciliation_corrections_total`** ·
+`task.time_to_complete_seconds`.
+
+`task.overdue_total` lo alimenta `OverdueTaskSweepJob`.
+
+## 50.7 Vencimientos
+
+`OverdueTaskSweepJob` publica `task.overdue.v1` por cada tarea que pasó su fecha y sigue abierta, y
+Notification avisa **al asignado y a nadie más** — es su trabajo el que se pasó; mandarlo a todo el
+que tenga `tasks.read` convierte el aviso en ruido de oficina y acaba silenciado.
+
+**Un aviso por vencimiento, no por barrido.** La tarea seguirá vencida mañana, así que la fila lleva
+`OverdueNotifiedAtUtc` y la consulta excluye las ya avisadas. Mover la fecha limpia la marca: un
+vencimiento nuevo vuelve a avisar. Sin eso, el asignado recibiría el mismo aviso cada hora hasta
+silenciar el canal — y entonces deja de ver también los que sí importan.
+
+Sin asignado no se avisa a nadie: la tarea aparece igual en los listados, así que perder el aviso no
+pierde el trabajo.
+
+El barrido va en trozos de 25 y **guarda antes de publicar**. `CounterReconciliationJob` corrige
+contadores sobre estas mismas filas, así que el `rowversion` cambia bajo los pies del barrido: en un
+lote grande una sola colisión tira el guardado entero, y si los eventos ya salieron el aviso se repite
+en la corrida siguiente. El trozo que colisiona se salta sin avisar y lo recoge el barrido próximo.
+
+| Clave | Default |
+|---|---|
+| `Tasks:OverdueSweep:IntervalMinutes` | `60` |
+| `Tasks:OverdueSweep:BatchSize` | `200` |
+
+## 50.8 El portal del cliente — `ClientRequest`
+
+Lo que la firma le pide al cliente, en el idioma del cliente. **Es un agregado aparte de la tarea, no
+una vista suya**: el cliente no estima horas, no imputa tiempo, no reasigna y no ve el asignado ni
+las notas internas. Mezclarlos corrompería además las dos métricas a la vez — capacidad del staff y
+responsividad del cliente dejan de medir lo que dicen.
+
+Ciclo: `Pending` → `Submitted` → `Accepted` | `Rejected` | `Cancelled`. **El cliente nunca cierra el
+pedido**: sube y queda `Submitted`; aceptarlo es del preparador. Mismo criterio por el que nada saca
+una tarea de `WaitingOnClient` automáticamente — «apareció un archivo» no es «mandó lo que le pedí».
+
+| Método | Ruta | Actor / permiso |
+|---|---|---|
+| POST | `/tasks/client-requests` | staff · `tasks.client_requests.manage` |
+| POST | `/tasks/client-requests/{id}/resolve` | staff · `tasks.client_requests.manage` |
+| GET | `/tasks/client-requests/by-task/{taskId}` | staff · `tasks.read` |
+| GET | `/tasks/portal/client-requests` | **CustomerPortal** · `tasks.portal.client_requests` |
+| POST | `/tasks/portal/client-requests/{id}/documents` | **CustomerPortal** · `tasks.portal.client_requests` |
+
+Los dos endpoints del portal viven en el namespace `Portal` y **derivan el cliente del token**, nunca
+de la petición: aceptarlo del cliente convierte cambiar un id en la URL en leer el expediente de
+otro. Un pedido ajeno responde **404**, el mismo código que uno inexistente.
+
+La respuesta del portal es otra forma del mismo pedido: sin `requestedByUserId` —el id de un empleado
+no es asunto del cliente— y sin el motivo técnico de un rechazo.
+
+**Cuando el escaneo tumba un documento salen dos avisos con dos textos distintos**: al cliente, por
+correo, «no pudimos procesarlo, volvé a subirlo»; al preparador, in-app, el motivo real. Decirle al
+cliente que su archivo tiene un virus no le indica qué hacer y expone detalle de infraestructura;
+ocultárselo del todo lo dejaría esperando algo que nunca llega.
+
+`Tasks:ClientReminders:Enabled` arranca en **`false`**: encenderlo sin coordinarlo es cómo el mismo
+cliente recibe tres correos el mismo día desde Task, Signature y Correspondence. Hoy no hay job que
+lo consuma — el flag existe para que la decisión sea explícita cuando lo haya.
+
+## 50.9 Fitness functions (`TasksArchitectureTests`)
+
+Además de las comunes (Domain sin EF, controllers sólo contra Application, todo `[HttpXxx]` con
+`[AllowActorTypes]` y `[RateLimit]`, un handler por archivo, presupuesto de 30 líneas por `Handle`,
+sin referencias al plan en comentarios, SQL crudo con allowlist), tres propias:
+
+- **Cero comparaciones de estado contra texto** — el estado es un enum; un literal dentro de un
+  contrato de integración sí se permite, una comparación no.
+- **`StartTimer` sólo lo dispara su handler** — que `Create` o un consumer lo arranquen imputaría
+  horas que nadie trabajó.
+- **Ningún tipo referencia `Minio`, `AmazonS3` ni `IFormFile`** — Task no toca bytes. Esta regla barre
+  también la capa Api, que es justo por donde entraría un `IFormFile`.
+- **Sólo los controllers de `Portal` declaran `CustomerPortal`** — abrirle al cliente un controller
+  de staff le enseñaría las notas internas, el asignado y las horas imputadas. Lo que ve el cliente
+  es `ClientRequest`.

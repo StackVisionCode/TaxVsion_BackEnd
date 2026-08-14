@@ -57,6 +57,9 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     /// </summary>
     public DbSet<UserEmailDirectoryEntry> UserEmailDirectoryEntries => Set<UserEmailDirectoryEntry>();
 
+    // Hermana de la anterior para los avisos cuyo destinatario es un cliente, no personal de la firma.
+    public DbSet<CustomerEmailDirectoryEntry> CustomerEmailDirectoryEntries => Set<CustomerEmailDirectoryEntry>();
+
     // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady.
     public DbSet<OnboardingReceiptLookup> OnboardingReceiptLookups => Set<OnboardingReceiptLookup>();
 
