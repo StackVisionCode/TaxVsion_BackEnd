@@ -76,7 +76,15 @@ public sealed class SubmitClientDocumentHandlerTests
         Guid requestId
     ) =>
         await SubmitClientDocumentHandler.Handle(
-            new SubmitClientDocumentCommand(TenantId, customerId, requestId, Guid.NewGuid(), "w2.pdf", "application/pdf", 2048),
+            new SubmitClientDocumentCommand(
+                TenantId,
+                customerId,
+                requestId,
+                Guid.NewGuid(),
+                "w2.pdf",
+                "application/pdf",
+                2048
+            ),
             repository,
             new RecordingUnitOfWork(),
             new FakeMessageBus(),
@@ -109,9 +117,9 @@ internal sealed class InMemoryClientRequestRepository(params ClientRequest[] see
         bool onlyOpen,
         CancellationToken ct = default
     ) =>
-        Task.FromResult<IReadOnlyList<ClientRequest>>(
-            [.. _requests.Where(r => r.TenantId == tenantId && r.CustomerId == customerId && (!onlyOpen || r.IsOpen))]
-        );
+        Task.FromResult<IReadOnlyList<ClientRequest>>([
+            .. _requests.Where(r => r.TenantId == tenantId && r.CustomerId == customerId && (!onlyOpen || r.IsOpen)),
+        ]);
 
     public Task<IReadOnlyList<ClientRequest>> ListForTaskAsync(
         Guid tenantId,

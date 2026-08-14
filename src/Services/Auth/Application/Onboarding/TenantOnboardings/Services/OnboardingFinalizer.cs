@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -19,6 +20,7 @@ namespace TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 public sealed class OnboardingFinalizer(
     IGrowthOnboardingClient growth,
     IMessageBus bus,
+    ICorrelationContext correlation,
     ILogger<OnboardingFinalizer> logger
 )
 {
@@ -81,6 +83,7 @@ public sealed class OnboardingFinalizer(
             new OnboardingInvoiceRequestedIntegrationEvent
             {
                 TenantId = PlatformTenant.Id,
+                CorrelationId = correlation.CorrelationId,
                 OnboardingId = cmd.OnboardingId,
                 PlanId = cmd.PlanId,
                 PlanDescription = cmd.PlanDescription,

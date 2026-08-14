@@ -15,12 +15,47 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "MinPlanTier", "Module", "PlatformOnly" },
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "MinPlanTier",
+                    "Module",
+                    "PlatformOnly",
+                },
                 values: new object[,]
                 {
-                    { new Guid("a1000000-0000-0000-0000-000000000172"), "TenantEmployee,TenantAdmin,PlatformAdmin", "tasks.client_requests.manage", "Pedirle documentacion al cliente y cerrar lo que mande", true, false, false, 0, "tasks", false },
-                    { new Guid("a1000000-0000-0000-0000-000000000173"), "CustomerPortal", "tasks.portal.client_requests", "El cliente ve sus pedidos y registra lo que sube", true, true, false, 0, "tasks", false }
-                });
+                    {
+                        new Guid("a1000000-0000-0000-0000-000000000172"),
+                        "TenantEmployee,TenantAdmin,PlatformAdmin",
+                        "tasks.client_requests.manage",
+                        "Pedirle documentacion al cliente y cerrar lo que mande",
+                        true,
+                        false,
+                        false,
+                        0,
+                        "tasks",
+                        false,
+                    },
+                    {
+                        new Guid("a1000000-0000-0000-0000-000000000173"),
+                        "CustomerPortal",
+                        "tasks.portal.client_requests",
+                        "El cliente ve sus pedidos y registra lo que sube",
+                        true,
+                        true,
+                        false,
+                        0,
+                        "tasks",
+                        false,
+                    },
+                }
+            );
 
             // Los permisos nuevos no llegan solos a los roles ya sembrados: sin esto existen en el
             // catalogo y nadie los tiene, que es como no haberlos creado. Idempotente por el NOT
@@ -58,19 +93,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             );
         }
 
-
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000172"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000172")
+            );
 
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000173"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000173")
+            );
         }
     }
 }

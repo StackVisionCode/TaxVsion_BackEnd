@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -19,6 +20,7 @@ public static class GetMessageBodyHandler
         IProviderConnectionAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -91,6 +93,7 @@ public static class GetMessageBodyHandler
         await bus.PublishAsync(
             new ConnectorsMessageBodyFetchedIntegrationEvent
             {
+                CorrelationId = correlation.CorrelationId,
                 TenantId = account.TenantId,
                 AccountId = account.Id,
                 ProviderMessageId = query.ProviderMessageId,

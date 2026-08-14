@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
@@ -259,7 +260,7 @@ public sealed class PermissionCatalogTests
     /// </para>
     /// </summary>
     [Fact]
-    public void Task_permissions_never_reach_the_customer_portal()
+    public void Only_the_portal_task_permission_reaches_the_customer_portal()
     {
         var seeded = PermissionCatalog
             .All.Where(definition => definition.Module == "tasks")
@@ -279,15 +280,24 @@ public sealed class PermissionCatalogTests
             )
             .ToArray();
 
-        Assert.Equal(5, seeded.Length);
-        Assert.All(seeded, permission => Assert.False(permission.IsCustomerPortal));
-        Assert.All(
-            seeded,
-            permission => Assert.DoesNotContain(UserActorType.CustomerPortal, permission.AllowedActorTypes)
-        );
-        Assert.DoesNotContain(
-            PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal),
-            code => code.StartsWith("tasks.", StringComparison.Ordinal)
-        );
+        // Uno solo tiene al cliente como destinatario; el resto es trabajo interno de la firma.
+        var portal = Array.FindAll(seeded, permission => permission.IsCustomerPortal);
+        Assert.Single(portal);
+        Assert.Equal(TasksPermissions.PortalClientRequests, portal[0].Code);
+
+        foreach (var permission in seeded)
+        {
+            if (permission.IsCustomerPortal)
+                continue;
+
+            Assert.DoesNotContain(UserActorType.CustomerPortal, permission.AllowedActorTypes);
+        }
+
+        // Y el rol de portal no recibe por defecto ningun permiso de tareas que no sea el suyo.
+        foreach (var code in PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal))
+        {
+            if (code.StartsWith("tasks.", StringComparison.Ordinal))
+                Assert.Equal(TasksPermissions.PortalClientRequests, code);
+        }
     }
 }

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TaxVision.Calendar.Application" />
+    <InternalsVisibleTo Include="TaxVision.Calendar.Tests" />
+  </ItemGroup>
+
+  <!--
+    Ical.Net vive en Domain a proposito: RecurrenceRule valida el RRULE en el constructor del VO y
+    OccurrenceExpander expande en la zona de la serie. Es una libreria de dominio puro, sin IO ni EF.
+    Arrastra NodaTime, que trae su propia tzdb IANA: por eso un solo motor convierte hora de pared a
+    UTC en todo el servicio.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Ical.Net" Version="5.1.0" />
+  </ItemGroup>
+</Project>

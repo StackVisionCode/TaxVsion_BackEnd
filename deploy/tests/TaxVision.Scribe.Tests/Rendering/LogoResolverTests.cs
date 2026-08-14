@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.Projections;
+using TaxVision.Scribe.Tests.Projections;
 
 namespace TaxVision.Scribe.Tests.Rendering;
 
@@ -30,6 +31,7 @@ public sealed class LogoResolverTests
             new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
             new FakeUnitOfWork(),
             messageBus,
+            new FakeCorrelationContext(),
             NullLogger<LogoResolver>.Instance
         );
 

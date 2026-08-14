@@ -113,6 +113,9 @@ jobs:
           # Tasks (servicio nuevo, ago-2026). Mismo contrato: docker-compose.yml la exige con :?
           # en tasks-api y en el servicio migrations.
           TASKS_DB_CONNECTION=${{ secrets.TASKS_DB_CONNECTION }}
+          # Calendar (servicio nuevo, ago-2026). Mismo contrato: docker-compose.yml la exige
+          # con :? en calendar-api y en el servicio migrations.
+          CALENDAR_DB_CONNECTION=${{ secrets.CALENDAR_DB_CONNECTION }}
           # Catalog e Inventory (servicios nuevos, ago-2026). Mismo contrato que Sms/Reminder:
           # docker-compose.yml las exige con :? en catalog-api/inventory-api y en migrations.
           CATALOG_DB_CONNECTION=${{ secrets.CATALOG_DB_CONNECTION }}

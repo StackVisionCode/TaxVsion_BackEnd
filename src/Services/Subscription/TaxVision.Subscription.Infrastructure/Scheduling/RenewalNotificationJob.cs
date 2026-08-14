@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,9 @@ public sealed class RenewalNotificationJob(
         var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
         var seats = services.GetRequiredService<ISubscriptionSeatRepository>();
         var bus = services.GetRequiredService<IMessageBus>();
+        var correlation = services.GetRequiredService<ICorrelationContext>();
+        // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
+        using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
         var logger = services.GetRequiredService<ILogger<RenewalNotificationJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -38,11 +42,12 @@ public sealed class RenewalNotificationJob(
         var subscriptionCount = await NotifyUpcomingSubscriptionRenewalsAsync(
             subscriptions,
             bus,
+            correlation,
             nowUtc,
             windowEndUtc,
             ct
         );
-        var seatCount = await NotifyUpcomingSeatRenewalsAsync(seats, bus, nowUtc, windowEndUtc, ct);
+        var seatCount = await NotifyUpcomingSeatRenewalsAsync(seats, bus, correlation, nowUtc, windowEndUtc, ct);
 
         if (subscriptionCount + seatCount > 0)
         {
@@ -57,6 +62,7 @@ public sealed class RenewalNotificationJob(
     private static async Task<int> NotifyUpcomingSubscriptionRenewalsAsync(
         ISubscriptionRepository subscriptions,
         IMessageBus bus,
+        ICorrelationContext correlation,
         DateTime nowUtc,
         DateTime windowEndUtc,
         CancellationToken ct
@@ -75,6 +81,7 @@ public sealed class RenewalNotificationJob(
                 new SubscriptionRenewalUpcomingIntegrationEvent
                 {
                     TenantId = subscription.TenantId,
+                    CorrelationId = correlation.CorrelationId,
                     TenantSubscriptionId = subscription.Id,
                     DueAtUtc = subscription.NextRenewalAtUtc.Value,
                     DaysUntilDue = daysUntilDue,
@@ -90,6 +97,7 @@ public sealed class RenewalNotificationJob(
     private static async Task<int> NotifyUpcomingSeatRenewalsAsync(
         ISubscriptionSeatRepository seats,
         IMessageBus bus,
+        ICorrelationContext correlation,
         DateTime nowUtc,
         DateTime windowEndUtc,
         CancellationToken ct
@@ -108,6 +116,7 @@ public sealed class RenewalNotificationJob(
                 new SeatRenewalUpcomingIntegrationEvent
                 {
                     TenantId = seat.TenantId,
+                    CorrelationId = correlation.CorrelationId,
                     SeatId = seat.Id,
                     DueAtUtc = seat.NextRenewalAtUtc.Value,
                     DaysUntilDue = daysUntilDue,

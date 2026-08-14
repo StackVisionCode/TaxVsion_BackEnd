@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -35,6 +36,7 @@ public static class ConnectManualAccountHandler
         IWatchProviderClientFactory watchClientFactory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -74,7 +76,7 @@ public static class ConnectManualAccountHandler
         if (activateResult.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(activateResult.Error);
 
-        await PublishConnectedEventAndAuditAsync(cmd, account, bus, auditLogRepository, unitOfWork, ct);
+        await PublishConnectedEventAndAuditAsync(cmd, account, bus, correlation, auditLogRepository, unitOfWork, ct);
 
         return Result.Success(new ConnectManualAccountResult(account.Id, account.EmailAddress));
     }
@@ -207,6 +209,7 @@ public static class ConnectManualAccountHandler
         ConnectManualAccountCommand cmd,
         TenantEmailAccount account,
         IMessageBus bus,
+        ICorrelationContext correlation,
         IProviderConnectionAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -216,6 +219,7 @@ public static class ConnectManualAccountHandler
         await bus.PublishAsync(
             new ConnectorsTenantEmailAccountConnectedIntegrationEvent
             {
+                CorrelationId = correlation.CorrelationId,
                 TenantId = cmd.TenantId,
                 AccountId = account.Id,
                 EmailAddress = account.EmailAddress,

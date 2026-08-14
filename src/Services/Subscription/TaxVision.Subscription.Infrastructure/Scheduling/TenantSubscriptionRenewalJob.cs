@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,9 @@ public sealed class TenantSubscriptionRenewalJob(
         var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
         var plans = services.GetRequiredService<IPlanRepository>();
         var bus = services.GetRequiredService<IMessageBus>();
+        var correlation = services.GetRequiredService<ICorrelationContext>();
+        // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
+        using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
         var logger = services.GetRequiredService<ILogger<TenantSubscriptionRenewalJob>>();
 
@@ -80,6 +84,7 @@ public sealed class TenantSubscriptionRenewalJob(
                 new SubscriptionRenewalDueIntegrationEvent
                 {
                     TenantId = subscription.TenantId,
+                    CorrelationId = correlation.CorrelationId,
                     TenantSubscriptionId = subscription.Id,
                     PlanCode = subscription.PlanCode,
                     PeriodStartUtc = subscription.CurrentPeriodEndUtc,

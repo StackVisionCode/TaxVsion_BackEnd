@@ -57,6 +57,7 @@ public class CompleteOAuthConnectHandlerTests
             new FakeWatchProviderClientFactory(fixture.WatchClient),
             fixture.UnitOfWork,
             fixture.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 

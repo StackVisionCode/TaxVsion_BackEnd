@@ -137,6 +137,12 @@ apply_migration \
   "$TASKS_DB_CONNECTION"
 
 apply_migration \
+  "Calendar" \
+  "src/Services/Calendar/TaxVision.Calendar.Infrastructure/TaxVision.Calendar.Infrastructure.csproj" \
+  "src/Services/Calendar/TaxVision.Calendar.Api/TaxVision.Calendar.Api.csproj" \
+  "$CALENDAR_DB_CONNECTION"
+
+apply_migration \
   "Catalog" \
   "src/Services/Catalog/TaxVision.Catalog.Infrastructure/TaxVision.Catalog.Infrastructure.csproj" \
   "src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" \

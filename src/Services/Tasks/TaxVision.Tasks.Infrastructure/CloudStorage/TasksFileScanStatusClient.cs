@@ -42,10 +42,7 @@ internal sealed class TasksFileScanStatusClient(
 
         try
         {
-            using var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                $"storage/internal/files/{fileId:D}/scan-status"
-            );
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"internal/files/{fileId:D}/scan-status");
             request.Headers.Authorization = new("Bearer", token);
 
             using var response = await httpClient.SendAsync(request, ct);

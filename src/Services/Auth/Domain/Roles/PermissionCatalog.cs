@@ -194,6 +194,12 @@ public static class PermissionCatalog
     public const string TasksClientRequestsManage = TasksPermissions.ClientRequestsManage;
     public const string TasksPortalClientRequests = TasksPermissions.PortalClientRequests;
 
+    public const string CalendarRead = CalendarPermissions.Read;
+    public const string CalendarWrite = CalendarPermissions.Write;
+    public const string CalendarManageAll = CalendarPermissions.ManageAll;
+    public const string CalendarTypesManage = CalendarPermissions.TypesManage;
+    public const string CalendarAvailabilityManage = CalendarPermissions.AvailabilityManage;
+
     // Portal del cliente final
     public const string PortalCallsUse = "portal.calls.use";
     public const string PortalMilesUse = "portal.miles.use";
@@ -1757,6 +1763,42 @@ public static class PermissionCatalog
             "Pedirle documentacion al cliente y cerrar lo que mande",
             false
         ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000174"),
+            CalendarRead,
+            "calendar",
+            "Ver el calendario del tenant y consultar disponibilidad",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000175"),
+            CalendarWrite,
+            "calendar",
+            "Crear, mover y cancelar las citas propias",
+            false
+        ),
+        // No anula ADR-C-09: el agregado sigue exigiendo organizador. Permite actuar como tal.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000176"),
+            CalendarManageAll,
+            "calendar",
+            "Reorganizar agendas ajenas actuando como organizador (supervision)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000177"),
+            CalendarTypesManage,
+            "calendar",
+            "Definir los tipos de cita de la firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000178"),
+            CalendarAvailabilityManage,
+            "calendar",
+            "Definir horarios de atencion y bloqueos de agenda",
+            false
+        ),
         // El unico de este modulo cuyo destinatario esta fuera de la firma: el cliente ve su lista
         // de pedidos, no la tarea interna de la que salieron.
         new(
@@ -1906,6 +1948,11 @@ public static class PermissionCatalog
                 // Quien pide el documento es quien cierra lo que llega: separarlo obligaria a que
                 // otra persona valide cada W-2, que no es como trabaja una firma.
                 TasksClientRequestsManage,
+                // El preparador agenda con sus clientes y bloquea su propia agenda. Fuera quedan
+                // manage_all y types.manage: configuracion de la firma.
+                CalendarRead,
+                CalendarWrite,
+                CalendarAvailabilityManage,
             ],
             Role.SystemCustomerPortal =>
             [

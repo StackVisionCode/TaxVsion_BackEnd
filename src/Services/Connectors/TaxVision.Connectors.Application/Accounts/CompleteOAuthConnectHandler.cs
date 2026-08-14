@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -41,6 +42,7 @@ public static class CompleteOAuthConnectHandler
         IWatchProviderClientFactory watchClientFactory,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -178,6 +180,7 @@ public static class CompleteOAuthConnectHandler
         await bus.PublishAsync(
             new ConnectorsTenantEmailAccountConnectedIntegrationEvent
             {
+                CorrelationId = correlation.CorrelationId,
                 TenantId = cmd.TenantId,
                 AccountId = account.Id,
                 EmailAddress = account.EmailAddress,

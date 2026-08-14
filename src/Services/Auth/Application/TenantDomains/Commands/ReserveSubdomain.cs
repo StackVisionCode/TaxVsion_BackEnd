@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -44,6 +45,7 @@ public static class ReserveSubdomainHandler
         IOptions<TenantDomainOptions> options,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         IJwtTokenGenerator jwt,
         CancellationToken ct
     )
@@ -89,6 +91,7 @@ public static class ReserveSubdomainHandler
             new TenantDomainReservedIntegrationEvent
             {
                 TenantId = PlatformTenant.Id,
+                CorrelationId = correlation.CorrelationId,
                 Slug = reservation.SubdomainSlug,
                 ReservedByEmail = reservation.ReservedByEmail,
                 ExpiresAtUtc = reservation.ExpiresAtUtc,

@@ -116,6 +116,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
@@ -139,6 +140,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
@@ -169,6 +171,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
@@ -203,6 +206,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
@@ -228,6 +232,7 @@ public sealed class ReserveSubdomainHandlerTests
             DefaultOptions(),
             unitOfWork,
             bus,
+            new FakeCorrelationContext(),
             jwt,
             CancellationToken.None
         );

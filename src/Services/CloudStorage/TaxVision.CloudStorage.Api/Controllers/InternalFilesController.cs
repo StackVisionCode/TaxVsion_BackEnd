@@ -17,7 +17,7 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 /// ningún actor humano tiene nada que hacer acá.
 /// </summary>
 [ApiController]
-[Route("storage/internal/files")]
+[Route("internal/files")]
 [Authorize]
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalFilesController(IMessageBus bus) : ControllerBase

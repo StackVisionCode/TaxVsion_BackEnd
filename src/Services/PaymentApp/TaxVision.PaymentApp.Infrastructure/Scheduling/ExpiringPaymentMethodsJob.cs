@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +29,9 @@ public sealed class ExpiringPaymentMethodsJob(
     {
         var customers = services.GetRequiredService<ITenantProviderCustomerRepository>();
         var bus = services.GetRequiredService<IMessageBus>();
+        var correlation = services.GetRequiredService<ICorrelationContext>();
+        // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
+        using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
         var logger = services.GetRequiredService<ILogger<ExpiringPaymentMethodsJob>>();
 
@@ -46,6 +50,7 @@ public sealed class ExpiringPaymentMethodsJob(
                     new SaaSPaymentMethodExpiringSoonIntegrationEvent
                     {
                         TenantId = customer.TenantId,
+                        CorrelationId = correlation.CorrelationId,
                         TenantProviderCustomerId = customer.Id,
                         PaymentMethodId = method.Id,
                         Brand = method.Brand,

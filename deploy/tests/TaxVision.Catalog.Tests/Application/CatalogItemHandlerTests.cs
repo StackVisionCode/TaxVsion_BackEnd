@@ -86,6 +86,7 @@ public sealed class CatalogItemHandlerTests
             h.Categories,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.True(result.IsFailure);
@@ -102,6 +103,7 @@ public sealed class CatalogItemHandlerTests
             h.Categories,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -123,6 +125,7 @@ public sealed class CatalogItemHandlerTests
             h.Categories,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.True(result.IsFailure);
@@ -138,6 +141,7 @@ public sealed class CatalogItemHandlerTests
             h.Items,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.True(result.IsFailure);
@@ -154,6 +158,7 @@ public sealed class CatalogItemHandlerTests
             h.Items,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.True(result.IsSuccess);
@@ -173,6 +178,7 @@ public sealed class CatalogItemHandlerTests
             h.Categories,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.True(result.IsSuccess);
@@ -191,6 +197,7 @@ public sealed class CatalogItemHandlerTests
             h.Items,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.NotNull(h.Bus.LastOfType<CatalogItemDeactivatedIntegrationEvent>());
@@ -201,6 +208,7 @@ public sealed class CatalogItemHandlerTests
             h.Items,
             h.Uow,
             bus2,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.Null(bus2.LastOfType<CatalogItemDeactivatedIntegrationEvent>());
@@ -216,6 +224,7 @@ public sealed class CatalogItemHandlerTests
             h.Items,
             h.Uow,
             h.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
         Assert.True(result.IsSuccess);

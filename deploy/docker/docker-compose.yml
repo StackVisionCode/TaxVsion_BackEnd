@@ -492,6 +492,11 @@ services:
       # Leer en que acabo el escaneo de un archivo ya adjunto: el veredicto se publica una sola vez
       # y un adjunto creado despues de esa publicacion no vuelve a recibirlo.
       ServiceAuth__Clients__23__Permissions__0: cloudstorage.file.view
+      # Calendar — mismo caso que reminder-worker: sin Permissions ni Scopes, porque los dos destinos
+      # (internal/plan-rate-limits de Subscription y permissions-snapshot de Auth) solo exigen
+      # actor_type=Service via la policy ServiceOnly.
+      ServiceAuth__Clients__24__ClientId: ${CALENDAR_SERVICE_CLIENT_ID:-calendar-worker}
+      ServiceAuth__Clients__24__Secret: ${CALENDAR_SERVICE_CLIENT_SECRET:-}
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -1190,6 +1195,47 @@ services:
     networks:
       - taxvision-network
 
+  calendar-api:
+    image: taxvision/calendar-api:dev
+    container_name: taxvision-calendar-api
+    build:
+      context: ../..
+      dockerfile: src/Services/Calendar/TaxVision.Calendar.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${CALENDAR_DB_CONNECTION:?Set CALENDAR_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      # M2M: catalogo de plan-rate-limits (Subscription) + recuperacion pull de permisos (Auth).
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080
+      ServiceAuthClient__ClientId: ${CALENDAR_SERVICE_CLIENT_ID:-calendar-worker}
+      ServiceAuthClient__ClientSecret: ${CALENDAR_SERVICE_CLIENT_SECRET:-}
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # Directorio local de customers: backfill reactivo + los dos jobs de reconciliacion.
+      Calendar__Customer__BaseUrl: http://customer-api:8080
+      # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   tasks-api:
     image: taxvision/tasks-api:dev
     container_name: taxvision-tasks-api
@@ -1850,6 +1896,7 @@ services:
       SMS_DB_CONNECTION: ${SMS_DB_CONNECTION:?Set SMS_DB_CONNECTION in .env}
       REMINDER_DB_CONNECTION: ${REMINDER_DB_CONNECTION:?Set REMINDER_DB_CONNECTION in .env}
       TASKS_DB_CONNECTION: ${TASKS_DB_CONNECTION:?Set TASKS_DB_CONNECTION in .env}
+      CALENDAR_DB_CONNECTION: ${CALENDAR_DB_CONNECTION:?Set CALENDAR_DB_CONNECTION in .env}
       CATALOG_DB_CONNECTION: ${CATALOG_DB_CONNECTION:?Set CATALOG_DB_CONNECTION in .env}
       INVENTORY_DB_CONNECTION: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
     depends_on:
@@ -1920,6 +1967,7 @@ services:
       ReverseProxy__Clusters__notes__Destinations__notes1__Address: http://notes-api:8080/
       ReverseProxy__Clusters__sms__Destinations__sms1__Address: http://sms-api:8080/
       ReverseProxy__Clusters__reminder__Destinations__reminder1__Address: http://reminder-api:8080/
+      ReverseProxy__Clusters__calendar__Destinations__calendar1__Address: http://calendar-api:8080/
       ReverseProxy__Clusters__tasks__Destinations__tasks1__Address: http://tasks-api:8080/
       ReverseProxy__Clusters__catalog__Destinations__catalog1__Address: http://catalog-api:8080/
       ReverseProxy__Clusters__inventory__Destinations__inventory1__Address: http://inventory-api:8080/
@@ -1948,6 +1996,7 @@ services:
       - sms-api
       - reminder-api
       - tasks-api
+      - calendar-api
       - catalog-api
       - inventory-api
       - otel-collector

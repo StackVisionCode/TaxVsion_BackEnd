@@ -103,6 +103,14 @@
     <Project Path="src/Services/Reminder/TaxVision.Reminder.Domain/TaxVision.Reminder.Domain.csproj" />
     <Project Path="src/Services/Reminder/TaxVision.Reminder.Infrastructure/TaxVision.Reminder.Infrastructure.csproj" />
   </Folder>
+  <!-- CalendarService -->
+  <Folder Name="/src/Services/Calendar/">
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Api/TaxVision.Calendar.Api.csproj" />
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Application/TaxVision.Calendar.Application.csproj" />
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Domain/TaxVision.Calendar.Domain.csproj" />
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Infrastructure/TaxVision.Calendar.Infrastructure.csproj" />
+  </Folder>
+
   <!-- TasksService -->
   <Folder Name="/src/Services/Tasks/">
     <Project Path="src/Services/Tasks/TaxVision.Tasks.Api/TaxVision.Tasks.Api.csproj" />
@@ -190,6 +198,7 @@
     <Project Path="deploy/tests/TaxVision.Signature.Tests/TaxVision.Signature.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Sms.Tests/TaxVision.Sms.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Subscription.Tests/TaxVision.Subscription.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Calendar.Tests/TaxVision.Calendar.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tasks.Tests/TaxVision.Tasks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />
   </Folder>

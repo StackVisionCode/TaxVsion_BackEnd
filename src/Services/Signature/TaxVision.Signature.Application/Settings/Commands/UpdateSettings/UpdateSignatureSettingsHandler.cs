@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -14,6 +15,7 @@ public static class UpdateSignatureSettingsHandler
         ITenantSignatureSettingsRepository repository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -173,6 +175,7 @@ public static class UpdateSignatureSettingsHandler
         await bus.PublishAsync(
             new SignatureSettingsUpdatedIntegrationEvent
             {
+                CorrelationId = correlation.CorrelationId,
                 TenantId = cmd.TenantId,
                 ChangedByUserId = cmd.ChangedByUserId,
                 UpdatedAtUtc = settings.UpdatedAtUtc,

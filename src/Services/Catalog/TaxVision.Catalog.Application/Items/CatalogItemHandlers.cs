@@ -64,6 +64,7 @@ public static class CreateCatalogItemHandler
         ICategoryRepository categories,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        BuildingBlocks.Common.ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -109,6 +110,7 @@ public static class CreateCatalogItemHandler
             new CatalogItemCreatedIntegrationEvent
             {
                 TenantId = command.TenantId,
+                CorrelationId = correlation.CorrelationId,
                 ItemId = item.Id,
                 CategoryId = item.CategoryId,
                 Name = item.Name,
@@ -152,6 +154,7 @@ public static class UpdateCatalogItemHandler
         ICategoryRepository categories,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        BuildingBlocks.Common.ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -182,6 +185,7 @@ public static class UpdateCatalogItemHandler
             new CatalogItemUpdatedIntegrationEvent
             {
                 TenantId = command.TenantId,
+                CorrelationId = correlation.CorrelationId,
                 ItemId = item.Id,
                 Name = item.Name,
                 CategoryId = item.CategoryId,
@@ -198,6 +202,7 @@ public static class ChangeCatalogItemPriceHandler
         ICatalogItemRepository items,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        BuildingBlocks.Common.ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -221,6 +226,7 @@ public static class ChangeCatalogItemPriceHandler
             new CatalogItemPriceChangedIntegrationEvent
             {
                 TenantId = command.TenantId,
+                CorrelationId = correlation.CorrelationId,
                 ItemId = item.Id,
                 UnitPrice = item.Price.Amount,
                 Currency = item.Price.Currency,
@@ -237,6 +243,7 @@ public static class SetCatalogItemActiveHandler
         ICatalogItemRepository items,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        BuildingBlocks.Common.ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -249,7 +256,12 @@ public static class SetCatalogItemActiveHandler
 
         if (!command.IsActive)
             await bus.PublishAsync(
-                new CatalogItemDeactivatedIntegrationEvent { TenantId = command.TenantId, ItemId = item.Id }
+                new CatalogItemDeactivatedIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    CorrelationId = correlation.CorrelationId,
+                    ItemId = item.Id,
+                }
             );
         return Result.Success();
     }
@@ -262,6 +274,7 @@ public static class DeleteCatalogItemHandler
         ICatalogItemRepository items,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        BuildingBlocks.Common.ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -274,7 +287,12 @@ public static class DeleteCatalogItemHandler
 
         // Borrado (soft) = desactivado para los consumidores (Inventory/Billing).
         await bus.PublishAsync(
-            new CatalogItemDeactivatedIntegrationEvent { TenantId = command.TenantId, ItemId = item.Id }
+            new CatalogItemDeactivatedIntegrationEvent
+            {
+                TenantId = command.TenantId,
+                CorrelationId = correlation.CorrelationId,
+                ItemId = item.Id,
+            }
         );
         return Result.Success();
     }

@@ -137,6 +137,7 @@ public static class ChangePlanHandler
                 new SubscriptionPlanChangeDueIntegrationEvent
                 {
                     TenantId = command.TenantId,
+                    CorrelationId = correlation.CorrelationId,
                     TenantSubscriptionId = subscription.Id,
                     PlanChangeRequestId = awaitingPayment.Id,
                     TargetPlanId = plan.Id,
