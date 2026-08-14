@@ -53,6 +53,15 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent': 'auth.user.profile_updated.v1',
   // Fase 2 del plan de notificaciones dinamicas — cambio de permisos a nivel de ROL.
   'BuildingBlocks.Messaging.AuthIntegrationEvents.RolePermissionsChangedIntegrationEvent': 'auth.role.permissions_changed.v1',
+  // Calendar — la cita virtual crea la sala, y moverla la mueve.
+  'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentScheduledIntegrationEvent':
+    'calendar.appointment_scheduled.v1',
+  'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentRescheduledIntegrationEvent':
+    'calendar.appointment_rescheduled.v1',
+  // Reparacion: la cita virtual se quedo sin sala. Va por su propio tipo porque el evento de la cita
+  // agendada lleva los destinatarios y republicarlo reenviaria la invitacion.
+  'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentMeetingRoomRequestedIntegrationEvent':
+    'calendar.appointment_meeting_room_requested.v1',
   // Customer
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent': 'customer.bulk_imported.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerImportFailedIntegrationEvent': 'customer.bulk_import_failed.v1',

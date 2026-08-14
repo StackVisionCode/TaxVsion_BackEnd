@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.CalendarIntegrationEvents;
+using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Common;
@@ -18,6 +20,7 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Calendar.Application;
 using TaxVision.Calendar.Infrastructure;
+using TaxVision.Calendar.Infrastructure.Observability;
 using TaxVision.Calendar.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
@@ -45,7 +48,10 @@ builder.Services.AddCalendarInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
-builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "calendar-service");
+
+// El Meter propio va como meter adicional: sin esto los contadores suben en memoria y el dashboard
+// queda vacío sin un solo error.
+builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "calendar-service", CalendarMetrics.MeterName);
 
 // Autorizacion por permiso: [HasPermission("calendar.read")]. Los admins pasan siempre.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -112,7 +118,20 @@ builder.Host.UseWolverine(options =>
     options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
     // Un PublishMessage<T>() por cada PublishAsync. Falta uno y ese evento nunca sale del outbox.
-    // Calendar publicara 11 tipos; se declaran en la fase que los crea.
+    options.PublishMessage<AppointmentScheduledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentRescheduledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OccurrenceCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<CalendarSeriesSplitIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentAttendeeAddedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentAttendeeRespondedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentStartingSoonIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentMeetingRoomRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+
+    // Contratos de Reminder, no de Calendar: los define Reminder y Calendar solo los publica.
+    options.PublishMessage<ReminderRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ReminderTargetMovedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ReminderTargetClosedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Cola propia: por aca entran los eventos de Auth (RBAC), Subscription, Customer y Communication.
     options

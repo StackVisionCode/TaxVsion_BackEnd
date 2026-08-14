@@ -10,10 +10,16 @@ namespace BuildingBlocks.Infrastructure.RateLimiting;
 /// </summary>
 public interface ITieredRateLimitEvaluator
 {
+    /// <param name="partitionValue">
+    /// Sólo para políticas particionadas por <see cref="RateLimitPartitionDimension.Token"/>: el
+    /// valor de la credencial que reemplaza a tenant y usuario. Es una URL sin sesión, así que no hay
+    /// claims de dónde sacarlos. Lo que se manda acá se hashea antes de entrar en la clave.
+    /// </param>
     Task<RateLimitVerdict> EvaluateAsync(
         RateLimitPolicyDefinition policy,
         Guid tenantId,
         Guid userId,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        string? partitionValue = null
     );
 }

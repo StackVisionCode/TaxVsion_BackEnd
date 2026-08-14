@@ -69,6 +69,9 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(500)")
                         .HasColumnName("RecurrenceRule");
 
+                    b.Property<int?>("ReminderLeadMinutes")
+                        .HasColumnType("int");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -263,6 +266,45 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.HasKey("TenantId");
 
                     b.ToTable("TenantBackfillStates", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.Feeds.CalendarFeedToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastAccessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<string>("TokenLast4")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("nvarchar(4)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "UserId");
+
+                    b.ToTable("CalendarFeedTokens", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Calendar.Domain.Permissions.RolePermissionsProjection", b =>

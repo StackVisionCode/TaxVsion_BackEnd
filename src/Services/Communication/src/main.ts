@@ -29,6 +29,7 @@ import { bindConnectorsConsumers } from './application/event-handlers/connectors
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
+import { bindCalendarConsumers } from './application/event-handlers/calendar-consumers.js';
 import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-emitter.js';
 import { startSessionDenylistWatcher } from './infrastructure/redis/session-denylist-watcher.js';
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
@@ -138,6 +139,13 @@ async function main(): Promise<void> {
   });
   bindConnectorsConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
+    emitter,
+  });
+  bindCalendarConsumers(consumers.register.bind(consumers), {
+    meetings: container.meetings,
+    publisher: container.publisher,
+    passcodes: container.passcodes,
+    settings: container.settings,
     emitter,
   });
   bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });

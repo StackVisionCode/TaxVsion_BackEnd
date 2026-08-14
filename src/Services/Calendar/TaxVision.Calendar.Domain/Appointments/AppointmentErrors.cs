@@ -79,6 +79,17 @@ public static class AppointmentErrors
         $"An appointment cannot have more than {Appointment.MaxAttendees} attendees."
     );
 
+    /// <summary>Solapamiento que el tipo declara como error, no como aviso. La capa web lo mapea a 409.</summary>
+    public static readonly Error Conflict = new(
+        "Calendar.Appointment.Conflict",
+        "The appointment overlaps another one and this type does not allow it."
+    );
+
+    public static readonly Error ScopeRequired = new(
+        "Calendar.Appointment.ScopeRequired",
+        "Editing an occurrence of a series requires an explicit scope."
+    );
+
     public static readonly Error OrganizerCannotBeRemoved = new(
         "Calendar.Appointment.OrganizerCannotBeRemoved",
         "The organizer cannot be removed from their own appointment."

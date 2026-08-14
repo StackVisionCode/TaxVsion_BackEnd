@@ -47,6 +47,10 @@ export class PrismaMeetingRepository implements MeetingRepository {
           RecordingFileId: snapshot.recordingFileId,
           TranscriptFileId: snapshot.transcriptFileId,
           HostUserId: snapshot.hostUserId,
+          // Sin esta linea `reschedule()` movia la reunion solo en memoria: la fila conservaba la hora
+          // vieja, el evento salia con la nueva y los invitados quedaban avisados de una hora que la
+          // sala no tenia.
+          ScheduledForUtc: snapshot.scheduledForUtc,
           StartedAtUtc: snapshot.startedAtUtc,
           EndedAtUtc: snapshot.endedAtUtc,
           DurationSeconds: snapshot.durationSeconds,

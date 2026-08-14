@@ -56,6 +56,12 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
     public string? MeetingShortCode { get; private set; }
 
+    /// <summary>
+    /// Minutos de antelacion del aviso, o null si no se pidio. Calendar no entrega el recordatorio:
+    /// le pide a Reminder que lo haga.
+    /// </summary>
+    public int? ReminderLeadMinutes { get; private set; }
+
     public string? CancellationReason { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
@@ -252,6 +258,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
         return Result.Success();
     }
+
+    public void RequestReminder(int? leadMinutes) => ReminderLeadMinutes = leadMinutes is > 0 ? leadMinutes : null;
 
     /// <summary>La sala llega por evento desde Communication; si divergen, manda la cita.</summary>
     public void LinkMeeting(Guid meetingId, string shortCode)

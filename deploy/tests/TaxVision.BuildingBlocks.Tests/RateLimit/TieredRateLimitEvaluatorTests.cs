@@ -210,6 +210,63 @@ public sealed class TieredRateLimitEvaluatorTests
         Assert.DoesNotContain(counter.EvaluatedKeys, k => k.Contains(":endpoint"));
     }
 
+    /// <summary>
+    /// Una URL sin sesión no tiene claims: la credencial de la ruta es lo único que particiona. Sin
+    /// esta rama el evaluador lanzaba, y el filtro dejaba pasar el endpoint sin límite ninguno.
+    /// </summary>
+    [Fact]
+    public async Task A_token_partitioned_policy_counts_each_token_apart()
+    {
+        var evaluator = new TieredRateLimitEvaluator(
+            new FakeAlgorithmCounter(),
+            new FixedQuotaResolver(new EffectiveQuota(2, 60)),
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
+        );
+        var policy = TokenPolicy();
+
+        await evaluator.EvaluateAsync(policy, Guid.Empty, Guid.Empty, partitionValue: "token-a");
+        await evaluator.EvaluateAsync(policy, Guid.Empty, Guid.Empty, partitionValue: "token-a");
+
+        var otherToken = await evaluator.EvaluateAsync(policy, Guid.Empty, Guid.Empty, partitionValue: "token-b");
+        var sameToken = await evaluator.EvaluateAsync(policy, Guid.Empty, Guid.Empty, partitionValue: "token-a");
+
+        Assert.False(otherToken.IsExceeded);
+        Assert.True(sameToken.IsExceeded);
+        Assert.Equal("user", sameToken.Layer);
+    }
+
+    /// <summary>
+    /// Sin token no hay clave posible, y construir una incompleta agruparía a todos los feeds en el
+    /// mismo cupo. Es un bug de cableado, así que lanza en vez de fallar abierto.
+    /// </summary>
+    [Fact]
+    public async Task A_token_partitioned_policy_without_a_token_throws()
+    {
+        var evaluator = new TieredRateLimitEvaluator(
+            new FakeAlgorithmCounter(),
+            new FixedQuotaResolver(new EffectiveQuota(2, 60)),
+            new RateLimitMetrics(),
+            NullLogger<TieredRateLimitEvaluator>.Instance
+        );
+
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
+            evaluator.EvaluateAsync(TokenPolicy(), Guid.Empty, Guid.Empty)
+        );
+    }
+
+    private static RateLimitPolicyDefinition TokenPolicy() =>
+        new()
+        {
+            Name = RateLimitPolicyName.From("calendar.h.ics"),
+            Category = RateLimitCategory.H,
+            PrimaryPartition = RateLimitPartitionDimension.Token,
+            OverlayLayers = [],
+            BaseQuotaPerMinute = 20,
+            WindowSeconds = 60,
+            Algorithm = RateLimitAlgorithm.SlidingWindow,
+        };
+
     private static RateLimitPolicyDefinition Policy(
         RateLimitPartitionDimension primary = RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User
     ) =>

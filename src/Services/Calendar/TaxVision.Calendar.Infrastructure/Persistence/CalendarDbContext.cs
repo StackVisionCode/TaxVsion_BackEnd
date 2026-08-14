@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Availability;
 using TaxVision.Calendar.Domain.Backfill;
+using TaxVision.Calendar.Domain.Feeds;
 using TaxVision.Calendar.Domain.Permissions;
 using TaxVision.Calendar.Domain.Projections;
 using TaxVision.Calendar.Domain.RateLimiting;
@@ -44,6 +45,8 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
     public DbSet<BlockedTime> BlockedTimes => Set<BlockedTime>();
 
     public DbSet<CustomerDirectoryEntry> CustomerDirectoryEntries => Set<CustomerDirectoryEntry>();
+
+    public DbSet<CalendarFeedToken> CalendarFeedTokens => Set<CalendarFeedToken>();
 
     /// <summary>Marca de backfill ya corrido, una fila por tenant descubierto.</summary>
     public DbSet<TenantBackfillState> TenantBackfillStates => Set<TenantBackfillState>();

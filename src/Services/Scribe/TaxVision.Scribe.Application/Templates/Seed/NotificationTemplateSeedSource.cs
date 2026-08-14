@@ -52,6 +52,9 @@ public static class NotificationTemplateSeedSource
             OnboardingReceiptReady,
             ReminderDue,
             TaskWaitingOnClient,
+            AppointmentScheduled,
+            AppointmentRescheduled,
+            AppointmentCancelled,
             ClientRequestCreated,
             ClientRequestDocumentRejected,
         ];
@@ -669,6 +672,90 @@ public static class NotificationTemplateSeedSource
     /// <c>task.waiting_on_client.v1</c>: aquél avisa de que falta algo, éste es la entrada de la
     /// lista con su propio enlace para subir.
     /// </summary>
+    /// <summary>
+    /// La invitación. La hora va con su zona escrita al lado: «10:00» a secas es exactamente lo que
+    /// hace que alguien se presente con una hora de diferencia.
+    /// </summary>
+    private static NotificationTemplateSeed AppointmentScheduled { get; } =
+        new(
+            EventKey: "calendar.appointment_scheduled.v1",
+            TemplateKey: "calendar.appointment_scheduled.v1",
+            Name: "Calendar — Te agendaron una cita",
+            Subject: "{{ product_name }} — {{ appointment_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola,</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Te agendaron una cita: <strong>{{ appointment_title }}</strong>.</td></tr>
+              <tr><td style="padding:8px 12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">{{ start_local }} <span style="color:#4a5568;">({{ time_zone }})</span></td></tr>
+              {% if is_recurring %}<tr><td style="padding-bottom:0px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Se repite: revisá el calendario para ver todas las fechas.</td></tr>{% endif %}
+              {% if is_virtual %}<tr><td style="padding-bottom:0px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Es una reunión por video; el enlace está en la cita.</td></tr>{% endif %}
+            </table>
+            """,
+            Variables:
+            [
+                ("appointment_title", VariableType.String, true, null, "Titulo de la cita."),
+                ("start_local", VariableType.String, true, null, "Inicio en la zona de la cita, ya formateado."),
+                ("time_zone", VariableType.String, true, null, "Zona de la cita, escrita al lado de la hora."),
+                ("is_recurring", VariableType.Bool, false, null, "Si la cita se repite."),
+                ("is_virtual", VariableType.Bool, false, null, "Si es una reunion por video."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    /// <summary>
+    /// El cambio de hora lleva la vieja y la nueva. Decir solo la nueva obliga a recordar cuál era, y
+    /// quien tiene ocho citas esa semana no la recuerda.
+    /// </summary>
+    private static NotificationTemplateSeed AppointmentRescheduled { get; } =
+        new(
+            EventKey: "calendar.appointment_rescheduled.v1",
+            TemplateKey: "calendar.appointment_rescheduled.v1",
+            Name: "Calendar — Se movió tu cita",
+            Subject: "{{ product_name }} — Se movió tu cita",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola,</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Se movió una cita.</td></tr>
+              {% if previous_local %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Antes: <s>{{ previous_local }}</s></td></tr>{% endif %}
+              <tr><td style="padding:8px 12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">Ahora: <strong>{{ new_local }}</strong> <span style="color:#4a5568;">({{ time_zone }})</span></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("scope", VariableType.String, false, null, "Si se movio una ocurrencia o la serie."),
+                ("previous_local", VariableType.String, false, null, "La hora vieja, para no obligar a recordarla."),
+                ("new_local", VariableType.String, true, null, "La hora nueva, en la zona de la cita."),
+                ("time_zone", VariableType.String, true, null, "Zona de la cita."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    /// <summary>El aviso que más importa: no mandarlo deja a alguien presentándose a algo que no existe.</summary>
+    private static NotificationTemplateSeed AppointmentCancelled { get; } =
+        new(
+            EventKey: "calendar.appointment_cancelled.v1",
+            TemplateKey: "calendar.appointment_cancelled.v1",
+            Name: "Calendar — Se canceló tu cita",
+            Subject: "{{ product_name }} — Se canceló tu cita",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola,</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Se canceló una cita que tenías agendada.</td></tr>
+              {% if reason %}<tr><td style="padding:8px 12px;background-color:#fff5f5;border-left:3px solid #c53030;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">{{ reason }}</td></tr>{% endif %}
+              <tr><td style="padding-bottom:0px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">No hace falta que hagas nada.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("scope", VariableType.String, false, null, "Si se cancelo una ocurrencia o la serie."),
+                ("reason", VariableType.String, false, null, "Motivo, si el organizador lo escribio."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
     private static NotificationTemplateSeed ClientRequestCreated { get; } =
         new(
             EventKey: "task.client_request_created.v1",

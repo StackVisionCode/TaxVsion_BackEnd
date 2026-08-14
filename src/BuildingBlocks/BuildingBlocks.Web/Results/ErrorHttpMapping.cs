@@ -76,6 +76,11 @@ public static class ErrorHttpMapping
             or "Task.Label.NotFound"
             or "Task.Attachment.NotFound"
             or "Task.Template.NotFound"
+            or "Calendar.Appointment.NotFound"
+            or "Calendar.Type.NotFound"
+            or "Calendar.Availability.NotFound"
+            or "Calendar.Availability.BlockNotFound"
+            or "Calendar.Exception.NotFound"
             // El pedido de otro cliente responde igual que uno inexistente: distinguirlos le
             // confirmaria al cliente que ese pedido existe.
             or "ClientRequest.NotFound"
@@ -128,7 +133,10 @@ public static class ErrorHttpMapping
             or "Draft.InvalidTransition"
             or "catalog.duplicateSku"
             or "catalog.categoryHasChildren"
-            or "inventory.insufficientStock" => StatusCodes.Status409Conflict,
+            or "inventory.insufficientStock"
+            // Solapamiento que el tipo de cita declara como error. El aviso, en cambio, sale en un 201.
+            or "Calendar.Appointment.Conflict"
+            or "Calendar.Exception.Duplicate" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"

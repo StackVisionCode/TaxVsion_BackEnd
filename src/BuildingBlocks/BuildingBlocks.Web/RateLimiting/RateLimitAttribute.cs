@@ -38,6 +38,9 @@ namespace BuildingBlocks.Web.RateLimiting;
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncResourceFilter
 {
+    /// <summary>Nombre del parametro de ruta donde vive la credencial de una politica por token.</summary>
+    public const string TokenRouteValue = "token";
+
     public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
     {
         var services = context.HttpContext.RequestServices;
@@ -46,6 +49,34 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncRes
 
         var policy = registry.GetByName(policyName);
         var user = context.HttpContext.User;
+
+        // Una politica particionada por token no espera claims: la credencial esta en la ruta, y el
+        // filtro corre despues del routing, asi que ya esta disponible. Sin esta rama el fail-open por
+        // claims faltantes deja el endpoint sin limite ninguno, que es justo lo contrario de lo que
+        // pide una URL publica.
+        if (policy.PrimaryPartition == RateLimitPartitionDimension.Token)
+        {
+            var token = context.RouteData.Values[TokenRouteValue] as string;
+            if (string.IsNullOrEmpty(token))
+            {
+                RecordMissingClaims(services, policyName);
+                await next().ConfigureAwait(false);
+                return;
+            }
+
+            var tokenVerdict = await evaluator
+                .EvaluateAsync(policy, Guid.Empty, Guid.Empty, context.HttpContext.RequestAborted, token)
+                .ConfigureAwait(false);
+
+            if (!tokenVerdict.IsExceeded)
+            {
+                await next().ConfigureAwait(false);
+                return;
+            }
+
+            await WriteRateLimitResponseAsync(context, policy, tokenVerdict).ConfigureAwait(false);
+            return;
+        }
 
         if (!user.TryGetTenantId(out var tenantId) || !user.TryGetUserId(out var userId))
         {

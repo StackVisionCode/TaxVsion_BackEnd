@@ -1,0 +1,1003 @@
+{
+  "info": {
+    "name": "TaxVision - Calendar",
+    "description": "Citas, series recurrentes, disponibilidad, conflictos y el feed .ics. Una serie NO se guarda en UTC: hora local + zona + RRULE. Ver README 51 y ADR-023.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Citas",
+      "item": [
+        {
+          "name": "Crear cita puntual",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Revision de la 1040\",\n  \"description\": null,\n  \"location\": \"Oficina 2\",\n  \"appointmentTypeId\": \"{{appointmentTypeId}}\",\n  \"timeZoneId\": \"America/New_York\",\n  \"startUtc\": \"2026-09-15T14:00:00Z\",\n  \"endUtc\": \"2026-09-15T15:00:00Z\",\n  \"customerId\": \"{{customerId}}\",\n  \"taxYear\": 2025,\n  \"isVirtual\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Crear serie recurrente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Revision semanal\",\n  \"appointmentTypeId\": \"{{appointmentTypeId}}\",\n  \"timeZoneId\": \"America/New_York\",\n  \"seriesStartDate\": \"2026-09-07\",\n  \"localStartTime\": \"09:00:00\",\n  \"duration\": \"01:00:00\",\n  \"recurrenceRule\": \"FREQ=WEEKLY;BYDAY=MO\",\n  \"isVirtual\": true\n}"
+            },
+            "description": "Una serie NO lleva startUtc: se guarda como hora local + zona + RRULE. Guardarla en UTC la corre una hora al cambiar el horario de verano."
+          }
+        },
+        {
+          "name": "Ver una cita",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{appointmentId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{appointmentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Rango de fechas (expande las series)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments?from=2026-09-01T00:00:00Z&to=2026-12-01T00:00:00Z",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-09-01T00:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-12-01T00:00:00Z"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mi dia",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/my-day?date=2027-05-10&timeZoneId=America/New_York",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "my-day"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2027-05-10"
+                },
+                {
+                  "key": "timeZoneId",
+                  "value": "America/New_York"
+                }
+              ]
+            },
+            "description": "Sin timeZoneId el dia es el de UTC, y una cita de las 20:30 en Nueva York aparece en la agenda del dia siguiente."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Series y excepciones",
+      "item": [
+        {
+          "name": "Mover UNA ocurrencia",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{seriesId}}/schedule",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{seriesId}}",
+                "schedule"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"ThisOccurrence\",\n  \"originalStartUtc\": \"2026-09-14T13:00:00Z\",\n  \"newStartUtc\": \"2026-09-15T15:00:00Z\",\n  \"newEndUtc\": \"2026-09-15T16:00:00Z\"\n}"
+            },
+            "description": "Escribe una excepcion (RECURRENCE-ID). La serie no se toca."
+          }
+        },
+        {
+          "name": "Partir la serie desde una ocurrencia",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{seriesId}}/schedule",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{seriesId}}",
+                "schedule"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"ThisAndFollowing\",\n  \"originalStartUtc\": \"2026-10-05T13:00:00Z\",\n  \"seriesStartDate\": \"2026-10-05\",\n  \"localStartTime\": \"11:00:00\",\n  \"duration\": \"01:00:00\"\n}"
+            },
+            "description": "Parte la serie en dos: la vieja recibe UNTIL y nace otra desde el corte. La nueva NO hereda el meetingId: la sala vieja es de la serie vieja."
+          }
+        },
+        {
+          "name": "Mover la serie entera",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{seriesId}}/schedule",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{seriesId}}",
+                "schedule"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"EntireSeries\",\n  \"seriesStartDate\": \"2026-09-07\",\n  \"localStartTime\": \"10:00:00\",\n  \"duration\": \"01:00:00\",\n  \"recurrenceRule\": \"FREQ=WEEKLY;BYDAY=MO\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Cancelar UNA ocurrencia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{seriesId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{seriesId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"ThisOccurrence\",\n  \"originalStartUtc\": \"2026-09-21T13:00:00Z\",\n  \"reason\": \"feriado\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Cancelar la cita entera",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{appointmentId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{appointmentId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"el cliente no puede\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Mover una cita puntual sin repetir la zona",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{appointmentId}}/schedule",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{appointmentId}}",
+                "schedule"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": \"EntireSeries\",\n  \"newStartUtc\": \"2026-09-16T14:00:00Z\",\n  \"newEndUtc\": \"2026-09-16T15:00:00Z\"\n}"
+            },
+            "description": "Sin timeZoneId hereda la que la cita ya tenia: mover no cambia de zona."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Asistentes",
+      "item": [
+        {
+          "name": "Invitar a un cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{appointmentId}}/attendees",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{appointmentId}}",
+                "attendees"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"Customer\",\n  \"userId\": null,\n  \"customerId\": \"{{customerId}}\",\n  \"displayName\": \"Amanda Martinez\",\n  \"email\": \"cliente@example.com\",\n  \"isRequired\": true\n}"
+            },
+            "description": "Este es el evento que dispara la invitacion por correo, no el de crear la cita."
+          }
+        },
+        {
+          "name": "Invitar a un companero",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{appointmentId}}/attendees",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{appointmentId}}",
+                "attendees"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"InternalUser\",\n  \"userId\": \"{{otherUserId}}\",\n  \"customerId\": null,\n  \"displayName\": \"Carlos Castillo\",\n  \"email\": \"empleado@example.com\",\n  \"isRequired\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Quitar un asistente",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{appointmentId}}/attendees/{{attendeeId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{appointmentId}}",
+                "attendees",
+                "{{attendeeId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Responder a la invitacion (RSVP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{appointmentId}}/respond",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{appointmentId}}",
+                "respond"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"Accepted\"\n}"
+            },
+            "description": "Lo unico que un asistente puede hacer sin ser el organizador."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tipos y disponibilidad",
+      "item": [
+        {
+          "name": "Listar tipos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/types?onlyActive=true",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "types"
+              ],
+              "query": [
+                {
+                  "key": "onlyActive",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Crear tipo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/types",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "types"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Consulta rapida\",\n  \"defaultDuration\": \"00:15:00\",\n  \"colorHex\": \"#2B6CB0\",\n  \"isVirtual\": true,\n  \"blocksOnConflict\": false,\n  \"dailyCap\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "Instalar los 4 tipos fiscales",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/types/install-standard",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "types",
+                "install-standard"
+              ]
+            },
+            "description": "Solo «Firma» bloquea al solapar; solo «Entrega de documentos» lleva tope diario."
+          }
+        },
+        {
+          "name": "Huecos libres",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/availability?userId={{userId}}&from=2026-09-15T12:00:00Z&to=2026-09-15T22:00:00Z&slotMinutes=30",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{userId}}"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-09-15T12:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-09-15T22:00:00Z"
+                },
+                {
+                  "key": "slotMinutes",
+                  "value": "30"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Feed .ics",
+      "item": [
+        {
+          "name": "Emitir la URL del feed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/feed/token",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "feed",
+                "token"
+              ]
+            },
+            "description": "Devuelve el token en claro UNA sola vez, y revoca el anterior."
+          }
+        },
+        {
+          "name": "Revocar la URL del feed",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/feed/token",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "feed",
+                "token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Descargar el .ics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/feed/{{userId}}/{{feedToken}}.ics",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "feed",
+                "{{userId}}",
+                "{{feedToken}}.ics"
+              ]
+            },
+            "description": "Sin sesion: el token de la URL es la credencial, porque Google y Outlook pollean el archivo sin poder autenticarse. Limite por token, no por IP."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Casos negativos",
+      "item": [
+        {
+          "name": "Mover una serie sin scope -> 400",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{seriesId}}/schedule",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{seriesId}}",
+                "schedule"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newStartUtc\": \"2026-09-16T14:00:00Z\",\n  \"newEndUtc\": \"2026-09-16T15:00:00Z\"\n}"
+            },
+            "description": "Elegir el scope en silencio reescribe el pasado o frustra a quien queria mover todo."
+          }
+        },
+        {
+          "name": "Zona en forma corta -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Con EST\",\n  \"appointmentTypeId\": \"{{appointmentTypeId}}\",\n  \"timeZoneId\": \"EST\",\n  \"startUtc\": \"2026-09-15T14:00:00Z\",\n  \"endUtc\": \"2026-09-15T15:00:00Z\",\n  \"isVirtual\": false\n}"
+            },
+            "description": "EST es un id IANA valido y resuelve a Bogota, SIN horario de verano. Se exige Area/Location."
+          }
+        },
+        {
+          "name": "Solapar un tipo que bloquea -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Segunda firma a la misma hora\",\n  \"appointmentTypeId\": \"{{signatureTypeId}}\",\n  \"timeZoneId\": \"America/New_York\",\n  \"startUtc\": \"2026-09-15T14:30:00Z\",\n  \"endUtc\": \"2026-09-15T15:30:00Z\",\n  \"isVirtual\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Cita de otro tenant -> 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments/{{otherTenantAppointmentId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments",
+                "{{otherTenantAppointmentId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Feed con token revocado -> 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/feed/{{userId}}/{{revokedFeedToken}}.ics",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "feed",
+                "{{userId}}",
+                "{{revokedFeedToken}}.ics"
+              ]
+            },
+            "description": "Token invalido, revocado y de otro usuario responden igual: distinguirlos delata que usuarios existen."
+          }
+        },
+        {
+          "name": "Rango invertido -> 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments?from=2026-12-01T00:00:00Z&to=2026-09-01T00:00:00Z",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-12-01T00:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-09-01T00:00:00Z"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "UrlBase",
+      "value": "http://localhost:5047"
+    },
+    {
+      "key": "appointmentId",
+      "value": ""
+    },
+    {
+      "key": "seriesId",
+      "value": ""
+    },
+    {
+      "key": "appointmentTypeId",
+      "value": ""
+    },
+    {
+      "key": "signatureTypeId",
+      "value": ""
+    },
+    {
+      "key": "attendeeId",
+      "value": ""
+    },
+    {
+      "key": "otherUserId",
+      "value": ""
+    },
+    {
+      "key": "otherTenantAppointmentId",
+      "value": ""
+    },
+    {
+      "key": "feedToken",
+      "value": ""
+    },
+    {
+      "key": "revokedFeedToken",
+      "value": ""
+    }
+  ]
+}

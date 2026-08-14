@@ -40,6 +40,20 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
             .Where(a => a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Appointment>> ListForUserRangeAsync(
+        Guid tenantId,
+        Guid userId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        CancellationToken ct = default
+    ) =>
+        await Scoped(tenantId)
+            .Include(a => a.Attendees)
+            .Include(a => a.Exceptions)
+            .Where(a => a.OrganizerUserId == userId || a.Attendees.Any(at => at.UserId == userId))
+            .Where(a => a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
+            .ToListAsync(ct);
+
     public void Add(Appointment appointment) => context.Appointments.Add(appointment);
 
     public void Remove(Appointment appointment) => context.Appointments.Remove(appointment);

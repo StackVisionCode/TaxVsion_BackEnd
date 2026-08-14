@@ -10,14 +10,20 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
+using TaxVision.Calendar.Application.Availability.Abstractions;
 using TaxVision.Calendar.Application.Backfill;
 using TaxVision.Calendar.Application.Backfill.Abstractions;
 using TaxVision.Calendar.Application.Customers.Abstractions;
+using TaxVision.Calendar.Application.Feeds.Abstractions;
+using TaxVision.Calendar.Application.Observability;
 using TaxVision.Calendar.Application.Permissions.Abstractions;
 using TaxVision.Calendar.Application.Projections.Abstractions;
 using TaxVision.Calendar.Application.RateLimiting.Abstractions;
+using TaxVision.Calendar.Application.Types.Abstractions;
 using TaxVision.Calendar.Infrastructure.Customers;
+using TaxVision.Calendar.Infrastructure.Feeds;
 using TaxVision.Calendar.Infrastructure.Jobs;
+using TaxVision.Calendar.Infrastructure.Observability;
 using TaxVision.Calendar.Infrastructure.Permissions;
 using TaxVision.Calendar.Infrastructure.Persistence;
 using TaxVision.Calendar.Infrastructure.Persistence.Repositories;
@@ -39,6 +45,10 @@ public static class DependencyInjection
         services.AddDbContext<CalendarDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CalendarDbContext>());
         services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+        services.AddScoped<ICalendarFeedTokenRepository, CalendarFeedTokenRepository>();
+        services.AddScoped<ICalendarFeedCache, CalendarFeedCache>();
+        services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
+        services.AddScoped<IAvailabilityRepository, AvailabilityRepository>();
         // La misma instancia sirve las dos interfaces: el repositorio para los consumers y el lector
         // para ProjectionPermissionsSource, que es quien autoriza sin llamar a Auth.
         services.AddScoped<UserPermissionsProjectionRepository>();
@@ -139,6 +149,13 @@ public static class DependencyInjection
 
         // Uno rellena nombres faltantes de filas que ya existen; el otro inserta las filas que nunca
         // llegaron. Son huecos distintos y ninguno cubre al otro.
+        services.AddHostedService<ReminderScheduleJob>();
+        services.AddHostedService<MeetingLinkReconciliationJob>();
+        services.AddHostedService<StartingSoonJob>();
+        services.AddHostedService<CalendarRetentionJob>();
+
+        // Singleton: el Meter es uno por proceso y crear uno por scope multiplica instrumentos.
+        services.AddSingleton<ICalendarMetrics, CalendarMetrics>();
         services.AddHostedService<CustomerDirectoryReconciliationJob>();
         services.AddHostedService<TenantCustomerFullReconciliationJob>();
     }

@@ -1,4 +1,6 @@
-﻿using BuildingBlocks.Infrastructure.RateLimiting;
+﻿using System.Security.Cryptography;
+using System.Text;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Logging;
 
@@ -34,7 +36,8 @@ public sealed class TieredRateLimitEvaluator(
         RateLimitPolicyDefinition policy,
         Guid tenantId,
         Guid userId,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        string? partitionValue = null
     )
     {
         var window = TimeSpan.FromSeconds(policy.WindowSeconds);
@@ -100,7 +103,7 @@ public sealed class TieredRateLimitEvaluator(
         // de wiring (categoría no soportada), no una falla de infra — debe propagar, no fail-open
         // en silencio.
         var primaryKey = RateCounterKey.From(
-            BuildKey(service, policy.Name.Value, PrimaryParts(policy, tenantId, userId))
+            BuildKey(service, policy.Name.Value, PrimaryParts(policy, tenantId, userId, partitionValue))
         );
 
         metrics.RecordEvaluated(policy.Name.Value, "user", tenantId, plan);
@@ -170,10 +173,27 @@ public sealed class TieredRateLimitEvaluator(
     /// <c>IProviderRateLimiter</c> desde F26) pero si algún día alguien decora un endpoint K con
     /// <c>[RateLimit]</c> por error, esto debe lanzar, no construir una clave incompleta.
     /// </summary>
-    private static string[] PrimaryParts(RateLimitPolicyDefinition policy, Guid tenantId, Guid userId)
+    private static string[] PrimaryParts(
+        RateLimitPolicyDefinition policy,
+        Guid tenantId,
+        Guid userId,
+        string? partitionValue
+    )
     {
         const RateLimitPartitionDimension TenantAndUser =
             RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User;
+
+        // La credencial es la URL, no un JWT: no hay tenant ni usuario que particionar. Entra
+        // hasheada porque la clave viaja a Redis y a las metricas, y el valor crudo abre la agenda.
+        if (policy.PrimaryPartition == RateLimitPartitionDimension.Token)
+        {
+            if (string.IsNullOrEmpty(partitionValue))
+                throw new NotSupportedException(
+                    $"La politica '{policy.Name}' particiona por token y no se recibio ninguno."
+                );
+
+            return ["token", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(partitionValue)))];
+        }
 
         if (policy.PrimaryPartition == TenantAndUser)
             return ["tenant", tenantId.ToString("N"), "user", userId.ToString("N")];

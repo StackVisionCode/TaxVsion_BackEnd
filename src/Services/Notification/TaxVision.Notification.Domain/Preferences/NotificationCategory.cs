@@ -27,4 +27,11 @@ public enum NotificationCategory
     /// debe apagarle los avisos de firma que sí tiene que ver.
     /// </summary>
     ClientRequests,
+
+    /// <summary>
+    /// Citas: invitacion, cambio de hora, cancelacion y el aviso de que empieza. Categoria propia y no
+    /// <c>Collaboration</c>: apagar el ruido de una tarea no puede dejar a alguien sin enterarse de que
+    /// le movieron una reunion con un cliente.
+    /// </summary>
+    Calendar,
 }

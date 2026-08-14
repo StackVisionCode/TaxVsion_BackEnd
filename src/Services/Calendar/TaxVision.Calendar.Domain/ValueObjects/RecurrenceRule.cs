@@ -22,6 +22,14 @@ public sealed record RecurrenceRule
 
     private RecurrenceRule(string value) => Value = value;
 
+    /// <summary>
+    /// Si la serie termina alguna vez. Una sin <c>UNTIL</c> ni <c>COUNT</c> no vence nunca, y eso
+    /// decide qué puede purgar la retención: lo que no termina no se puede dar por viejo.
+    /// </summary>
+    public bool HasEnd =>
+        Value.Contains("UNTIL=", StringComparison.OrdinalIgnoreCase)
+        || Value.Contains("COUNT=", StringComparison.OrdinalIgnoreCase);
+
     public static Result<RecurrenceRule> Create(string? value)
     {
         var rule = value?.Trim();

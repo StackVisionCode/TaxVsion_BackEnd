@@ -8621,3 +8621,160 @@ sin referencias al plan en comentarios, SQL crudo con allowlist), tres propias:
 - **Sólo los controllers de `Portal` declaran `CustomerPortal`** — abrirle al cliente un controller
   de staff le enseñaría las notas internas, el asignado y las horas imputadas. Lo que ve el cliente
   es `ClientRequest`.
+
+---
+
+# 51. Calendar - Microservicio de agenda (plan de 11 fases, CERRADO)
+
+Citas, series recurrentes, disponibilidad y conflictos. DB propia (`TaxVision_Calendar`), puerto dev
+**5520**, host interno `http://calendar-api:8080`, ruta `/calendar/*`. Ver
+`ADR_023_Calendar_Bounded_Context.md` y `Implementaciones/Calendar/*.md`.
+
+**Calendar no entrega avisos ni crea salas.** Publica eventos: Reminder avisa, Communication crea la
+sala de video, Notification manda los correos.
+
+## 51.1 El tiempo - leer esto antes de tocar nada
+
+Es la seccion que evita que el proximo cambio rompa el servicio en silencio.
+
+**Una serie recurrente NO tiene `StartUtc`, y no es un campo olvidado.** «Todos los lunes a las 9:00»
+es hora de pared: guardarla como 13:00Z porque Nueva York esta en UTC-4 en verano hace que, al entrar
+el invierno, la reunion aparezca a las 8:00. Una serie se guarda como **fecha de inicio + hora local +
+duracion + zona + RRULE**, y el instante se calcula al leerla. `UNTIL` si va en UTC, lo exige el
+RFC 5545. Hay una fitness function que falla si una serie almacenada gana un `StartUtc`.
+
+**Las tres formas de existir en el tiempo** son tipos distintos, no variantes del mismo:
+
+| `TimingKind` | Que guarda | Trampa que evita |
+|---|---|---|
+| `PointInTime` | `StartUtc` / `EndUtc` + zona para mostrar | - |
+| `AllDay` | `StartDate` / `EndDate` (**inclusiva**) | Guardarlo como medianoche UTC lo corre un dia para media humanidad |
+| `Recurring` | fecha + hora local + duracion + zona | El bug de DST |
+
+**`WallClock` es el unico motor de conversion.** El servicio tiene dos a mano -`Ical.Net`/NodaTime y
+`TimeZoneInfo`- y **difieren una hora entera en la hora ambigua**, sin excepcion y sin log. Las dos
+politicas de los bordes viven ahi: la hora que **no existe** se rechaza al crear y corre hacia
+adelante al expandir; la **ambigua** resuelve a la primera de las dos.
+
+**La zona se escribe `Area/Location`.** `EST` es un id IANA valido y resuelve a Bogota **sin horario de
+verano**: quien lo escribe pensando en Nueva York recibe las citas corridas medio anio. `MST` y `HST`
+igual.
+
+**No existe tabla de ocurrencias.** Una serie de tres anios son 156 ocurrencias y **una** fila; se
+expanden al vuelo. La contrapartida es que la consulta de rango carga **todas** las series del tenant:
+medido, **69,5 ms con 43 series**. El umbral de revision escrito es **2.000 series activas por
+tenant** - a partir de ahi hay que cachear las expansiones. `occurrence_expansion_duration_ms` esta
+para ver llegar ese momento.
+
+**`EditScope` es obligatorio sobre una serie y no tiene valor por defecto.** Elegirlo en silencio
+reescribe el pasado o frustra a quien queria mover todo; sin el se responde **400**.
+
+| `EditScope` | Que hace |
+|---|---|
+| `ThisOccurrence` | Escribe una excepcion (`RECURRENCE-ID`). La serie no se toca |
+| `ThisAndFollowing` | **Parte la serie en dos**: la vieja recibe `UNTIL`, nace otra desde el corte |
+| `EntireSeries` | Reescribe la regla |
+
+La **particion** conserva las excepciones anteriores al corte, descarta las posteriores y **no hereda
+el `MeetingId`**: la sala vieja pertenece a la serie vieja. Sobre la primera ocurrencia no parte -
+seria una serie vacia y otra identica a la original.
+
+## 51.2 Endpoints
+
+| Metodo | Ruta | Permiso |
+|---|---|---|
+| POST/GET | `/calendar/appointments`, `/calendar/appointments/{id}` | `calendar.write` / `calendar.read` |
+| GET | `/calendar/appointments?from&to`, `/calendar/appointments/my-day?date&timeZoneId` | `calendar.read` |
+| PUT | `/calendar/appointments/{id}/schedule` | `calendar.write` |
+| POST | `/calendar/appointments/{id}/cancel` | `calendar.write` |
+| POST/DELETE | `/calendar/appointments/{id}/attendees[/{attendeeId}]` | `calendar.write` |
+| POST | `/calendar/appointments/{id}/respond` | `calendar.respond` |
+| GET/POST | `/calendar/types`, `/calendar/types/install-standard` | `calendar.read` / `calendar.types.manage` |
+| GET | `/calendar/availability` | `calendar.read` |
+| POST/DELETE | `/calendar/feed/token` | `calendar.read` |
+| GET | `/calendar/feed/{userId}/{token}.ics` | **anonimo** - el token es la credencial |
+
+Mover una cita **no exige repetir `timeZoneId`**: hereda la que ya tenia. Mover no cambia de zona.
+
+**`my-day` necesita que le manden la zona.** Sin `timeZoneId` el dia es el de UTC, y para alguien en
+Nueva York eso mete su cena de las 20:30 en la agenda del dia siguiente. Es el valor por defecto solo
+por compatibilidad: el frontend conoce la zona del navegador y debe mandarla. Con zona, el dia va de
+medianoche a medianoche **de esa zona**, calculado con `WallClock` — que ademas corre hacia adelante la
+medianoche que no existe, la hay en las zonas que cambian el horario a las 00:00.
+
+## 51.3 El feed `.ics`
+
+Es una URL **sin sesion** que expone una agenda, porque Google y Outlook pollean el archivo sin poder
+autenticarse. Token de 32 bytes, revocable, con SHA-256 en base y el valor crudo visible una sola vez.
+`404` para token invalido, revocado o de otro usuario - distinguirlos convertiria la URL en un
+buscador de que usuarios existen. Limite **por token, no por IP**: Google pollea desde direcciones
+rotativas. Ventana -30/+365 dias.
+
+Con la base caida se sirve **la ultima copia buena** en vez de un 500: ante un error Google deja de
+actualizar, ante un archivo viejo muestra lo de ayer. Revocar borra esa copia - si no, el boton de
+revocar no serviria durante una caida.
+
+## 51.4 Eventos que publica
+
+`calendar.appointment_scheduled.v1` - `appointment_rescheduled.v1` (con `Scope`) -
+`appointment_cancelled.v1` - `occurrence_cancelled.v1` - `series_split.v1` - `attendee_added.v1` -
+`attendee_responded.v1` - `appointment_starting_soon.v1` - `appointment_meeting_room_requested.v1`
+
+`attendee_added.v1` es el que dispara **la invitacion**, no `appointment_scheduled.v1`: la cita nace
+sin asistentes y se agregan despues, asi que el primero sale con la lista vacia.
+
+Los eventos con destinatarios llevan `Recipients[] { Email, UserId? }` - pares, no dos listas
+paralelas: un cliente invitado tiene correo y no usuario, y sin el par no se sabe de quien consultar
+la preferencia de notificacion.
+
+## 51.5 Configuracion
+
+| Clave | Para |
+|---|---|
+| `ConnectionStrings:Default` | `TaxVision_Calendar` |
+| `ConnectionStrings:Redis` | cache de plan, y la ultima copia buena del feed |
+| `ServiceAuth:Clients` -> `calendar-worker` | M2M hacia Customer y Auth |
+| `OpenTelemetry:OtlpEndpoint` | metricas y trazas |
+
+## 51.6 Jobs de fondo
+
+| Job | Cada | Que |
+|---|---|---|
+| `ReminderScheduleJob` | 12 h | Pide a Reminder un aviso por ocurrencia de los proximos 60 dias |
+| `StartingSoonJob` | 5 min | `appointment_starting_soon.v1` ~15 min antes |
+| `MeetingLinkReconciliationJob` | 30 min | Vuelve a pedir la sala de las citas virtuales que se quedaron sin ella (**WARN**) |
+| `CustomerDirectoryReconciliationJob` | - | Proyeccion de clientes |
+| `CalendarRetentionJob` | 24 h | Purga lo vencido. Ver abajo |
+
+`StartingSoonJob` **no marca la fila**: una serie no tiene fila por ocurrencia, asi que la marca
+apagaria el aviso de todas las siguientes. Usa una ventana del ancho exacto del tick.
+
+**`CalendarRetentionJob` no borra una serie sin `UNTIL` ni `COUNT`.** No tiene ultima ocurrencia, asi
+que no hay fecha desde la cual llamarla vieja; purgarla por su fecha de creacion borraria la reunion
+semanal que el despacho tiene desde hace ocho anios y sigue teniendo. Las que si terminan se borran
+cuando su ultima ocurrencia quedo atras, y eso ademas alivia la consulta de rango.
+
+## 51.7 Observabilidad
+
+`appointment.created/rescheduled/cancelled_total{is_recurring}` -
+`occurrence_expansion_duration_ms` <- el termometro de la consulta de rango -
+`series_count_per_tenant` - `conflict_detected_total{blocked}` - `ics_feed_requests_total{found}` -
+`ics_feed_stale_total` <- una base caida que nadie nota.
+
+El Meter se llama `TaxVision.Calendar` y va como **`additionalMeterNames`**: un Meter con nombre
+propio que no se registre no exporta nada, y el dashboard queda vacio sin un solo error. Ojo con el
+nombre: el exporter de Prometheus **le agrega la unidad**, asi que un instrumento llamado `..._ms`
+declarado con `unit: "ms"` sale como `..._ms_milliseconds`.
+
+## 51.8 Fitness functions (`CalendarArchitectureTests`)
+
+Ademas de las comunes (Domain sin EF ni Application, controllers solo contra Application, todo
+`[HttpXxx]` con `[RateLimit]` y con `[AllowActorTypes]` salvo el feed anonimo), cuatro propias:
+
+- **Cero LINQ en Domain** - en el dominio del tiempo el bucle explicito deja ver el orden de las
+  operaciones, que es justo donde vive el bug de DST.
+- **Ningun tipo `*Occurrence*` es una entidad** - asi empezaria una tabla de ocurrencias.
+- **Ninguna serie almacenada tiene `StartUtc`** - se prueba contra la tabla, no contra el codigo: el
+  error entra el dia que alguien «arregla» el NULL con un UPDATE.
+- **Solo `MeetingLinkedConsumer` conoce los contratos de Communication** - en cuanto los conozca un
+  segundo tipo, la frontera se disuelve sin que nadie decida disolverla.
