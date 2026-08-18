@@ -37,6 +37,8 @@ public sealed class PlatformTenantIdContractTests
         var files = new[]
         {
             Path.Combine(root, "deploy", "docker", "docker-compose.yml"),
+            // .env.example está en git; .env real (gitignored) no llega al runner de CI.
+            Path.Combine(root, "src", "Services", "Communication", ".env.example"),
             Path.Combine(root, "src", "Services", "Communication", ".env"),
         };
 
