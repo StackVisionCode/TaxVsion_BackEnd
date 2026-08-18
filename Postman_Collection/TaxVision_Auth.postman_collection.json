@@ -1694,7 +1694,7 @@
                 "tenant-domains"
               ]
             },
-            "description": "Requiere tenant-domains.manage. Solo dominios propios (custom hostname) - los subdominios *.taxprocore.com se crean solos al nacer el tenant. Arranca el provisioning en Cloudflare."
+            "description": "Requiere tenant-domains.manage. Solo dominios propios (custom hostname) - los subdominios *.taxproffice.com se crean solos al nacer el tenant. Arranca el provisioning en Cloudflare."
           },
           "response": [],
           "event": [
@@ -1822,7 +1822,7 @@
                 "subdomain"
               ]
             },
-            "description": "Requiere tenant-domains.manage. Renombra el subdominio primario ya activo (ej. oficina1.taxprocore.com -> oficina2.taxprocore.com). No aplica a custom hostnames."
+            "description": "Requiere tenant-domains.manage. Renombra el subdominio primario ya activo (ej. oficina1.taxproffice.com -> oficina2.taxproffice.com). No aplica a custom hostnames."
           },
           "response": []
         }

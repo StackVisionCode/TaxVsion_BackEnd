@@ -10,7 +10,13 @@ namespace TaxVision.Notification.Application.Directory.Consumers;
 /// el mismo upsert y separarlos en seis archivos de ocho líneas escondería que comparten invariante:
 /// la fila refleja la última foto conocida y sólo cambia el flag de activo.
 /// </summary>
-public static class CustomerEmailDirectoryConsumers
+/// <remarks>
+/// El nombre va en singular a proposito: Wolverine descubre por convencion los tipos que terminan en
+/// <c>Handler</c> o <c>Consumer</c>, y en plural no los ve. Se llamaba <c>Consumers</c> y por eso este
+/// directorio solo se llenaba con el job de reconciliacion — los eventos entraban y salian con un
+/// «No known handler» en el log, sin error y sin fila.
+/// </remarks>
+public static class CustomerEmailDirectoryConsumer
 {
     public static Task Handle(
         CustomerCreatedIntegrationEvent evt,

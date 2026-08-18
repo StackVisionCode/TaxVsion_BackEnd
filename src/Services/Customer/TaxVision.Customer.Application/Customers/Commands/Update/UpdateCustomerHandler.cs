@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
 using Wolverine;
@@ -15,6 +16,7 @@ public static class UpdateCustomerHandler
     public static async Task<Result<CustomerResponse>> Handle(
         UpdateCustomerCommand cmd,
         ICustomerRepository repository,
+        ICustomerDuplicateDetector duplicates,
         IMessageBus bus,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
@@ -28,6 +30,19 @@ public static class UpdateCustomerHandler
         var voResult = BuildContactValueObjects(cmd);
         if (voResult.IsFailure)
             return Result.Failure<CustomerResponse>(voResult.Error);
+
+        // Editar es la otra puerta: sin esto, mover el correo de un cliente al de otro deja dos clientes
+        // con el mismo. Se mira solo el correo —no nombre ni telefono— porque es lo que la base va a
+        // exigir, y porque bloquear una edicion por un homonimo seria peor que el problema.
+        var emailTaken = await duplicates.FindDuplicateAsync(
+            cmd.TenantId,
+            new CustomerDuplicateCandidate(voResult.Value.Email.Value, null, null, null),
+            excludeCustomerId: customer.Id,
+            ct
+        );
+
+        if (emailTaken is not null)
+            return Result.Failure<CustomerResponse>(CustomerDuplicateErrors.EmailAlreadyInUse);
 
         var applyResult = ApplyChanges(customer, cmd, voResult.Value);
         if (applyResult.IsFailure)

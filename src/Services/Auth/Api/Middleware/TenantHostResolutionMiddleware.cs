@@ -49,7 +49,7 @@ public sealed class TenantHostResolutionMiddleware(
         "/auth/.well-known",
         "/openapi",
         "/swagger",
-        // Fase A4 — llamables desde el apex (taxprocore.com), que nunca resuelve a un
+        // Fase A4 — llamables desde el apex (taxproffice.com), que nunca resuelve a un
         // tenant: alta de oficina (check-availability) y "encuentra tu oficina" por
         // email. "by-host" NO se exime a propósito: depende de que este middleware ya
         // haya resuelto el Host, es justo lo que ese endpoint expone al frontend.

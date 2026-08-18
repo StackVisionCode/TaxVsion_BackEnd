@@ -15,8 +15,8 @@ namespace TaxVision.Signature.Infrastructure.Sealing;
 /// </summary>
 public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRenderer
 {
-    private const string BrandName = "TaxProCore";
-    private const string BrandProduct = "TaxProCore Signature Service";
+    private const string BrandName = "TaxProffice";
+    private const string BrandProduct = "TaxProffice Signature Service";
 
     private const double MarginLeft = 48;
     private const double MarginRight = 48;

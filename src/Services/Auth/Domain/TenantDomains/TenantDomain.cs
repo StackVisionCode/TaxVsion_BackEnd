@@ -36,7 +36,7 @@ public sealed class TenantDomain : AggregateRoot
 
     public TenantDomainType DomainType { get; private set; }
 
-    /// <summary>Host completo normalizado (ej. "oficina1.taxprocore.com"). Único globalmente.</summary>
+    /// <summary>Host completo normalizado (ej. "oficina1.taxproffice.com"). Único globalmente.</summary>
     public string Host { get; private set; } = default!;
 
     /// <summary>Solo para DomainType.Subdomain — el slug elegido por la oficina.</summary>
@@ -56,7 +56,7 @@ public sealed class TenantDomain : AggregateRoot
     public DateTime CreatedAtUtc { get; private set; }
 
     /// <summary>
-    /// Crea un subdominio de plataforma (ej. oficina1.taxprocore.com). Con wildcard DNS
+    /// Crea un subdominio de plataforma (ej. oficina1.taxproffice.com). Con wildcard DNS
     /// (Fase A5) el certificado ya cubre el host, así que arranca directo en Active —
     /// no hay paso de provisioning para este tipo.
     /// </summary>

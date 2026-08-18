@@ -231,7 +231,7 @@ public sealed class PdfSharpSealingEngine(ICmsPdfSigner? cmsSigner = null) : IDo
             gfx.DrawLine(rulePen, 24, y - 4, pageWidth - 24, y - 4);
 
             // Left: brand + audit line.
-            gfx.DrawString("TaxProCore", labelFont, accentBrush, new XPoint(24, y + 2));
+            gfx.DrawString("TaxProffice", labelFont, accentBrush, new XPoint(24, y + 2));
             gfx.DrawString($" • {request.AuditFooter}", textFont, mutedBrush, new XPoint(24 + 42, y + 2));
 
             // Right: page number.

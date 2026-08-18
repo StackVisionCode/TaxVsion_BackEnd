@@ -19,13 +19,13 @@ public sealed class TenantDomainDomainEventsTests
         var createdBy = Guid.NewGuid();
 
         var domain = TenantDomain
-            .CreateSubdomain(tenantId, ValidSlug(), "taxprocore.com", createdBy, DateTime.UtcNow)
+            .CreateSubdomain(tenantId, ValidSlug(), "taxproffice.com", createdBy, DateTime.UtcNow)
             .Value;
 
         var evt = Assert.Single(domain.DomainEvents.OfType<TenantDomainCreated>());
         Assert.Equal(tenantId, evt.TenantId);
         Assert.Equal(domain.Id, evt.DomainId);
-        Assert.Equal("oficina1.taxprocore.com", evt.Host);
+        Assert.Equal("oficina1.taxproffice.com", evt.Host);
         Assert.Equal("Subdomain", evt.DomainType);
         Assert.Equal(createdBy, evt.ActingUserId);
     }
@@ -34,7 +34,7 @@ public sealed class TenantDomainDomainEventsTests
     public void CreateSubdomain_with_system_actor_normalizes_empty_guid_to_null()
     {
         var domain = TenantDomain
-            .CreateSubdomain(Guid.NewGuid(), ValidSlug(), "taxprocore.com", Guid.Empty, DateTime.UtcNow)
+            .CreateSubdomain(Guid.NewGuid(), ValidSlug(), "taxproffice.com", Guid.Empty, DateTime.UtcNow)
             .Value;
 
         var evt = Assert.Single(domain.DomainEvents.OfType<TenantDomainCreated>());
@@ -126,7 +126,7 @@ public sealed class TenantDomainDomainEventsTests
             .CreateSubdomain(
                 Guid.NewGuid(),
                 ValidSlug(),
-                "taxprocore.com",
+                "taxproffice.com",
                 Guid.NewGuid(),
                 DateTime.UtcNow,
                 isPrimary: true
@@ -147,7 +147,7 @@ public sealed class TenantDomainDomainEventsTests
             .CreateSubdomain(
                 Guid.NewGuid(),
                 ValidSlug(),
-                "taxprocore.com",
+                "taxproffice.com",
                 Guid.NewGuid(),
                 DateTime.UtcNow,
                 isPrimary: true
@@ -157,13 +157,13 @@ public sealed class TenantDomainDomainEventsTests
         var actingUserId = Guid.NewGuid();
         var newSlug = SubdomainSlug.Create("oficina2").Value;
 
-        var result = domain.ChangeSubdomain(newSlug, "taxprocore.com", actingUserId);
+        var result = domain.ChangeSubdomain(newSlug, "taxproffice.com", actingUserId);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("oficina2.taxprocore.com", domain.Host);
+        Assert.Equal("oficina2.taxproffice.com", domain.Host);
         var evt = Assert.Single(domain.DomainEvents.OfType<TenantSubdomainChanged>());
-        Assert.Equal("oficina1.taxprocore.com", evt.OldHost);
-        Assert.Equal("oficina2.taxprocore.com", evt.NewHost);
+        Assert.Equal("oficina1.taxproffice.com", evt.OldHost);
+        Assert.Equal("oficina2.taxproffice.com", evt.NewHost);
         Assert.Equal(actingUserId, evt.ActingUserId);
     }
 
@@ -174,7 +174,7 @@ public sealed class TenantDomainDomainEventsTests
             .CreateSubdomain(
                 Guid.NewGuid(),
                 ValidSlug(),
-                "taxprocore.com",
+                "taxproffice.com",
                 Guid.NewGuid(),
                 DateTime.UtcNow,
                 isPrimary: true
@@ -182,7 +182,7 @@ public sealed class TenantDomainDomainEventsTests
             .Value;
         domain.ClearDomainEvents();
 
-        var result = domain.ChangeSubdomain(ValidSlug(), "taxprocore.com");
+        var result = domain.ChangeSubdomain(ValidSlug(), "taxproffice.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantDomain.SlugUnchanged", result.Error.Code);
@@ -197,7 +197,7 @@ public sealed class TenantDomainDomainEventsTests
             .Value;
         domain.ClearDomainEvents();
 
-        var result = domain.ChangeSubdomain(SubdomainSlug.Create("oficina2").Value, "taxprocore.com");
+        var result = domain.ChangeSubdomain(SubdomainSlug.Create("oficina2").Value, "taxproffice.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantDomain.NotSubdomain", result.Error.Code);
@@ -211,7 +211,7 @@ public sealed class TenantDomainDomainEventsTests
             .CreateSubdomain(
                 Guid.NewGuid(),
                 ValidSlug(),
-                "taxprocore.com",
+                "taxproffice.com",
                 Guid.NewGuid(),
                 DateTime.UtcNow,
                 isPrimary: false
@@ -220,7 +220,7 @@ public sealed class TenantDomainDomainEventsTests
         domain.Disable();
         domain.ClearDomainEvents();
 
-        var result = domain.ChangeSubdomain(SubdomainSlug.Create("oficina2").Value, "taxprocore.com");
+        var result = domain.ChangeSubdomain(SubdomainSlug.Create("oficina2").Value, "taxproffice.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal("TenantDomain.Disabled", result.Error.Code);

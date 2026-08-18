@@ -95,7 +95,7 @@ public sealed class TenantResolverTests
         var tenantId = Guid.NewGuid();
         var domains = new FakeTenantDomainRepository
         {
-            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxprocore.com"),
+            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxproffice.com"),
         };
         var tenants = new FakeTenantRegistry
         {
@@ -103,7 +103,7 @@ public sealed class TenantResolverTests
         };
         var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache());
 
-        var result = await resolver.ResolveAsync("oficina1.taxprocore.com");
+        var result = await resolver.ResolveAsync("oficina1.taxproffice.com");
 
         Assert.True(result.IsResolved);
         Assert.Equal(tenantId, result.TenantId);
@@ -115,7 +115,7 @@ public sealed class TenantResolverTests
         var domains = new FakeTenantDomainRepository(); // sin dominio configurado
         var resolver = new TenantResolver(domains, new FakeTenantRegistry(), new FakeTenantResolutionCache());
 
-        var result = await resolver.ResolveAsync("no-existe.taxprocore.com");
+        var result = await resolver.ResolveAsync("no-existe.taxproffice.com");
 
         Assert.False(result.IsResolved);
         Assert.Equal(TenantResolutionFailureReason.HostUnknown, result.FailureReason);
@@ -142,14 +142,14 @@ public sealed class TenantResolverTests
         var tenantId = Guid.NewGuid();
         var domains = new FakeTenantDomainRepository
         {
-            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxprocore.com"),
+            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxproffice.com"),
         };
         var inactiveTenant = Tenant.Register(tenantId, "Oficina 1", "oficina1", TenantKind.Customer, "Etc/UTC").Value;
         inactiveTenant.Deactivate();
         var tenants = new FakeTenantRegistry { TenantToReturn = inactiveTenant };
         var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache());
 
-        var result = await resolver.ResolveAsync("oficina1.taxprocore.com");
+        var result = await resolver.ResolveAsync("oficina1.taxproffice.com");
 
         Assert.False(result.IsResolved);
         Assert.Equal(TenantResolutionFailureReason.TenantInactive, result.FailureReason);
@@ -161,7 +161,7 @@ public sealed class TenantResolverTests
         var tenantId = Guid.NewGuid();
         var domains = new FakeTenantDomainRepository
         {
-            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxprocore.com"),
+            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxproffice.com"),
         };
         var tenants = new FakeTenantRegistry
         {
@@ -169,7 +169,7 @@ public sealed class TenantResolverTests
         };
         var resolver = new TenantResolver(domains, tenants, new FakeTenantResolutionCache());
 
-        var result = await resolver.ResolveAsync("OFICINA1.TaxProCore.COM");
+        var result = await resolver.ResolveAsync("OFICINA1.taxproffice.com");
 
         Assert.True(result.IsResolved);
         Assert.Equal(tenantId, result.TenantId);
@@ -181,7 +181,7 @@ public sealed class TenantResolverTests
         var tenantId = Guid.NewGuid();
         var domains = new FakeTenantDomainRepository
         {
-            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxprocore.com"),
+            DomainToReturn = ActiveDomain(tenantId, "oficina1.taxproffice.com"),
         };
         var tenants = new FakeTenantRegistry
         {
@@ -190,10 +190,10 @@ public sealed class TenantResolverTests
         var cache = new FakeTenantResolutionCache();
         var resolver = new TenantResolver(domains, tenants, cache);
 
-        await resolver.ResolveAsync("oficina1.taxprocore.com");
+        await resolver.ResolveAsync("oficina1.taxproffice.com");
         domains.DomainToReturn = null; // simula que la BD ya no respondería esto — el cache debe seguir sirviendo
 
-        var result = await resolver.ResolveAsync("oficina1.taxprocore.com");
+        var result = await resolver.ResolveAsync("oficina1.taxproffice.com");
 
         Assert.True(result.IsResolved);
         Assert.Equal(tenantId, result.TenantId);

@@ -37,7 +37,7 @@ public sealed class RequestTenantDomainVerificationHandlerTests
             .CreateSubdomain(
                 tenantId,
                 SubdomainSlug.Create("oficina1").Value,
-                "taxprocore.com",
+                "taxproffice.com",
                 Guid.NewGuid(),
                 DateTime.UtcNow
             )

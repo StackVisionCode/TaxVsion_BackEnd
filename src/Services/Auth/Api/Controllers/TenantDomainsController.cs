@@ -15,7 +15,7 @@ namespace TaxVision.Auth.Api.Controllers;
 
 /// <summary>
 /// Fase A5 — administración de dominios propios (custom hostnames) del tenant.
-/// Los subdominios *.taxprocore.com no se gestionan aquí: se crean automáticamente
+/// Los subdominios *.taxproffice.com no se gestionan aquí: se crean automáticamente
 /// al nacer el tenant (Fase A3, TenantCreatedConsumer) y nunca requieren
 /// provisioning en Cloudflare.
 /// </summary>

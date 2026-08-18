@@ -136,7 +136,10 @@ public static class ErrorHttpMapping
             or "inventory.insufficientStock"
             // Solapamiento que el tipo de cita declara como error. El aviso, en cambio, sale en un 201.
             or "Calendar.Appointment.Conflict"
-            or "Calendar.Exception.Duplicate" => StatusCodes.Status409Conflict,
+            or "Calendar.Exception.Duplicate"
+            // El alta y la edicion de un cliente: ya hay uno igual en el tenant.
+            or "Customer.DuplicateFound"
+            or "Customer.EmailAlreadyInUse" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"

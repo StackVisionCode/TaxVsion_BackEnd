@@ -15,7 +15,7 @@ public sealed record ActivateSubdomainForTenantCommand(
 );
 
 /// <summary>PayFlow (Fase 15) — paso "Subdomain" de la Saga. No dispara M2M: el subdominio base
-/// (<c>{slug}.taxprocore.com</c>) ya queda activo en el momento en que Tenant crea el aggregate con
+/// (<c>{slug}.taxproffice.com</c>) ya queda activo en el momento en que Tenant crea el aggregate con
 /// <c>Tenant.SubDomain</c> seteado (Fase 16, <c>CreateTenantFromOnboardingCommand</c>) — a diferencia
 /// del flujo de dominios personalizados (<c>TenantDomains</c>/Cloudflare), que es una feature
 /// separada y no aplica acá. Este handler solo avanza el <see cref="TenantOnboarding"/> (UoW local)

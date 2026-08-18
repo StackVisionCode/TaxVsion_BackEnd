@@ -76,7 +76,8 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
             body.PrimaryEmail,
             body.PrimaryPhone,
             body.Language,
-            body.PreferredChannel
+            body.PreferredChannel,
+            body.Overwrite
         );
 
         var result = await bus.InvokeAsync<Result<CustomerResponse>>(cmd, ct);

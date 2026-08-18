@@ -21,5 +21,10 @@ public sealed record CreateCustomerCommand(
     string PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
-    PreferredChannel PreferredChannel
+    PreferredChannel PreferredChannel,
+    /// <summary>
+    /// Qué hacer si ya existe uno igual. En false —el valor por defecto— se responde 409 con el id del
+    /// que ya está, y decide quien llama; en true se le aplican encima los datos nuevos.
+    /// </summary>
+    bool Overwrite = false
 );

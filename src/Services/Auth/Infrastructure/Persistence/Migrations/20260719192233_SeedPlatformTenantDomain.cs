@@ -18,7 +18,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
     /// ningun ambiente con host-enforcement activo, sin importar que Host se probara.
     /// Esta migracion siembra el TenantDomain que le falta al tenant Platform, apuntando
     /// al host real de la API (TAXVISION_DOMAIN en Caddyfile/docker-compose, default
-    /// api.taxprocore.com) — el mismo patron de InsertData ya usado para sembrar el propio
+    /// api.taxproffice.com) — el mismo patron de InsertData ya usado para sembrar el propio
     /// tenant Platform.
     /// </summary>
     public partial class SeedPlatformTenantDomain : Migration
@@ -51,7 +51,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     PlatformTenantDomainId,
                     PlatformTenantId,
                     "CustomHostname",
-                    "api.taxprocore.com",
+                    "api.taxproffice.com",
                     null,
                     "Active",
                     true,

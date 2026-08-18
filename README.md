@@ -25,7 +25,7 @@ control plane, CorrelationId de extremo a extremo, cache con invalidacion y una
 plataforma local de observabilidad con Grafana, Loki, Prometheus, Tempo y
 OpenTelemetry.
 
-# Idea Principal de Desarrollo 
+# Idea Principal de Desarrollo
 <img width="2400" height="1560"  src="https://firebasestorage.googleapis.com/v0/b/c5iffaa-10025.firebasestorage.app/o/DiagramsBackEnd.png?alt=media&token=9daa5550-50b2-4ca2-bae3-dac0e39ed332" />
 
 
@@ -512,6 +512,12 @@ staging, produccion) puede asignarlos distinto.
 La configuracion local de Docker vive exclusivamente en `.env`. El archivo esta
 ignorado por Git y debe protegerse como secreto del entorno; no se mantiene una
 copia de ejemplo en el repositorio.
+
+**El host de la base cambia entre local y produccion.** En local es
+`host.docker.internal` (SQL Server corriendo en tu maquina); en produccion es el
+servidor Ubuntu que la aloja. Ademas de las `*_DB_CONNECTION`, el compose necesita
+`SQLSERVER_HOST` —y opcionalmente `SQLSERVER_PORT`, por defecto 1433— porque el
+servicio `db-ready` comprueba ese puerto antes de dejar arrancar al resto.
 
 Estructura:
 
@@ -1267,9 +1273,13 @@ No use `down -v` salvo que quiera eliminar los volumenes.
 `deploy/docker/docker-compose.yml` ya no es solo "APIs + infraestructura minima": incluye
 todo lo necesario para un despliegue de produccion real detras de un solo host:
 
-- `sqlserver` (`mcr.microsoft.com/mssql/server:2022-latest`, edicion Developer):
-  **SQL Server esta containerizado** en este compose, no es `host.docker.internal`. Puerto
-  1433 solo en loopback (acceso por VPN/SSH, nunca publico).
+- **SQL Server ya no esta en este compose.** Corre en su propio servidor Ubuntu (SQL Server
+  Developer 2025), y cada servicio llega por la cadena de conexion de su `*_DB_CONNECTION`.
+  Lo unico que queda aca es `db-ready` (`busybox`, un solo uso): comprueba el **puerto** de
+  `SQLSERVER_HOST:SQLSERVER_PORT` y sale; los 25 servicios que antes esperaban al healthcheck
+  del contenedor ahora esperan a que ese chequeo termine bien. Sin el, y como los servicios
+  migran al arrancar, un despliegue con la base un segundo inalcanzable los deja muertos:
+  ninguno declara `restart`.
 - `cadvisor` (`gcr.io/cadvisor/cadvisor:v0.49.1`, privileged) y `node-exporter`
   (`prom/node-exporter:v1.8.2`, `pid: host`): metricas de contenedores y de host para
   Prometheus/Grafana.
@@ -1370,7 +1380,7 @@ corre en runner `self-hosted` con timeout de 45 minutos. Pasos, en orden:
 7. `docker compose ... run --rm communication-api npx prisma migrate deploy` — migraciones
    Prisma del servicio Node aparte, porque no pasa por el contenedor `migrations`.
 8. `docker compose ... up -d --remove-orphans` — nunca toca volumenes nombrados
-   (`sqlserver-data`, `minio-data`, etc.).
+   (`minio-data`, etc.). La base ya no tiene volumen aca: vive en su propio servidor.
 9. Limpieza: `docker image prune -f` y `docker builder prune -f --filter "until=24h"` (nunca
    volumenes).
 10. Healthcheck: hasta 20 intentos con 5s de espera contra
@@ -3991,7 +4001,7 @@ multi-nodo. Fallback a `NoOpDistributedLock` si no hay Redis configurado.
   incremental que incluye el `DSS Dictionary` con la cadena de certificados
   (`/Certs`), CRLs (`/CRLs`) y respuestas OCSP (`/OCSPs`). Ver 29.15.
 - **Rendering profesional**: `PdfSharpCertificateRenderer` produce el
-  Certificate of Completion con branding **TaxProCore**, hashes SHA-256
+  Certificate of Completion con branding **TaxProffice**, hashes SHA-256
   chunked cada 8 chars (convencion DocuSign / Adobe Sign) y cards por signer
   con status pills; `PdfSharpSealingEngine.DrawFieldBox` dibuja la firma sin
   fondo azul: nombre del signer en **Times BoldItalic** imitando manuscrita,
@@ -4448,7 +4458,8 @@ npm run dev
 ```env
 COMMUNICATION_HTTP_HOST=0.0.0.0
 COMMUNICATION_HTTP_PORT=5350
-COMMUNICATION_DB_CONNECTION="sqlserver://host.docker.internal:1433;database=TaxVision_Communication;user=sa;password=...;encrypt=false;trustServerCertificate=true"
+# Prisma usa el esquema sqlserver:// (no es el nombre del contenedor: la base vive en su servidor).
+COMMUNICATION_DB_CONNECTION="sqlserver://192.xxx.xxx.xxx:1433;database=TaxVision_Communication;user=sa;password=...;encrypt=false;trustServerCertificate=true"
 COMMUNICATION_REDIS_URI=redis://redis:6379/0
 COMMUNICATION_SESSION_DENYLIST_PREFIX=auth:session-denylist
 COMMUNICATION_RABBITMQ_URI=amqp://taxvision:...@rabbitmq:5672
@@ -7351,7 +7362,7 @@ attribute `service.name` que cada servicio setea en `ConfigureResource(...)`, as
 Registrado como singleton dentro de `AddActorTypeAuthorization()` (ya la llaman los 14 servicios,
 cero wiring nuevo por servicio) y exportado incondicionalmente en `AddTaxVisionOpenTelemetry`
 (Layer 1/2 corren siempre, a diferencia de un `ConnectorsMetrics`/`GrowthMetrics` opt-in). Se
-instrumentó `PermissionPolicyProvider` (layer 1, dentro del `RequireAssertion`), 
+instrumentó `PermissionPolicyProvider` (layer 1, dentro del `RequireAssertion`),
 `ActorTypeAuthorizationFilter` (layer 2, en ambos branches del `OnAuthorization`) e
 `IsOwnerOrHasManageHandler<TResource>` (layer 3b, las 3 rutas de éxito + el fallo implícito). No
 se instrumentó la Capa 3a (`HasQueryFilter`) — un filtro EF Core que devuelve 0 rows no tiene un

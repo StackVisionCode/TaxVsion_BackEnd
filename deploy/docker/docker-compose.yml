@@ -5,7 +5,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    # Solo loopback — igual que sqlserver: nada de esto se expone a la interfaz
+    # Solo loopback: nada de esto se expone a la interfaz
     # publica, se accede via VPN + SSH al server (127.0.0.1 desde ahi mismo).
     # 5672 (AMQP) y 15672 (management UI) no los necesita nadie fuera del
     # server: los servicios de la app usan rabbitmq:5672 por DNS interno.
@@ -89,25 +89,32 @@ services:
   # (uso propio del negocio, sin redistribuir), version completa sin los limites de
   # Express. En local usa loopback; produccion lo enlaza exclusivamente a la IP
   # privada anunciada por Cloudflare WARP, nunca a 0.0.0.0 ni a la IP publica.
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: taxvision-sqlserver
+  # La base ya no vive aca: SQL Server corre en su propio servidor Ubuntu. Este contenedor no la
+  # reemplaza, solo espera a que responda antes de arrancar el resto — que es la garantia que daba el
+  # `depends_on: sqlserver: service_healthy` de cuando era local. Sin algo asi, y como los servicios
+  # migran al arrancar, un despliegue con la base un segundo inalcanzable deja los contenedores
+  # muertos: ninguno declara `restart`.
+  #
+  # Comprueba el puerto, no la sesion: no necesita credenciales y no hay password que montar.
+  db-ready:
+    image: busybox:1.37
+    container_name: taxvision-db-ready
+    command:
+      - sh
+      - -c
+      - |
+        echo "Esperando a SQL Server en $$SQLSERVER_HOST:$$SQLSERVER_PORT..."
+        for i in $$(seq 1 60); do
+          nc -z "$$SQLSERVER_HOST" "$$SQLSERVER_PORT" && echo "SQL Server responde." && exit 0
+          sleep 2
+        done
+        echo "SQL Server no respondio en 120s: $$SQLSERVER_HOST:$$SQLSERVER_PORT" >&2
+        exit 1
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: Developer
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
-    ports:
-      - "${SQLSERVER_BIND_ADDRESS:-127.0.0.1}:11433:1433"
-    volumes:
-      - sqlserver-data:/var/opt/mssql
+      SQLSERVER_HOST: ${SQLSERVER_HOST:?Set SQLSERVER_HOST in .env}
+      SQLSERVER_PORT: ${SQLSERVER_PORT:-1433}
     networks:
       - taxvision-network
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
 
   loki:
     image: grafana/loki:3.7.2
@@ -176,8 +183,8 @@ services:
     networks:
       - taxvision-network
 
-  # Metricas del host: disco/memoria/CPU del server — vigila que sqlserver-data
-  # y minio-data no se llenen en silencio.
+  # Metricas del host: disco/memoria/CPU del server — vigila que minio-data
+  # no se llene en silencio.
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: taxvision-node-exporter
@@ -275,8 +282,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -316,10 +323,10 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
-      # Dominio base para componer subdominios de tenant (oficina1.taxprocore.com).
+      # Dominio base para componer subdominios de tenant (oficina1.taxproffice.com).
       # Explicito en vez de confiar en el default de TenantDomainOptions.cs — mismo
       # valor que usa Caddy para el certificado wildcard (TAXVISION_BASE_DOMAIN).
-      TenantDomains__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
+      TenantDomains__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Clave de cifrado de secretos de MFA (AesGcmSecretProtector.cs). Antes caia
       # al fallback derivado de Jwt:Secret, pero ese ya no existe con RS256 —
       # sin esta var explicita, el primer uso de MFA tira InvalidOperationException.
@@ -546,8 +553,8 @@ services:
       retries: 10
       start_period: 40s
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -609,8 +616,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       minio:
@@ -659,8 +666,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -689,7 +696,7 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
-      Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
+      Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
       # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:
       # módulo de mailbox/sync duplicado, self-service de templates por HTTP, y el transporte SMTP
@@ -734,8 +741,8 @@ services:
       # está en true.
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       minio:
@@ -792,8 +799,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -841,8 +848,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       minio:
@@ -924,8 +931,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       otel-collector:
@@ -976,8 +983,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       minio:
@@ -1028,8 +1035,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1079,8 +1086,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1112,8 +1119,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1145,8 +1152,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1184,8 +1191,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1225,8 +1232,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1267,8 +1274,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1315,7 +1322,7 @@ services:
       # internamente (ver deploy/docker/caddy/Caddyfile) — MinIO en si nunca se expone
       # directo. Default "true" para producción (Caddy termina TLS ahí). En dev local
       # sin Caddy/dominio real, dejar sin configurar: cae al endpoint interno de arriba.
-      Minio__PublicEndpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxprocore.com}
+      Minio__PublicEndpoint: ${MINIO_PUBLIC_ENDPOINT:-api.taxproffice.com}
       Minio__PublicUseTls: ${MINIO_USE_TLS:-true}
       ClamAv__Host: clamav
       ClamAv__Port: "3310"
@@ -1339,8 +1346,8 @@ services:
       retries: 12
       start_period: 60s
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       minio:
@@ -1405,8 +1412,8 @@ services:
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/signature-sealing.pfx:/run/secrets/signature-sealing.pfx:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1453,8 +1460,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1512,8 +1519,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1559,8 +1566,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1612,8 +1619,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       otel-collector:
@@ -1666,8 +1673,8 @@ services:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1711,10 +1718,10 @@ services:
       # que falla esa validacion y tumba el arranque, a diferencia de TURN_URL/
       # TURN_STATIC_AUTH_SECRET arriba que son string().optional() (vacio es valido).
       COMMUNICATION_TURN_TTL_SECONDS: ${COMMUNICATION_TURN_TTL_SECONDS:-300}
-      # app.taxprocore.com = CRM/staff, client.taxprocore.com = portal de clientes;
+      # app.taxproffice.com = CRM/staff, client.taxproffice.com = portal de clientes;
       # + localhost para poder seguir probando contra produccion desde un frontend
       # local (mismo criterio que Cors__Origins del gateway).
-      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxprocore.com,https://client.taxprocore.com,http://localhost:5173,http://localhost:4200}
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,http://localhost:5173,http://localhost:4200}
       # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
       # shortLivedJoinTicket de guests sin cuenta uniendose a un meeting via link
       # de invitacion (Fase Backend 5) — z.string().min(32) en config.ts, requerido,
@@ -1740,7 +1747,7 @@ services:
       COMMUNICATION_CUSTOMER_BASE_URL: http://customer-api:8080
       # Portal de clientes — a donde apunta el link corto de invitacion a un
       # meeting para un guest sin cuenta (Fase Backend 5/9e).
-      COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxprocore.com}
+      COMMUNICATION_FRONTEND_BASE_URL: ${COMMUNICATION_FRONTEND_BASE_URL:-https://client.taxproffice.com}
       # SFU propio (mediasoup) — NUM_WORKERS=0 por default en config.ts, o sea que
       # esta apagado salvo que se prenda a proposito; el mesh WebRTC actual usa
       # TURN (arriba) para NAT traversal, no esto. Si en el futuro se activa el
@@ -1752,8 +1759,8 @@ services:
       OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       OTEL_SERVICE_NAME: communication-service
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1808,8 +1815,8 @@ services:
       # (NO activo, solo referencia) para un hipotetico servicio de podcasts:
       # TRANSCRIPT_WORKER_RECORDING_KINDS: '[{"kind":"podcast-episode","targetIdField":"episodeId","triggerEventTypes":["podcasts.episode.recording_ready.v1"],"transcriptReadyEventType":"podcasts.episode.transcript_ready.v1","transcriptFailedEventType":"podcasts.episode.transcript_failed.v1"}]'
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -1900,8 +1907,8 @@ services:
       CATALOG_DB_CONNECTION: ${CATALOG_DB_CONNECTION:?Set CATALOG_DB_CONNECTION in .env}
       INVENTORY_DB_CONNECTION: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      db-ready:
+        condition: service_completed_successfully
     networks:
       - taxvision-network
 
@@ -1929,8 +1936,8 @@ services:
       # Origins reales de produccion (app = CRM/staff, client = portal de clientes)
       # + localhost para poder seguir probando contra la API de produccion desde
       # un frontend corrido local durante desarrollo (pedido explicito).
-      Cors__Origins__0: https://app.taxprocore.com
-      Cors__Origins__1: https://client.taxprocore.com
+      Cors__Origins__0: https://app.taxproffice.com
+      Cors__Origins__1: https://client.taxproffice.com
       Cors__Origins__2: http://localhost:5173
       Cors__Origins__3: http://localhost:4200
       # GW-08 — las 8 claves escalares del load shedder (Capa 1) expuestas para poder
@@ -2015,8 +2022,8 @@ services:
     environment:
       # Host publico de la API. Cloudflare Tunnel lo entrega por HTTP al puerto
       # 80 del host; el Caddyfile lo envia a gateway:8080 sin redireccionarlo.
-      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxprocore.com}
-      TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxprocore.com}
+      TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxproffice.com}
+      TAXVISION_BASE_DOMAIN: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Zone:DNS:Edit sobre la zona — SOLO para el reto DNS-01 del certificado
       # wildcard. Token distinto (y con permisos mas chicos) que el que usa
       # Auth para provisionar custom hostnames (ver CloudflareOptions en
@@ -2040,7 +2047,6 @@ volumes:
   rabbitmq-data:
   redis-data:
   minio-data:
-  sqlserver-data:
   clamav-data:
   loki-data:
   tempo-data:

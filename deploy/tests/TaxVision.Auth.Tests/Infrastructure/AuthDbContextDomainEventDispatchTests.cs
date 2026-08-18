@@ -39,7 +39,7 @@ public sealed class AuthDbContextDomainEventDispatchTests
 
         var slug = SubdomainSlug.Create("oficina1").Value;
         var domain = TenantDomain
-            .CreateSubdomain(Guid.NewGuid(), slug, "taxprocore.com", Guid.NewGuid(), DateTime.UtcNow)
+            .CreateSubdomain(Guid.NewGuid(), slug, "taxproffice.com", Guid.NewGuid(), DateTime.UtcNow)
             .Value;
 
         await db.TenantDomains.AddAsync(domain);
@@ -58,7 +58,7 @@ public sealed class AuthDbContextDomainEventDispatchTests
 
         var slug = SubdomainSlug.Create("oficina2").Value;
         var domain = TenantDomain
-            .CreateSubdomain(Guid.NewGuid(), slug, "taxprocore.com", Guid.NewGuid(), DateTime.UtcNow)
+            .CreateSubdomain(Guid.NewGuid(), slug, "taxproffice.com", Guid.NewGuid(), DateTime.UtcNow)
             .Value;
         await db.TenantDomains.AddAsync(domain);
         await db.SaveChangesAsync();

@@ -15,14 +15,15 @@ scrape_configs:
       - targets:
           - otel-collector:9464
 
-  # Metricas de contenedores (CPU/memoria/IO por servicio, incluye sqlserver/minio).
+  # Metricas de contenedores (CPU/memoria/IO por servicio, incluye minio).
   - job_name: cadvisor
     static_configs:
       - targets:
           - cadvisor:8080
 
   # Metricas del host (disco, memoria, CPU del server) — critico para vigilar que
-  # los volumenes de sqlserver-data/minio-data no se llenen en silencio.
+  # el volumen minio-data no se llene en silencio. La base ya no esta en este host:
+  # su disco se vigila desde el servidor Ubuntu que la aloja, no desde aca.
   - job_name: node-exporter
     static_configs:
       - targets:

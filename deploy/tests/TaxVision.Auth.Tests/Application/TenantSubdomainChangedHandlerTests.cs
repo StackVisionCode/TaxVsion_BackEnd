@@ -21,8 +21,8 @@ public sealed class TenantSubdomainChangedHandlerTests
             new TenantSubdomainChanged(
                 tenantId,
                 domainId,
-                "oficina1.taxprocore.com",
-                "oficina2.taxprocore.com",
+                "oficina1.taxproffice.com",
+                "oficina2.taxproffice.com",
                 actingUserId
             ),
             audit,
@@ -36,12 +36,12 @@ public sealed class TenantSubdomainChangedHandlerTests
         Assert.Equal(AuthAuditAction.TenantSubdomainChanged, log.Action);
         Assert.True(log.Success);
         Assert.Equal(actingUserId, log.UserId);
-        Assert.Contains("oficina1.taxprocore.com", log.DetailsJson);
-        Assert.Contains("oficina2.taxprocore.com", log.DetailsJson);
+        Assert.Contains("oficina1.taxproffice.com", log.DetailsJson);
+        Assert.Contains("oficina2.taxproffice.com", log.DetailsJson);
 
         var published = Assert.Single(bus.Published.OfType<TenantSubdomainChangedIntegrationEvent>());
         Assert.Equal(domainId, published.DomainId);
-        Assert.Equal("oficina1.taxprocore.com", published.OldHost);
-        Assert.Equal("oficina2.taxprocore.com", published.NewHost);
+        Assert.Equal("oficina1.taxproffice.com", published.OldHost);
+        Assert.Equal("oficina2.taxproffice.com", published.NewHost);
     }
 }

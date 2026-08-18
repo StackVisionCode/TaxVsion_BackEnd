@@ -329,7 +329,7 @@ public sealed class OnboardingRegistrationHandlersTests
         Assert.True(onboarding.MarkCompleted(now).IsSuccess);
 
         var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
-        var options = Options.Create(new OnboardingOptions { TenantBaseDomain = "taxprocore.com" });
+        var options = Options.Create(new OnboardingOptions { TenantBaseDomain = "taxproffice.com" });
 
         var result = await GetOnboardingStatusHandler.Handle(
             new GetOnboardingStatusQuery(rawToken),
@@ -341,7 +341,7 @@ public sealed class OnboardingRegistrationHandlersTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Completed", result.Value.Status);
-        Assert.Equal("https://adas-office.taxprocore.com", result.Value.RedirectUrl);
+        Assert.Equal("https://adas-office.taxproffice.com", result.Value.RedirectUrl);
     }
 
     [Fact]

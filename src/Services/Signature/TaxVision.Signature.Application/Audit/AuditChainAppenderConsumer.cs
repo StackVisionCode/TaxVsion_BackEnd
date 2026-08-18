@@ -18,7 +18,12 @@ namespace TaxVision.Signature.Application.Audit;
 /// y evita 15 archivos vacíos. Cada método es independiente.
 /// </para>
 /// </summary>
-public static class AuditChainAppenderConsumers
+/// <remarks>
+/// El nombre va en singular a proposito: Wolverine descubre por convencion los tipos que terminan en
+/// <c>Handler</c> o <c>Consumer</c>, y en plural no los ve. Se llamaba <c>Consumers</c>, y con cuatro
+/// solicitudes de firma en la base la cadena de auditoria tenia cero filas.
+/// </remarks>
+public static class AuditChainAppenderConsumer
 {
     public static async Task Handle(
         SignatureRequestCreatedIntegrationEvent evt,

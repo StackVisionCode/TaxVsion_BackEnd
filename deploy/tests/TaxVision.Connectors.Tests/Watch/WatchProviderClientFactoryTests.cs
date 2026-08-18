@@ -20,7 +20,7 @@ public class WatchProviderClientFactoryTests
             new HttpClient(new FakeHttpMessageHandler()),
             new FakeOAuthTokenManager(),
             Options.Create(
-                new GraphWatchOptions { NotificationUrl = "https://api.taxprocore.com/x", ClientState = "s" }
+                new GraphWatchOptions { NotificationUrl = "https://api.taxproffice.com/x", ClientState = "s" }
             ),
             NullLogger<GraphWatchClient>.Instance
         );

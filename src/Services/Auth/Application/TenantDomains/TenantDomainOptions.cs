@@ -1,14 +1,14 @@
 namespace TaxVision.Auth.Application.TenantDomains;
 
 /// <summary>
-/// Dominio base de la plataforma para componer subdominios de oficina (ej. "taxprocore.com"
-/// en oficina1.taxprocore.com). Ver Auth_y_CloudStorage_Plan_Completitud_v2.md §9-10.
+/// Dominio base de la plataforma para componer subdominios de oficina (ej. "taxproffice.com"
+/// en oficina1.taxproffice.com). Ver Auth_y_CloudStorage_Plan_Completitud_v2.md §9-10.
 /// </summary>
 public sealed class TenantDomainOptions
 {
     public const string SectionName = "TenantDomains";
 
-    public string BaseDomain { get; set; } = "taxprocore.com";
+    public string BaseDomain { get; set; } = "taxproffice.com";
 
     /// <summary>
     /// Si es true, TenantHostResolutionMiddleware responde 404 cuando el Host de la request

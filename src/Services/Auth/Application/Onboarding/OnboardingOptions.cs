@@ -23,7 +23,7 @@ public sealed class OnboardingOptions
     /// Onboarding no puede depender del módulo TenantDomains (fitness function
     /// OnboardingModuleArchitectureTests), así que este valor se configura una segunda vez acá en
     /// vez de referenciar esa clase.</summary>
-    public string TenantBaseDomain { get; set; } = "taxprocore.com";
+    public string TenantBaseDomain { get; set; } = "taxproffice.com";
 
     /// <summary>PayFlow (Fase 14) — TTL de la reserva temporal de subdominio durante el registro
     /// post-pago (60min por objetivo del plan, distinto del TTL de 15min que usa

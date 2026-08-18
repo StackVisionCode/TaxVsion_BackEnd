@@ -8,7 +8,7 @@ namespace TaxVision.Auth.Application.TenantDomains.Commands;
 
 /// <summary>
 /// Fase A7 — le permite al tenant admin cambiar el subdominio primario ya activo
-/// (ej. oficina1.taxprocore.com -&gt; oficina2.taxprocore.com). Solo aplica a
+/// (ej. oficina1.taxproffice.com -&gt; oficina2.taxproffice.com). Solo aplica a
 /// DomainType.Subdomain: un custom hostname no se renombra por acá, ver
 /// TenantDomain.ChangeSubdomain.
 /// </summary>

@@ -24,7 +24,7 @@ public sealed record CustomHostnameResult(
 
 /// <summary>
 /// Fase A5 — Cloudflare for SaaS (custom hostnames de dominio propio del tenant).
-/// Los subdominios *.taxprocore.com nunca pasan por aquí: el wildcard DNS ya los
+/// Los subdominios *.taxproffice.com nunca pasan por aquí: el wildcard DNS ya los
 /// cubre, así que TenantDomain.CreateSubdomain arranca directo en Active (Fase A2).
 /// </summary>
 public interface ICloudflareProvisioningClient

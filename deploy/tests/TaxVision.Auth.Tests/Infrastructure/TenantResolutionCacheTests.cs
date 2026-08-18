@@ -48,20 +48,20 @@ public sealed class TenantResolutionCacheTests
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
 
-        await cache.SetAsync("oficina1.taxprocore.com", tenantA);
-        await cache.SetAsync("oficina2.taxprocore.com", tenantB);
+        await cache.SetAsync("oficina1.taxproffice.com", tenantA);
+        await cache.SetAsync("oficina2.taxproffice.com", tenantB);
 
-        Assert.Equal(tenantA, await cache.TryGetAsync("oficina1.taxprocore.com"));
-        Assert.Equal(tenantB, await cache.TryGetAsync("oficina2.taxprocore.com"));
+        Assert.Equal(tenantA, await cache.TryGetAsync("oficina1.taxproffice.com"));
+        Assert.Equal(tenantB, await cache.TryGetAsync("oficina2.taxproffice.com"));
     }
 
     [Fact]
     public async Task Unseen_host_never_returns_another_hosts_cached_tenant()
     {
         var cache = new TenantResolutionCache(new InMemoryCacheService());
-        await cache.SetAsync("oficina1.taxprocore.com", Guid.NewGuid());
+        await cache.SetAsync("oficina1.taxproffice.com", Guid.NewGuid());
 
-        Assert.Null(await cache.TryGetAsync("oficina-nunca-vista.taxprocore.com"));
+        Assert.Null(await cache.TryGetAsync("oficina-nunca-vista.taxproffice.com"));
     }
 
     [Fact]
@@ -70,12 +70,12 @@ public sealed class TenantResolutionCacheTests
         var cache = new TenantResolutionCache(new InMemoryCacheService());
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
-        await cache.SetAsync("oficina1.taxprocore.com", tenantA);
-        await cache.SetAsync("oficina2.taxprocore.com", tenantB);
+        await cache.SetAsync("oficina1.taxproffice.com", tenantA);
+        await cache.SetAsync("oficina2.taxproffice.com", tenantB);
 
-        await cache.InvalidateAsync("oficina1.taxprocore.com");
+        await cache.InvalidateAsync("oficina1.taxproffice.com");
 
-        Assert.Null(await cache.TryGetAsync("oficina1.taxprocore.com"));
-        Assert.Equal(tenantB, await cache.TryGetAsync("oficina2.taxprocore.com"));
+        Assert.Null(await cache.TryGetAsync("oficina1.taxproffice.com"));
+        Assert.Equal(tenantB, await cache.TryGetAsync("oficina2.taxproffice.com"));
     }
 }

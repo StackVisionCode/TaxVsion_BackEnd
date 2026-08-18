@@ -120,10 +120,11 @@ jobs:
           # docker-compose.yml las exige con :? en catalog-api/inventory-api y en migrations.
           CATALOG_DB_CONNECTION=${{ secrets.CATALOG_DB_CONNECTION }}
           INVENTORY_DB_CONNECTION=${{ secrets.INVENTORY_DB_CONNECTION }}
-          MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
-          # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
-          # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
-          SQLSERVER_BIND_ADDRESS=192.168.100.10
+          # SQL Server ya no corre en este host: vive en su propio servidor Ubuntu. De aca solo sale
+          # a donde esta, para que `db-ready` compruebe el puerto antes de arrancar el resto. La
+          # credencial ya viaja dentro de cada *_DB_CONNECTION, asi que no hay password suelta.
+          SQLSERVER_HOST=${{ secrets.SQLSERVER_HOST }}
+          SQLSERVER_PORT=${{ secrets.SQLSERVER_PORT }}
 
           # ---------- RabbitMQ / MinIO / Grafana ----------
           RABBITMQ_CONNECTION=${{ secrets.RABBITMQ_CONNECTION }}
@@ -451,8 +452,9 @@ jobs:
 
       # ---------------------------------------------------------------------
       # `up -d` solo recrea contenedores cuya imagen/config cambio. Nunca
-      # borra volumenes nombrados — sqlserver-data/minio-data sobreviven
-      # intactos a este paso siempre (ver seccion 7 del plan de deploy).
+      # borra volumenes nombrados — minio-data sobrevive intacto a este paso
+      # siempre (ver seccion 7 del plan de deploy). La base ya no tiene volumen
+      # aca: vive en su propio servidor.
       # ---------------------------------------------------------------------
       - name: Deploy (up -d, sin tocar volumenes)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env up -d --remove-orphans
@@ -465,7 +467,7 @@ jobs:
       - name: Healthcheck
         run: |
           domain="${{ secrets.TAXVISION_DOMAIN }}"
-          domain="${domain:-api.taxprocore.com}"
+          domain="${domain:-api.taxproffice.com}"
           for i in $(seq 1 20); do
             status="$(curl -sS -o /tmp/taxvision-ready.txt -w '%{http_code}' "https://${domain}/health/ready" || true)"
             if [ "$status" = "200" ]; then

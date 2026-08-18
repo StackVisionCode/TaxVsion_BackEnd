@@ -1,8 +1,8 @@
 # Unico punto de entrada publico del stack. TLS WILDCARD automatico (Let's
 # Encrypt via desafio DNS-01 en Cloudflare) — Caddy emite y renueva un unico
-# certificado que cubre TANTO el apex (taxprocore.com, usado hoy por
-# TAXVISION_DOMAIN=api.taxprocore.com) COMO cualquier subdominio de tenant
-# (oficina1.taxprocore.com, oficina2.taxprocore.com, ...) sin tener que volver
+# certificado que cubre TANTO el apex (taxproffice.com, usado hoy por
+# TAXVISION_DOMAIN=api.taxproffice.com) COMO cualquier subdominio de tenant
+# (oficina1.taxproffice.com, oficina2.taxproffice.com, ...) sin tener que volver
 # a tocar este archivo cuando se de de alta una oficina nueva — el DNS ya
 # resuelve por el wildcard `CNAME *` (o A) que apunta a este mismo server;
 # Caddy no necesita saber los subdominios de antemano porque DNS-01 no
@@ -38,12 +38,12 @@
 # Origen HTTP usado por las rutas publicadas del Cloudflare Tunnel. Incluye
 # tanto la API como los hosts dinamicos de tenant; Cloudflare conserva el Host
 # original y Auth lo utiliza para resolver el tenant correspondiente.
-http://{$TAXVISION_DOMAIN:api.taxprocore.com}, http://*.{$TAXVISION_BASE_DOMAIN:taxprocore.com} {
+http://{$TAXVISION_DOMAIN:api.taxproffice.com}, http://*.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
 	import taxvision_upstreams
 }
 
 # Entrada TLS directa y hosts dinamicos de tenant.
-{$TAXVISION_BASE_DOMAIN:taxprocore.com}, *.{$TAXVISION_BASE_DOMAIN:taxprocore.com} {
+{$TAXVISION_BASE_DOMAIN:taxproffice.com}, *.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}

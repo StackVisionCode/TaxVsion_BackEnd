@@ -13,11 +13,11 @@ public sealed class TenantDomainTests
         var tenantId = Guid.NewGuid();
         var now = DateTime.UtcNow;
 
-        var result = TenantDomain.CreateSubdomain(tenantId, ValidSlug(), "taxprocore.com", Guid.NewGuid(), now);
+        var result = TenantDomain.CreateSubdomain(tenantId, ValidSlug(), "taxproffice.com", Guid.NewGuid(), now);
 
         Assert.True(result.IsSuccess);
         var domain = result.Value;
-        Assert.Equal("oficina1.taxprocore.com", domain.Host);
+        Assert.Equal("oficina1.taxproffice.com", domain.Host);
         Assert.Equal(TenantDomainType.Subdomain, domain.DomainType);
         Assert.Equal(TenantDomainStatus.Active, domain.Status); // wildcard ya cubre TLS, sin provisioning
         Assert.True(domain.IsPrimary);
@@ -30,7 +30,7 @@ public sealed class TenantDomainTests
         var result = TenantDomain.CreateSubdomain(
             Guid.Empty,
             ValidSlug(),
-            "taxprocore.com",
+            "taxproffice.com",
             Guid.NewGuid(),
             DateTime.UtcNow
         );
@@ -69,7 +69,7 @@ public sealed class TenantDomainTests
     public void Subdomain_cannot_start_provisioning_only_custom_hostnames_can()
     {
         var domain = TenantDomain
-            .CreateSubdomain(Guid.NewGuid(), ValidSlug(), "taxprocore.com", Guid.NewGuid(), DateTime.UtcNow)
+            .CreateSubdomain(Guid.NewGuid(), ValidSlug(), "taxproffice.com", Guid.NewGuid(), DateTime.UtcNow)
             .Value;
 
         var result = domain.MarkProvisioning("cf-id-123", "http");
@@ -116,7 +116,7 @@ public sealed class TenantDomainTests
             .CreateSubdomain(
                 Guid.NewGuid(),
                 ValidSlug(),
-                "taxprocore.com",
+                "taxproffice.com",
                 Guid.NewGuid(),
                 DateTime.UtcNow,
                 isPrimary: true

@@ -278,7 +278,7 @@ Polling del progreso post-submit. El frontend debería llamarlo cada 2-3 segundo
 
 **Response 200** (completado)
 ```json
-{ "status": "Completed", "currentStep": null, "failureReason": null, "failureCode": null, "redirectUrl": "https://freedomtax.taxprocore.com" }
+{ "status": "Completed", "currentStep": null, "failureReason": null, "failureCode": null, "redirectUrl": "https://freedomtax.taxproffice.com" }
 ```
 
 **Response 200** (falló, en revisión manual)
@@ -566,7 +566,7 @@ Lista las últimas `take` facturas del tenant (orden descendente por fecha de cr
     "pdfFileId": "b2c3d4e5-0000-0000-0000-000000000000",
     "createdAtUtc": "2026-07-29T10:00:00Z", "paidAtUtc": null,
     "paymentMethod": null, "receiptNumber": null, "receiptHash": null,
-    "checkoutUrl": "https://api.taxprocore.com/payments-client/invoices/xk7f2a9b"
+    "checkoutUrl": "https://api.taxproffice.com/payments-client/invoices/xk7f2a9b"
   }
 ]
 ```
@@ -704,7 +704,7 @@ conviene volver a pedir `download-url` (la presignada anterior ya habrá vencido
 El `checkoutUrl` que aparece en `GET billing/invoices/{id}` (§2.4) tiene esta forma:
 
 ```
-https://api.taxprocore.com/payments-client/invoices/{reference}
+https://api.taxproffice.com/payments-client/invoices/{reference}
 ```
 
 Es una **URL estable y pública** (no requiere JWT, no expira) — es la misma URL que Documents embebe
