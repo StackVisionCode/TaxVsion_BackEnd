@@ -25,7 +25,7 @@ control plane, CorrelationId de extremo a extremo, cache con invalidacion y una
 plataforma local de observabilidad con Grafana, Loki, Prometheus, Tempo y
 OpenTelemetry.
 
-# Idea Principal de Desarrollo 
+# Idea Principal de Desarrollo
 <img width="2400" height="1560"  src="https://firebasestorage.googleapis.com/v0/b/c5iffaa-10025.firebasestorage.app/o/DiagramsBackEnd.png?alt=media&token=9daa5550-50b2-4ca2-bae3-dac0e39ed332" />
 
 
@@ -72,6 +72,11 @@ OpenTelemetry.
 38. Correspondence Service (inbox del cliente final + compose/send)
 39. Soporte de logo y colores de marca para Tenant
 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
+41. Autorización por Actor Type (los 14 microservicios .NET + Communication/Node)
+42. PayFlow Fase 16 — Endpoints M2M (Tenant + Subscription)
+43. PayFlow Fase 17 — Compensaciones, ManualReview y observabilidad
+44. PayFlow Fase 18-19 — Endpoints públicos, hardening de credenciales y cierre del plan
+45. Primitivas compartidas de BuildingBlocks — resiliencia HTTP, cache de tokens M2M, rate limiting Redis
 
 ## 1. Introduccion y objetivo
 
@@ -236,7 +241,7 @@ OpenTelemetry.
 
 ### Gateway
 
-- expone `http://localhost:5047`;
+- expone `http://localhost:<GATEWAY_PORT>`;
 - enruta `/auth/*` y `/tenants/*`;
 - valida JWT;
 - elimina `X-Tenant-Id` del cliente;
@@ -477,9 +482,42 @@ PATCH /tenants/{id}/status
 
 ## 8. Configuracion y secretos
 
+### Puertos de referencia (desarrollo local)
+
+Los ejemplos de este documento (curl, PowerShell, `dotnet user-secrets`, snippets
+de configuracion) usan los placeholders de abajo en vez de numeros de puerto fijos.
+Sustituyalos por el puerto real que cada servicio expone en su `launchSettings.json`
+o variable de entorno local — no son valores productivos, cada entorno (local,
+staging, produccion) puede asignarlos distinto.
+
+| Placeholder | Servicio / recurso |
+|---|---|
+| `<GATEWAY_PORT>` | Gateway (YARP) |
+| `<AUTH_PORT>` | Auth |
+| `<CUSTOMER_PORT>` | Customer |
+| `<CLOUDSTORAGE_PORT>` | CloudStorage |
+| `<SCRIBE_PORT>` | Scribe |
+| `<CONNECTORS_PORT>` | Connectors |
+| `<PAYMENTAPP_PORT>` | PaymentApp |
+| `<DOCUMENTS_PORT>` | Documents |
+| `<FRONTEND_PORT>` | Frontend (Vite dev server) |
+| `<REDIS_PORT>` | Redis |
+| `<RABBITMQ_PORT>` | RabbitMQ (AMQP) |
+| `<RABBITMQ_MGMT_PORT>` | RabbitMQ (consola de administracion) |
+| `<MINIO_PORT>` | MinIO (S3 API) |
+| `<GRAFANA_PORT>` | Grafana |
+| `<PROMETHEUS_PORT>` | Prometheus |
+| `<SMTP_DEV_PORT>` | Servidor SMTP de desarrollo (placeholder del seeder) |
+
 La configuracion local de Docker vive exclusivamente en `.env`. El archivo esta
 ignorado por Git y debe protegerse como secreto del entorno; no se mantiene una
 copia de ejemplo en el repositorio.
+
+**El host de la base cambia entre local y produccion.** En local es
+`host.docker.internal` (SQL Server corriendo en tu maquina); en produccion es el
+servidor Ubuntu que la aloja. Ademas de las `*_DB_CONNECTION`, el compose necesita
+`SQLSERVER_HOST` —y opcionalmente `SQLSERVER_PORT`, por defecto 1433— porque el
+servicio `db-ready` comprueba ese puerto antes de dejar arrancar al resto.
 
 Estructura:
 
@@ -509,9 +547,9 @@ Auth:
 ```powershell
 dotnet user-secrets set "ConnectionStrings:Default" "<AUTH_CONNECTION>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
-dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:<REDIS_PORT>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
-dotnet user-secrets set "RabbitMq:Uri" "amqp://user:password@localhost:5672" `
+dotnet user-secrets set "RabbitMq:Uri" "amqp://user:password@localhost:<RABBITMQ_PORT>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
 dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
   --project src\Services\Auth\Api\TaxVision.Auth.Api.csproj
@@ -555,11 +593,28 @@ logs. Despues de aceptar la invitacion, deshabilite y elimine estos secretos. Lo
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-app.UseRateLimiter();
+// headers de seguridad (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, HSTS)
+app.UseMiddleware<InternalSurfaceGuardMiddleware>();   // GW-01: 404 a todo path con segmento `internal`
+app.UseCors("spa");
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
+app.UseMiddleware<LoadSheddingMiddleware>();           // Capa 1 del rate limiting
 app.UseMiddleware<TenantPropagationMiddleware>();
 ```
+
+`InternalSurfaceGuardMiddleware` va **antes de CORS y de la autenticación**: los 18 controllers M2M
+del sistema viven bajo `internal/*` y se hablan contenedor→contenedor, así que por el Gateway no hay
+tráfico legítimo que perder. Devuelve **404** (no 403, para no confirmar que el recurso existe),
+registra un `LogWarning` y suma a `gateway_internal_surface_probes_blocked_total`. Ver
+[ADR-019](documents/architecture/ADR_019_Internal_Surface_Not_Exposed_At_Gateway.md).
+
+**Convención obligatoria para endpoints M2M nuevos**: `[Route("internal/<recurso>")]`, **sin** el
+prefijo del servicio delante. Con el prefijo (`[Route("auth/internal/...")]`) el catch-all del
+Gateway sí los alcanza. Hay una fitness function que rompe el build si se incumple
+(`InternalRouteConventionFitnessTests`). Para probarlos con Postman se usa el puerto directo del
+servicio (`{{AuthDirectBase}}`, `{{TenantDirectBase}}`, `{{SubscriptionDirectBase}}`,
+`{{PaymentAppDirectBase}}`, `{{GrowthDirectBase}}`), nunca `{{UrlBase}}`.
 
 ### Auth
 
@@ -573,7 +628,8 @@ app.UseAuthorization();
 
 ### Tenant
 
-Agrega `TenantResolutionMiddleware` para reconstruir `TenantContext`.
+Agrega `BuildingBlocks.Tenancy.JwtTenantContextMiddleware` (antes de `UseAuthorization`) para
+reconstruir `TenantContext` desde el claim `tenant_id` del JWT ya verificado.
 
 El orden importa: correlation debe envolver logging y excepciones; autenticacion debe
 ejecutarse antes de leer claims.
@@ -622,7 +678,7 @@ OpenTelemetry agrega `taxvision.correlation_id` como tag y baggage de la Activit
 ```powershell
 curl.exe -i `
   -H "X-Correlation-Id: taxvision-check-001" `
-  http://localhost:5047/health/live
+  http://localhost:<GATEWAY_PORT>/health/live
 ```
 
 En Grafana:
@@ -675,8 +731,8 @@ Grafana consulta los tres backends.
 
 | Componente | URL | Uso |
 | --- | --- | --- |
-| Grafana | `http://localhost:3000` | interfaz principal |
-| Prometheus | `http://localhost:9090` | consultas PromQL |
+| Grafana | `http://localhost:<GRAFANA_PORT>` | interfaz principal |
+| Prometheus | `http://localhost:<PROMETHEUS_PORT>` | consultas PromQL |
 | Loki | interno `loki:3100` | logs |
 | Tempo | interno `tempo:3200` | trazas |
 | OTel Collector | `4317`, `4318` | recepcion OTLP |
@@ -691,7 +747,7 @@ Los datasources se aprovisionan automaticamente:
 
 Uso:
 
-1. Abra `http://localhost:3000`.
+1. Abra `http://localhost:<GRAFANA_PORT>`.
 2. Ingrese credenciales `GRAFANA_ADMIN_*`.
 3. Abra **Explore**.
 4. Seleccione Loki para logs.
@@ -1005,7 +1061,7 @@ PBKDF2, tokens de invitacion, JWT y refresh tokens.
 Base:
 
 ```text
-http://localhost:5047
+http://localhost:<GATEWAY_PORT>
 ```
 
 ### Crear tenant
@@ -1217,9 +1273,13 @@ No use `down -v` salvo que quiera eliminar los volumenes.
 `deploy/docker/docker-compose.yml` ya no es solo "APIs + infraestructura minima": incluye
 todo lo necesario para un despliegue de produccion real detras de un solo host:
 
-- `sqlserver` (`mcr.microsoft.com/mssql/server:2022-latest`, edicion Developer):
-  **SQL Server esta containerizado** en este compose, no es `host.docker.internal`. Puerto
-  1433 solo en loopback (acceso por VPN/SSH, nunca publico).
+- **SQL Server ya no esta en este compose.** Corre en su propio servidor Ubuntu (SQL Server
+  Developer 2025), y cada servicio llega por la cadena de conexion de su `*_DB_CONNECTION`.
+  Lo unico que queda aca es `db-ready` (`busybox`, un solo uso): comprueba el **puerto** de
+  `SQLSERVER_HOST:SQLSERVER_PORT` y sale; los 25 servicios que antes esperaban al healthcheck
+  del contenedor ahora esperan a que ese chequeo termine bien. Sin el, y como los servicios
+  migran al arrancar, un despliegue con la base un segundo inalcanzable los deja muertos:
+  ninguno declara `restart`.
 - `cadvisor` (`gcr.io/cadvisor/cadvisor:v0.49.1`, privileged) y `node-exporter`
   (`prom/node-exporter:v1.8.2`, `pid: host`): metricas de contenedores y de host para
   Prometheus/Grafana.
@@ -1250,13 +1310,13 @@ Internet :80/:443 -> caddy (TLS WILDCARD automatico via Let's Encrypt, DNS-01/Cl
 
 **Fase X1 (completitud del plan de subdominios de tenant, ver `Auth_y_CloudStorage_Plan_
 Completitud_v2.md`)** — el `Caddyfile` (`deploy/docker/caddy/Caddyfile`) usa un site block
-**wildcard** sobre `{$TAXVISION_BASE_DOMAIN:taxprocore.com}, *.{$TAXVISION_BASE_DOMAIN}`, con
+**wildcard** sobre `{$TAXVISION_BASE_DOMAIN:tudominio.com}, *.{$TAXVISION_BASE_DOMAIN}`, con
 `caddy` construido desde un `Dockerfile` propio (`deploy/docker/caddy/Dockerfile`, no la imagen
 `caddy:2-alpine` estandar) que agrega el plugin `caddy-dns/cloudflare`. Esto es necesario porque
 Let's Encrypt solo emite certificados wildcard via desafio **DNS-01** (crear un registro TXT de
 validacion) — el HTTP-01 automatico que usaba el `Caddyfile` anterior (single-domain) no puede
 emitir para un Host que Caddy no conoce de antemano, asi que nunca iba a poder cubrir subdominios
-de tenant dinamicos (`oficina1.taxprocore.com`, `oficina2.taxprocore.com`, ...). Requiere:
+de tenant dinamicos (`oficina1.tudominio.com`, `oficina2.tudominio.com`, ...). Requiere:
 
 - DNS wildcard (`CNAME *` o `A *`) apuntando a este server, ya configurado antes del primer arranque.
 - `CLOUDFLARE_DNS_API_TOKEN` en `.env` — token de Cloudflare con permiso **Zone:DNS:Edit** sobre
@@ -1264,7 +1324,7 @@ de tenant dinamicos (`oficina1.taxprocore.com`, `oficina2.taxprocore.com`, ...).
   en `auth-api`, con permisos Zone:DNS:Edit + Zone:SSL:Edit) — no reusar el mismo token entre los
   dos usos aunque compartan la misma cuenta de Cloudflare.
 - `TAXVISION_DOMAIN` (el host que usan hoy `MINIO_PUBLIC_ENDPOINT`/el healthcheck del workflow de
-  deploy, ej. `api.taxprocore.com`) sigue funcionando sin cambios — como es un subdominio de
+  deploy, ej. `api.tudominio.com`) sigue funcionando sin cambios — como es un subdominio de
   `TAXVISION_BASE_DOMAIN`, el mismo certificado wildcard ya lo cubre, no hace falta nada mas.
 
 La regla de MinIO existe porque las URLs presignadas que CloudStorage entrega al cliente apuntan
@@ -1320,7 +1380,7 @@ corre en runner `self-hosted` con timeout de 45 minutos. Pasos, en orden:
 7. `docker compose ... run --rm communication-api npx prisma migrate deploy` — migraciones
    Prisma del servicio Node aparte, porque no pasa por el contenedor `migrations`.
 8. `docker compose ... up -d --remove-orphans` — nunca toca volumenes nombrados
-   (`sqlserver-data`, `minio-data`, etc.).
+   (`minio-data`, etc.). La base ya no tiene volumen aca: vive en su propio servidor.
 9. Limpieza: `docker image prune -f` y `docker builder prune -f --filter "until=24h"` (nunca
    volumenes).
 10. Healthcheck: hasta 20 intentos con 5s de espera contra
@@ -1336,22 +1396,22 @@ sin tocar Cloudflare ni Caddy en ningun entorno:
 
 **Local (recomendado — sin instalar nada):** Chrome/Edge resuelven **cualquier** subdominio de
 `*.localhost` a `127.0.0.1` de forma nativa, sin tocar el archivo hosts. Corriendo Auth con
-`dotnet run` (`http://localhost:5124` por defecto, ver `launchSettings.json`), un tenant sembrado
-con `TenantDomain.Host = "oficina1.localhost:5124"` ya resuelve pegandole a
-`http://oficina1.localhost:5124/...` — no hace falta HTTPS ni certificados para probar la
+`dotnet run` (`http://localhost:<AUTH_PORT>` por defecto, ver `launchSettings.json`), un tenant sembrado
+con `TenantDomain.Host = "oficina1.localhost:<AUTH_PORT>"` ya resuelve pegandole a
+`http://oficina1.localhost:<AUTH_PORT>/...` — no hace falta HTTPS ni certificados para probar la
 resolucion en si. Para otros navegadores (o si se necesita HTTPS local): agregar entradas al
-archivo hosts (`127.0.0.1 oficina1.taxprocore.test`, una por tenant de prueba) y generar un
+archivo hosts (`127.0.0.1 oficina1.tudominio.test`, una por tenant de prueba) y generar un
 certificado wildcard local con **mkcert**:
 ```
 mkcert -install
-mkcert "*.taxprocore.test" taxprocore.test localhost 127.0.0.1
+mkcert "*.tudominio.test" tudominio.test localhost 127.0.0.1
 ```
 y servirlo con Kestrel (`Kestrel:Certificates:Default:Path` en `appsettings.Development.json`) o
 con una segunda instancia local de Caddy apuntando al `.pfx` generado. Evitar el TLD `.dev`
 (Chrome lo fuerza a HSTS/HTTPS via preload list) y `.local` (reservado para mDNS).
 
 **Staging:** misma estrategia que produccion pero en una zona separada — `TAXVISION_BASE_DOMAIN=
-staging.taxprocore.com` (o el subdominio que se use como raiz de staging) con su propio wildcard
+staging.tudominio.com` (o el subdominio que se use como raiz de staging) con su propio wildcard
 DNS y su propio `CLOUDFLARE_DNS_API_TOKEN`/despliegue de `caddy`, para que un certificado o un
 tenant de prueba en staging nunca comparta nada con produccion. El codigo de resolucion de tenant
 no cambia entre entornos — solo la config (`TenantDomainOptions`/`TAXVISION_BASE_DOMAIN`).
@@ -1361,8 +1421,8 @@ no cambia entre entornos — solo la config (`TenantDomainOptions`/`TAXVISION_BA
 ### Health
 
 ```powershell
-curl.exe -i http://localhost:5047/health/live
-curl.exe -i http://localhost:5047/health/ready
+curl.exe -i http://localhost:<GATEWAY_PORT>/health/live
+curl.exe -i http://localhost:<GATEWAY_PORT>/health/ready
 ```
 
 ### Logs Docker
@@ -1376,7 +1436,7 @@ docker compose --env-file .env -f deploy\docker\docker-compose.yml logs -f otel-
 
 ### RabbitMQ
 
-Abra `http://localhost:15672` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD`.
+Abra `http://localhost:<RABBITMQ_MGMT_PORT>` con `RABBITMQ_USER` y `RABBITMQ_PASSWORD`.
 
 Revise:
 
@@ -1895,9 +1955,9 @@ Para `TaxVision.Customer.Api`:
 ```powershell
 dotnet user-secrets set "ConnectionStrings:Default" "<CUSTOMER_CONNECTION>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:<REDIS_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:5672" `
+dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:<RABBITMQ_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "Jwt:Secret" "<SAME_SECRET>" `
   --project src\Services\Customer\TaxVision.Customer.Api
@@ -1928,15 +1988,15 @@ Credenciales para que el archivo de import hable con CloudStorage (sec 25.10.1a
 — mismo patron que `Signature:ServiceAuth`, ver sec 27):
 
 ```powershell
-dotnet user-secrets set "ServiceAuthClient:AuthBaseUrl" "http://localhost:5124" `
+dotnet user-secrets set "ServiceAuthClient:AuthBaseUrl" "http://localhost:<AUTH_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "ServiceAuthClient:ClientId" "customer-worker" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "ServiceAuthClient:ClientSecret" "<mismo valor que ServiceAuth:Clients:3:Secret en Auth>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "CloudStorageClient:BaseUrl" "http://localhost:5330" `
+dotnet user-secrets set "CloudStorageClient:BaseUrl" "http://localhost:<CLOUDSTORAGE_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
-dotnet user-secrets set "Customer:Minio:Endpoint" "localhost:9000" `
+dotnet user-secrets set "Customer:Minio:Endpoint" "localhost:<MINIO_PORT>" `
   --project src\Services\Customer\TaxVision.Customer.Api
 dotnet user-secrets set "Customer:Minio:AccessKey" "customer-worker" `
   --project src\Services\Customer\TaxVision.Customer.Api
@@ -1957,7 +2017,7 @@ En produccion el master key va a Key Vault o equivalente; nunca al repo ni al
 ### 25.13 Gateway
 
 Ruta YARP `/customers/{**catch-all}` enrutada al cluster `customer` en
-`http://localhost:5263/`. Health check `customer-api` agregado al endpoint
+`http://localhost:<CUSTOMER_PORT>/`. Health check `customer-api` agregado al endpoint
 `/health/ready` del Gateway.
 
 ### 25.14 Aplicar migraciones
@@ -2105,9 +2165,14 @@ para que el UI sugiera "abrir el customer existente" en lugar de crear duplicado
 
 #### 25.16.5 Bulk status operations
 
-POST `/customers/bulk/{action}` con `action` en `archive`, `reactivate`, `activate`,
-`deactivate`. Util para fin de campana fiscal (archivar 100 customers que ya filtraron)
-o reapertura de temporada (reactivar masivamente).
+POST `/customers/bulk/{statusAction}` con `statusAction` en `archive`, `reactivate`,
+`activate`, `deactivate`. Util para fin de campana fiscal (archivar 100 customers que ya
+filtraron) o reapertura de temporada (reactivar masivamente).
+
+> Nota: el token de ruta se renombro de `{action}` a `{statusAction}` en Fase 4.1 del
+> rate limiting — `action` colisiona con el route-value reservado de ASP.NET Core MVC
+> para seleccion de accion, lo que hacia que esta ruta nunca matcheara ninguna URL real
+> (bug pre-existente, encontrado y corregido en esa fase).
 
 | Limite | Valor |
 | --- | --- |
@@ -2573,23 +2638,23 @@ dotnet ef database update `
 
 ```powershell
 # 1. Crear tenant (dispara suscripcion trial + invitacion + limites)
-$tenant = Invoke-RestMethod -Method Post -Uri http://localhost:5047/tenants -ContentType application/json -Body (@{
+$tenant = Invoke-RestMethod -Method Post -Uri http://localhost:<GATEWAY_PORT>/tenants -ContentType application/json -Body (@{
   name = "Oficina Demo"; subdomain = "demo1"; adminEmail = "admin@demo.com"; defaultTimeZoneId = "America/New_York"
 } | ConvertTo-Json)
 
 # 2. Aceptar invitacion y login
-Invoke-RestMethod -Method Post -Uri http://localhost:5047/auth/invitations/accept -ContentType application/json -Body (@{
+Invoke-RestMethod -Method Post -Uri http://localhost:<GATEWAY_PORT>/auth/invitations/accept -ContentType application/json -Body (@{
   invitationToken = $tenant.adminActivationToken; name = "Admin"; lastName = "Demo"; password = "MiClaveSegura2026!"
 } | ConvertTo-Json)
-$login = Invoke-RestMethod -Method Post -Uri http://localhost:5047/auth/login -ContentType application/json -Body (@{
+$login = Invoke-RestMethod -Method Post -Uri http://localhost:<GATEWAY_PORT>/auth/login -ContentType application/json -Body (@{
   tenantId = $tenant.id; email = "admin@demo.com"; password = "MiClaveSegura2026!"
 } | ConvertTo-Json)
 $headers = @{ Authorization = "Bearer $($login.tokens.accessToken)" }
 
 # 3. Identidad, plan y limites (los 3 servicios juntos)
-Invoke-RestMethod http://localhost:5047/auth/me -Headers $headers
-Invoke-RestMethod http://localhost:5047/subscriptions/me -Headers $headers
-Invoke-RestMethod http://localhost:5047/auth/tenants/limits -Headers $headers
+Invoke-RestMethod http://localhost:<GATEWAY_PORT>/auth/me -Headers $headers
+Invoke-RestMethod http://localhost:<GATEWAY_PORT>/subscriptions/me -Headers $headers
+Invoke-RestMethod http://localhost:<GATEWAY_PORT>/auth/tenants/limits -Headers $headers
 ```
 
 ## 26.10 Documentacion del codigo
@@ -3299,7 +3364,7 @@ Correspondence/Connectors/Scribe/Postmaster/Notification.
 
 ## 28.2 Endpoints
 
-Todos bajo el Gateway (`http://localhost:5047`), prefijo `/notifications/email`.
+Todos bajo el Gateway (`http://localhost:<GATEWAY_PORT>`), prefijo `/notifications/email`.
 
 ```text
 # Configuracion SMTP/API (permiso notification.settings.manage)
@@ -3372,7 +3437,7 @@ Notification requiere dos claves adicionales (ver `appsettings.json` y el
 # Cifrado de secretos del modulo email (base64 de 32 bytes). En Docker: ENCRYPTION_MASTER_KEY.
 Encryption__MasterKey=<BASE64_32_BYTES>
 # Microservicio CloudStorage para plantillas/layouts. En Docker: http://cloudstorage-api:8080.
-CloudStorageClient__BaseUrl=http://localhost:5330
+CloudStorageClient__BaseUrl=http://localhost:<CLOUDSTORAGE_PORT>
 ```
 
 Generar la clave (PowerShell):
@@ -3518,7 +3583,7 @@ Las plantillas/config con `scope=System` solo las gestiona un `PlatformAdmin`.
 
 En Grafana/Loki, filtra por `service_name="notification-service"` y sigue el
 `CorrelationId` para ver la cadena `EmailSendRequested → EmailDeliverySucceeded/Failed`.
-En RabbitMQ (`http://localhost:15672`) revisa la cola `notification-events`.
+En RabbitMQ (`http://localhost:<RABBITMQ_MGMT_PORT>`) revisa la cola `notification-events`.
 
 ## 28.7 Webhooks y fan-out por lotes
 
@@ -3936,7 +4001,7 @@ multi-nodo. Fallback a `NoOpDistributedLock` si no hay Redis configurado.
   incremental que incluye el `DSS Dictionary` con la cadena de certificados
   (`/Certs`), CRLs (`/CRLs`) y respuestas OCSP (`/OCSPs`). Ver 29.15.
 - **Rendering profesional**: `PdfSharpCertificateRenderer` produce el
-  Certificate of Completion con branding **TaxProCore**, hashes SHA-256
+  Certificate of Completion con branding **TaxProffice**, hashes SHA-256
   chunked cada 8 chars (convencion DocuSign / Adobe Sign) y cards por signer
   con status pills; `PdfSharpSealingEngine.DrawFieldBox` dibuja la firma sin
   fondo azul: nombre del signer en **Times BoldItalic** imitando manuscrita,
@@ -3999,10 +4064,10 @@ Requeridos para `TaxVision.Signature.Api`:
 dotnet user-secrets set "ConnectionStrings:Default" "<SIGNATURE_CONNECTION>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-dotnet user-secrets set "ConnectionStrings:Redis" "localhost:6379" `
+dotnet user-secrets set "ConnectionStrings:Redis" "localhost:<REDIS_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:5672" `
+dotnet user-secrets set "RabbitMq:Uri" "amqp://taxvision:<password-url-encoded>@localhost:<RABBITMQ_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
 dotnet user-secrets set "Jwt:Secret" "<SAME_HS256_SECRET>" `
@@ -4036,14 +4101,14 @@ dotnet user-secrets set "Signature:Sealing:Tsa:Endpoint" "https://freetsa.org/ts
 # El prefijo correcto es Signature:ServiceAuth (no ServiceAuthClient, que era
 # un bug historico). Auth service debe tener el cliente signature-worker
 # registrado en ServiceAuth:Clients con los permisos correspondientes.
-dotnet user-secrets set "Signature:ServiceAuth:AuthBaseUrl" "http://localhost:5124" `
+dotnet user-secrets set "Signature:ServiceAuth:AuthBaseUrl" "http://localhost:<AUTH_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 dotnet user-secrets set "Signature:ServiceAuth:ClientId" "signature-worker" `
   --project src\Services\Signature\TaxVision.Signature.Api
 dotnet user-secrets set "Signature:ServiceAuth:ClientSecret" "<secret-fuerte>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
-dotnet user-secrets set "Signature:CloudStorage:BaseUrl" "http://localhost:5330" `
+dotnet user-secrets set "Signature:CloudStorage:BaseUrl" "http://localhost:<CLOUDSTORAGE_PORT>" `
   --project src\Services\Signature\TaxVision.Signature.Api
 
 # --- Clave RSA persistente para tokens del firmante externo ---
@@ -4095,7 +4160,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberatio
 ## 29.13 Gateway
 
 Ruta YARP `/signature/{**catch-all}` enrutada al cluster `signature` en
-`http://localhost:5340/`. Health check `signature-api` agregado a `/health/ready`
+`http://localhost:<SCRIBE_PORT>/`. Health check `signature-api` agregado a `/health/ready`
 del Gateway. Rate limiting adicional en el Gateway sobre los publicos:
 
 - `POST /signature/public/{token}/challenge` — reto (respalda cooldown de 30s del aggregate)
@@ -4393,7 +4458,8 @@ npm run dev
 ```env
 COMMUNICATION_HTTP_HOST=0.0.0.0
 COMMUNICATION_HTTP_PORT=5350
-COMMUNICATION_DB_CONNECTION="sqlserver://host.docker.internal:1433;database=TaxVision_Communication;user=sa;password=...;encrypt=false;trustServerCertificate=true"
+# Prisma usa el esquema sqlserver:// (no es el nombre del contenedor: la base vive en su servidor).
+COMMUNICATION_DB_CONNECTION="sqlserver://192.xxx.xxx.xxx:1433;database=TaxVision_Communication;user=sa;password=...;encrypt=false;trustServerCertificate=true"
 COMMUNICATION_REDIS_URI=redis://redis:6379/0
 COMMUNICATION_SESSION_DENYLIST_PREFIX=auth:session-denylist
 COMMUNICATION_RABBITMQ_URI=amqp://taxvision:...@rabbitmq:5672
@@ -4405,7 +4471,7 @@ COMMUNICATION_JWKS_URI=http://auth-api:8080/auth/.well-known/jwks.json
 COMMUNICATION_TURN_URL=turn:turn:3478
 COMMUNICATION_TURN_STATIC_AUTH_SECRET=...
 COMMUNICATION_PLATFORM_TENANT_ID=8f58a521-4c25-4d91-9f4e-7ad5df14c001
-COMMUNICATION_CORS_ORIGINS=http://localhost:5173
+COMMUNICATION_CORS_ORIGINS=http://localhost:<FRONTEND_PORT>
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 # Rate limiting — todos con default = el literal hardcodeado original, cero
@@ -4616,6 +4682,31 @@ Verificacion: 202 tests en Communication (+7 nuevos de `attachTranscript` /
 `FolderType.Transcripts`), 30 en CommunicationTranscriptWorker — todos
 verdes, typecheck limpio en los 3 proyectos.
 
+**Generalizacion del worker (post-QA)**: el pipeline en si
+(`pipeline.ts`: download desde CloudStorage → ffmpeg → whisper.cpp → upload →
+publish) siempre fue generico — no sabe nada de "calls" ni "meetings". Lo que
+SI estaba hardcodeado a Communication era la capa de mensajeria:
+`rabbit/consumer.ts` (`EVENT_TYPE_TO_KIND`, un mapa fijo `communication.
+{call,meeting}.recording_*.v1` → `'call'|'meeting'`) y `rabbit/publisher.ts`
+(`KIND_TO_EVENT_TYPE`, igual de fijo para `transcript_ready`/
+`transcript_failed`), ademas de leer `callId`/`meetingId` por nombre literal.
+Se extrajo ese mapeo a un contrato de datos —
+`contracts/recording-kinds.ts` (`RecordingKindMapping`: `kind`,
+`targetIdField`, `triggerEventTypes`, `transcriptReadyEventType`,
+`transcriptFailedEventType`) — configurable via la nueva env var
+`TRANSCRIPT_WORKER_RECORDING_KINDS` (JSON). Sin esa variable seteada (el caso
+de Communication hoy), se usa `COMMUNICATION_RECORDING_KINDS`, que reproduce
+1:1 el mapeo anterior — **cero cambio de comportamiento para Communication**.
+Cualquier otro microservicio que en el futuro necesite transcribir audio
+(por ejemplo, un hipotetico servicio de podcasts) puede desplegar esta misma
+imagen/codigo con su propio `TRANSCRIPT_WORKER_RECORDING_KINDS` (sus propios
+tipos de evento y su propio campo de id, ej. `episodeId`) **sin tocar una
+linea de codigo del worker**. Verificado con un test dedicado
+(`tests/unit/recording-kinds-generic.test.ts`) que configura un mapeo de
+ejemplo ajeno a Communication y confirma que el consumer enruta y el
+publisher publica correctamente con ese mapeo — 34/34 tests verdes
+(30 preexistentes + 4 nuevos), typecheck/lint/build limpios.
+
 ## 30.14 Rich presence (Track A) + chat tipado cliente-preparador (Track B)
 
 Plan implementado fase por fase desde
@@ -4810,7 +4901,7 @@ Gateway (ruta relativa desde `src/Gateway/TaxVision.Gateway/`):
 ```
 
 Communication Node.js NO necesita configuracion adicional: lee la clave publica directamente
-desde el JWKS endpoint de Auth (`COMMUNICATION_JWKS_URI=http://localhost:5124/auth/.well-known/jwks.json`).
+desde el JWKS endpoint de Auth (`COMMUNICATION_JWKS_URI=http://localhost:<AUTH_PORT>/auth/.well-known/jwks.json`).
 
 ## 31.5 Como funciona en runtime
 
@@ -4935,7 +5026,7 @@ Subscription:
 
 ## 32.4 Endpoints HTTP
 
-Todos bajo el Gateway (`http://localhost:5047`), salvo el interno. `TenantAdmin`
+Todos bajo el Gateway (`http://localhost:<GATEWAY_PORT>`), salvo el interno. `TenantAdmin`
 para mutaciones del propio tenant, `PlatformAdmin` para operaciones cross-tenant.
 
 | Recurso | Endpoints |
@@ -5127,7 +5218,7 @@ resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
 
 Esta seccion documenta el trabajo de las fases A3-A7 (julio 2026): Auth se
 convierte en el dueno del ciclo de vida completo de los dominios de un tenant —
-tanto el subdominio de plataforma (`oficina1.taxprocore.com`) como un dominio
+tanto el subdominio de plataforma (`oficina1.tudominio.com`) como un dominio
 propio opcional (`archivos.suoficina.com`). El diseno completo vive en el
 documento externo `Auth_y_CloudStorage_Plan_Completitud_v2.md` §9-11. No se creo
 un microservicio nuevo: se quedo en Auth porque ya es el dueno de la identidad y
@@ -5142,7 +5233,7 @@ sincronica extra en el path critico de cada request (resolver el Host).
   (solo subdominios, unico filtrado), `Status`
   (`Pending -> Provisioning -> Active -> Disabled | Failed`), `IsPrimary`.
   - `CreateSubdomain(...)`: arranca directo en `Active` — el certificado wildcard
-    de Cloudflare ya cubre `*.taxprocore.com`, no hay paso de provisioning.
+    de Cloudflare ya cubre `*.tudominio.com`, no hay paso de provisioning.
   - `CreateCustomHostname(...)`: arranca en `Pending` hasta que se dispara el
     provisioning en Cloudflare (§33.5).
   - `MarkProvisioning`, `MarkActive`, `MarkFailed`, `Disable`, `ChangeSubdomain`
@@ -5199,7 +5290,7 @@ sincronica extra en el path critico de cada request (resolver el Host).
 - **`EffectiveLoginTenantResolver`** (`Api/Common/`, Fase A6, revisado en la
   iteracion F11 QA): el gap real que hace efectivo el aislamiento de login.
   Antes de Fase A6, `LoginCommand`/`ForgotPasswordCommand` tomaban el
-  `TenantId` directo del body — un cliente en `tenantB.taxprocore.com` podia
+  `TenantId` directo del body — un cliente en `tenantB.tudominio.com` podia
   mandar el `TenantId` de otro tenant y el subdominio no importaba nada. Con
   `EnforceHostResolution=true` (staging/produccion) el `TenantId` del body se
   **descarta siempre**: solo cuenta el que el middleware resolvio del Host
@@ -5329,7 +5420,7 @@ puro, porque un slug liberado (expirado o consumido) puede reservarse de nuevo.
 
 ```json
 "TenantDomains": {
-  "BaseDomain": "taxprocore.com",
+  "BaseDomain": "tudominio.com",
   "EnforceHostResolution": true,
   "SubdomainReservationTtlMinutes": 15
 },
@@ -5382,13 +5473,13 @@ resuelve a ningun `TenantDomain`.
 1. **DNS gratis**: `*.localhost` resuelve a `127.0.0.1`/`::1` sin tocar el
    archivo hosts — tanto Windows como los navegadores basados en Chromium lo
    implementan nativo (RFC 6761 §6.3, dominio `.localhost` reservado para
-   loopback). Confirmado navegando a `http://demo.localhost:5047/health/live`
+   loopback). Confirmado navegando a `http://demo.localhost:<GATEWAY_PORT>/health/live`
    sin ninguna configuracion previa. Si tu entorno no lo soporta, agrega
    `127.0.0.1 demo.localhost` al hosts file a mano.
 2. **Registrar el subdominio en `TenantDomains`** apuntando al tenant que
    queres usar para probar (no hay comando/endpoint que acepte un
    `BaseDomain` custom como `localhost` — `TenantDomain.CreateSubdomain` solo
-   se invoca con el `BaseDomain` de config, `taxprocore.com` — asi que el seed
+   se invoca con el `BaseDomain` de config, `tudominio.com` — asi que el seed
    es un INSERT directo, sin domain events. Aceptable porque es tooling de
    dev, no un flujo de producto):
    ```sql
@@ -5396,22 +5487,22 @@ resuelve a ningun `TenantDomain`.
    VALUES (NEWID(), 'Subdomain', 'demo.localhost', 'demo', 'Active', 0, '<un-user-id-existente>', SYSUTCDATETIME(), '<tenant-id>');
    ```
    `IsPrimary=0` para no pisar el dominio primario real del tenant
-   (`oficina.taxprocore.com`, backfileado por `TenantDomainBackfillService`) —
+   (`oficina.tudominio.com`, backfileado por `TenantDomainBackfillService`) —
    podes tener los dos apuntando al mismo tenant sin problema, `Host` es lo
    unico que tiene que ser unico.
 3. **Por que no hace falta tocar CORS**: el Gateway rutea `/auth/{**catch-all}`
    con el transform `RequestHeaderOriginalHost: true`
    (`Gateway/TaxVision.Gateway/appsettings.json`) — esto hace que YARP
-   preserve el Host *original* de la request (`demo.localhost:5047`) en vez
-   de reescribirlo al destino (`localhost:5124`), asi que Auth ve el Host real
+   preserve el Host *original* de la request (`demo.localhost:<GATEWAY_PORT>`) en vez
+   de reescribirlo al destino (`localhost:<AUTH_PORT>`), asi que Auth ve el Host real
    directo en `HttpContext.Request.Host`, sin pasar por
    `ForwardedHeadersMiddleware`/`ReverseProxyTrust` (§33.2's nota de
    `ITenantResolver`) — CORS es sobre el `Origin` del navegador
-   (`http://localhost:5173`, la pagina del frontend, que **no cambia**), no
+   (`http://localhost:<FRONTEND_PORT>`, la pagina del frontend, que **no cambia**), no
    sobre el Host al que apunta la request. Alcanza con cambiar
-   `VITE_GATEWAY_URL=http://demo.localhost:5047` en el `.env` del frontend
+   `VITE_GATEWAY_URL=http://demo.localhost:<GATEWAY_PORT>` en el `.env` del frontend
    (§30.8-equivalente del lado frontend) — la pagina se sigue sirviendo desde
-   `localhost:5173` sin tocar nada mas.
+   `localhost:<FRONTEND_PORT>` sin tocar nada mas.
 4. **Cache**: invalidar `taxvision:tenant-resolution:host:demo.localhost` en
    Redis si cambiaste el `TenantId` del seed despues de haber probado una vez
    (TTL 5 min, ver §33.2).
@@ -5582,7 +5673,7 @@ verificar (Postmaster nunca necesita saber renderizar nada).
 
 El provider "default" de plataforma (el que usa `RequiredProviderScope=System` cuando
 un tenant no configuro el suyo propio) se seedea al arrancar con credenciales
-placeholder (`SystemEmailProviderSeeder`, `localhost:1025`) — el seeder solo corre si
+placeholder (`SystemEmailProviderSeeder`, `localhost:<SMTP_DEV_PORT>`) — el seeder solo corre si
 `ProviderCode="smtp-default"` no existe todavia, asi que nunca pisa una config real.
 Para cargar credenciales SMTP reales:
 
@@ -5693,7 +5784,7 @@ notificaciones transaccionales desde esa cuenta en vez de SMTP. Diseno completo 
   identificadores nativos del proveedor para responder un hilo existente — mismo
   criterio de incrementalidad que los inline assets en Fase 3.5.
 - **Config nueva**: `Postmaster:Connectors:BaseUrl` (default local
-  `http://localhost:5390`, docker-compose `http://connectors-api:8080`).
+  `http://localhost:<CONNECTORS_PORT>`, docker-compose `http://connectors-api:8080`).
 
 **Cross-referencia (Fase 16 de Correspondence, verificado):** además del consumer de
 Notification (35.2), Postmaster expone `POST /postmaster/correspondence-messages`
@@ -5800,7 +5891,7 @@ consumiendolo por el nombre completo del tipo CLR (`consumer-runtime.ts`,
   `Redis` (cache L2 de templates parseados), `CloudStorage:BaseUrl` +
   `ServiceAuthClient:*` (M2M contra Auth), `Scribe:Retention:Enabled/RetentionDays/BatchSize`
   (36.7).
-- Notification: `ScribeClient:BaseUrl` (default `http://localhost:5340`, en Docker
+- Notification: `ScribeClient:BaseUrl` (default `http://localhost:<SCRIBE_PORT>`, en Docker
   `http://scribe-api:8080`) — reusa el `IServiceTokenAcquirer`/`ServiceAuthClient:*` ya
   configurado para CloudStorage (el token M2M no esta atado a un downstream especifico).
 - Auth: el cliente M2M `notification-service` necesita el permiso `scribe.render`
@@ -6004,7 +6095,7 @@ job, que filtra solo por `Timestamp` sin `AccountId`), `AddTenantEmailAccountSta
    consentimiento — Google/Microsoft redirigen a `GET /connectors/oauth/callback/{gmail,graph}`,
    que a su vez redirige al frontend con `?connectors_connected=true&accountId=...`.
    Verificar `GET /health/ready` y `GET /connectors/accounts` (la cuenta debe listar `Status: Active`).
-3. Simular un push: `curl -X POST http://localhost:5390/connectors/webhooks/gmail-push`
+3. Simular un push: `curl -X POST http://localhost:<CONNECTORS_PORT>/connectors/webhooks/gmail-push`
    con un JWT valido de Google en `Authorization: Bearer` → verificar
    `connectors.raw_message_received.v1` publicado (RabbitMQ management UI).
 4. `dotnet test deploy/tests/TaxVision.Connectors.Tests/` — incluye los 7 tests de
@@ -6402,9 +6493,14 @@ correlación natural.
 
 | Método | Ruta | Permiso | Rate limit | Notas |
 | --- | --- | --- | --- | --- |
-| `PUT` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant-logo-upload`: 10/hora por tenant | `multipart/form-data`, campo `file`. 202 Accepted — asíncrono, ver 39.1 |
-| `GET` | `/tenants/{tenantId}/logo` | solo autenticación | — | 404 (`Tenant.Logo.NotFound`) si no hay logo confirmado |
-| `DELETE` | `/tenants/{tenantId}/logo` | `branding.manage` | — | Idempotente, 204 |
+| `PUT` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant.i.logo_upload`: 10/hora por tenant | `multipart/form-data`, campo `file`. 202 Accepted — asíncrono, ver 39.1 |
+| `GET` | `/tenants/{tenantId}/logo` | solo autenticación | `tenant.f.branding_read`: 300/min | 404 (`Tenant.Logo.NotFound`) si no hay logo confirmado |
+| `DELETE` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant.g.branding_manage`: 60/min | Idempotente, 204 |
+
+> Fase 4.2 del plan de rate limiting migró `tenant-logo-upload` (policy nativa de ASP.NET Core)
+> a `tenant.i.logo_upload` del catálogo unificado ([`RateLimitPolicyCatalog`](src/BuildingBlocks/RateLimiting/RateLimitPolicyCatalog.cs))
+> — mismo cupo y misma partición exclusiva por tenant, solo cambia el nombre de la policy. GET y
+> DELETE ganaron rate limit por primera vez en esa fase (antes no tenían ninguno).
 
 `TryResolveTenantId` (privado, mismo patrón que Postmaster `ProvidersController`): PlatformAdmin
 opera sobre cualquier tenant; el resto solo sobre el propio (`{tenantId}` de la ruta debe
@@ -7039,11 +7135,29 @@ Correspondence, Scribe, Growth) — se les agregó `ConnectionStrings__Redis: re
 antes de esta fase). Tokens M2M (sin claim `sid`) pasan sin chequear — la denylist es un concepto de
 sesión de usuario, no de actor de servicio.
 
+### Qué pasa si Redis se cae (`SessionDenylist:FailureMode`, hallazgo H-06)
+
+Si el store no responde, **no se sabe** si la sesión fue revocada. Antes cada implementación de
+`ISessionDenylistReader` se tragaba el fallo y devolvía `false`: fail-open razonable como default,
+pero invisible y no configurable — no había forma de saber cuántas revocaciones se estaban ignorando
+durante un incidente.
+
+Hoy el reader lanza `SessionDenylistUnavailableException` y la **política** la decide
+`SessionDenylistMiddleware`:
+
+| `SessionDenylist:FailureMode` | Comportamiento | Cuándo |
+|---|---|---|
+| `FailOpen` (**default**) | Deja pasar la request | Un Redis caído no debe tumbar todo el tráfico autenticado, y la exposición está acotada por el `exp` del access token (15 min) |
+| `FailClosed` | Responde **503** `Auth.SessionDenylistUnavailable` | Entornos donde una revocación ignorada es peor que una caída. Es una decisión de riesgo, no el default |
+
+En ambos casos se emite un `LogWarning` y se incrementa **`authz.session_denylist_unavailable`**
+(Meter `TaxVision.Authorization`, tag `outcome` = `fail_open` \| `fail_closed`), así que el fail-open
+deja de ser silencioso y se puede alertar sobre él.
+
 **Tests**: `TaxVision.BuildingBlocks.Tests/Session/` — `SessionDenylistMiddlewareTests` (401 si la
-sesión está en la denylist, pasa si no lo está, ignora tokens de servicio sin `sid`) +
-`SessionDenylistReaderTests` (fail-open + `LogWarning` real cuando el `ICacheService` lanza,
-confirma denegación cuando el cache dice `true`). 1892 tests .NET pasando en el monorepo completo
-tras la fase, 0 regresiones.
+sesión está en la denylist, pasa si no lo está, ignora tokens de servicio sin `sid`, y los dos modos
+de fallo del store) + `SessionDenylistReaderTests` (señaliza el fallo con la excepción dedicada en
+vez de tragárselo, confirma denegación cuando el cache dice `true`).
 
 ## 41.11 Enforce `perm_v` + proyección de permisos (RBAC Fase 7)
 
@@ -7248,7 +7362,7 @@ attribute `service.name` que cada servicio setea en `ConfigureResource(...)`, as
 Registrado como singleton dentro de `AddActorTypeAuthorization()` (ya la llaman los 14 servicios,
 cero wiring nuevo por servicio) y exportado incondicionalmente en `AddTaxVisionOpenTelemetry`
 (Layer 1/2 corren siempre, a diferencia de un `ConnectorsMetrics`/`GrowthMetrics` opt-in). Se
-instrumentó `PermissionPolicyProvider` (layer 1, dentro del `RequireAssertion`), 
+instrumentó `PermissionPolicyProvider` (layer 1, dentro del `RequireAssertion`),
 `ActorTypeAuthorizationFilter` (layer 2, en ambos branches del `OnAuthorization`) e
 `IsOwnerOrHasManageHandler<TResource>` (layer 3b, las 3 rutas de éxito + el fallo implícito). No
 se instrumentó la Capa 3a (`HasQueryFilter`) — un filtro EF Core que devuelve 0 rows no tiene un
@@ -7301,3 +7415,1377 @@ con 4 capas independientes (permiso, actor type, tenant boundary, resource owner
 (role-assignment, session revoke) + fitness functions de CI + observabilidad — sin ningún rediseño
 del modelo `ActorType + Role + Permission + AllowedActorTypes` original (regla de oro #1 del plan,
 respetada en las 10 fases).
+
+# 42. PayFlow Fase 16 — Endpoints M2M (Tenant + Subscription)
+
+Primera sección de README sobre PayFlow: el proyecto todavía no tenía documentación propia acá, así
+que un resumen rápido del flujo completo antes de entrar en el detalle de esta fase. PayFlow es el
+onboarding "pay-first" de TaxVision — el cliente paga en Stripe Checkout **antes** de que exista un
+tenant real — implementado como una Saga de Wolverine (`TenantOnboardingProcessManager`, Fase 15,
+`Application/Onboarding/Sagas` en Auth) que orquesta, en orden: Tenant provisiona el tenant real →
+Auth crea el usuario TenantAdmin (owner) → Subscription activa la suscripción directo en `Active`.
+Cada paso es idempotente por `OnboardingId` (verifica si el registro ya existe antes de escribir),
+así que la Saga puede reintentar sin duplicar nada. Esta fase (16) construyó el lado receptor de esa
+orquestación: 5 endpoints M2M nuevos repartidos en 3 servicios, todos `[Authorize(Policy =
+"ServiceOnly")] + [AllowActorTypes(ActorType.Service)]` — nunca alcanzables con un token de usuario.
+
+## 42.1 Los 5 endpoints
+
+| # | Método + ruta | Caller → Target | Propósito |
+|---|---|---|---|
+| 1 | `GET auth/internal/onboarding/{onboardingId}/status` | Tenant → Auth | Confirma, en defensa en profundidad, que el onboarding sigue `Provisioning` y el pago está confirmado antes de que Tenant cree el `Tenant` real. |
+| 2 | `POST auth/internal/tenants/{tenantId}/owners` | Saga (Auth) → Auth | Crea el `TenantAdmin` de un tenant recién provisionado. El password nunca cruza este endpoint: `PasswordHashReference` es una referencia Redis de un solo uso (`ITokenReferenceStore`, GETDEL) a un hash PBKDF2 ya calculado en el registro público — este endpoint solo la canjea. |
+| 3 | `POST tenants/internal/from-onboarding` | Saga (Auth) → Tenant | Crea el `Tenant` real tras la confirmación de pago. Único entry point de los tenants de onboarding pagado — a diferencia del registro gratuito, no crea una `Invitation` de admin (el owner se crea directo vía el endpoint 2). |
+| 4 | `POST subscriptions/internal/activate-from-onboarding` | Saga (Auth) → Subscription | Activa la suscripción del tenant directo en `Active`, saltando el trial gratuito — el cliente ya pagó en PaymentApp antes de este paso. |
+| 5 | `GET subscriptions/internal/plans/{planId}/pricing` | PaymentApp → Subscription | Resuelve el precio real del plan server-side al armar el Stripe Checkout Session, en vez de confiar en un monto enviado por el frontend (ver §42.3). |
+
+Los 5 son idempotentes por `OnboardingId` (los endpoints 1 y 5 son lecturas puras, así que la
+idempotencia les aplica trivialmente).
+
+## 42.2 Registro de clientes M2M
+
+Solo el endpoint 5 necesitó un client nuevo en `ServiceAuth:Clients`: `payment-app-subscription`
+(PaymentApp → Subscription), registrado como `ServiceAuth__Clients__14` en
+`deploy/docker/docker-compose.yml` y `PAYMENTAPP_SUBSCRIPTION_CLIENT_ID`/
+`PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET` en `.env`. Los otros 4 no necesitaron un client registrado
+nuevo:
+
+- Los endpoints 2, 3 y 4 los llama la propia Saga de Auth, in-process, generando un token de
+  servicio de vida corta vía `IJwtTokenGenerator.GenerateScopedServiceToken` (loopback hacia el
+  propio Auth para el 2, llamada normal a otro servicio para el 3 y el 4) — no pasa por
+  `ServiceAuth:Clients`.
+- El endpoint 1 lo llama Tenant reusando su client `tenant-worker` ya registrado desde una fase
+  anterior (`ServiceAuth__Clients__8`, el mismo que usa Tenant para hablar con CloudStorage) — sin
+  registración nueva.
+
+## 42.3 Gap de price-trust cerrado
+
+El checkout de onboarding de PaymentApp confiaba en `PlanPriceCents`/`Currency` enviados por el
+frontend en un request anónimo, sin validación server-side — un cliente podía, en teoría, mandar
+cualquier precio. Se cerró eliminando esos dos campos de toda la cadena del request y haciendo que
+PaymentApp resuelva el precio real llamando al endpoint 5 (`GetPlanPricing`) antes de crear el
+Stripe Checkout Session.
+
+## 42.4 Verificación
+
+- Build del monorepo completo: limpio, 0 errores.
+- Suite de tests del monorepo completo (17 proyectos de test .NET): verificada por separado, en
+  verde — no se corrió de nuevo como parte de este cierre de documentación.
+- Tests nuevos para los 3 handlers de comando agregados en esta fase, 3 tests cada uno, todos en
+  verde: `CreateTenantOwnerFromOnboardingHandlerTests` (Auth), `CreateTenantFromOnboardingHandlerTests`
+  (Tenant), `ActivateFromOnboardingHandlerTests` (Subscription).
+- No se levantó un boot multi-servicio en Docker ni se ejercitó la cadena M2M nueva contra
+  RabbitMQ/Redis reales — consistente con la restricción del repo de no tocar Docker sin
+  autorización explícita. Verificación de esta fase limitada a build + test.
+
+**Riesgo**: 🟢 Bajo — 5 endpoints nuevos, todos M2M-only detrás de `ServiceOnly` +
+`[AllowActorTypes(Service)]`, todos idempotentes por `OnboardingId`, cero cambios a endpoints
+existentes salvo la remoción de los campos de precio no confiables del request de checkout de
+PaymentApp (§42.3).
+
+# 43. PayFlow Fase 17 — Compensaciones, ManualReview y observabilidad
+
+La Saga de onboarding (`TenantOnboardingProcessManager`, Fase 15) publicaba
+`OnboardingProvisioningStepFailedIntegrationEvent` en varios pasos pero nadie lo consumía — un fallo
+en cualquier paso quedaba silenciosamente descartado, dejando el onboarding trabado sin reintento ni
+visibilidad. Fase 17 cierra ese hueco completo: retry automático con backoff, escalamiento a revisión
+manual, panel de soporte para PlatformAdmin, compensación real cuando hay que deshacer pasos ya
+ejecutados, y observabilidad mínima (métricas OTel + health check detallado).
+
+## 43.1 Retry automático + ManualReview
+
+`FailureClassifier` clasifica cada fallo en `Transient` o `Permanent`: el paso `TenantAdmin` (crea el
+owner canjeando una referencia Redis de un solo uso) es siempre `Permanent` — reintentarlo fallaría
+igual, la referencia ya se consumió. Los sufijos de código `.RequestFailed`/`.UnexpectedStatus`/
+`.EmptyResponse` (típicos de un downstream caído o devolviendo 5xx) son `Transient`; todo lo demás es
+`Permanent` por default (ej. `Subdomain` ya tomado — reintentar no cambia nada sin intervención).
+
+`OnboardingRetryScheduler` (`BackgroundService`, tick cada minuto) reintenta los onboardings
+`Transient` con cadencia escalonada — 5 min → 15 min → 1 hora — hasta 3 intentos automáticos. Al
+agotar los 3 intentos, o al reclasificar un fallo como no-reintentable en medio de la espera, el
+onboarding pasa a `TenantOnboardingStatus.ManualReview` (`onboarding.MarkManualReview(...)`).
+
+## 43.2 Panel de soporte — `OnboardingAdminController`
+
+6 endpoints nuevos bajo `auth/onboarding/admin`, todos gateados por `[Authorize]` +
+`[AllowActorTypes(PlatformAdmin)]` + `[HasPermission(PermissionCatalog.OnboardingAdminManage)]`:
+
+| Método + ruta | Propósito |
+|---|---|
+| `GET /admin?status=&page=&limit=` | Lista paginada, filtrable por `TenantOnboardingStatus`. |
+| `GET /admin/{id}` | Detalle de un onboarding puntual. |
+| `POST /admin/{id}/resume` | Reintenta el paso fallido sin cambiar datos — para cuando la causa raíz (downstream caído) ya se resolvió sola. |
+| `POST /admin/{id}/update-and-resume` | Corrige `Subdomain`/`PlanId` (el dato que causó el fallo permanente) y reintenta. |
+| `POST /admin/{id}/force-complete` | Marca `Completed` sin ejecutar más pasos — para cuando ya se confirmó fuera de banda (DB/logs) que el tenant quedó bien provisionado pese al error reportado. |
+| `POST /admin/{id}/cancel-and-refund` | Irreversible — requiere el campo `Confirmation` exacto (`"I understand this is irreversible"`) o la API rechaza el request. Dispara la compensación (§43.3) y el refund. |
+
+## 43.3 Compensación — `OnboardingCancelRequestedIntegrationEvent`
+
+`cancel-and-refund` publica dos eventos: `OnboardingCancelRequestedIntegrationEvent` (payload:
+`OnboardingId`, `Reason`, más `OnboardingTenantId`/`OnboardingUserId`/`OnboardingSubscriptionId`
+opcionales) y `OnboardingRefundRequestedIntegrationEvent`. El primero lo consumen, cada uno de forma
+independiente, los 3 servicios que la Saga pudo haber provisionado parcialmente:
+
+- **Subscription**: cancela la `TenantSubscription` si `OnboardingSubscriptionId` no es null.
+- **Auth**: desactiva el `User` (TenantAdmin) si `OnboardingUserId` no es null.
+- **Tenant**: cierra el `Tenant` (`ChangeStatus(Closed)`) si `OnboardingTenantId` no es null.
+
+Cada consumer es un no-op si su `Onboarding*Id` correspondiente es null — es decir, si ese paso de la
+Saga nunca llegó a ejecutarse, no hay nada que deshacer. Los 3 son idempotentes (repetir el evento no
+falla ni duplica efectos). `OnboardingRefundRequestedIntegrationEvent` lo consume
+`OnboardingRefundConsumer` en PaymentApp, del lado del pago.
+
+## 43.4 Observabilidad
+
+- **Métricas OTel** (`IOnboardingMetrics` / `OnboardingMetrics`, Meter
+  `TaxVision.Auth.Onboarding`, registrado como `additionalMeterNames` en
+  `AddTaxVisionOpenTelemetry`): `onboarding.started_total`, `onboarding.completed_total`,
+  `onboarding.failed_total` (tag `step`), `onboarding.manual_review_total`,
+  `onboarding.duration_seconds` (histograma, tag `outcome`). Se registran en los puntos naturales del
+  flujo: `CreateOnboardingHandler` (started), el paso final `ConfigureTenantDefaultsHandler`
+  (completed + duration), el failure handler de la Saga (failed + manual_review cuando el fallo es
+  `Permanent`), y `OnboardingRetryScheduler` (manual_review al agotar reintentos o reclasificar).
+- **`GET /health/detailed`**: reusa los health checks ya registrados con tag `"ready"`
+  (`sql-server`, `redis`, `rabbitmq`) con un `ResponseWriter` JSON custom que devuelve
+  status/duración/error por check. Deliberadamente **no** agrega checks downstream a
+  Documents/PaymentApp/Tenant/Subscription — alcance limitado a las dependencias directas de Auth, no
+  a la salud de todo el grafo de servicios.
+
+## 43.5 Verificación
+
+- Build del monorepo completo tras cada bloque de cambios: limpio, 0 errores.
+- `TaxVision.Auth.Tests`: **564/564** en verde (incluye los 3 tests nuevos de
+  `OnboardingCancelRequestedConsumerTests` en Auth, más el ajuste de los tests existentes que
+  llamaban a los 4 handlers/Saga que ganaron el parámetro `IOnboardingMetrics`/nuevas firmas).
+- Los 3 consumers de compensación tienen test unitario dedicado, uno por servicio (patrón
+  `Fake*Repository`/`FakeUnitOfWork`/`FakeCorrelationContext`, igual que los handlers hermanos de
+  Fase 16): `OnboardingCancelRequestedConsumerTests` en `TaxVision.Subscription.Tests` (3/3),
+  `TaxVision.Auth.Tests` (3/3) y `TaxVision.Tenant.Tests` (3/3) — cada uno cubre el camino feliz, el
+  no-op cuando el paso nunca corrió, y el caso idempotente/ya-en-el-estado-final.
+- No se levantó un boot multi-servicio en Docker ni se ejercitó la cadena de compensación end-to-end
+  contra RabbitMQ real — misma restricción de no tocar Docker que rige el resto del repo.
+  Verificación limitada a build + test unitario, igual que la Fase 16.
+
+**Riesgo**: 🟢 Bajo — todo el nuevo código es aditivo (nuevos endpoints, nuevos consumers, un nuevo
+parámetro en 4 firmas de handler existentes), gateado por permiso dedicado
+(`OnboardingAdminManage`) + `AllowActorTypes(PlatformAdmin)`, y cada compensación es idempotente y
+no-op-safe por diseño.
+
+# 44. PayFlow Fase 18-19 — Endpoints públicos, hardening de credenciales y cierre del plan
+
+Cierre del plan completo de 19 fases de PayFlow. §42 y §43 documentaron el lado M2M/admin de la Saga;
+esta sección documenta lo que faltaba — los 7 endpoints públicos que el frontend realmente consume
+para llevar a un visitante anónimo desde "quiero una cuenta" hasta un login funcionando en su propio
+subdominio, el hardening de credenciales de Fase 18 (deuda preexistente de Auth, no específica de
+onboarding pero cerrada en la misma iniciativa), y la verificación de cierre de Fase 19.
+
+## 44.1 El flujo público, endpoint por endpoint
+
+Todos en `src/Services/Auth/Api/Controllers/`, todos anónimos salvo donde se indica, todos detrás de
+`TenantHostResolutionMiddleware` mismo pipeline que el resto de Auth (el header `Host` no importa acá
+— el onboarding vive en `PlatformTenant.Id`, no en un tenant real todavía).
+
+| # | Método + ruta | Controller | Propósito | Rate limit |
+|---|---|---|---|---|
+| 1 | `POST onboarding/email-challenges` | `OnboardingChallengesController` | Pide un código OTP de 6 dígitos al email del visitante. | 5/email/hora + 10/IP/hora (Redis, `IOnboardingOtpThrottler`) |
+| 2 | `POST onboarding/email-challenges/{id}/verify` | idem | Verifica el código. | Ninguno a nivel HTTP — `EmailVerificationChallenge.MaxAttempts=5` bloquea el challenge en el propio aggregate. |
+| 3 | `POST onboarding/email-challenges/{id}/resend` | idem | Reenvía un código nuevo. | Cooldown 60s + `MaxResends=5`. |
+| 4 | `POST onboarding` | `OnboardingCheckoutController` | Crea el `TenantOnboarding` (requiere el challenge ya verificado). | — |
+| 5 | `POST onboarding/checkout` | idem | Arranca el Stripe Checkout Session vía M2M a PaymentApp, devuelve la URL de checkout. | — |
+| 6 | `POST onboarding/subdomains/check` | `OnboardingSubdomainController` | Valida formato/disponibilidad del subdominio deseado y lo **reserva** 60 min (pese al nombre "check"). Idempotente — el mismo `onboardingId` puede renovar la reserva llamando de nuevo. | 30/min/IP |
+| 7 | `GET onboarding/status?token=` | `OnboardingStatusController` | Poll de estado para la pantalla de espera post-pago. Nunca expone `OnboardingId` — el token opaco es lo único que el frontend conoce. | 60/min/IP |
+| 8 | `POST onboarding/register/preview` | `OnboardingRegistrationController` | Resuelve el `RegistrationToken` del link del email de recibo → nombre/email enmascarado/plan, para prellenar el form de registro. | 30/min/IP |
+| 9 | `POST onboarding/register/complete` | idem | Canjea el token, crea password + arranca la Saga (Fase 15) que provisiona Tenant→Owner→Subscription→Storage→Subdomain→Defaults. | 10/min/IP |
+| 10 | `GET onboarding/receipts/{fileId}/download` | `OnboardingReceiptDownloadController` | Redirige (302) a una URL presignada fresca de CloudStorage — el link del email nunca expira porque resuelve la URL real en el momento del click, no la embebe. | 30/min/IP |
+| 11 | `GET auth/onboarding/terms/current?kind=&locale=` | `TermsVersionsController` | Términos vigentes que el form de registro debe mostrar y cuyo `termsVersionId`+`contentHash` viajan de vuelta en el paso 9. | — |
+| 12 | `POST auth/onboarding/terms/publish` | idem | Publica una nueva versión de términos. `[AllowActorTypes(PlatformAdmin)]` — no público. | — |
+
+**Invariantes de seguridad que atraviesan todo el flujo** (ver Anexo A del plan maestro para la lista completa):
+`OnboardingId` nunca se expone en ningún endpoint público (los pasos 4-10 hablan en términos de
+`challengeId`/`token`/URLs opacas); el password del owner nunca cruza RabbitMQ — se hashea en la
+primera línea del handler de `register/complete` y solo un `PasswordHashReference` (Redis GETDEL,
+TTL 30s, patrón TokenReference §44.4) llega a la Saga; el `RegistrationToken` crudo tampoco cruza
+RabbitMQ, mismo patrón; el OTP sí viaja en claro por RabbitMQ hacia Notification
+(`OnboardingOtpRequestedIntegrationEvent.OtpCode`) porque ese hop es interno a la infraestructura, no
+público.
+
+## 44.2 Dominio y estados
+
+`TenantOnboarding` (`src/Services/Auth/Domain/Onboarding/TenantOnboardings/TenantOnboarding.cs`) es un
+`BaseEntity` sin tenant — no existe ningún tenant real todavía cuando se crea. Su `Status`
+(`TenantOnboardingStatus`, 12 valores) recorre:
+
+```
+PendingPayment → PaymentProcessing → PaymentCompleted → RegistrationPending → Provisioning → Completed
+                        ↓ (webhook falla)                                          ↓ (paso falla)
+                  PaymentFailed                                          ProvisioningFailed → ManualReview
+```
+
+(`Cancelled`, `Expired`, `Refunded` son estados terminales alcanzables desde varios puntos vía el panel
+admin de §43.2/§43.3.) Mientras `Status=Provisioning`, `CurrentStep`
+(`TenantProvisioningStep`: `Tenant → TenantAdmin → Subscription → CloudStorage → Subdomain → Defaults
+→ Completed`) rastrea en qué paso de la Saga (§44.3) va. `FailedStep`/`FailureCode`/`FailureReason` solo
+se pueblan si `Status` es `ProvisioningFailed` o `ManualReview` — es lo que expone el endpoint 7.
+
+Otros aggregates del módulo: `EmailVerificationChallenge` (OTP, TTL 10 min, hash
+`SHA256(challengeId+":"+code)`, compare constant-time), `TermsVersion` (`ContentHash` inmutable, debe
+ser un SHA-256 hex de 64 caracteres), `OnboardingSubdomainReservation` (aggregate separado de
+`TenantSubdomainReservation` del módulo TenantDomains — aislamiento verificado por fitness function,
+§44.6). Ninguno de estos tres tiene tenant discriminator, todos viven bajo `PlatformTenant.Id` a
+efectos de auditoría.
+
+## 44.3 La Saga (`TenantOnboardingProcessManager`, Fase 15)
+
+Primer `Saga` de Wolverine del monorepo, persistida en `AuthDbContext` (no infraestructura de saga
+aparte). Cascada de handlers, cada uno retorna el siguiente comando:
+
+`OnboardingProvisioningStartedIntegrationEvent` → **Tenant** (M2M `tenants/internal/from-onboarding`)
+→ `TenantCreatedForOnboardingIntegrationEvent` → **Auth mismo, loopback** (M2M
+`auth/internal/tenants/{id}/owners`, canjea `PasswordHashReference` y la destruye) →
+`TenantOwnerCreatedIntegrationEvent` → **Subscription** (M2M
+`subscriptions/internal/activate-from-onboarding`) →
+`SubscriptionActivatedForOnboardingIntegrationEvent` → 3 pasos locales sin M2M (`CloudStorage`,
+`Subdomain`, `Defaults` — ya cubiertos por consumers preexistentes de `TenantCreatedIntegrationEvent`,
+la Saga solo avanza `CurrentStep`) → `TenantOnboardingCompletedIntegrationEvent` → saga termina.
+
+Cualquier paso que falle publica `OnboardingProvisioningStepFailedIntegrationEvent` en vez de tirar
+excepción; `FailureClassifier` decide `Transient` (reintenta automático, §43.1) vs `Permanent`
+(`ManualReview` directo — el paso `TenantAdmin` **siempre** es `Permanent`, porque el
+`PasswordHashReference` de un solo uso ya se consumió).
+
+## 44.4 Patrón TokenReference (compartido con Fase 18)
+
+`ITokenReferenceStore`/`RedisTokenReferenceStore` (`src/Services/Auth/Infrastructure/Security/`,
+namespace compartido desde que Fase 18 lo sacó de `Onboarding/` para que `Invitation` también lo
+pudiera usar sin romper la fitness function del módulo): `StoreAsync(rawValue) → Guid`, TTL 30s,
+`ConsumeAsync(reference)` es un `GETDEL` atómico — un solo consumo posible. Tres usos: el
+`RegistrationToken` crudo del email de recibo (Fase 9), el `PasswordHashReference` del registro (Fase
+13/15), y el `AdminInvitationToken` crudo del flujo de invitación normal (Fase 18, no específico de
+onboarding pero mismo mecanismo).
+
+## 44.5 Fase 18 — Hardening de credenciales (deuda preexistente, cerrada en la misma iniciativa)
+
+El plan maestro incluyó esta fase como cierre de 5 huecos de seguridad en Auth que ya existían antes
+de PayFlow y quedaron expuestos por la auditoría del flujo de onboarding — no son específicos del
+onboarding, pero se cerraron en la misma sesión:
+
+| Item | Mecanismo |
+|---|---|
+| `ForgotPassword` sin throttle | `ILoginThrottler.GetPasswordResetRetryAfterAsync` — 3/email/hora, 10/IP/hora, cooldown 60s. Corta **antes** de tocar `IUserRepository`, preservando la anti-enumeración de "siempre 202". |
+| `ResetPassword` sin límite de intentos | `PasswordResetToken.MaxAttempts=5` (mismo patrón que `PhoneVerificationToken`), `RegisterAttempt()` en los 2 failure paths post-hash-match. |
+| `RefreshToken` sin host binding | `RefreshAccessTokenCommand.ResolvedTenantId` (del Host, nunca del body) vs `stored.TenantId` — mismatch revoca sesión + deniega access token + audita (`AuthAuditAction.RefreshTokenHostMismatch`) + publica `SecurityAlertIntegrationEvent`. |
+| `AcceptInvitation` sin throttle | `ILoginThrottler.GetInvitationAcceptRetryAfterAsync` — 20/IP/hora; `Invitation.MaxAcceptAttempts=5` por invitación. |
+| `AdminInvitationRawToken` en claro por RabbitMQ | Reemplazado por `AdminInvitationTokenReference (Guid?)` — mismo patrón TokenReference de §44.4. |
+
+MFA OTP en claro por RabbitMQ (`MfaChallengeRequestedIntegrationEvent`) quedó **deliberadamente fuera
+de alcance** — el plan lo marca explícito, no es deuda de esta fase.
+
+## 44.6 Configuración
+
+```json
+// Auth
+"Onboarding": {
+  "RegistrationUrlBase": "http://localhost:<FRONTEND_PORT>",
+  "AuthPublicBaseUrl": "http://localhost:<AUTH_PORT>",
+  "TenantBaseDomain": "tudominio.com"
+},
+"Terms": { "CurrentVersion": "2026-07-14" },
+"Auth": {
+  "PaymentApp": { "BaseUrl": "http://localhost:<PAYMENTAPP_PORT>" },
+  "Documents": { "BaseUrl": "http://localhost:<DOCUMENTS_PORT>" },
+  "CloudStorage": { "BaseUrl": "http://localhost:<CLOUDSTORAGE_PORT>" }
+}
+
+// PaymentApp
+"Stripe": { "SecretKey": "", "WebhookSecret": "" }
+```
+
+Valores hardcodeados (no config, documentados acá porque el frontend/QA los necesita conocer): OTP
+TTL 10 min, checkout Stripe TTL 24h, `RegistrationToken` TTL 72h, `TokenReference` (Redis) TTL 30s,
+reserva de subdominio TTL 60 min.
+
+## 44.7 Inventario completo de endpoints M2M
+
+§42.1 y §43.2 ya documentaron 11 de los endpoints M2M/admin del flujo. Esta tabla cierra el
+inventario con los que faltaban — ninguno tenía entrada propia en el README hasta esta fase:
+
+| # | Método + ruta | Servicio | Caller → Target | Fase |
+|---|---|---|---|---|
+| 1 | `POST payments-app/internal/onboarding/checkout` | PaymentApp | Auth (`OnboardingCheckoutController`) → PaymentApp | 8/16 |
+| 2 | `GET auth/internal/onboarding/tokens/{reference}/raw` | Auth | Notification (`OnboardingTokenClient`) → Auth | 9 |
+| 3 | `GET tenants/internal/subdomain-available?slug=` | Tenant | Auth (`TenantSubdomainAvailabilityClient`) → Tenant | 14 |
+| 4 | `POST internal/document-generations/onboarding-receipts` | Documents | Auth (`OnboardingPaymentSucceededConsumer` vía `IReceiptDocumentClient`) → Documents | 11 |
+| 5 | `POST auth/internal/invitations/token-references` | Auth | Tenant → Auth | 18 |
+
+Los 5 son `[Authorize(Policy="ServiceOnly")] + [AllowActorTypes(Service)]`, igual que los 11 ya
+documentados. Los 3 primeros (#1-#3) se agregaron a las colecciones Postman de PaymentApp/Auth/
+Tenant en esta misma fase (carpetas "Onboarding (M2M)"); el #5 se agregó a la colección de Auth.
+El #4 (Documents) **no tiene entrada Postman** — `TaxVision.Documents` no tiene ninguna colección
+Postman propia en el repo (gap preexistente de todo el servicio, no específico de PayFlow ni de
+esta fase; fuera de alcance cerrarlo acá).
+
+## 44.8 Verificación de Fase 19 (cierre del plan)
+
+- `dotnet build TaxVision.slnx`: limpio, 0 errores.
+- `dotnet test TaxVision.slnx`: verde en todo el monorepo (Auth.Tests **570/570**, incluye los 6 tests
+  de Fase 18 — organizados en `ForgotPasswordHandlerTests.cs`, `RefreshAccessTokenHandlerTests.cs` y 2
+  casos nuevos en `Domain/AuthDomainTests.cs`, no en un archivo nombrado por fase).
+- Entregables de esta fase: esta sección (§44, incluyendo el cierre del inventario M2M en §44.7), la
+  colección Postman nueva `TaxVision_Onboarding.postman_collection.json`, 5 endpoints M2M agregados a
+  las colecciones existentes de Auth/Tenant/PaymentApp que faltaban desde sus fases originales (8/9/14/18),
+  `documents/architecture/payflowguide/API_Contract.md` (contrato completo para el equipo de frontend)
+  y los 2 ADRs (`ADR-001-Auth-Hosts-Onboarding.md`, `ADR-002-Documents-Hosts-Receipt.md`).
+- **No ejecutado en esta sesión**: la verificación manual end-to-end contra servicios reales (Stripe
+  Checkout con tarjeta de test, email real de OTP/recibo, matar un servicio a mitad de la Saga para
+  confirmar `ManualReview`+retry, grep de logs Serilog en busca de `passwordPlaintext`) — requiere
+  levantar el stack completo vía Docker Compose (RabbitMQ + Redis + SQL Server + los 6+ servicios
+  involucrados + Stripe en modo test), lo cual está fuera del alcance que esta sesión puede ejecutar
+  sin autorización explícita de tocar Docker. El checklist de 6 pasos queda documentado en
+  `API_Contract.md` §Verificación E2E para que el equipo lo corra manualmente antes de merge, tal como
+  lo pide el Anexo A del plan maestro.
+
+**Riesgo**: 🟢 Bajo para el trabajo de esta fase (documentación pura, cero cambios de código). 🟡
+Medio para el plan completo hasta no correr la verificación E2E manual de 6 pasos — el build/test
+verde cubre corrección de tipos y lógica unitaria, no el camino feliz completo contra Stripe/RabbitMQ
+reales.
+
+# 45. Primitivas compartidas de BuildingBlocks — resiliencia HTTP, cache de tokens M2M, rate limiting Redis
+
+Origen: auditoría de arquitectura de PayFlow, Ronda 2 (`Implementaciones/PayFlowNew/PayFlow_Architecture_Audit.md`,
+findings F24/F25/F26). Se encontraron 3 patrones técnicos idénticos reimplementados de cero en 4+
+microservicios cada uno — nadie los había extraído nunca a `BuildingBlocks`. Ya están extraídos y
+migrados en los 17 sitios de consumo existentes. **Esta sección es obligatoria de leer antes de crear
+un microservicio nuevo o de agregar una llamada M2M/rate-limit/resiliencia HTTP a uno existente** — no
+reimplementar ninguna de las 3 primitivas de abajo; usarlas.
+
+## 45.1 Qué es la petición `POST auth/service-token` y por qué existe
+
+Cuando un microservicio necesita llamar a otro (ej. Tenant pidiéndole a CloudStorage que borre un
+logo, o PaymentApp pidiéndole a Subscription el precio de un plan), esa llamada **no** lleva el JWT
+de un usuario humano — no hay un usuario detrás, es un servicio hablándole a otro servicio
+("machine-to-machine", M2M). Para eso, cada microservicio que necesita llamar a otro tiene registrado
+en Auth un "client" M2M propio (`clientId`/`clientSecret`, análogo a OAuth2 `client_credentials`),
+configurado en `Auth`'s `ServiceAuth:Clients` (ver ejemplos de configuración en las secciones 27, 29,
+35 y 39 — cada servicio nuevo agrega su propia entrada ahí, con los permisos exactos que necesita).
+
+La petición `POST auth/service-token` es el intercambio de esas credenciales por un JWT de corta vida
+(`actor_type=Service`, scoped a los permisos declarados para ese `clientId`):
+
+```jsonc
+// Request
+POST auth/service-token
+{ "clientId": "tenant-worker", "clientSecret": "<secret>", "tenantId": "<guid>" }
+
+// Response
+{ "accessToken": "<jwt>", "expiresInSeconds": 300, "tokenType": "Bearer" }
+```
+
+El servicio llamante adjunta ese JWT como `Authorization: Bearer <accessToken>` en la llamada HTTP
+real que quería hacer (ej. `DELETE cloudstorage/files/{id}`). El middleware de autorización del lado
+receptor (`AllowActorTypes(Service)` + `[HasPermission]`) valida el JWT igual que validaría uno de
+usuario — el `actor_type=Service` es lo que distingue "esto es un microservicio hablando" de "esto es
+un humano logueado".
+
+**Por qué no se mintea un JWT nuevo en cada llamada sin más**: pedirle uno nuevo a Auth por cada
+llamada M2M agrega latencia de red (round-trip extra) y carga innecesaria a Auth bajo tráfico alto.
+El token dura 5 minutos — cachearlo hasta poco antes de expirar reduce ese tráfico a casi cero. Eso es
+exactamente lo que resuelve §45.3 de abajo (y lo que Billing tenía roto — ver F25 en el audit doc).
+
+## 45.2 `HttpResiliencePipeline` — reintento + circuit breaker
+
+`BuildingBlocks.Infrastructure.Resilience.HttpResiliencePipeline` / `HttpResiliencePipelineRegistry`.
+Envuelve cualquier llamada HTTP saliente (M2M o a un proveedor externo) con reintento exponencial +
+jitter (2 intentos) y circuit breaker (`FailureRatio=1.0`, `MinimumThroughput` configurable,
+`SamplingDuration=2min`) — Polly por debajo. Antes de esta extracción, Connectors, Postmaster y Auth
+tenían 3 copias casi idénticas de este mismo pipeline, con Auth sin ningún hook de métricas.
+
+```csharp
+// DI — una vez por servicio, con los callbacks de métricas propios del servicio
+services.AddSingleton(sp => new HttpResiliencePipelineRegistry(
+    onRetry: key => MyServiceMetrics.RetryAttempts.Add(1, new("client", key)),
+    onOpened: key => MyServiceMetrics.CircuitBreakerOpened.Add(1, new("client", key))
+));
+
+// Consumo — dentro de un HttpClient tipado
+var breaker = resilience.GetOrCreate(nameof(MyHttpClient));
+using var response = await breaker.ExecuteAsync(token => httpClient.SendAsync(request, token), ct);
+```
+
+## 45.3 `ExpiringValueCache<TKey,TValue>` — cache de tokens de servicio
+
+`BuildingBlocks.Security.ExpiringValueCache<TKey,TValue>` (core, sin deps de infraestructura) +
+`BuildingBlocks.Infrastructure.Security.ServiceTokenHttpAcquisition` (el `POST auth/service-token` de
+§45.1, extraído en un solo `RequestServiceTokenAsync` reusable). Antes de esta extracción había 10
+copias del mismo `ConcurrentDictionary<clave,(Token,ExpiresAtUtc)>` + margen de refresh — una por
+microservicio.
+
+**Patrón canónico** que todo `*ServiceTokenAcquirer` nuevo debe seguir (copiado de
+`Tenant/.../TenantServiceTokenAcquirer.cs`, el más simple de los 10):
+
+```csharp
+internal sealed class MyServiceTokenAcquirer(
+    HttpClient http,
+    IOptions<ServiceAuthClientOptions> options,
+    ILogger<MyServiceTokenAcquirer> logger
+) : IMyServiceTokenAcquirer
+{
+    private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
+
+    // static: AddHttpClient<> resuelve esta clase como Transient — un campo de INSTANCIA se
+    // recrearía vacío en cada resolución de DI y nunca cachearía nada de verdad en producción
+    // (bug real que tuvo Billing antes de esta extracción — ver F25 en el audit doc de PayFlow).
+    private static readonly ExpiringValueCache<Guid, string> _cache = new(RefreshBuffer);
+
+    public async Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var opt = options.Value;
+        if (string.IsNullOrWhiteSpace(opt.ClientId) || string.IsNullOrWhiteSpace(opt.ClientSecret))
+        {
+            logger.LogWarning("ServiceAuthClient is not configured.");
+            return null;
+        }
+        try
+        {
+            return await _cache.GetOrCreateAsync(tenantId, async innerCt =>
+            {
+                var grant = await http.RequestServiceTokenAsync(opt.ClientId, opt.ClientSecret, tenantId, innerCt);
+                return (grant.AccessToken, grant.ExpiresAtUtc);
+            }, ct);
+        }
+        catch (ServiceTokenAcquisitionException ex)
+        {
+            logger.LogWarning(ex, "Could not acquire a service token for tenant {TenantId}.", tenantId);
+            return null;
+        }
+    }
+}
+```
+
+**Regla no negociable**: el campo `ExpiringValueCache` **debe** ser `private static readonly` cuando
+la clase que lo contiene se registra vía `services.AddHttpClient<TClient, TImpl>()` — .NET resuelve
+esos tipos como **Transient** (una instancia nueva por resolución de DI), así que un campo de
+instancia nunca sobrevive entre llamadas y el "cache" queda muerto en silencio. Esto no es teórico:
+se introdujo por accidente en 9 de los 10 acquirers durante la migración inicial y se detectó/corrigió
+antes de cerrarla — ver F25 en el audit doc. Si en cambio la clase se registra como `Singleton` (como
+`OnboardingServiceTokenCache` en Auth), el campo puede ser de instancia sin problema.
+
+Si la clave de cache necesita más de un parámetro (ej. Billing: `clientName` + `tenantId`), usar una
+tupla de valor (`(string ClientName, Guid TenantId)`) o, si involucra colecciones (ej. `permissions`,
+`scopes`), pre-unirlas en un string canónico dentro de un record — los records de C# NO tienen
+igualdad estructural correcta sobre miembros `IReadOnlyCollection<T>` (ver `ServiceTokenCacheKey` en
+Auth como ejemplo).
+
+## 45.4 `IRateCounter` — contador Redis atómico para rate limiting
+
+`BuildingBlocks.Infrastructure.RateLimit.IRateCounter` / `RedisRateCounter` / `RateCounterKey` (VO).
+Un único `EVAL` Lua atómico (`INCR` + `PEXPIRE` solo en el primer incremento de la ventana) — cierra
+el hueco de las implementaciones que hacían `StringIncrementAsync` + `KeyExpireAsync` por separado
+(la clave queda sin TTL para siempre si el proceso muere entre ambas llamadas).
+
+```csharp
+// DI
+services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// Consumo — patrón "ventana fija de N segundos"
+var key = RateCounterKey.From($"myservice:ratelimit:{tenantId:N}:window:{minuteBucket}");
+var count = await rateCounter.IncrementAndGetAsync(key, TimeSpan.FromSeconds(65), ct);
+var allowed = count <= maxRequestsPerWindow;
+```
+
+Nota de implementación: la clave que `IRateCounter` escribe es un **string Redis crudo** (vía
+`INCR`), no compatible con el formato hash que `IDistributedCache`/StackExchangeRedis usa para sus
+propias claves. Si un throttler necesita leer el contador fuera de `IncrementAndGetAsync` (ej. un
+`IsThrottledAsync` que solo consulta sin incrementar), esa lectura debe hacerse con
+`IConnectionMultiplexer.GetDatabase().StringGetAsync(key)` directo — **nunca** mezclando
+`ICacheService`/`IDistributedCache` sobre la misma clave (produce `WRONGTYPE` en Redis). Ver
+`PaymentAttemptThrottle.cs` (PaymentApp) como ejemplo de este patrón mixto.
+
+## 45.5 Checklist para un microservicio nuevo
+
+- ¿Necesita llamar a otro microservicio (M2M)? → usar `ServiceTokenHttpAcquisition` +
+  `ExpiringValueCache` siguiendo el patrón de §45.3, nunca un `ConcurrentDictionary` propio.
+- ¿Esa llamada M2M (o cualquier llamada HTTP saliente a un proveedor externo) puede fallar
+  transitoriamente? → envolverla con `HttpResiliencePipelineRegistry` (§45.2).
+- ¿Necesita throttling/rate-limiting respaldado por Redis? → `IRateCounter` (§45.4), nunca
+  `StringIncrementAsync`+`KeyExpireAsync` sueltos ni `ICacheService` GET+SET para contadores.
+- Las 3 primitivas viven en `BuildingBlocks.Security`/`BuildingBlocks.Infrastructure.{Security,Resilience,RateLimit}`
+  — agregar la `ProjectReference` a `BuildingBlocks.Infrastructure` si el servicio nuevo todavía no la tiene.
+
+# 46. Rate Limiting Multi-Capa por Tenant (plan de 9 fases, CERRADO)
+
+Ver `documents/architecture/ADR_017_RateLimit_Layers.md` (decisión + contexto) y
+`documents/RateLimit/Plan_Implementacion_Fases.md` (las 9 fases, cada una con su nota de cierre real).
+**Si vas a agregar un endpoint HTTP nuevo, leé primero
+`documents/RateLimit/Guia_Nuevos_Servicios_Endpoints.md`** — es la guía operativa día a día (árbol de
+decisión de categoría, snippets .NET/Node, anti-patrones, checklist de PR). Esta sección es solo el
+resumen ejecutivo.
+
+## 46.1 El modelo — 4 capas, evaluadas en orden
+
+1. **Global infra** (Gateway, `LoadSheddingMiddleware`, Fase 5) — última red de seguridad por p99+5xx,
+   independiente de tenant.
+2. **Per-tenant** — partición primaria de la mayoría de categorías, escala con el plan tier del tenant
+   (`IRateLimitQuotaResolver`, Fase 6). Mecanismo instalado en los 17 servicios .NET + Communication
+   (Node); 9 .NET con wiring completo (proyección local + `HttpPlanRateLimitReader` M2M real: Tenant,
+   Notification, Postmaster, Scribe, Signature, Correspondence, Customer, PaymentApp, Billing), 6 con
+   solo `ITenantPlanCodeReader` local por no tener acquirer M2M saliente utilizable (CloudStorage,
+   Connectors, PaymentClient, Growth, Documents, Subscription — decisión deliberada, no deuda, ver el
+   plan doc). **Flag `EnforceTierQuotas`/`COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS` en `false` por
+   default en los 17 + Communication** — la cuota efectiva hoy es siempre la base Standard, el
+   multiplicador por plan tier existe en código pero no se aplica hasta activar el flag por entorno.
+   Verificado en vivo (2026-08-02) contra la flota completa corriendo: 429 real confirmado en 5
+   servicios (Customer, Auth, CloudStorage, Subscription, Signature) usando la cuota base — ver adenda
+   al final de Fase 9 en el plan doc. El flip a `true` con multiplicador real aplicado sigue sin
+   verificación E2E.
+3. **Per-user** — overlay dentro del tenant, evita que un solo usuario/script tóxico apague la cuota de
+   toda su empresa.
+4. **Per-endpoint** — cap propio para operaciones caras (búsqueda, bulk, rendering) — categorías H/I/J.
+
+17 categorías (A-Q) cubren pre-auth, público-con-token, webhooks, CRUD normal, búsqueda/bulk,
+rendering, envío externo, financiero, PII sensible, realtime socket y health/infra — tabla completa en
+la Guía §3.
+
+## 46.2 Cómo se aplica — resumen
+
+```csharp
+using BuildingBlocks.Web.RateLimiting;
+
+[HttpPost]
+[RateLimit("customer.g.create")]              // ← política del catálogo, nunca un string ad-hoc
+public async Task<IActionResult> Create(...) { ... }
+
+[HttpGet("/health")]
+[RateLimitExempt("health-check")]              // ← razón obligatoria, o el fitness test de CI falla
+public IActionResult Health() => Ok();
+```
+
+Políticas en `BuildingBlocks.RateLimiting.RateLimitPolicyCatalog`. Evaluador genérico
+`TieredRateLimitEvaluator` (capas 2+3, `BuildingBlocks.Infrastructure.RateLimiting`) — construye claves
+`RateCounterKey` con formato canónico `<svc>:rl:<policy>:<parts>`. Node (Communication) espeja los
+mismos nombres canónicos en `domain/rate-limit/rate-limit-policies.ts` para correlacionar en Grafana.
+
+## 46.3 Observabilidad (Fase 8)
+
+`RateLimitMetrics` (.NET, Meter `TaxVision.RateLimit`) y su espejo OTel en Node emiten:
+
+- `ratelimit.evaluated_total{policy,layer,tenant_id,plan}`
+- `ratelimit.blocked_total{policy,layer,tenant_id,plan}`
+- `ratelimit.fallback_open_total{policy,reason}` — Redis caído o plan sin resolver (.NET es fail-open
+  real; Node hoy es fail-**cerrado** — gap documentado, no corregido, ver el memo de cierre de Fase 8)
+
+Dashboards Grafana `deploy/observability/grafana/provisioning/dashboards/ratelimit-{overview,by-tenant}.json`
++ 2 alertas nativas en `.../alerting/ratelimit-alerts.yml` (tenant >90% cuota sostenido 5min, load
+shedder de flota disparando).
+
+## 46.4 Invariantes verificados por fitness function (Fase 9)
+
+`TaxVision.BuildingBlocks.Tests.RateLimit.RateLimitFitnessFunctionsTests` + un test por servicio en
+cada `*ArchitectureTests.cs`:
+
+1. Todo endpoint público `[HttpXxx]` tiene `[RateLimit]` o `[RateLimitExempt("razón")]` — sin excepción.
+2. `TieredRateLimitEvaluator` construye siempre claves `<svc>:rl:<policy>:...` (los 4 limiters
+   pre-Fase-3 — Auth `LoginThrottler`, Connectors, Postmaster, PaymentApp F26 — usan sus propios
+   formatos legacy sembrados antes de que este formato existiera; migrarlos resetearía contadores Redis
+   en producción, fuera de alcance, documentado no "arreglado").
+3. `IDatabase.StringIncrementAsync` no aparece fuera de `RedisRateCounter.cs`.
+4. `AddRateLimiter` nativo de ASP.NET Core solo aparece en la allowlist congelada de 7 servicios
+   (Auth, Growth, CloudStorage, Connectors, PaymentApp, Signature, PaymentClient) — todos endpoints
+   pre-auth/público/webhook sin tenant_id/user_id que particionar, verificados uno por uno. Cualquier
+   `AddRateLimiter` nuevo fuera de esa lista rompe el build.
+
+# 47. Notes — Microservicio de notas del staff (plan de 11 fases, CERRADO)
+
+Microservicio independiente para notas del staff, asociables polimórficamente a cualquier entidad
+del ecosistema (Customer, Task, Appointment, SignatureRequest, etc.). DB propia, puerto dev
+**5440**, host interno `http://notes-api:8080`. Ver `ADR_018_Notes_Bounded_Context.md` (§`documents/architecture/`) para el porqué de la decisión y `Implementaciones/Notes/*.md` para el plan
+completo de 11 fases.
+
+## 47.1 Endpoints
+
+Staff (`NotesController`, `[AllowActorTypes(TenantEmployee, TenantAdmin, PlatformAdmin)]`):
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| POST | `/notes` | `notes.manage` | `notes.g.create` | |
+| GET | `/notes/mine` | `notes.read` | `notes.f.list` | |
+| GET | `/notes/search?q=` | `notes.read` | `notes.h.search` | |
+| GET | `/notes?targetType=&targetId=` | `notes.read` | `notes.f.list` | |
+| GET | `/notes/{id}` | `notes.read` | `notes.f.get` | 404 uniforme (existe-pero-no-visible == no-existe) |
+| PUT | `/notes/{id}/content` | `notes.manage` | `notes.g.write` | solo autor (Capa 3b, Fase 9) |
+| PUT | `/notes/{id}/visibility` | `notes.manage` | `notes.g.write` | solo autor |
+| POST | `/notes/{id}/pin` \| `/unpin` | `notes.manage` | `notes.g.write` | solo autor |
+| PUT | `/notes/{id}/color` | `notes.manage` | `notes.g.write` | solo autor |
+| POST | `/notes/{id}/archive` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| POST | `/notes/{id}/restore` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| DELETE | `/notes/{id}` | `notes.manage`* | `notes.g.write` | autor **o** `notes.view_all` |
+| POST | `/notes/{id}/attachments` | `notes.manage` | `notes.g.write` | solo autor |
+| DELETE | `/notes/{id}/attachments/{fileId}` | `notes.manage` | `notes.g.write` | solo autor |
+
+\* Capa 1 (`[HasPermission]`) solo puede expresar un permiso — el OR real (autor **o**
+`notes.view_all`) se evalúa en `NoteVisibilityPolicy.CanManage` dentro del handler; ver §47.4.
+
+CustomerPortal (`PortalNotesController`, `[AllowActorTypes(CustomerPortal)]`):
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| GET | `/notes/portal?targetType=&targetId=` | `notes.portal.read` | `notes.f.portal_read` | solo `ClientVisible`, nunca crea/edita |
+
+## 47.2 Permisos (`BuildingBlocks.Authorization.NotesPermissions`)
+
+`notes.read`, `notes.manage`, `notes.view_all` (ver todas — incl. `Private` de otros — pero no
+editar contenido ajeno), `notes.portal.read` (CustomerPortal).
+
+## 47.3 Rate limiting (catálogo `RateLimitPolicyCatalog.Notes.cs`)
+
+| Política | Categoría | Cuota (tenant, overlay) | Algoritmo |
+|---|---|---|---|
+| `notes.f.get` / `notes.f.list` / `notes.f.portal_read` | F | 300/60s (overlay 3000) | Token bucket |
+| `notes.g.create` / `notes.g.write` | G | 60/60s (overlay 600) | Token bucket |
+| `notes.h.search` | H | 20/60s (overlay 100) | Sliding window |
+
+Verificado end-to-end con `TaxVision.Notes.Tests.Integration.RateLimitIntegrationTests` (SQL
+Server/Redis/RabbitMQ locales reales, sin mocks) — confirma 429 con `Retry-After` +
+`X-RateLimit-{Policy,Layer,Limit,Remaining,Reset}` en `notes.f.list` (límite 300) y `notes.g.write`
+(límite 60).
+
+## 47.4 Autorización — 5 capas (RBAC + Fase 9)
+
+Igual al mecanismo de 5 capas del resto del monorepo (§41). La particularidad de Notes: el
+endurecimiento de Capa 3b (`IsOwnerOrHasManageHandler<Note>`, Fase 9) se conectó **solo** en los
+endpoints de edición de contenido (Update/Visibility/Pin/Unpin/Color/Attach/Detach — sin permiso de
+override, estrictamente el autor), flag `Authorization:ResourceOwnership:Enabled` (default `false`).
+Archive/Restore/Delete **no** usan ese mecanismo: como necesitan un override distinto
+(`notes.view_all`, no "sin override"), y `IsOwnerOrHasManageHandler<TResource>` solo admite un
+permiso de override por tipo de recurso aplicado a *todas* sus operaciones, el OR real vive en
+`NoteVisibilityPolicy.CanManage` (Application) — ver el doc-comment de `NotesController.cs` para el
+razonamiento completo.
+
+## 47.5 Adjuntos — CloudStorage Caso B (sin MinIO ni M2M en Notes)
+
+El navegador sube el archivo directo a CloudStorage con el JWT del usuario; Notes solo guarda la
+referencia (`fileId`) y reacciona a 4 eventos de integración (`NotesFileScanResultConsumer`):
+`FileAvailable`→`Available`, `FileInfected/BlockedByPolicy`→`Rejected` (con razón), `FileDeleted`→
+`Detached` (+ publica `notes.attachment_detached.v1`, igual que el detach manual). Cada handler
+valida `note.TenantId == evt.TenantId` post-fetch — el repo usado (`GetByAttachmentFileIdAsync`) no
+filtra por tenant porque el consumer no corre dentro de un scope HTTP.
+
+## 47.6 Proyección de Customer (`CustomerDirectoryEntry`, Fase 4B — obligatoria en v1)
+
+Único M2M saliente de Notes (lectura, hacia Customer) — usado para validar SOFT al crear una nota
+sobre un Customer y para mostrar/buscar por nombre sin N+1. Alimentada por 6 eventos granulares
+(Created/Updated/Activated/Deactivated/Archived/Reactivated) + reconciliación batched para
+importación masiva (que no trae `DisplayName`) vía `CustomerDirectoryReconciliationJob` (cada 6h).
+
+## 47.7 Configuración
+
+```jsonc
+// appsettings.json
+"Authorization": { "PermissionsSource": "Projection", "ResourceOwnership": { "Enabled": false } },
+"RateLimit": { "EnforceTierQuotas": true },
+"Notes": {
+  "Customer": { "BaseUrl": "http://localhost:5263" },
+  "CloudStorage": { "BaseUrl": "http://localhost:5330" }
+}
+```
+
+## 47.8 Verificación de cierre
+
+- `dotnet build TaxVision.slnx` + suite completa del monorepo: **verdes**, incluido el cierre de
+  Fase 10 (76/76 tests Notes: los 2 de integración real de rate limiting + 1 nuevo de regresión
+  del bug descrito abajo).
+- `NotesArchitectureTests` (NetArchTest): `[AllowActorTypes]`/`[RateLimit]` en toda acción pública +
+  Controllers sin dependencia directa de Infrastructure.
+- **Verificación E2E en vivo (completada)**: Auth + Tenant + Notes levantados localmente con
+  `dotnet run` contra SQL Server/Redis/RabbitMQ reales; tenant nuevo creado vía
+  `POST /auth/subdomains/reserve` (ticket firmado RS256) → `POST /tenants` → invitación aceptada →
+  login real como TenantAdmin (JWT emitido de verdad por Auth, no minteado a mano). Con ese JWT se
+  ejecutó el flujo completo contra Notes real: crear nota, `GetById`, `ListByReference`, `Mine`,
+  `Search`, `UpdateContent`, `ChangeVisibility`, `Pin`/`Unpin`, `SetColor`, `Archive`/`Restore`,
+  `Delete` (soft) — todos 200/204 con los datos esperados. El endpoint del portal
+  (`GET /notes/portal`, `[AllowActorTypes(CustomerPortal)]`) se verificó rechazando el JWT de staff
+  con 403 (gate de actor-type confirmado en vivo); no se probó el camino 200 porque no existía una
+  cuenta CustomerPortal local — gap disclosed, no inventado.
+- **Bug real encontrado y corregido durante esta verificación**: `ListByReferenceAsync`,
+  `ListForAuthorAsync`, `SearchAsync` y `ListClientVisibleAsync` en `NoteRepository` dependían del
+  `HasQueryFilter` global fail-closed de `NotesDbContext` (poblado por `ITenantContext`, alimentado
+  por `JwtTenantContextMiddleware`), pero ese servicio *scoped* no está garantizado poblado en el
+  scope de DI que usa Wolverine para despachar localmente estas queries — a diferencia de
+  `GetByIdAsync`, que ya usaba `IgnoreQueryFilters()` con el tenantId explícito (mismo patrón
+  documentado para otros servicios en sesiones previas: EF query filter + Wolverine scope
+  mismatch). Sin el fix, **todo endpoint de listado/búsqueda de Notes devolvía siempre 0 filas en
+  producción** pese a que la nota existía — los 75 tests previos no lo detectaban porque los tests
+  unitarios de handlers usan un repositorio fake en memoria, no el `NotesDbContext` real. Corregido
+  aplicando `IgnoreQueryFilters()` (mismo criterio que `GetByIdAsync`) a los 4 métodos, verificado
+  en vivo tras rebuild+restart, y cubierto con un test de integración nuevo contra infraestructura
+  real (`NoteListsIntegrationTests`) para que un regreso futuro vuelva a fallar aquí.
+
+---
+
+# 48. Bus de eventos — política de fallo, dead-letter queue y runbook de drenado (H-15, H-16)
+
+Ver `Documentacion Completa/91_Deuda_Bus_de_Eventos_H12_H20.md` para el análisis completo.
+
+## 48.1 Qué pasa con un mensaje que falla
+
+Medido contra el RabbitMQ real (Wolverine 6.14, sonda desechable, no por lectura de la doc):
+
+| Caso | Qué hace Wolverine | ¿Se pierde? |
+|---|---|---|
+| Handler lanza excepción **transitoria** | reintenta 3 veces (`1s`, `5s`, `15s`) y luego **mueve a `wolverine-dead-letter-queue`** | no, queda en la DLQ |
+| Handler lanza excepción **permanente** | **1 intento**, directo a la DLQ | no, queda en la DLQ |
+| No hay handler para ese tipo | **descarta en silencio**, sin log ni métrica | sí, y es correcto |
+
+Lo segundo suena mal y no lo es: con el fanout actual **cada una de las 17 colas recibe los ~183
+tipos de evento** y solo maneja un puñado — 177 pares (servicio, evento) tienen handler de 3111
+posibles, un **5,7%**. Recibir algo que no te toca es el modo normal de operación, no un fallo.
+
+**La DLQ no la crea el código, la crea `AutoProvision()`.** Existía desde el primer día y funciona.
+El agujero de H-16 nunca fue técnico: **nadie la estaba mirando**. Al medirlo había 6 mensajes
+muertos en las DLQ de Node que nunca había visto nadie.
+
+**Hay una sola `wolverine-dead-letter-queue` para los 17 servicios .NET.** Node tiene la suya por
+servicio (`communication-events.dlq`, `communication-transcript-worker.dlq`).
+
+## 48.1b La política de fallo, en un solo sitio (H-15)
+
+Los 17 `Program.cs` llamaban a `Policies.OnException<Exception>().RetryWithCooldown(1s, 5s, 15s)`
+copiado literalmente, y Node hacía `nack(requeue=false)` — **4 intentos contra 1**. Nadie había
+elegido esa asimetría: cada lado heredó el default de su librería.
+
+Hoy los dos lados aplican lo mismo, y la política vive en **un archivo**:
+
+- **.NET** — `BuildingBlocks/Messaging/WolverineFailurePolicies.cs`. Cada `Program.cs` llama
+  `options.ApplyStandardFailurePolicies();` y nada más.
+- **Node** — colas de espera con TTL en `rabbit-connection.ts`
+  (`communication-events.retry.1/2/3`) y la decisión de reencolar en `consumer-runtime.ts`.
+
+Lo que cambia respecto de antes es que **lo permanente ya no se reintenta**. Reintentar un bug
+determinista no lo arregla: gasta 21 segundos y tres ejecuciones más del handler para llegar al
+mismo sitio, ocupando un slot del consumidor. Se tratan como permanentes `JsonException`,
+`ArgumentException`, `FormatException` y `NotSupportedException` — todas dependen solo del payload,
+que es idéntico en cada intento.
+
+La lista es corta a propósito. **`InvalidOperationException`, `NullReferenceException` y
+`KeyNotFoundException` se quedaron fuera** aunque parezcan bugs: bajo consistencia eventual las
+tres las produce leer una proyección que todavía no llegó, y ahí el reintento es justo lo correcto.
+Un test lo fija (`FailurePolicyContractTests`) para que nadie las meta luego sin pensarlo.
+
+Node **no** replica esa distinción, y no es un olvido: el único fallo permanente que llega a su
+consumer es el payload ilegible, y ese ya se ack-skipea antes de entrar en la cadena de reintentos.
+No hay un catálogo de excepciones tipadas sobre el que discriminar.
+
+**Orden verificado contra el broker**: gana la primera regla que matchea, así que las específicas se
+registran antes de la genérica. Medido: `JsonException` da 1 intento, `InvalidOperationException`
+sigue dando 4.
+
+Dos fitness functions impiden la vuelta atrás: ningún `Program.cs` puede declarar su propio
+`RetryWithCooldown`, y todo servicio con `UseWolverine` tiene que aplicar el helper.
+
+## 48.1c El coste real de publicar un evento — deduplicar en el origen
+
+Con el fanout actual **un evento publicado son 17 escrituras a 17 bases de datos distintas**: cada
+cola lo recibe y su `UseDurableInbox()` lo persiste en su propio SQL Server *antes* de que Wolverine
+descubra si hay handler. Descartar lo que no te toca (§48.1) es barato en CPU y no es gratis en
+disco.
+
+Eso hace que **publicar por request sea un error de diseño**, no una ineficiencia. Encontrado en
+vivo: `TenantHostResolutionMiddleware` (Auth) publicaba `TenantResolutionFailedIntegrationEvent` en
+cada request cuyo Host no resolvía a un tenant. Nadie consume ese evento — cero handlers en el
+repo. Resultado medido: **30.638 eventos acumulados**, el inbox de Correspondence en 10.165 filas
+sin drenar y su agente de durabilidad deadlockeando contra SQL Server (error 1205 en
+`MoveReplayableErrorMessagesToIncomingOperation`), lo que congeló el inbox **entero** — incluidos
+los mensajes que Correspondence sí necesita procesar.
+
+En producción no es un problema de desarrollo: el apex y cualquier escáner de bots producen el
+mismo patrón, y un request con Host desconocido se amplifica ×17.
+
+**La regla:** si el disparador de un evento es *una request*, y no *una transición de estado del
+dominio*, hay que deduplicar antes de publicar.
+
+El patrón aplicado en `TenantHostResolutionMiddleware`, reutilizable:
+
+- El **audit log se escribe siempre** — es el registro forense, es una tabla local y no tiene
+  fan-out. Ahí está la cuenta exacta.
+- Al **bus solo sale el primer evento por clave y ventana**, con el `IRateCounter` de §45.4:
+  `IncrementAndGetAsync(key, ventana) == 1`. Ventana actual: 5 minutos por host.
+- Si el contador no está disponible se **omite la publicación**, no se propaga el fallo. Romper la
+  request o volver a inundar el bus son peores intercambios que perder una señal que nadie consume
+  en tiempo real, y el audit log ya quedó escrito.
+- Límite consciente: acota la **repetición** de una clave, no su **cardinalidad**. Un atacante que
+  rote el Host en cada request sigue generando un evento por request.
+
+## 48.2 Observabilidad
+
+- **Scrape:** job `rabbitmq` en `deploy/observability/prometheus.yml`, contra
+  `rabbitmq:15692/metrics/detailed?family=queue_coarse_metrics`. Hace falta el endpoint *detailed*:
+  el `/metrics` normal solo da el agregado del broker, sin desglose por cola. El puerto **no se
+  publica al host** — Prometheus entra por la red interna de Docker.
+- **Dashboard:** `deploy/observability/grafana/provisioning/dashboards/eventbus.json`.
+- **Alerta:** `deploy/observability/grafana/provisioning/alerting/eventbus-alerts.yml`. El umbral es
+  **cualquier mensaje** sostenido 5 minutos. Si se vuelve ruidosa, el arreglo es el bug que la
+  dispara, no subir el umbral.
+
+## 48.3 Runbook — hay mensajes en una DLQ
+
+**No purgar.** Purgar sin leer es perder los datos con pasos extra.
+
+1. **Ver qué hay**, sin consumir (`ack_requeue_true` los devuelve a la cola):
+
+```bash
+curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X POST "http://localhost:15672/api/queues/%2F/wolverine-dead-letter-queue/get" -H "content-type: application/json" -d '{"count":20,"ackmode":"ack_requeue_true","encoding":"auto"}'
+```
+
+2. **Identificar de dónde viene.** Como la DLQ de .NET es compartida, el servicio no está en el
+   nombre de la cola: sale de las cabeceras del envelope. Mirar `dotnet-type-name` (qué evento) y
+   el mensaje de excepción (por qué murió). Con eso se localiza el handler.
+
+3. **Corregir el handler y desplegarlo.** Re-encolar antes de arreglar solo repite el fallo y
+   vuelve a llenar la DLQ.
+
+4. **Re-encolar** con un shovel temporal de la DLQ a la cola de origen:
+
+```bash
+curl -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT "http://localhost:15672/api/parameters/shovel/%2F/drenar-dlq" -H "content-type: application/json" -d '{"value":{"src-protocol":"amqp091","src-uri":"amqp://","src-queue":"wolverine-dead-letter-queue","dest-protocol":"amqp091","dest-uri":"amqp://","dest-queue":"auth-tenant-events","src-delete-after":"queue-length"}}'
+```
+
+   `src-delete-after: queue-length` para el shovel al vaciar lo que había al empezar, sin quedarse
+   drenando lo que llegue después. Borrar el parámetro al terminar.
+
+5. **Verificar** que la DLQ queda a 0 y que la alerta se apaga sola.
+
+> **Los mensajes muertos caducan.** `DurabilitySettings.DeadLetterQueueExpiration` son 10 días por
+> defecto en Wolverine. Pasado ese plazo no hay nada que drenar — por eso la alerta dispara a los 5
+> minutos y no a los 5 días.
+
+---
+
+# 49. Reminder — Microservicio de recordatorios (plan de 10 fases, CERRADO)
+
+Microservicio independiente para recordatorios de usuario, disparados por **Quartz.NET** con
+`AdoJobStore` sobre su propia base. DB propia, puerto dev **5500**, host interno
+`http://reminder-api:8080`. Ver `ADR_021_Reminder_Bounded_Context.md` (§`documents/architecture/`)
+para el porqué de la decisión y `Implementaciones/Reminder/*.md` para el plan completo de 10 fases.
+
+**Reminder no entrega avisos** (ADR-R-02). Dispara, publica `reminder.due.v1`, y Notification decide
+canal (in-app / push / email), preferencias y agrupación. Esa separación es la razón de que el
+servicio no tenga ni SMTP ni SignalR ni tokens de push.
+
+## 49.1 Endpoints
+
+`RemindersController`, `[AllowActorTypes(TenantEmployee, TenantAdmin, PlatformAdmin)]` — **sin
+CustomerPortal**: un recordatorio pertenece siempre a un usuario del tenant (invariante R1), el
+cliente final no tiene recordatorios propios en v1.
+
+| Método | Ruta | Permiso | Rate limit | Nota |
+|---|---|---|---|---|
+| POST | `/reminders` | `reminders.write` | `reminder.g.create` | idempotente por `RequestKey` (ADR-R-07) |
+| GET | `/reminders/{id}` | `reminders.read` | `reminder.f.read` | 404 uniforme si es de otro usuario |
+| GET | `/reminders/mine` | `reminders.read` | `reminder.f.read` | |
+| GET | `/reminders/upcoming` | `reminders.read` | `reminder.h.upcoming` | barre rango de `FireAtUtc` |
+| PUT | `/reminders/{id}/schedule` | `reminders.write` | `reminder.g.update` | reprograma y reagenda el trigger |
+| PUT | `/reminders/{id}/subject` | `reminders.write` | `reminder.g.update` | |
+| POST | `/reminders/{id}/snooze` | `reminders.write` | `reminder.g.update` | tope `MaxSnoozeCount` |
+| POST | `/reminders/{id}/dismiss` | `reminders.write` | `reminder.g.update` | terminal |
+| DELETE | `/reminders/{id}` | `reminders.write` | `reminder.g.delete` | cancela (`user_request`), no borra |
+
+No hay permiso de gobernanza (`view_all`/`manage_all`): **nadie edita recordatorios ajenos**. El
+filtro por `UserId` lo aplica el handler, no la capa de permisos.
+
+## 49.2 Permisos (`BuildingBlocks.Authorization.ReminderPermissions`)
+
+`reminders.read`, `reminders.write`. Dos, y a propósito — ver el doc-comment de la clase.
+
+## 49.3 Rate limiting (catálogo `RateLimitPolicyCatalog.Reminder.cs`)
+
+| Política | Categoría | Cuota (tenant+user, overlay tenant) | Algoritmo |
+|---|---|---|---|
+| `reminder.f.read` | F | 300/60s (overlay 3000) | Token bucket |
+| `reminder.g.create` / `reminder.g.update` / `reminder.g.delete` | G | 60/60s (overlay 600) | Token bucket |
+| `reminder.h.upcoming` | H | 20/60s (overlay 100) | Sliding window |
+
+`RateLimit:EnforceTierQuotas: true`. Las cabeceras `X-RateLimit-*` solo salen en la respuesta 429 —
+no en las 200, igual que en el resto del monorepo.
+
+## 49.4 Contratos de integración
+
+**Entrantes** (Reminder consume):
+
+| Evento | Efecto |
+|---|---|
+| `reminder.requested.v1` | crea el recordatorio; `RequestKey` obligatoria (idempotencia) |
+| `reminder.target_moved.v1` | mueve solo los **anclados**; sobre un absoluto es no-op exitoso (invariante R6) |
+| `reminder.target_closed.v1` | cancela los pendientes con razón `target_closed` |
+
+**Saliente**: `reminder.due.v1`, con el contenido completo del aviso — una foto del instante del
+disparo. El consumidor renderiza sin llamar de vuelta a Reminder.
+
+Consumido por Notification (`ReminderDueConsumer`), que despacha **email** (template Scribe
+`reminder.due.v1`), in-app y push, en ese orden — ver §49.7.
+
+## 49.5 Operación de Quartz
+
+`AdoJobStore` sobre la misma base del servicio (tablas `QRTZ_*`), un **solo scheduler compartido**
+por todos los tenants (ADR-R-05): el aislamiento es el *trigger group* `tenant:{id}`, no un scheduler
+por tenant — con miles de tenants eso serían miles de thread pools.
+
+- **Misfire.** Dos umbrales distintos, que se confunden con facilidad:
+  - `MisfireThreshold` de Quartz = **60s**. Cuánto retraso tolera *el scheduler* antes de marcar el
+    trigger como misfired.
+  - `Reminder:MisfireGraceMinutes` = **60 min**. La ventana de negocio. Quartz **siempre** dispara al
+    recuperarse de una caída; es el dominio (`FireOrMiss`) quien decide si el aviso sigue vigente.
+    Pasado ese plazo el recordatorio va a `Missed`, no a `Fired` — avisar «tenías reunión hace 3
+    horas» es ruido.
+- **Clustering.** `SchedulerId = "AUTO"` — obligatorio. Dos réplicas con el mismo `InstanceId` se
+  roban los triggers entre sí y el scheduler entra en checkin loop. `CheckinInterval` 20s,
+  `CheckinMisfireThreshold` 60s.
+- **NTP.** El clustering de Quartz compara timestamps entre réplicas contra la base. Un desfase de
+  reloj entre nodos mayor que `CheckinMisfireThreshold` hace que una réplica declare muerta a otra
+  que está viva y le recupere los triggers. **Las réplicas deben tener el reloj sincronizado.**
+- **Serialización.** `UseSystemTextJsonSerializer` + `UseProperties = true` (JobDataMap solo de
+  strings). El serializador binario por defecto congela los tipos CLR dentro de la fila: renombrar un
+  namespace dejaría triggers imposibles de deserializar.
+- **Despliegue.** `WaitForJobsToComplete = true` — evita que un despliegue corte un disparo a medias
+  y deje el recordatorio sin marcar.
+- **Reconciliación.** `ReminderScheduleReconciliationJob` barre cada 24h los recordatorios activos
+  dentro de `ReconciliationHorizonHours` y reagenda los que perdieron su trigger. **La barrida de
+  arranque hace parecer muerto al job**: si al iniciar no hay nada que reconciliar no loguea nada.
+- **Retención.** `ReminderRetentionJob` purga cada 24h los terminales
+  (`Dismissed`/`Cancelled`/`Missed`) resueltos hace más de `Reminder:RetentionMonths` (default 12;
+  **0 desactiva el barrido**). Filtra por `ResolvedAtUtc`, **no** por `CreatedAtUtc` — un
+  recordatorio creado hace dos años pero cancelado ayer es reciente para soporte. Borra en lotes de
+  500 con tope de 20 por corrida: un primer barrido sobre una tabla vieja podría tocar cientos de
+  miles de filas y bloquear la tabla mientras hay disparos en curso.
+- **Umbral de revisión.** Con **>50.000 filas en `QRTZ_TRIGGERS`** o **>3 réplicas**, revisar el
+  dimensionamiento del thread pool y la contención del row-lock de `QRTZ_LOCKS` (ver §8.2 de
+  `Implementaciones/Reminder/00_*.md`). Por debajo de eso la configuración actual no necesita ajuste.
+
+> **Los jobs y consumers corren SIN tenant en contexto.** El filtro global del `ReminderDbContext` es
+> fail-closed: sin `IgnoreQueryFilters()` + `tenantId` explícito, la consulta devuelve **0 filas
+> siempre** mientras el job se ve perfectamente sano en los logs. Aplica a `ReminderFireJob`,
+> `ReminderScheduleReconciliationJob`, `ReminderRetentionJob` y los tres consumers.
+
+## 49.6 Observabilidad
+
+Meter `TaxVision.Reminder`, registrado vía `AddTaxVisionOpenTelemetry(config, "reminder-service",
+ReminderMetrics.MeterName)`. **Un Meter propio no exporta nada si no se pasa como
+`additionalMeterNames`** — registrar el Meter y exportarlo son dos cosas distintas.
+
+| Instrumento | Tipo | Tags |
+|---|---|---|
+| `reminder.scheduled_total` | Counter | `category` |
+| `reminder.fired_total` | Counter | `category` |
+| `reminder.fire_delay_seconds` | Histogram (s) | — |
+| `reminder.cancelled_total` | Counter | `reason` (**valores cerrados**: `user_request`/`target_closed`/`other`) |
+| `reminder.misfired_total` | Counter | `policy` (`grace_exceeded`/`anchor_moved_to_past`) |
+| `reminder.duplicate_suppressed_total` | Counter | `resolution` (`lookup`/`unique_index_race`) |
+
+`reason` pasa por `ReminderCancellationReasons.ForMetrics(...)` antes de llegar al tag: la razón de
+cancelación es texto libre del usuario y usarla cruda sería una bomba de cardinalidad.
+
+Dashboard: `deploy/observability/grafana/provisioning/dashboards/reminder.json` (5 paneles). Los
+nombres de instrumento van punteados en .NET y **con guion bajo** en las `expr` de Prometheus
+(`reminder_fired_total`). **No hay `/metrics` en ningún servicio .NET del monorepo** — la exportación
+es OTLP push al collector; el `/metrics` existe solo en los servicios Node.
+
+## 49.7 Entrega del aviso (Notification, Fase 8 + 10)
+
+`ReminderDueConsumer` despacha por tres canales, y **el email va primero**. No es cosmético: es el
+único de los tres que puede lanzar (`EnsureRendered` cuando Scribe está caído), y Wolverine reintenta
+el mensaje **entero** — si el email fuera el último, cada reintento volvería a registrar la
+notificación in-app y a reenviar el push hasta llegar a la DLQ.
+
+El correo necesita resolver `userId → email`, que en la Fase 8 no existía. La Fase 10 lo cerró con
+`UserEmailDirectoryEntry` en Notification, alimentada por eventos de Auth **más recuperación pull**
+(`internal/tenants/{tenantId}/users/{userId}/contact`, policy `ServiceOnly`, mismo patrón que
+`PermissionsSnapshotClient`):
+
+| Evento de Auth | Efecto en el directorio |
+|---|---|
+| `UserRegistered` | alta/actualización — es el **único** evento de Auth que trae el correo |
+| `SecurityAlert{EmailChanged}` | **invalidación** (`MarkStale`), no actualización |
+| `UserDeactivated` / `UserReactivated` | cambia si corresponde escribirle, la dirección no |
+
+`UserProfileUpdated` no aparece: solo lleva nombre y apellido. Y `SecurityAlert{EmailChanged}` no se
+puede usar para actualizar porque su `DetailsJson` trae la dirección **anterior** — de ahí que se
+trate como invalidación. **Una fila obsoleta es peor que una ausente**: la ausente dispara la
+recuperación pull, la obsoleta manda el correo a la dirección vieja sin que nadie se entere.
+
+## 49.8 Configuración
+
+```jsonc
+// appsettings.json
+"Authorization": { "PermissionsSource": "Projection" },
+"RateLimit": { "EnforceTierQuotas": true },
+"Reminder": {
+  "MisfireGraceMinutes": 60,      // ventana de gracia del negocio (no la de Quartz)
+  "ReconciliationHorizonHours": 24,
+  "RetentionMonths": 12,          // 0 = el job de retención no borra nada
+  "ServiceAuth": { "AuthBaseUrl": "http://localhost:5124", "ClientId": "", "ClientSecret": "" }
+},
+"SubscriptionClient": { "BaseUrl": "http://localhost:5360" }
+```
+
+Cliente M2M `reminder-worker` en Auth (catálogo de plan-rate-limits de Subscription + recuperación
+pull de permisos). Secreto por user-secrets en local y por `REMINDER_SERVICE_CLIENT_SECRET` en
+compose — **cuidado con `openssl rand` desde Git Bash**: mete un `\r` invisible dentro del valor y el
+M2M da 401 sin ninguna pista.
+
+## 49.9 Fitness functions (`ReminderArchitectureTests`, NetArchTest)
+
+- Toda acción pública lleva `[AllowActorTypes]` y `[RateLimit]`.
+- Controllers sin dependencia directa de Infrastructure.
+- Domain sin Quartz, sin EF Core, sin `TaxVision.Reminder.Infrastructure`.
+- Application sin Infrastructure.
+- Ningún tipo de Reminder referencia un bounded context vecino (`CalendarIntegrationEvents`,
+  `TaskIntegrationEvents`). **Honestidad sobre esta regla**: hoy pasa de forma vacua porque esos
+  namespaces todavía no existen. Queda puesta para que falle el día que alguien los cree y los
+  importe desde aquí.
+
+---
+
+# 50. Task — Microservicio de tareas (plan de 11 fases, CERRADO)
+
+El motor de trabajo de la firma: tareas con dependencias, subtareas, series recurrentes, plantillas
+fiscales y adjuntos por referencia. DB propia (`TaxVision_Tasks`), puerto dev **5510**, host interno
+`http://tasks-api:8080`, ruta `/tasks/*`. Ver `ADR_022_Task_Bounded_Context.md` y
+`Implementaciones/Task/*.md`.
+
+**Task no entrega avisos ni guarda bytes.** Publica eventos y pide recordatorios a Reminder; los
+archivos viven en CloudStorage y aquí sólo se guarda su `fileId`.
+
+## 50.1 Endpoints
+
+| Método | Ruta | Permiso |
+|---|---|---|
+| POST/GET/PATCH/DELETE | `/tasks`, `/tasks/{id}` | `tasks.write` / `tasks.read` |
+| POST | `/tasks/{id}/start`, `/complete`, `/cancel`, `/reopen` | `tasks.write` |
+| POST | `/tasks/{id}/waiting-on-client` | `tasks.write` |
+| POST/DELETE | `/tasks/{id}/dependencies` | `tasks.write` |
+| POST/GET | `/tasks/{id}/timers` | `tasks.write` / `tasks.read` |
+| POST/GET | `/tasks/series` | `tasks.write` / `tasks.read` |
+| GET/POST/PUT | `/tasks/templates` | `tasks.read` / `tasks.templates.manage` |
+| POST | `/tasks/templates/install-standard` | `tasks.templates.manage` |
+| PUT | `/tasks/templates/{id}/attachments` | `tasks.templates.manage` |
+| POST | `/tasks/templates/{id}/apply` | **`tasks.write`** — es el gesto diario del preparador |
+| POST | `/tasks/{id}/attachments`, `/attachments/link` | `tasks.write` |
+| GET | `/tasks/{id}/attachments?includeDescendants=` | `tasks.read` |
+| DELETE | `/tasks/{id}/attachments/{fileId}` | `tasks.write` |
+
+## 50.2 El motor de dependencias: qué es eventual y cuál es la ventana
+
+`OpenBlockerCount` y `OpenSubtaskCount` **se llevan en la fila**, no se recalculan al leer: un listado
+de 200 tareas no puede pagar un `COUNT` por fila. La contrapartida es que son un contador y los
+contadores derivan.
+
+- **Al cerrar una tarea**, el descuento de sus sucesoras y de su padre ocurre en la misma transacción.
+- **La deriva** aparece cuando un consumer se reintenta o una arista se crea contra una tarea que se
+  cerró en paralelo. La ventana es de segundos.
+- **`CounterReconciliationJob`** recalcula y corrige, y **cada corrección sube
+  `task.reconciliation_corrections_total`**. Ese contador es el termómetro del motor: cero sostenido
+  es la única lectura sana. Si sube, algo se está perdiendo, no «se está arreglando solo».
+
+Un ciclo se rechaza **al crear la arista** (`TaskDependencyGraph.EnsureNoCycle`, bajo `UPDLOCK` sobre
+las aristas del tenant), no al ejecutar: dos peticiones simultáneas que cerrarían el ciclo entre las
+dos, la gana una sola.
+
+## 50.3 Adjuntos — el veredicto del escaneo llega una sola vez
+
+Dos caminos, y la diferencia importa:
+
+- **Enlazar** (`/attachments/link`) → nace `Available`. El archivo ya está en CloudStorage y ya fue
+  escaneado. **No pasa por `Pending`**: esperar un `FileAvailable` publicado hace semanas lo dejaría
+  colgado para siempre.
+- **Subir** (`/attachments`) → nace `Pending` y espera el veredicto.
+
+`TaskFileScanResultConsumer` escucha los 4 eventos de CloudStorage
+(`Available`/`Infected`/`BlockedByPolicy`/`Deleted`). Un `fileId` que no es de ninguna tarea sale en
+silencio: el exchange trae los archivos de todo el monorepo y tirar excepción llenaría la DLQ de
+eventos ajenos.
+
+**`StaleAttachmentJob`** cierra el hueco que el evento no cubre: un adjunto creado *después* de que
+el veredicto se publicó no lo recibe nunca. El job barre los `Pending` que pasan la gracia
+(`Tasks:StaleAttachments:GraceMinutes`, 10 por defecto) y pregunta por
+`GET /storage/internal/files/{id}/scan-status` — endpoint M2M de CloudStorage que devuelve el estado
+y nada más. Ante 404, timeout o 5xx no toca el adjunto: una respuesta ambigua no justifica
+desadjuntar.
+
+Un adjunto **nunca bloquea completar** una tarea. Si el escaneo lo rechaza después del cierre, sale
+`task.attachment_rejected.v1` y Notification avisa **a quien lo adjuntó** —para entonces nadie está
+mirando esa tarea—.
+
+Desadjuntar **no borra el archivo**: CloudStorage es su dueño y otros servicios pueden referenciarlo.
+`TaskRetentionJob` sólo purga las filas de referencia ya desadjuntadas con más de
+`Tasks:Retention:DetachedAttachmentMonths` (12 por defecto). Las tareas cerradas no se purgan: son el
+registro del encargo fiscal.
+
+## 50.4 Plantillas
+
+Una plantilla es el guion de un encargo. Aplicarla instancia el grafo entero —N tareas + M aristas—
+en una sola transacción, con las fechas colgando del vencimiento por su offset. Sólo el primer paso
+nace ejecutable.
+
+`POST /tasks/templates/install-standard` copia el catálogo estándar al tenant (1040 individual,
+1040-ES trimestral, 941 trimestral) y es idempotente por nombre.
+
+**Las trimestrales no son grafos**: llevan `recurrenceRule`, y aplicarlas abre una `TaskSeries` con su
+único paso de blueprint en vez de instanciar cuatro tareas de golpe. En enero nadie quiere ver en su
+lista el pago de septiembre.
+
+Los archivos de referencia del guion (`PUT /templates/{id}/attachments`) viajan a cada instancia como
+`FromTemplate`/`Available` **con el mismo `fileId`**: un objeto en CloudStorage, N referencias.
+
+## 50.5 Configuración
+
+| Clave | Default | Para qué |
+|---|---|---|
+| `Tasks:Customer:BaseUrl` | `http://localhost:5263` | directorio local de clientes |
+| `Tasks:CloudStorage:BaseUrl` | `http://localhost:5330` | estado del escaneo (sólo metadatos) |
+| `Tasks:StaleAttachments:GraceMinutes` | `10` | antes de eso el escaneo puede seguir en curso |
+| `Tasks:StaleAttachments:IntervalMinutes` | `5` | cada cuánto barre |
+| `Tasks:Retention:DetachedAttachmentMonths` | `12` | cubre una temporada fiscal completa |
+
+El cliente M2M `tasks-worker` necesita `cloudstorage.file.view`. Sin ese permiso el barrido recibe 403
+y los adjuntos se quedan en `Pending` sin que nada falle a la vista.
+
+## 50.6 Observabilidad
+
+`Meter` **`TaxVision.Tasks`**, registrado como `additionalMeterNames` — un Meter propio que no se
+declara ahí no exporta nada y el panel queda vacío sin un solo error.
+
+`task.created_total{has_customer}` · `task.completed_total{has_customer}` · `task.blocked_total` ·
+`task.dependency_cycle_rejected_total` · **`task.reconciliation_corrections_total`** ·
+`task.time_to_complete_seconds`.
+
+`task.overdue_total` lo alimenta `OverdueTaskSweepJob`.
+
+## 50.7 Vencimientos
+
+`OverdueTaskSweepJob` publica `task.overdue.v1` por cada tarea que pasó su fecha y sigue abierta, y
+Notification avisa **al asignado y a nadie más** — es su trabajo el que se pasó; mandarlo a todo el
+que tenga `tasks.read` convierte el aviso en ruido de oficina y acaba silenciado.
+
+**Un aviso por vencimiento, no por barrido.** La tarea seguirá vencida mañana, así que la fila lleva
+`OverdueNotifiedAtUtc` y la consulta excluye las ya avisadas. Mover la fecha limpia la marca: un
+vencimiento nuevo vuelve a avisar. Sin eso, el asignado recibiría el mismo aviso cada hora hasta
+silenciar el canal — y entonces deja de ver también los que sí importan.
+
+Sin asignado no se avisa a nadie: la tarea aparece igual en los listados, así que perder el aviso no
+pierde el trabajo.
+
+El barrido va en trozos de 25 y **guarda antes de publicar**. `CounterReconciliationJob` corrige
+contadores sobre estas mismas filas, así que el `rowversion` cambia bajo los pies del barrido: en un
+lote grande una sola colisión tira el guardado entero, y si los eventos ya salieron el aviso se repite
+en la corrida siguiente. El trozo que colisiona se salta sin avisar y lo recoge el barrido próximo.
+
+| Clave | Default |
+|---|---|
+| `Tasks:OverdueSweep:IntervalMinutes` | `60` |
+| `Tasks:OverdueSweep:BatchSize` | `200` |
+
+## 50.8 El portal del cliente — `ClientRequest`
+
+Lo que la firma le pide al cliente, en el idioma del cliente. **Es un agregado aparte de la tarea, no
+una vista suya**: el cliente no estima horas, no imputa tiempo, no reasigna y no ve el asignado ni
+las notas internas. Mezclarlos corrompería además las dos métricas a la vez — capacidad del staff y
+responsividad del cliente dejan de medir lo que dicen.
+
+Ciclo: `Pending` → `Submitted` → `Accepted` | `Rejected` | `Cancelled`. **El cliente nunca cierra el
+pedido**: sube y queda `Submitted`; aceptarlo es del preparador. Mismo criterio por el que nada saca
+una tarea de `WaitingOnClient` automáticamente — «apareció un archivo» no es «mandó lo que le pedí».
+
+| Método | Ruta | Actor / permiso |
+|---|---|---|
+| POST | `/tasks/client-requests` | staff · `tasks.client_requests.manage` |
+| POST | `/tasks/client-requests/{id}/resolve` | staff · `tasks.client_requests.manage` |
+| GET | `/tasks/client-requests/by-task/{taskId}` | staff · `tasks.read` |
+| GET | `/tasks/portal/client-requests` | **CustomerPortal** · `tasks.portal.client_requests` |
+| POST | `/tasks/portal/client-requests/{id}/documents` | **CustomerPortal** · `tasks.portal.client_requests` |
+
+Los dos endpoints del portal viven en el namespace `Portal` y **derivan el cliente del token**, nunca
+de la petición: aceptarlo del cliente convierte cambiar un id en la URL en leer el expediente de
+otro. Un pedido ajeno responde **404**, el mismo código que uno inexistente.
+
+La respuesta del portal es otra forma del mismo pedido: sin `requestedByUserId` —el id de un empleado
+no es asunto del cliente— y sin el motivo técnico de un rechazo.
+
+**Cuando el escaneo tumba un documento salen dos avisos con dos textos distintos**: al cliente, por
+correo, «no pudimos procesarlo, volvé a subirlo»; al preparador, in-app, el motivo real. Decirle al
+cliente que su archivo tiene un virus no le indica qué hacer y expone detalle de infraestructura;
+ocultárselo del todo lo dejaría esperando algo que nunca llega.
+
+`Tasks:ClientReminders:Enabled` arranca en **`false`**: encenderlo sin coordinarlo es cómo el mismo
+cliente recibe tres correos el mismo día desde Task, Signature y Correspondence. Hoy no hay job que
+lo consuma — el flag existe para que la decisión sea explícita cuando lo haya.
+
+## 50.9 Fitness functions (`TasksArchitectureTests`)
+
+Además de las comunes (Domain sin EF, controllers sólo contra Application, todo `[HttpXxx]` con
+`[AllowActorTypes]` y `[RateLimit]`, un handler por archivo, presupuesto de 30 líneas por `Handle`,
+sin referencias al plan en comentarios, SQL crudo con allowlist), tres propias:
+
+- **Cero comparaciones de estado contra texto** — el estado es un enum; un literal dentro de un
+  contrato de integración sí se permite, una comparación no.
+- **`StartTimer` sólo lo dispara su handler** — que `Create` o un consumer lo arranquen imputaría
+  horas que nadie trabajó.
+- **Ningún tipo referencia `Minio`, `AmazonS3` ni `IFormFile`** — Task no toca bytes. Esta regla barre
+  también la capa Api, que es justo por donde entraría un `IFormFile`.
+- **Sólo los controllers de `Portal` declaran `CustomerPortal`** — abrirle al cliente un controller
+  de staff le enseñaría las notas internas, el asignado y las horas imputadas. Lo que ve el cliente
+  es `ClientRequest`.
+
+---
+
+# 51. Calendar - Microservicio de agenda (plan de 11 fases, CERRADO)
+
+Citas, series recurrentes, disponibilidad y conflictos. DB propia (`TaxVision_Calendar`), puerto dev
+**5520**, host interno `http://calendar-api:8080`, ruta `/calendar/*`. Ver
+`ADR_023_Calendar_Bounded_Context.md` y `Implementaciones/Calendar/*.md`.
+
+**Calendar no entrega avisos ni crea salas.** Publica eventos: Reminder avisa, Communication crea la
+sala de video, Notification manda los correos.
+
+## 51.1 El tiempo - leer esto antes de tocar nada
+
+Es la seccion que evita que el proximo cambio rompa el servicio en silencio.
+
+**Una serie recurrente NO tiene `StartUtc`, y no es un campo olvidado.** «Todos los lunes a las 9:00»
+es hora de pared: guardarla como 13:00Z porque Nueva York esta en UTC-4 en verano hace que, al entrar
+el invierno, la reunion aparezca a las 8:00. Una serie se guarda como **fecha de inicio + hora local +
+duracion + zona + RRULE**, y el instante se calcula al leerla. `UNTIL` si va en UTC, lo exige el
+RFC 5545. Hay una fitness function que falla si una serie almacenada gana un `StartUtc`.
+
+**Las tres formas de existir en el tiempo** son tipos distintos, no variantes del mismo:
+
+| `TimingKind` | Que guarda | Trampa que evita |
+|---|---|---|
+| `PointInTime` | `StartUtc` / `EndUtc` + zona para mostrar | - |
+| `AllDay` | `StartDate` / `EndDate` (**inclusiva**) | Guardarlo como medianoche UTC lo corre un dia para media humanidad |
+| `Recurring` | fecha + hora local + duracion + zona | El bug de DST |
+
+**`WallClock` es el unico motor de conversion.** El servicio tiene dos a mano -`Ical.Net`/NodaTime y
+`TimeZoneInfo`- y **difieren una hora entera en la hora ambigua**, sin excepcion y sin log. Las dos
+politicas de los bordes viven ahi: la hora que **no existe** se rechaza al crear y corre hacia
+adelante al expandir; la **ambigua** resuelve a la primera de las dos.
+
+**La zona se escribe `Area/Location`.** `EST` es un id IANA valido y resuelve a Bogota **sin horario de
+verano**: quien lo escribe pensando en Nueva York recibe las citas corridas medio anio. `MST` y `HST`
+igual.
+
+**No existe tabla de ocurrencias.** Una serie de tres anios son 156 ocurrencias y **una** fila; se
+expanden al vuelo. La contrapartida es que la consulta de rango carga **todas** las series del tenant:
+medido, **69,5 ms con 43 series**. El umbral de revision escrito es **2.000 series activas por
+tenant** - a partir de ahi hay que cachear las expansiones. `occurrence_expansion_duration_ms` esta
+para ver llegar ese momento.
+
+**`EditScope` es obligatorio sobre una serie y no tiene valor por defecto.** Elegirlo en silencio
+reescribe el pasado o frustra a quien queria mover todo; sin el se responde **400**.
+
+| `EditScope` | Que hace |
+|---|---|
+| `ThisOccurrence` | Escribe una excepcion (`RECURRENCE-ID`). La serie no se toca |
+| `ThisAndFollowing` | **Parte la serie en dos**: la vieja recibe `UNTIL`, nace otra desde el corte |
+| `EntireSeries` | Reescribe la regla |
+
+La **particion** conserva las excepciones anteriores al corte, descarta las posteriores y **no hereda
+el `MeetingId`**: la sala vieja pertenece a la serie vieja. Sobre la primera ocurrencia no parte -
+seria una serie vacia y otra identica a la original.
+
+## 51.2 Endpoints
+
+| Metodo | Ruta | Permiso |
+|---|---|---|
+| POST/GET | `/calendar/appointments`, `/calendar/appointments/{id}` | `calendar.write` / `calendar.read` |
+| GET | `/calendar/appointments?from&to`, `/calendar/appointments/my-day?date&timeZoneId` | `calendar.read` |
+| PUT | `/calendar/appointments/{id}/schedule` | `calendar.write` |
+| POST | `/calendar/appointments/{id}/cancel` | `calendar.write` |
+| POST/DELETE | `/calendar/appointments/{id}/attendees[/{attendeeId}]` | `calendar.write` |
+| POST | `/calendar/appointments/{id}/respond` | `calendar.respond` |
+| GET/POST | `/calendar/types`, `/calendar/types/install-standard` | `calendar.read` / `calendar.types.manage` |
+| GET | `/calendar/availability` | `calendar.read` |
+| POST/DELETE | `/calendar/feed/token` | `calendar.read` |
+| GET | `/calendar/feed/{userId}/{token}.ics` | **anonimo** - el token es la credencial |
+
+Mover una cita **no exige repetir `timeZoneId`**: hereda la que ya tenia. Mover no cambia de zona.
+
+**`my-day` necesita que le manden la zona.** Sin `timeZoneId` el dia es el de UTC, y para alguien en
+Nueva York eso mete su cena de las 20:30 en la agenda del dia siguiente. Es el valor por defecto solo
+por compatibilidad: el frontend conoce la zona del navegador y debe mandarla. Con zona, el dia va de
+medianoche a medianoche **de esa zona**, calculado con `WallClock` — que ademas corre hacia adelante la
+medianoche que no existe, la hay en las zonas que cambian el horario a las 00:00.
+
+## 51.3 El feed `.ics`
+
+Es una URL **sin sesion** que expone una agenda, porque Google y Outlook pollean el archivo sin poder
+autenticarse. Token de 32 bytes, revocable, con SHA-256 en base y el valor crudo visible una sola vez.
+`404` para token invalido, revocado o de otro usuario - distinguirlos convertiria la URL en un
+buscador de que usuarios existen. Limite **por token, no por IP**: Google pollea desde direcciones
+rotativas. Ventana -30/+365 dias.
+
+Con la base caida se sirve **la ultima copia buena** en vez de un 500: ante un error Google deja de
+actualizar, ante un archivo viejo muestra lo de ayer. Revocar borra esa copia - si no, el boton de
+revocar no serviria durante una caida.
+
+## 51.4 Eventos que publica
+
+`calendar.appointment_scheduled.v1` - `appointment_rescheduled.v1` (con `Scope`) -
+`appointment_cancelled.v1` - `occurrence_cancelled.v1` - `series_split.v1` - `attendee_added.v1` -
+`attendee_responded.v1` - `appointment_starting_soon.v1` - `appointment_meeting_room_requested.v1`
+
+`attendee_added.v1` es el que dispara **la invitacion**, no `appointment_scheduled.v1`: la cita nace
+sin asistentes y se agregan despues, asi que el primero sale con la lista vacia.
+
+Los eventos con destinatarios llevan `Recipients[] { Email, UserId? }` - pares, no dos listas
+paralelas: un cliente invitado tiene correo y no usuario, y sin el par no se sabe de quien consultar
+la preferencia de notificacion.
+
+## 51.5 Configuracion
+
+| Clave | Para |
+|---|---|
+| `ConnectionStrings:Default` | `TaxVision_Calendar` |
+| `ConnectionStrings:Redis` | cache de plan, y la ultima copia buena del feed |
+| `ServiceAuth:Clients` -> `calendar-worker` | M2M hacia Customer y Auth |
+| `OpenTelemetry:OtlpEndpoint` | metricas y trazas |
+
+## 51.6 Jobs de fondo
+
+| Job | Cada | Que |
+|---|---|---|
+| `ReminderScheduleJob` | 12 h | Pide a Reminder un aviso por ocurrencia de los proximos 60 dias |
+| `StartingSoonJob` | 5 min | `appointment_starting_soon.v1` ~15 min antes |
+| `MeetingLinkReconciliationJob` | 30 min | Vuelve a pedir la sala de las citas virtuales que se quedaron sin ella (**WARN**) |
+| `CustomerDirectoryReconciliationJob` | - | Proyeccion de clientes |
+| `CalendarRetentionJob` | 24 h | Purga lo vencido. Ver abajo |
+
+`StartingSoonJob` **no marca la fila**: una serie no tiene fila por ocurrencia, asi que la marca
+apagaria el aviso de todas las siguientes. Usa una ventana del ancho exacto del tick.
+
+**`CalendarRetentionJob` no borra una serie sin `UNTIL` ni `COUNT`.** No tiene ultima ocurrencia, asi
+que no hay fecha desde la cual llamarla vieja; purgarla por su fecha de creacion borraria la reunion
+semanal que el despacho tiene desde hace ocho anios y sigue teniendo. Las que si terminan se borran
+cuando su ultima ocurrencia quedo atras, y eso ademas alivia la consulta de rango.
+
+## 51.7 Observabilidad
+
+`appointment.created/rescheduled/cancelled_total{is_recurring}` -
+`occurrence_expansion_duration_ms` <- el termometro de la consulta de rango -
+`series_count_per_tenant` - `conflict_detected_total{blocked}` - `ics_feed_requests_total{found}` -
+`ics_feed_stale_total` <- una base caida que nadie nota.
+
+El Meter se llama `TaxVision.Calendar` y va como **`additionalMeterNames`**: un Meter con nombre
+propio que no se registre no exporta nada, y el dashboard queda vacio sin un solo error. Ojo con el
+nombre: el exporter de Prometheus **le agrega la unidad**, asi que un instrumento llamado `..._ms`
+declarado con `unit: "ms"` sale como `..._ms_milliseconds`.
+
+## 51.8 Fitness functions (`CalendarArchitectureTests`)
+
+Ademas de las comunes (Domain sin EF ni Application, controllers solo contra Application, todo
+`[HttpXxx]` con `[RateLimit]` y con `[AllowActorTypes]` salvo el feed anonimo), cuatro propias:
+
+- **Cero LINQ en Domain** - en el dominio del tiempo el bucle explicito deja ver el orden de las
+  operaciones, que es justo donde vive el bug de DST.
+- **Ningun tipo `*Occurrence*` es una entidad** - asi empezaria una tabla de ocurrencias.
+- **Ninguna serie almacenada tiene `StartUtc`** - se prueba contra la tabla, no contra el codigo: el
+  error entra el dia que alguien «arregla» el NULL con un UPDATE.
+- **Solo `MeetingLinkedConsumer` conoce los contratos de Communication** - en cuanto los conozca un
+  segundo tipo, la frontera se disuelve sin que nadie decida disolverla.

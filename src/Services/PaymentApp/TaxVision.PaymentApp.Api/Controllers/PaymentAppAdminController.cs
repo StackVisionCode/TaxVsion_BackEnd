@@ -2,10 +2,13 @@ using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Csv;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.PaymentApp.Application.Admin.Commands;
 using TaxVision.PaymentApp.Application.Admin.Queries;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using Wolverine;
@@ -26,6 +29,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("payments")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.f.admin_read")]
     [ProducesResponseType<IReadOnlyList<SaaSPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchAllTenants(
         [FromQuery] PaymentStatus? status,
@@ -39,6 +43,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
 
     [HttpGet("tenants/{tenantId:guid}/payments")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.f.admin_read")]
     [ProducesResponseType<IReadOnlyList<SaaSPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchForTenant(
         Guid tenantId,
@@ -51,6 +56,20 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     ) => Search(tenantId, status, type, from, to, page, pageSize, ct);
 
+    /// <summary>Reenvía <c>OnboardingPaymentSucceededIntegrationEvent</c>/<c>Failed</c> para un
+    /// pago de onboarding ya en estado terminal cuyo evento nunca llegó a Auth (p.ej. resuelto
+    /// por <c>PendingChargeReconciliationJob</c> antes de que ese job publicara el evento -- ver
+    /// <see cref="RepublishOnboardingPaymentResultHandler"/>). No re-ejecuta ningún cobro, solo
+    /// reenvía la notificación downstream.</summary>
+    [HttpPost("payments/{id:guid}/republish-onboarding-result")]
+    [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.g.admin_manage")]
+    public async Task<IActionResult> RepublishOnboardingResult(Guid id, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result>(new RepublishOnboardingPaymentResultCommand(id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     private const int ExportMaxRows = 5000;
 
     /// <summary>Mismos filtros que <see cref="SearchAllTenants"/> — un solo request, sin
@@ -58,6 +77,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
     /// debería moverse a un job async, fuera de scope de J.3).</summary>
     [HttpGet("payments/export")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.h.admin_export")]
     [Produces("text/csv")]
     public async Task<IActionResult> ExportCsv(
         [FromQuery] Guid? tenantId,
@@ -76,7 +96,9 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
         if (result.IsFailure)
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 
-        var csv = CsvWriter.Write(
+        // BB-17 — WriteWithBom: sin BOM, Excel abre el CSV con la codepage ANSI y los acentos de los
+        // nombres de clientes salen como mojibake. Encoding.UTF8.GetBytes() NO emite BOM.
+        var csv = CsvWriter.WriteWithBom(
             [
                 "Id",
                 "TenantId",
@@ -108,7 +130,7 @@ public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
             )
         );
 
-        return File(Encoding.UTF8.GetBytes(csv), "text/csv", $"saas-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
+        return File(csv, "text/csv", $"saas-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
     }
 
     private async Task<IActionResult> Search(

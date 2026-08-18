@@ -65,7 +65,14 @@ public static class RedeemPaymentLinkHandler
         if (!link.IsRedeemable(nowUtc))
             return Result.Failure<RedeemPaymentLinkResponse>(notFound);
 
-        var config = await configs.GetByTenantAndProviderAsync(link.TenantId, PaymentProviderCode.Stripe, ct);
+        // Fase 2B: cobra con el proveedor que ELIGIÓ el taxpayer (no Stripe fijo). Debe tener adapter
+        // registrado — si no, el método nunca fue ofrecible y esto es un intento inválido.
+        if (!providerFactory.IsRegistered(command.Provider))
+            return Result.Failure<RedeemPaymentLinkResponse>(
+                new Error("PaymentLink.ProviderUnavailable", "The selected payment provider is not available.")
+            );
+
+        var config = await configs.GetByTenantAndProviderAsync(link.TenantId, command.Provider, ct);
         if (config is null || !config.IsActive || config.SecretKeyEncrypted is null)
             return Result.Failure<RedeemPaymentLinkResponse>(notFound);
 
@@ -90,8 +97,7 @@ public static class RedeemPaymentLinkHandler
         if (attachResult.IsFailure)
             return Result.Failure<RedeemPaymentLinkResponse>(attachResult.Error);
 
-        var secretKey = secretProtector.Unprotect(config.SecretKeyEncrypted.CipherText);
-        if (string.IsNullOrEmpty(secretKey))
+        if (!secretProtector.TryUnprotect(config.SecretKeyEncrypted.CipherText, out var secretKey, out _))
         {
             TenantPaymentChargeOutcome.FailPayment(
                 payment,
@@ -231,6 +237,23 @@ public static class RedeemPaymentLinkHandler
                 AmountCents = link.Amount.AmountCents,
                 Currency = link.Amount.Currency,
                 UsedAtUtc = nowUtc,
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
+        // Fase 3: señal "pagado" con la referencia externa (id de factura) — Billing la consume para
+        // marcar la factura Paid. Distinta de PaymentLinkUsed ("redimido"): esta afirma cobro exitoso.
+        await bus.PublishAsync(
+            new TenantPaymentSucceededIntegrationEvent
+            {
+                TenantId = payment.TenantId,
+                TenantPaymentId = payment.Id,
+                ProviderCode = payment.ProviderCode.ToString(),
+                PurposeKind = payment.Purpose.Kind.ToString(),
+                ExternalReferenceId = payment.Purpose.ExternalReferenceId,
+                AmountCents = payment.Amount.AmountCents,
+                Currency = payment.Amount.Currency,
+                PaidAtUtc = nowUtc,
                 CorrelationId = correlation.CorrelationId,
             }
         );

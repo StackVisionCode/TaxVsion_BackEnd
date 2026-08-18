@@ -18,6 +18,22 @@ export interface RabbitContext {
 
 let context: RabbitContext | undefined;
 
+/**
+ * H-15 — cooldowns de reintento, en milisegundos. Son los mismos tres que aplican los 17
+ * servicios .NET (`WolverineFailurePolicies`), y ese es justamente el punto: hasta ahora un
+ * handler que fallaba en .NET tenia 4 intentos y en Node exactamente 1, sin que nadie hubiera
+ * elegido ninguna de las dos cifras — cada lado heredo el default de su libreria.
+ */
+export const RETRY_COOLDOWNS_MS = [1_000, 5_000, 15_000] as const;
+
+/** Cabecera con el numero de intento ya consumido. La pone este servicio al reencolar. */
+export const ATTEMPT_HEADER = 'x-taxvision-attempt';
+
+/** Cola de espera del intento n (1-based). Se deriva del nombre de la cola principal. */
+export function retryQueueName(attempt: number): string {
+  return `${config.rabbitmq.queue}.retry.${attempt}`;
+}
+
 async function tryConnect(): Promise<RabbitContext> {
   // Pass an object so amqplib skips url-parse and uses decoded credentials verbatim.
   const parsed = new URL(config.rabbitmq.uri);
@@ -46,6 +62,20 @@ async function tryConnect(): Promise<RabbitContext> {
     deadLetterRoutingKey: config.rabbitmq.dlq,
   });
   await channel.bindQueue(config.rabbitmq.queue, config.rabbitmq.exchange, '');
+
+  // H-15 — cadena de espera con TTL. RabbitMQ no sabe reintentar con backoff por si solo: la
+  // unica forma sin plugins es una cola por cooldown cuyo `messageTtl` vence y dead-letterea el
+  // mensaje de vuelta a la cola principal. `nack(requeue=true)` NO vale como alternativa —
+  // reencola al frente sin esperar nada y deja al consumidor girando en bucle cerrado sobre el
+  // mismo mensaje. Estas colas NO se bindean al exchange: solo reciben por sendToQueue directo.
+  for (const [index, ttl] of RETRY_COOLDOWNS_MS.entries()) {
+    await channel.assertQueue(retryQueueName(index + 1), {
+      durable: true,
+      messageTtl: ttl,
+      deadLetterExchange: '',
+      deadLetterRoutingKey: config.rabbitmq.queue,
+    });
+  }
 
   const emitter = connection as unknown as EventEmitter;
   emitter.on('error', (err: Error) => logger.error({ err: err.message }, 'RabbitMQ connection error'));

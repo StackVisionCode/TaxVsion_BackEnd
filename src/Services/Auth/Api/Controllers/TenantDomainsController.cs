@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
@@ -13,7 +15,7 @@ namespace TaxVision.Auth.Api.Controllers;
 
 /// <summary>
 /// Fase A5 — administración de dominios propios (custom hostnames) del tenant.
-/// Los subdominios *.taxprocore.com no se gestionan aquí: se crean automáticamente
+/// Los subdominios *.taxproffice.com no se gestionan aquí: se crean automáticamente
 /// al nacer el tenant (Fase A3, TenantCreatedConsumer) y nunca requieren
 /// provisioning en Cloudflare.
 /// </summary>
@@ -24,6 +26,7 @@ namespace TaxVision.Auth.Api.Controllers;
 public sealed class TenantDomainsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
+    [RateLimit("auth.f.tenant_domain_read")]
     [ProducesResponseType<IReadOnlyList<TenantDomainResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(CancellationToken ct)
     {
@@ -41,6 +44,7 @@ public sealed class TenantDomainsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Inicia el alta de un dominio propio: registra el intento y arranca el provisioning en Cloudflare.</summary>
     [HttpPost]
+    [RateLimit("auth.g.tenant_domain_manage")]
     [ProducesResponseType<TenantDomainCreatedResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateTenantDomainRequest request, CancellationToken ct)
     {
@@ -59,6 +63,7 @@ public sealed class TenantDomainsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Consulta (sin mutar) el estado de verificación DNS/TLS reportado por Cloudflare.</summary>
     [HttpPut("{domainId:guid}/verify")]
+    [RateLimit("auth.g.tenant_domain_manage")]
     [ProducesResponseType<TenantDomainVerificationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Verify(Guid domainId, CancellationToken ct)
     {
@@ -75,6 +80,7 @@ public sealed class TenantDomainsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Confirma con Cloudflare que el hostname está listo y lo pasa a Active.</summary>
     [HttpPut("{domainId:guid}/activate")]
+    [RateLimit("auth.g.tenant_domain_manage")]
     [ProducesResponseType<TenantDomainResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Activate(Guid domainId, CancellationToken ct)
     {
@@ -90,6 +96,7 @@ public sealed class TenantDomainsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPut("{domainId:guid}/disable")]
+    [RateLimit("auth.g.tenant_domain_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Disable(Guid domainId, CancellationToken ct)
     {
@@ -105,6 +112,7 @@ public sealed class TenantDomainsController(IMessageBus bus) : ControllerBase
 
     /// <summary>Renombra el subdominio primario ya activo (Fase A7) — no aplica a custom hostnames.</summary>
     [HttpPut("{domainId:guid}/subdomain")]
+    [RateLimit("auth.g.tenant_domain_manage")]
     [ProducesResponseType<TenantDomainResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ChangeSubdomain(
         Guid domainId,

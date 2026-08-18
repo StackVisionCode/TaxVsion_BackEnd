@@ -12,6 +12,15 @@ public interface IPaymentLinkRepository
 
     Task<PaymentLink?> GetByRelatedTenantPaymentIdAsync(Guid tenantPaymentId, CancellationToken ct = default);
 
+    /// <summary>El link Active más reciente para una referencia externa (factura) del tenant. Lo usa el
+    /// resolver estable para reusar un link vigente antes de acuñar uno nuevo. Tenant explícito +
+    /// IgnoreQueryFilters (alcanzable desde el resolver público, sin tenant en contexto).</summary>
+    Task<PaymentLink?> GetActiveByExternalReferenceAsync(
+        Guid tenantId,
+        string externalReferenceId,
+        CancellationToken ct = default
+    );
+
     Task<IReadOnlyList<PaymentLink>> SearchByTenantAsync(
         Guid tenantId,
         PaymentLinkStatus? status,

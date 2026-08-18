@@ -9,7 +9,7 @@ namespace TaxVision.Correspondence.Application.Reconciliation;
 /// <summary>
 /// Implementación de <see cref="ICustomerEmailReconciliationService"/>. Reusa exactamente el mismo
 /// cliente M2M que <c>TenantCustomerBackfillService</c> (<see cref="ICorrespondenceCustomerClient"/>,
-/// <c>GET /customers/internal/list</c>) — sin cliente/endpoint nuevo.
+/// <c>GET /internal/customers/list</c>) — sin cliente/endpoint nuevo.
 ///
 /// <para>
 /// Limitación honesta (WHY, no se disfraza): <c>ListActiveCustomersAsync</c> solo devuelve

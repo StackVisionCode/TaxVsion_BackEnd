@@ -1,6 +1,7 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -54,6 +55,7 @@ public sealed class PermissionsBackfillService(
             var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
             var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
             var tenantContext = scope.ServiceProvider.GetRequiredService<TenantContext>();
+            var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
 
             // RBAC Fase 5 — este job recorre usuarios de TODOS los tenants en un mismo batch, no
             // uno solo — IgnoreQueryFilters() explícito porque es el descubrimiento cross-tenant
@@ -82,11 +84,13 @@ public sealed class PermissionsBackfillService(
                     new UserRolesChangedIntegrationEvent
                     {
                         TenantId = user.TenantId,
+                        CorrelationId = correlation.CorrelationId,
                         UserId = user.Id,
                         PermissionsVersion = user.PermissionsVersion,
                         RoleNames = userRoles.Select(role => role.Name).ToArray(),
                         RoleIds = userRoles.Select(role => role.Id).ToArray(),
                         PermissionCodes = permissionCodes.ToArray(),
+                        ActorType = user.ActorType.ToString(),
                     }
                 );
                 user.MarkPermissionsBackfilled(DateTime.UtcNow);

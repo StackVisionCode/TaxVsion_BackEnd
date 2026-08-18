@@ -1,4 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.CloudStorage.Api.Common;
@@ -22,6 +24,7 @@ public sealed class PrivateShareController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Fase C4 — fileId es obligatorio cuando el token es de un link de tipo Folder (ver FolderShareCoverage).</summary>
     [HttpGet("private/{token}")]
+    [RateLimit("cloudstorage.f.private_share_resolve")]
     public async Task<IActionResult> ResolvePrivate(string token, [FromQuery] Guid? fileId, CancellationToken ct)
     {
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))

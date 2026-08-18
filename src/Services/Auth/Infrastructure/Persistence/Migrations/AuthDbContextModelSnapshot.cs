@@ -22,6 +22,53 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("TaxVision.Auth.Application.Onboarding.Sagas.TenantOnboardingProcessManager", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid?>("PasswordHashReference")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OnboardingSagas", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.Audit.AuthAuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -126,6 +173,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -206,6 +256,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AcceptAttempts")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("AcceptedAtUtc")
                         .HasColumnType("datetime2");
@@ -460,6 +513,376 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "RevokedAtUtc");
 
                     b.ToTable("TrustedDevices", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.EmailVerification.EmailVerificationChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OtpHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("ResendCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email", "CreatedAtUtc");
+
+                    b.ToTable("EmailVerificationChallenges", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.SubdomainReservations.OnboardingSubdomainReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReservedByEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("nvarchar(63)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId");
+
+                    b.HasIndex("Slug", "ConsumedAtUtc", "ExpiresAtUtc");
+
+                    b.ToTable("OnboardingSubdomainReservations", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.OnboardingCodeReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BenefitType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("CodeReservationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("DiscountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SnapshotHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeReservationId");
+
+                    b.HasIndex("OnboardingId");
+
+                    b.ToTable("OnboardingCodeReservations", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AcceptedFromIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)")
+                        .HasDefaultValue("Monthly");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("CurrentStep")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("EmailVerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FailedStep")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("FullyCovered")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("GrossAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<long?>("NetAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("NextRetryAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OfficeName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("PaymentCompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PaymentReference")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("PaymentStatus")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ProvisioningStartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReceiptFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReferralAttributionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RegistrationCompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RegistrationTokenExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RegistrationTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("RegistrationTokenUsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RequestedSubdomain")
+                        .HasMaxLength(63)
+                        .HasColumnType("nvarchar(63)");
+
+                    b.Property<int>("RetryAttempt")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<Guid?>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("TermsAcceptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TermsContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("TermsVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("TotalDiscountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NextRetryAtUtc")
+                        .HasDatabaseName("IX_TenantOnboardings_NextRetryAtUtc")
+                        .HasFilter("[NextRetryAtUtc] IS NOT NULL");
+
+                    b.HasIndex("RegistrationTokenHash")
+                        .IsUnique()
+                        .HasFilter("[RegistrationTokenHash] IS NOT NULL");
+
+                    b.HasIndex("Email", "Status");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
+
+                    b.ToTable("TenantOnboardings", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TermsVersions.TermsVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContentFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ContentUri")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("EffectiveFromUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind", "Locale", "EffectiveFromUtc");
+
+                    b.ToTable("TermsVersions", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.RefreshTokens.RefreshToken", b =>
@@ -734,6 +1157,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "documents.manage",
                             Description = "Gestionar documentos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "documents",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000152"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "documents.branding.manage",
+                            Description = "Configurar el branding de documentos del tenant",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
@@ -1208,6 +1644,97 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000158"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "sms.send",
+                            Description = "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "sms",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000159"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "catalog.read",
+                            Description = "Ver el catálogo de productos/servicios",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "catalog",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000160"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "catalog.write",
+                            Description = "Crear/editar productos, servicios y categorías",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "catalog",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000161"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "catalog.delete",
+                            Description = "Borrar productos, servicios y categorías",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "catalog",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000162"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "inventory.read",
+                            Description = "Ver stock, proveedores y movimientos",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "inventory",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000163"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "inventory.write",
+                            Description = "Gestionar proveedores y umbrales de stock",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "inventory",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000164"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "inventory.adjust",
+                            Description = "Ajustar stock (registrar movimientos)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "inventory",
+                            PlatformOnly = false
                         },
                         new
                         {
@@ -2508,6 +3035,188 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "tenant",
                             PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000153"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "onboarding.admin.manage",
+                            Description = "Ver y administrar onboardings de PayFlow en ManualReview/ProvisioningFailed de cualquier tenant (resume, corrección, force-complete, cancelar y reembolsar)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "onboarding",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000154"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "notes.read",
+                            Description = "Ver notas del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000155"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "notes.manage",
+                            Description = "Crear, editar, archivar/restaurar y adjuntar archivos a notas propias",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000156"),
+                            AllowedActorTypes = "TenantAdmin,PlatformAdmin",
+                            Code = "notes.view_all",
+                            Description = "Ver, archivar y borrar notas de cualquier autor del tenant (gobernanza)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000157"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "notes.portal.read",
+                            Description = "El cliente puede ver sus notas marcadas como visibles para el cliente",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "notes",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000165"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "reminders.read",
+                            Description = "Ver los recordatorios propios",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "reminders",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000166"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "reminders.write",
+                            Description = "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "reminders",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000167"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.read",
+                            Description = "Ver las tareas del tenant",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000168"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.write",
+                            Description = "Crear, editar, cerrar y reabrir tareas propias o asignadas a uno mismo",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000169"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.assign",
+                            Description = "Asignar una tarea a otra persona del tenant (sin restricción de dirección)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000170"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.manage_all",
+                            Description = "Cerrar, editar o reasignar la tarea de cualquier usuario del tenant (supervisión)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000171"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.templates.manage",
+                            Description = "Crear y editar las plantillas de tarea de la firma",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000172"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "tasks.client_requests.manage",
+                            Description = "Pedirle documentacion al cliente y cerrar lo que mande",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000173"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "tasks.portal.client_requests",
+                            Description = "El cliente ve sus pedidos y registra lo que sube",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "tasks",
+                            PlatformOnly = false
                         });
                 });
 
@@ -2826,9 +3535,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("AcceptedByUserId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("IpAddress")
+                    b.Property<string>("AcceptedFromIp")
                         .HasMaxLength(45)
-                        .HasColumnType("nvarchar(45)");
+                        .HasColumnType("nvarchar(45)")
+                        .HasColumnName("IpAddress");
+
+                    b.Property<string>("AcceptedInContext")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -2838,6 +3557,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<Guid>("TermsVersionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("UserAgent")
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
@@ -2846,6 +3568,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "AcceptedAtUtc")
                         .IsDescending(false, true);
+
+                    b.HasIndex("TenantId", "AcceptedByUserId", "TermsVersionId")
+                        .IsUnique();
 
                     b.ToTable("TenantTermsAcceptances", (string)null);
                 });
@@ -2900,6 +3625,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<Guid?>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("PasswordChangedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -2934,6 +3662,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasColumnName("Roles");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique()
+                        .HasFilter("[OnboardingId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "ActorType");
 
@@ -3000,6 +3732,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.OnboardingCodeReservation", b =>
+                {
+                    b.HasOne("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", null)
+                        .WithMany("CodeReservations")
+                        .HasForeignKey("OnboardingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Auth.Domain.RefreshTokens.RefreshToken", b =>
                 {
                     b.HasOne("TaxVision.Auth.Domain.Sessions.UserSession", null)
@@ -3051,6 +3792,11 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Onboarding.TenantOnboardings.TenantOnboarding", b =>
+                {
+                    b.Navigation("CodeReservations");
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.Roles.Role", b =>

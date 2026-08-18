@@ -342,7 +342,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("FileMetadataRefs", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Signature.Domain.Projections.UserPermissionsProjection", b =>
+            modelBuilder.Entity("TaxVision.Signature.Domain.Projections.SignerRoleAuditSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -373,7 +373,35 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("UserPermissionsProjections", (string)null);
+                    b.ToTable("SignerRoleAuditSnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Signature.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Signature.Domain.Requests.SignatureField", b =>

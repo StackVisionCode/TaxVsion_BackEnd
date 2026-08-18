@@ -1,7 +1,7 @@
 using System.Net.Sockets;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace BuildingBlocks.Health;
+namespace BuildingBlocks.Web.Health;
 
 public sealed class TcpEndpointHealthCheck(string host, int port) : IHealthCheck
 {

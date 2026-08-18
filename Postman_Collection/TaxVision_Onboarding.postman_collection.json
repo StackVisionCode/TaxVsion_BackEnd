@@ -1,0 +1,415 @@
+{
+	"info": {
+		"_postman_id": "f4a1c8e2-6b3d-4a9e-9c1f-8e2d5a7b3c90",
+		"name": "TaxVision - Onboarding (PayFlow)",
+		"description": "Flujo público de onboarding pago-primero (PayFlow, Fases 3-19). Usa el environment TaxVisionBackEnd (variable UrlBase apuntando al Gateway). Todos los endpoints de este flujo son anonimos salvo Publish_TermsVersion (PlatformAdmin). Ver documents/architecture/payflowguide/API_Contract.md para el contrato completo.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Email OTP",
+			"item": [
+				{
+					"name": "CreateEmailChallenge",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const response = pm.response.json();",
+									"pm.environment.set(\"onboardingChallengeId\", response.challengeId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{onboardingBuyerEmail}}\",\n  \"firstNameHint\": \"Ada\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/email-challenges",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "email-challenges"]
+						},
+						"description": "Pide un OTP de 6 digitos al email indicado. Throttle: 5/email/hora + 10/IP/hora (Onboarding.OtpRateLimited, 400)."
+					},
+					"response": []
+				},
+				{
+					"name": "VerifyEmailChallenge",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 204\", () => pm.response.code === 204 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"{{onboardingOtpCode}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/verify",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "email-challenges", "{{onboardingChallengeId}}", "verify"]
+						},
+						"description": "Verifica el codigo OTP (obtenerlo del email real o de los logs de Notification en dev). Bloquea el challenge tras 5 intentos fallidos (Onboarding.OtpLocked)."
+					},
+					"response": []
+				},
+				{
+					"name": "ResendEmailChallenge",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/email-challenges/{{onboardingChallengeId}}/resend",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "email-challenges", "{{onboardingChallengeId}}", "resend"]
+						},
+						"description": "Reenvia un codigo nuevo. Cooldown 60s (Onboarding.ResendCooldown) + max 5 reenvios (Onboarding.ResendLimitExceeded)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "2. Checkout",
+			"item": [
+				{
+					"name": "CreateOnboarding",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const response = pm.response.json();",
+									"pm.environment.set(\"onboardingId\", response.onboardingId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{onboardingBuyerEmail}}\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"phone\": \"+18095551234\",\n  \"planId\": \"{{onboardingPlanId}}\",\n  \"emailVerificationChallengeId\": \"{{onboardingChallengeId}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding"]
+						},
+						"description": "Crea el TenantOnboarding. Requiere el challenge (paso 1) ya verificado. Unico endpoint publico que devuelve onboardingId en claro — retenerlo solo en memoria durante esta sesion."
+					},
+					"response": []
+				},
+				{
+					"name": "StartOnboardingCheckout",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const response = pm.response.json();",
+									"pm.environment.set(\"onboardingPaymentId\", response.paymentId);",
+									"pm.environment.set(\"onboardingCheckoutUrl\", response.checkoutUrl);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"onboardingId\": \"{{onboardingId}}\",\n  \"payerEmail\": \"{{onboardingBuyerEmail}}\",\n  \"successUrl\": \"https://taxvision.com/onboarding/success?session_id={CHECKOUT_SESSION_ID}\",\n  \"cancelUrl\": \"https://taxvision.com/onboarding/cancelled\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/checkout",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "checkout"]
+						},
+						"description": "Arranca la Stripe Checkout Session (M2M a PaymentApp). Abrir checkoutUrl en el browser para pagar con la tarjeta de test 4242 4242 4242 4242. Sesion valida 24h."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Registration",
+			"item": [
+				{
+					"name": "GetCurrentTermsVersion",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const response = pm.response.json();",
+									"pm.environment.set(\"onboardingTermsVersionId\", response.termsVersionId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/terms/current?kind=TermsOfService&locale=en-US",
+							"host": ["{{UrlBase}}"],
+							"path": ["auth", "onboarding", "terms", "current"],
+							"query": [
+								{ "key": "kind", "value": "TermsOfService" },
+								{ "key": "locale", "value": "en-US" }
+							]
+						},
+						"description": "Terminos vigentes a mostrar en el form. termsVersionId debe viajar tal cual en CompleteRegistration."
+					},
+					"response": []
+				},
+				{
+					"name": "PreviewRegistration",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{onboardingRegistrationToken}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/register/preview",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "register", "preview"]
+						},
+						"description": "Resuelve el RegistrationToken (llega por email tras el pago) para prellenar el form. onboardingRegistrationToken se setea manualmente desde el link del email (dev: revisar logs de Notification/Postmaster)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "CheckAndReserveSubdomain",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"slug\": \"{{onboardingSubdomainSlug}}\",\n  \"onboardingId\": \"{{onboardingId}}\",\n  \"email\": \"{{onboardingBuyerEmail}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/subdomains/check",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "subdomains", "check"]
+						},
+						"description": "A pesar del nombre, tambien RESERVA el slug por 60 minutos (idempotente para el mismo onboardingId)."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "CompleteOnboardingRegistration",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 202\", () => pm.response.code === 202 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const response = pm.response.json();",
+									"pm.environment.set(\"onboardingStatusToken\", response.statusUrl.split(\"token=\")[1]);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{onboardingRegistrationToken}}\",\n  \"password\": \"Str0ng-P@ssw0rd!\",\n  \"officeName\": \"FreedomTax LLC\",\n  \"subdomain\": \"{{onboardingSubdomainSlug}}\",\n  \"termsAccepted\": true,\n  \"termsVersionId\": \"{{onboardingTermsVersionId}}\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/register/complete",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "register", "complete"]
+						},
+						"description": "Canjea el token, crea el password del owner y arranca la Saga de provisioning (Tenant -> Owner -> Subscription -> Storage -> Subdomain -> Defaults). El password se hashea en la primera linea del handler, nunca cruza RabbitMQ en claro."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. Status & Receipt",
+			"item": [
+				{
+					"name": "GetOnboardingStatus",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/status?token={{onboardingStatusToken}}",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "status"],
+							"query": [{ "key": "token", "value": "{{onboardingStatusToken}}" }]
+						},
+						"description": "Poll cada 2-3s hasta status=Completed (o ManualReview/ProvisioningFailed terminal). Nunca devuelve onboardingId."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "DownloadReceipt",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/receipts/{{onboardingReceiptFileId}}/download",
+							"host": ["{{UrlBase}}"],
+							"path": ["onboarding", "receipts", "{{onboardingReceiptFileId}}", "download"]
+						},
+						"description": "302 redirect a una URL presignada fresca de CloudStorage. fileId viene del link del email de recibo. Postman sigue el redirect por defecto (ver Settings > 'Automatically follow redirects')."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "5. Terms (Admin)",
+			"item": [
+				{
+					"name": "Publish_TermsVersion",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 201\", () => pm.response.code === 201 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const response = pm.response.json();",
+									"pm.environment.set(\"onboardingTermsVersionId\", response.termsVersionId);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{platformAdminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "Kind", "value": "TermsOfService", "type": "text" },
+								{ "key": "Version", "value": "2026-08-01", "type": "text" },
+								{ "key": "Locale", "value": "en-US", "type": "text" },
+								{ "key": "EffectiveUntilUtc", "value": "", "type": "text", "disabled": true },
+								{ "key": "File", "type": "file", "src": [], "description": "Documento .html (text/html) real de ToS/Privacy. Max 5MB." }
+							]
+						},
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/terms/publish",
+							"host": ["{{UrlBase}}"],
+							"path": ["auth", "onboarding", "terms", "publish"]
+						},
+						"description": "Solo PlatformAdmin. Sube el documento HTML real a CloudStorage (patron D0/D1, MinIO propio de Auth) y publica una nueva version de terminos legales. Kind es TermsOfService o PrivacyPolicy -- para tener ambos vigentes hay que publicar dos veces (una por Kind), aunque el archivo subido sea el mismo. El hash SHA-256 se calcula del lado del servidor a partir de los bytes subidos, nunca se confia en un valor del cliente."
+					},
+					"response": []
+				},
+				{
+					"name": "GetTermsContent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"content-type es text/html\", () => pm.response.headers.get(\"Content-Type\").includes(\"text/html\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/auth/onboarding/terms/{{onboardingTermsVersionId}}/content",
+							"host": ["{{UrlBase}}"],
+							"path": ["auth", "onboarding", "terms", "{{onboardingTermsVersionId}}", "content"]
+						},
+						"description": "Publico y anonimo (rate-limited, policy \"terms-content-download\"). Mediador entre el frontend de onboarding y la URL presignada real de CloudStorage -- en cada pedido resuelve una URL fresca y devuelve el HTML inline (a diferencia de OnboardingReceiptDownloadController, este NO redirige: el frontend necesita el texto para renderizarlo, no un link de descarga). El termsVersionId de GetCurrentTermsVersion o Publish_TermsVersion funciona como capability opaca."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

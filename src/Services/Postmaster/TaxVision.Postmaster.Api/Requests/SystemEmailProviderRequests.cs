@@ -13,5 +13,6 @@ public sealed record UpsertSystemEmailProviderRequest(
     bool UseTls,
     string? Username,
     string? Password,
-    int RateLimitPerMinute
+    int RateLimitPerMinute,
+    int? BulkRateLimitPerMinute = null
 );

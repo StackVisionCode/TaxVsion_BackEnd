@@ -11,7 +11,7 @@ public class GraphWatchClientTests
 {
     private static GraphWatchClient CreateClient(
         FakeHttpMessageHandler handler,
-        string notificationUrl = "https://api.taxprocore.com/connectors/webhooks/graph-notification",
+        string notificationUrl = "https://api.taxproffice.com/connectors/webhooks/graph-notification",
         string clientState = "shared-secret"
     ) =>
         new(

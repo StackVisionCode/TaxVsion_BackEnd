@@ -29,9 +29,11 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PermissionsVersion).IsRequired();
         builder.Property(user => user.PermissionsBackfilledAt);
         builder.Property(user => user.CreatedAtUtc).IsRequired();
+        builder.Property(user => user.OnboardingId);
         builder.HasIndex(user => new { user.TenantId, user.Email }).IsUnique();
         builder.HasIndex(user => new { user.TenantId, user.ActorType });
         builder.HasIndex(user => new { user.TenantId, user.CustomerId }).HasFilter("[CustomerId] IS NOT NULL");
+        builder.HasIndex(user => user.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
         builder.Ignore(user => user.Roles);
 
         var converter = new ValueConverter<List<string>, string>(

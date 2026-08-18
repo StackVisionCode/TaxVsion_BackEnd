@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +21,7 @@ public sealed class NotificationsController(IMessageBus bus) : ControllerBase
     [HttpGet]
     [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("notification.f.list")]
     [ProducesResponseType<PagedResult<NotificationResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetNotifications(
         [FromQuery] NotificationStatus? status = null,

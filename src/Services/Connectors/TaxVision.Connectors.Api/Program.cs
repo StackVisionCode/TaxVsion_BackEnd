@@ -1,16 +1,20 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -55,14 +59,10 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "connectors-se
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // M2M interno (Fase 8) — solo otro microservicio backend, nunca un usuario humano. Mismo patrón
 // que Subscription (claim actor_type=Service emitido por Auth vía client_credentials).
@@ -100,6 +100,32 @@ builder.Services.AddRateLimiter(options =>
     );
 });
 
+// RateLimit Fase 2 — mismo piloto que Customer (Fase 6) y Tenant (Fase 2.1). Flag OFF por default
+// (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+//
+// Auditoria RateLimit hallazgo #2 — Connectors ganó un acquirer de token M2M saliente (ver
+// ConnectorsInfrastructure.DependencyInjection.AddRateLimitTierQuotas), así que ahora también
+// registra IPlanRateLimitReader — la cuota escala por plan en vez de caer siempre a
+// NullPlanRateLimitReader.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+
+// Rate limiting por tenant/usuario (Fase 4.8 del plan) — arrancaba en cero salvo el limiter
+// nativo "connectors-webhook" de arriba (que se deja intacto, protege los 2 webhooks
+// publicos). IConnectionMultiplexer/IRateCounter ya registrados en Connectors.Infrastructure
+// (RedisProviderRateLimiter/D3 Fase 5) — no se duplican acá.
+builder.Services.AddTieredRateLimiting();
+
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
@@ -125,16 +151,14 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, ConnectorsDbContext>();
     options.Policies.AutoApplyTransactions();
 
-    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
     options
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
-        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
-    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+        .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 
     // Sin estas reglas, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
     // silencio — ningun otro servicio llega a recibirlo.
@@ -176,10 +200,10 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// Setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter global de
+// Setea BuildingBlocks.Web.Tenancy.TenantContext desde el JWT para el HasQueryFilter global de
 // ConnectorsDbContext. Va ANTES de UseAuthorization() — en modo Projection, [HasPermission]
 // necesita el tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
@@ -191,3 +215,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

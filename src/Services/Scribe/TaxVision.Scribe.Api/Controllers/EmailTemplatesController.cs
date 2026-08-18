@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -46,6 +48,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [HasPermission(ScribePermissions.TemplatesWrite)]
+    [RateLimit("scribe.g.template_manage")]
     [ProducesResponseType<EmailTemplateResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateEmailTemplateRequest request, CancellationToken ct)
     {
@@ -68,6 +71,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/versions")]
     [HasPermission(ScribePermissions.TemplatesWrite)]
+    [RateLimit("scribe.g.template_manage")]
     [ProducesResponseType<EmailTemplateVersionResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddDraftVersion(
         Guid id,
@@ -98,6 +102,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/versions/{versionId:guid}/publish")]
     [HasPermission(ScribePermissions.TemplatesWrite)]
+    [RateLimit("scribe.g.template_manage")]
     [ProducesResponseType<EmailTemplateVersionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> PublishVersion(Guid id, Guid versionId, CancellationToken ct)
     {
@@ -110,6 +115,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/versions/{versionId:guid}/preview")]
     [HasPermission(ScribePermissions.TemplatesRead)]
+    [RateLimit("scribe.j.template_preview")]
     [ProducesResponseType<PreviewTemplateResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Preview(
         Guid id,
@@ -128,6 +134,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/versions/{versionId:guid}/validate")]
     [HasPermission(ScribePermissions.TemplatesRead)]
+    [RateLimit("scribe.f.template_validate")]
     [ProducesResponseType<TemplateValidationOutcome>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Validate(Guid id, Guid versionId, CancellationToken ct)
     {

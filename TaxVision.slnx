@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/BuildingBlocks/BuildingBlocks.csproj" />
+    <Project Path="src/BuildingBlocks/Messaging/BuildingBlocks.Messaging.csproj" />
+    <Project Path="src/BuildingBlocks/Authorization/BuildingBlocks.Authorization.csproj" />
     <Project Path="src/BuildingBlocks/BuildingBlocks.Infrastructure/BuildingBlocks.Infrastructure.csproj" />
     <Project Path="src/BuildingBlocks/BuildingBlocks.Web/BuildingBlocks.Web.csproj" />
   </Folder>
@@ -80,6 +82,56 @@
     <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Domain/TaxVision.Correspondence.Domain.csproj" />
     <Project Path="src/Services/Correspondence/TaxVision.Correspondence.Infrastructure/TaxVision.Correspondence.Infrastructure.csproj" />
   </Folder>
+  <!-- NotesService -->
+  <Folder Name="/src/Services/Notes/">
+    <Project Path="src/Services/Notes/TaxVision.Notes.Api/TaxVision.Notes.Api.csproj" />
+    <Project Path="src/Services/Notes/TaxVision.Notes.Application/TaxVision.Notes.Application.csproj" />
+    <Project Path="src/Services/Notes/TaxVision.Notes.Domain/TaxVision.Notes.Domain.csproj" />
+    <Project Path="src/Services/Notes/TaxVision.Notes.Infrastructure/TaxVision.Notes.Infrastructure.csproj" />
+  </Folder>
+  <!-- SmsService -->
+  <Folder Name="/src/Services/Sms/">
+    <Project Path="src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj" />
+    <Project Path="src/Services/Sms/TaxVision.Sms.Application/TaxVision.Sms.Application.csproj" />
+    <Project Path="src/Services/Sms/TaxVision.Sms.Domain/TaxVision.Sms.Domain.csproj" />
+    <Project Path="src/Services/Sms/TaxVision.Sms.Infrastructure/TaxVision.Sms.Infrastructure.csproj" />
+  </Folder>
+  <!-- ReminderService -->
+  <Folder Name="/src/Services/Reminder/">
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Api/TaxVision.Reminder.Api.csproj" />
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Application/TaxVision.Reminder.Application.csproj" />
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Domain/TaxVision.Reminder.Domain.csproj" />
+    <Project Path="src/Services/Reminder/TaxVision.Reminder.Infrastructure/TaxVision.Reminder.Infrastructure.csproj" />
+  </Folder>
+  <!-- CalendarService -->
+  <Folder Name="/src/Services/Calendar/">
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Api/TaxVision.Calendar.Api.csproj" />
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Application/TaxVision.Calendar.Application.csproj" />
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Domain/TaxVision.Calendar.Domain.csproj" />
+    <Project Path="src/Services/Calendar/TaxVision.Calendar.Infrastructure/TaxVision.Calendar.Infrastructure.csproj" />
+  </Folder>
+
+  <!-- TasksService -->
+  <Folder Name="/src/Services/Tasks/">
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Api/TaxVision.Tasks.Api.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Application/TaxVision.Tasks.Application.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Domain/TaxVision.Tasks.Domain.csproj" />
+    <Project Path="src/Services/Tasks/TaxVision.Tasks.Infrastructure/TaxVision.Tasks.Infrastructure.csproj" />
+  </Folder>
+  <!-- CatalogService -->
+  <Folder Name="/src/Services/Catalog/">
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" />
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Application/TaxVision.Catalog.Application.csproj" />
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Domain/TaxVision.Catalog.Domain.csproj" />
+    <Project Path="src/Services/Catalog/TaxVision.Catalog.Infrastructure/TaxVision.Catalog.Infrastructure.csproj" />
+  </Folder>
+  <!-- InventoryService -->
+  <Folder Name="/src/Services/Inventory/">
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Api/TaxVision.Inventory.Api.csproj" />
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Application/TaxVision.Inventory.Application.csproj" />
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Domain/TaxVision.Inventory.Domain.csproj" />
+    <Project Path="src/Services/Inventory/TaxVision.Inventory.Infrastructure/TaxVision.Inventory.Infrastructure.csproj" />
+  </Folder>
   <!-- PostmasterService -->
   <Folder Name="/src/Services/Postmaster/">
     <Project Path="src/Services/Postmaster/TaxVision.Postmaster.Api/TaxVision.Postmaster.Api.csproj" />
@@ -101,6 +153,20 @@
     <Project Path="src/Services/Signature/TaxVision.Signature.Domain/TaxVision.Signature.Domain.csproj" />
     <Project Path="src/Services/Signature/TaxVision.Signature.Infrastructure/TaxVision.Signature.Infrastructure.csproj" />
   </Folder>
+  <!-- BillingService: facturación tenant→taxpayer (adapta el módulo Invoices del CRM legado) -->
+  <Folder Name="/src/Services/Billing/">
+    <Project Path="src/Services/Billing/TaxVision.Billing.Api/TaxVision.Billing.Api.csproj" />
+    <Project Path="src/Services/Billing/TaxVision.Billing.Application/TaxVision.Billing.Application.csproj" />
+    <Project Path="src/Services/Billing/TaxVision.Billing.Domain/TaxVision.Billing.Domain.csproj" />
+    <Project Path="src/Services/Billing/TaxVision.Billing.Infrastructure/TaxVision.Billing.Infrastructure.csproj" />
+  </Folder>
+  <!-- DocumentsService: capacidad transversal de generación documental (HTML->PDF, ZIP, watermark) -->
+  <Folder Name="/src/Services/Documents/">
+    <Project Path="src/Services/Documents/TaxVision.Documents.Api/TaxVision.Documents.Api.csproj" />
+    <Project Path="src/Services/Documents/TaxVision.Documents.Application/TaxVision.Documents.Application.csproj" />
+    <Project Path="src/Services/Documents/TaxVision.Documents.Domain/TaxVision.Documents.Domain.csproj" />
+    <Project Path="src/Services/Documents/TaxVision.Documents.Infrastructure/TaxVision.Documents.Infrastructure.csproj" />
+  </Folder>
   <!-- TenantService -->
   <Folder Name="/src/Services/Tenant/">
     <Project Path="src/Services/Tenant/TaxVision.Tenant.Api/TaxVision.Tenant.Api.csproj" />
@@ -112,18 +178,28 @@
   <Folder Name="/deploy/tests/">
     <Project Path="deploy/tests/TaxVision.BuildingBlocks.Tests/TaxVision.BuildingBlocks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Auth.Tests/TaxVision.Auth.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Billing.Tests/TaxVision.Billing.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Catalog.Tests/TaxVision.Catalog.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Inventory.Tests/TaxVision.Inventory.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Connectors.Tests/TaxVision.Connectors.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Documents.Tests/TaxVision.Documents.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Gateway.Tests/TaxVision.Gateway.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Growth.Tests/TaxVision.Growth.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Notes.Tests/TaxVision.Notes.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notification.Tests/TaxVision.Notification.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentApp.Tests/TaxVision.PaymentApp.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.PaymentClient.Tests/TaxVision.PaymentClient.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Postmaster.Tests/TaxVision.Postmaster.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Reminder.Tests/TaxVision.Reminder.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Scribe.Tests/TaxVision.Scribe.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Signature.Tests/TaxVision.Signature.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Sms.Tests/TaxVision.Sms.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Subscription.Tests/TaxVision.Subscription.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Calendar.Tests/TaxVision.Calendar.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.Tasks.Tests/TaxVision.Tasks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Tenant.Tests/TaxVision.Tenant.Tests.csproj" />
   </Folder>
 </Solution>

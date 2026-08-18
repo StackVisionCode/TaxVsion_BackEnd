@@ -88,7 +88,11 @@ const rawEnv = z
     // que los literales que reemplazan, sin cambio de comportamiento fuera de .env.
     COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX: z.coerce.number().int().positive().default(300),
     COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
-    COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_MAX: z.coerce.number().int().positive().default(5),
+    // RateLimit Fase 7 — subido de 5 a 20/60s para igualar el valor ya sembrado
+    // en el catalogo .NET (RateLimitPolicyCatalog.cs, communication.d.meeting_join_by_token) —
+    // la discrepancia (Node ten a 5, .NET tenia 20) se detecto al espejar el
+    // catalogo en rate-limit-policies.ts; 20 es el valor de negocio correcto.
+    COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_TOKEN_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
@@ -114,6 +118,26 @@ const rawEnv = z
     COMMUNICATION_SERVICE_AUTH_CLIENT_SECRET: z.string().min(1),
     COMMUNICATION_AUTH_BASE_URL: z.string().url().default('http://localhost:5124'),
     COMMUNICATION_CLOUDSTORAGE_BASE_URL: z.string().url().default('http://localhost:5330'),
+
+    // RateLimit Fase 6 (port a Node) — catalogo de multiplicadores por plan, mismo servicio y
+    // mismo M2M client que ya usa CloudStorage metadata. Flag OFF por default, mismo criterio que
+    // los 17 servicios .NET (RateLimit:EnforceTierQuotas): el mecanismo esta construido pero
+    // inerte hasta que se decida activarlo.
+    COMMUNICATION_SUBSCRIPTION_BASE_URL: z.string().url().default('http://localhost:5360'),
+    COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS: z
+      .string()
+      .default('false')
+      .transform((value) => value === 'true'),
+
+    // Reconciliacion periodica de la proyeccion CustomerDirectoryEntry contra la fuente
+    // autoritativa (internal/customers/reconciliation, cross-tenant M2M). Auto-cura eventos
+    // perdidos. Mismo Customer.Api que ya usan otros clientes; local corre en :5263.
+    COMMUNICATION_CUSTOMER_BASE_URL: z.string().url().default('http://localhost:5263'),
+    COMMUNICATION_CUSTOMER_RECONCILE_ENABLED: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
   })
   .parse(process.env);
 
@@ -239,6 +263,7 @@ export const config = {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS,
     },
+    enforceTierQuotas: rawEnv.COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS,
   },
 
   platformTenantId: rawEnv.COMMUNICATION_PLATFORM_TENANT_ID.toLowerCase(),
@@ -256,6 +281,16 @@ export const config = {
   },
   cloudStorage: {
     baseUrl: rawEnv.COMMUNICATION_CLOUDSTORAGE_BASE_URL,
+  },
+  subscription: {
+    baseUrl: rawEnv.COMMUNICATION_SUBSCRIPTION_BASE_URL,
+  },
+  customer: {
+    baseUrl: rawEnv.COMMUNICATION_CUSTOMER_BASE_URL,
+  },
+  customerReconcile: {
+    enabled: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_ENABLED,
+    intervalHours: rawEnv.COMMUNICATION_CUSTOMER_RECONCILE_INTERVAL_HOURS,
   },
 } as const;
 

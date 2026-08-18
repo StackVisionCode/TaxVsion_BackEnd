@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ public sealed class SubdomainsController(IMessageBus bus) : ControllerBase
     [HttpGet("check-availability")]
     [AllowAnonymous]
     [EnableRateLimiting("tenant-lookup")]
+    [RateLimitExempt("Anónimo (Fase A4) — conserva el limiter nativo tenant-lookup, sin JWT que particionar.")]
     [ProducesResponseType<SubdomainAvailabilityResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CheckAvailability([FromQuery] string? slug, CancellationToken ct)
     {
@@ -33,6 +35,7 @@ public sealed class SubdomainsController(IMessageBus bus) : ControllerBase
     [HttpPost("reserve")]
     [AllowAnonymous]
     [EnableRateLimiting("tenant-lookup")]
+    [RateLimitExempt("Anónimo (Fase A7) — conserva el limiter nativo tenant-lookup, sin JWT que particionar.")]
     [ProducesResponseType<SubdomainReservationResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Reserve(ReserveSubdomainRequest request, CancellationToken ct)
     {

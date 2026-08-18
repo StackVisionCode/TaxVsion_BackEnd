@@ -229,6 +229,9 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("BulkRateLimitPerMinute")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -294,6 +297,9 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("BulkRateLimitPerMinute")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -362,9 +368,40 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantEmailProviders", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Postmaster.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Postmaster.Domain.Sending.SentMessage", b =>
                 {
                     b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CampaignId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("CorrelationId")
@@ -474,6 +511,8 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                         .HasColumnName("ReferencesJson");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CampaignId");
 
                     b.HasIndex("TenantId", "CorrespondenceDraftId");
 

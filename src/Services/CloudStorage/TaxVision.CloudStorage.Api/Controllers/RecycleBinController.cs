@@ -2,6 +2,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +27,7 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
 {
     [HttpGet]
+    [RateLimit("cloudstorage.f.recycle_bin_list")]
     [ProducesResponseType<IReadOnlyList<RecycleBinItemResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] int skip = 0,
@@ -43,6 +46,7 @@ public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext co
     }
 
     [HttpPost("restore/{fileId:guid}")]
+    [RateLimit("cloudstorage.g.recycle_bin_restore")]
     [ProducesResponseType<FileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Restore(Guid fileId, CancellationToken ct)
     {
@@ -57,6 +61,7 @@ public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext co
     }
 
     [HttpDelete("empty")]
+    [RateLimit("cloudstorage.i.recycle_bin_empty")]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
     public async Task<IActionResult> EmptyBin(CancellationToken ct)
     {

@@ -2,6 +2,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +23,7 @@ namespace TaxVision.Subscription.Api.Controllers.Admin;
 public sealed class AdminController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("upcoming-renewals")]
+    [RateLimit("subscription.f.admin_read")]
     [ProducesResponseType<IReadOnlyList<UpcomingRenewalResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUpcomingRenewals([FromQuery] int daysAhead, CancellationToken ct)
     {
@@ -33,6 +36,7 @@ public sealed class AdminController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("expired-seats")]
+    [RateLimit("subscription.f.admin_read")]
     [ProducesResponseType<PagedResult<AdminSeatResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetExpiredSeats(
         [FromQuery] int page,
@@ -49,6 +53,7 @@ public sealed class AdminController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("past-due-subscriptions")]
+    [RateLimit("subscription.f.admin_read")]
     [ProducesResponseType<PagedResult<AdminSubscriptionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPastDueSubscriptions(
         [FromQuery] int page,
@@ -72,6 +77,7 @@ public sealed class AdminController(IMessageBus bus) : ControllerBase
     /// no cambia nada del lado de la suscripcion/seats/add-ons.
     /// </summary>
     [HttpPost("tenants/{tenantId:guid}/recalculate-entitlements")]
+    [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RecalculateEntitlements(Guid tenantId, CancellationToken ct)
     {

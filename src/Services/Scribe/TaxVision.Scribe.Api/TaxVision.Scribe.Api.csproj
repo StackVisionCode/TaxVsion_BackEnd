@@ -24,7 +24,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.Scribe.Infrastructure\TaxVision.Scribe.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Web\BuildingBlocks.Web.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
   </ItemGroup>
 
   <!-- Logo de plataforma leído por ScribeSystemAssetSeeder al arrancar (Assets/SystemLogo/deploy.png). -->

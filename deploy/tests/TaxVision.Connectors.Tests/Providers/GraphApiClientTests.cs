@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Shared;
@@ -18,7 +19,7 @@ public class GraphApiClientTests
             new HttpClient(handler),
             new FakeOAuthTokenManager(),
             rateLimiter ?? new NoWaitProviderRateLimiter(),
-            new ProviderCircuitBreakerRegistry(NullLogger<ProviderCircuitBreakerRegistry>.Instance),
+            new HttpResiliencePipelineRegistry(),
             NullLogger<GraphApiClient>.Instance
         );
 
@@ -36,7 +37,7 @@ public class GraphApiClientTests
             """
         );
 
-        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), null);
+        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), null);
 
         Assert.Single(result.NewMessageIds);
         Assert.Equal("msg1", result.NewMessageIds[0]);
@@ -61,7 +62,7 @@ public class GraphApiClientTests
             """{ "value": [ { "id": "msg2" } ], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta-final" }"""
         );
 
-        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), null);
+        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), null);
 
         Assert.Equal(["msg1", "msg2"], result.NewMessageIds);
         Assert.Equal("https://graph.microsoft.com/v1.0/delta-final", result.NextCursor);
@@ -97,7 +98,7 @@ public class GraphApiClientTests
             """{ "value": [ {"id":"att1","name":"doc.pdf","contentType":"application/pdf","size":2048} ] }"""
         );
 
-        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), "msg1");
+        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
 
         Assert.Equal("msg1", message.ProviderMessageId);
         Assert.Equal("conv1", message.ProviderThreadId);
@@ -118,7 +119,8 @@ public class GraphApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(HttpStatusCode.OK, """{ "contentBytes": "SGkh" }""");
 
-        await using var stream = await CreateClient(handler).GetAttachmentAsync(Guid.NewGuid(), "msg1", "att1");
+        await using var stream = await CreateClient(handler)
+            .GetAttachmentAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1", "att1");
         using var reader = new StreamReader(stream);
         var content = await reader.ReadToEndAsync();
 
@@ -143,7 +145,7 @@ public class GraphApiClientTests
         );
 
         var rateLimiter = new NoWaitProviderRateLimiter();
-        var result = await CreateClient(handler, rateLimiter).GetHistoryAsync(Guid.NewGuid(), null);
+        var result = await CreateClient(handler, rateLimiter).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), null);
 
         Assert.Equal("https://graph.microsoft.com/v1.0/final", result.NextCursor);
         Assert.Equal(2, handler.Requests.Count);
@@ -170,7 +172,7 @@ public class GraphApiClientTests
             """{ "value": [ {"id":"att1","name":"doc.pdf","contentType":"application/pdf","size":2048} ] }"""
         );
 
-        var body = await CreateClient(handler).GetMessageBodyAsync(Guid.NewGuid(), "msg1");
+        var body = await CreateClient(handler).GetMessageBodyAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
 
         Assert.Equal("<p>Hi!</p>", body.HtmlBody);
         Assert.Null(body.TextBody);
@@ -185,7 +187,7 @@ public class GraphApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(HttpStatusCode.OK, """{ "body": {"contentType":"text","content":"Hi!"} }""");
 
-        var body = await CreateClient(handler).GetMessageBodyAsync(Guid.NewGuid(), "msg1");
+        var body = await CreateClient(handler).GetMessageBodyAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
 
         Assert.Equal("Hi!", body.TextBody);
         Assert.Null(body.HtmlBody);
@@ -206,7 +208,7 @@ public class GraphApiClientTests
         });
 
         var result = await CreateClient(handler)
-            .SendMessageAsync(Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage());
+            .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage());
 
         Assert.Null(result.ProviderMessageId);
         Assert.Contains("/sendMail", handler.Requests[0].RequestUri!.ToString());
@@ -228,7 +230,13 @@ public class GraphApiClientTests
         handler.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.Accepted));
 
         await CreateClient(handler)
-            .SendMessageAsync(Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage("original1"));
+            .SendMessageAsync(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "office@outlook.com",
+                null,
+                NewOutboundMessage("original1")
+            );
 
         Assert.Contains("/messages/original1/reply", handler.Requests[0].RequestUri!.ToString());
         Assert.Equal("outlook.body-content-type=\"html\"", handler.Requests[0].Headers.GetValues("Prefer").Single());
@@ -241,7 +249,8 @@ public class GraphApiClientTests
         handler.Enqueue(HttpStatusCode.Unauthorized, "{}");
 
         var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
-            CreateClient(handler).SendMessageAsync(Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage())
+            CreateClient(handler)
+                .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage())
         );
 
         Assert.Equal(SendFailureReason.AuthExpired, exception.Reason);
@@ -264,7 +273,7 @@ public class GraphApiClientTests
 
         var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
             CreateClient(handler, new NoWaitProviderRateLimiter())
-                .SendMessageAsync(Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage())
+                .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, NewOutboundMessage())
         );
 
         Assert.Equal(SendFailureReason.QuotaExceeded, exception.Reason);
@@ -294,7 +303,8 @@ public class GraphApiClientTests
             [new OutboundAttachment("doc.pdf", "application/pdf", "%PDF-1.4 fake"u8.ToArray())]
         );
 
-        await CreateClient(handler).SendMessageAsync(Guid.NewGuid(), "office@outlook.com", null, message);
+        await CreateClient(handler)
+            .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, message);
 
         using var payload = JsonDocument.Parse(capturedBody!);
         var attachment = payload.RootElement.GetProperty("message").GetProperty("attachments")[0];
@@ -323,7 +333,7 @@ public class GraphApiClientTests
         );
 
         var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
-            CreateClient(handler).SendMessageAsync(Guid.NewGuid(), "office@outlook.com", null, message)
+            CreateClient(handler).SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@outlook.com", null, message)
         );
 
         Assert.Equal(SendFailureReason.AttachmentTooLarge, exception.Reason);

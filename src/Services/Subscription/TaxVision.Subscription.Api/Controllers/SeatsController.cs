@@ -2,7 +2,9 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +26,7 @@ namespace TaxVision.Subscription.Api.Controllers;
 public sealed class SeatsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
+    [RateLimit("subscription.f.seat_read")]
     [ProducesResponseType<PagedResult<SeatResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSeats(
         [FromQuery] string? status,
@@ -46,6 +49,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [RateLimit("subscription.f.seat_read")]
     [ProducesResponseType<SeatResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
@@ -62,6 +66,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpPost("purchase")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.seat_manage")]
     [ProducesResponseType<IReadOnlyList<Guid>>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Purchase(PurchaseSeatsRequest request, CancellationToken ct)
     {
@@ -83,6 +88,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/assign")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.seat_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Assign(Guid id, AssignSeatRequest request, CancellationToken ct)
     {
@@ -102,6 +108,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/release")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.seat_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Release(Guid id, ReleaseSeatRequest request, CancellationToken ct)
     {
@@ -121,6 +128,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/reassign")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.seat_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reassign(Guid id, ReassignSeatRequest request, CancellationToken ct)
     {
@@ -139,6 +147,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     [HttpPost("{id:guid}/renew")]
     [HasPermission(SubscriptionPermissions.SeatsManage)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.g.seat_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Renew(Guid id, CancellationToken ct)
     {

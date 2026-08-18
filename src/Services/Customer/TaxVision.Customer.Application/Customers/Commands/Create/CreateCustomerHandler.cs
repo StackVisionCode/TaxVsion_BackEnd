@@ -15,6 +15,7 @@ public static class CreateCustomerHandler
     public static async Task<Result<CustomerResponse>> Handle(
         CreateCustomerCommand cmd,
         ICustomerRepository repository,
+        ICustomerDuplicateDetector duplicates,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -25,7 +26,46 @@ public static class CreateCustomerHandler
         if (voResult.IsFailure)
             return Result.Failure<CustomerResponse>(voResult.Error);
 
-        var customerResult = RegisterCustomer(cmd, voResult.Value);
+        var vo = voResult.Value;
+
+        // El mismo detector que usa el import: dos puertas al mismo dato con reglas distintas terminan
+        // en que la laxa se usa para meter lo que la otra rechaza.
+        var match = await duplicates.FindDuplicateAsync(
+            cmd.TenantId,
+            new CustomerDuplicateCandidate(
+                vo.Email.Value,
+                vo.Phone?.E164Value,
+                DisplayNameOf(cmd, vo),
+                cmd.DateOfBirth
+            ),
+            excludeCustomerId: null,
+            ct
+        );
+
+        if (match is not null)
+        {
+            if (!cmd.Overwrite)
+                return Result.Failure<CustomerResponse>(
+                    CustomerDuplicateErrors.DuplicateFound(
+                        match.ExistingCustomerId,
+                        match.ExistingDisplayName,
+                        match.MatchedBy
+                    )
+                );
+
+            return await OverwriteAsync(
+                match.ExistingCustomerId,
+                cmd,
+                vo,
+                repository,
+                unitOfWork,
+                bus,
+                correlation,
+                ct
+            );
+        }
+
+        var customerResult = RegisterCustomer(cmd, vo);
         if (customerResult.IsFailure)
             return Result.Failure<CustomerResponse>(customerResult.Error);
 
@@ -35,6 +75,85 @@ public static class CreateCustomerHandler
 
         return Result.Success(MapToResponse(customer));
     }
+
+    /// <summary>
+    /// Le aplica los datos nuevos al cliente que ya estaba, en vez de crear otro.
+    ///
+    /// <para>
+    /// Publica <c>CustomerUpdated</c> y <b>no</b> <c>CustomerCreated</c>: los siete servicios que
+    /// proyectan el directorio de clientes aplican por fecha, y anunciar como alta lo que fue una
+    /// edición les diría que existe un cliente que no nació hoy.
+    /// </para>
+    /// </summary>
+    private static async Task<Result<CustomerResponse>> OverwriteAsync(
+        Guid existingCustomerId,
+        CreateCustomerCommand cmd,
+        CustomerValueObjects vo,
+        ICustomerRepository repository,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        var existing = await repository.GetByIdAsync(existingCustomerId, ct);
+        if (existing is null || existing.TenantId != cmd.TenantId)
+            return Result.Failure<CustomerResponse>(new Error("Customer.NotFound", "Customer not found."));
+
+        var applied = ApplyOverwrite(existing, cmd, vo);
+        if (applied.IsFailure)
+            return Result.Failure<CustomerResponse>(applied.Error);
+
+        await unitOfWork.SaveChangesAsync(ct);
+
+        await bus.PublishAsync(
+            new CustomerUpdatedIntegrationEvent
+            {
+                TenantId = existing.TenantId,
+                CorrelationId = correlation.CorrelationId,
+                CustomerId = existing.Id,
+                DisplayName = existing.DisplayName,
+                PrimaryEmail = existing.PrimaryEmail.Value,
+                PrimaryPhone = existing.PrimaryPhone?.E164Value,
+                Language = existing.Language.ToString(),
+                PreferredChannel = existing.PreferredChannel.ToString(),
+                OccupationId = existing.OccupationId,
+                ModifiedByUserId = cmd.CreatedByUserId,
+            }
+        );
+
+        return Result.Success(MapToResponse(existing));
+    }
+
+    private static Result ApplyOverwrite(CustomerEntity existing, CreateCustomerCommand cmd, CustomerValueObjects vo)
+    {
+        var results = new List<Result>
+        {
+            existing.ChangePrimaryEmail(vo.Email, cmd.CreatedByUserId),
+            existing.ChangePrimaryPhone(vo.Phone, cmd.CreatedByUserId),
+            existing.ChangePreferences(cmd.Language, cmd.PreferredChannel, cmd.CreatedByUserId),
+            existing.ChangeOccupation(cmd.OccupationId, cmd.CreatedByUserId),
+        };
+
+        if (vo.PersonalName is not null && existing.Kind == CustomerKind.Individual)
+            results.Add(existing.ChangePersonalName(vo.PersonalName, cmd.CreatedByUserId));
+
+        if (vo.BusinessIdentity is not null && existing.Kind == CustomerKind.Business)
+            results.Add(existing.ChangeBusinessIdentity(vo.BusinessIdentity, cmd.CreatedByUserId));
+
+        if (cmd.DateOfBirth.HasValue)
+            results.Add(existing.ChangeDateOfBirth(cmd.DateOfBirth, cmd.CreatedByUserId));
+
+        foreach (var r in results)
+            if (r.IsFailure)
+                return r;
+
+        return Result.Success();
+    }
+
+    /// <summary>Lo que se compara contra el nombre guardado: el aggregate lo arma igual al registrar.</summary>
+    private static string? DisplayNameOf(CreateCustomerCommand cmd, CustomerValueObjects vo) =>
+        cmd.Kind == CustomerKind.Business ? vo.BusinessIdentity?.LegalName : vo.PersonalName?.DisplayName;
 
     // ============== Fase 1: construir value objects desde el comando ==============
 

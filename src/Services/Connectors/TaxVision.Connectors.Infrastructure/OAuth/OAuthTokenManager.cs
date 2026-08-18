@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -9,7 +10,6 @@ using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
-using TaxVision.Connectors.Infrastructure.RateLimit;
 using Wolverine;
 
 namespace TaxVision.Connectors.Infrastructure.OAuth;
@@ -24,7 +24,7 @@ public sealed class OAuthTokenManager(
     ITenantEmailAccountRepository accountRepository,
     IOAuthConnectionRepository connectionRepository,
     IOAuthProviderClientFactory providerClientFactory,
-    ProviderCircuitBreakerRegistry circuitBreakers,
+    HttpResiliencePipelineRegistry circuitBreakers,
     IEncryptedSecretProtector protector,
     IDistributedLock distributedLock,
     IUnitOfWork unitOfWork,

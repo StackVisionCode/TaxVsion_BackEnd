@@ -43,7 +43,8 @@ public static class UpsertTenantEmailProviderHandler
             cmd.FromAddressDefault,
             cmd.FromDisplayNameDefault,
             cmd.RateLimitPerMinute,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            cmd.BulkRateLimitPerMinute
         );
 
     private static async Task<Result> CreateNew(
@@ -67,7 +68,8 @@ public static class UpsertTenantEmailProviderHandler
             passwordCipher,
             cmd.RateLimitPerMinute,
             cmd.ActingUserId,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            cmd.BulkRateLimitPerMinute
         );
         if (createResult.IsFailure)
             return Result.Failure(createResult.Error);

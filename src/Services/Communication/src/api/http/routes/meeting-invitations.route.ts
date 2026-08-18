@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { config } from '../../../infrastructure/config.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
+import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
 import { createMeetingInvitations } from '../../../application/use-cases/create-meeting-invitations.js';
 import { listMeetingInvitations } from '../../../application/use-cases/list-meeting-invitations.js';
 import { revokeMeetingInvitation } from '../../../application/use-cases/revoke-meeting-invitation.js';
@@ -37,12 +38,13 @@ const InviteeKindMap: Record<'employee' | 'customer' | 'external', MeetingInvite
 /**
  * Fase Backend 5 — invitaciones a meetings. Rutas Host/Cohost (auth normal,
  * `app.authenticate`) + 2 rutas PUBLICAS sin JWT para el flujo de guest
- * (join-by-token / by-code), rate-limited via `config.rateLimit` per-route
- * (@fastify/rate-limit ya esta registrado global en build-server.ts; el
- * override per-route aca es mas estricto porque son endpoints sin auth,
- * sensibles a token-guessing). F11 QA gap: hasta ahora estos dos limites eran
- * literales inline (5/20 por minuto) pese a lo que decia este docblock —
- * ahora sí salen de `config.rateLimit.meetingJoinByToken/ByCode`.
+ * (join-by-token / by-code). RateLimit Fase 7: ademas del gate generico por IP
+ * que ya corre para toda la app (build-server.ts, `onRequest`), estas 2 rutas
+ * llevan su propio gate atomico particionado por token/shortCode (no por IP) —
+ * mas correcto contra token-guessing distribuido desde muchas IPs distintas.
+ * Nombres de politica en `rate-limit-policies.ts`
+ * (communication.d.meeting_join_by_token/by_code), cuotas en
+ * `config.rateLimit.meetingJoinByToken/ByCode`.
  */
 export async function registerMeetingInvitationRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   app.post('/communication/meetings/:id/invitations', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -111,11 +113,20 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
   app.post(
     '/communication/meetings/join-by-token',
     {
-      config: {
-        rateLimit: {
-          max: config.rateLimit.meetingJoinByToken.maxPerWindow,
-          timeWindow: `${config.rateLimit.meetingJoinByToken.windowSeconds} seconds`,
-        },
+      preHandler: async (request, reply) => {
+        const body = JoinByTokenBody.parse(request.body);
+        const allowed = await container.httpRateLimiter.allow({
+          key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByToken}:${body.token}`,
+          policy: CommunicationRateLimitPolicyNames.MeetingJoinByToken,
+          maxPerWindow: config.rateLimit.meetingJoinByToken.maxPerWindow,
+          windowSeconds: config.rateLimit.meetingJoinByToken.windowSeconds,
+        });
+        if (!allowed) {
+          return reply
+            .code(429)
+            .header('Retry-After', String(config.rateLimit.meetingJoinByToken.windowSeconds))
+            .send({ code: 'RateLimit.Exceeded', message: 'Too many requests.' });
+        }
       },
     },
     async (request, reply) => {
@@ -135,11 +146,20 @@ export async function registerMeetingInvitationRoutes(app: FastifyInstance, cont
   app.get(
     '/communication/meetings/by-code/:shortCode',
     {
-      config: {
-        rateLimit: {
-          max: config.rateLimit.meetingJoinByCode.maxPerWindow,
-          timeWindow: `${config.rateLimit.meetingJoinByCode.windowSeconds} seconds`,
-        },
+      preHandler: async (request, reply) => {
+        const params = ShortCodeParams.parse(request.params);
+        const allowed = await container.httpRateLimiter.allow({
+          key: `comm:rl:${CommunicationRateLimitPolicyNames.MeetingJoinByCode}:${params.shortCode}`,
+          policy: CommunicationRateLimitPolicyNames.MeetingJoinByCode,
+          maxPerWindow: config.rateLimit.meetingJoinByCode.maxPerWindow,
+          windowSeconds: config.rateLimit.meetingJoinByCode.windowSeconds,
+        });
+        if (!allowed) {
+          return reply
+            .code(429)
+            .header('Retry-After', String(config.rateLimit.meetingJoinByCode.windowSeconds))
+            .send({ code: 'RateLimit.Exceeded', message: 'Too many requests.' });
+        }
       },
     },
     async (request, reply) => {

@@ -57,7 +57,43 @@ public static class ErrorHttpMapping
             or "TenantConnectAccount.NotFound"
             or "PayoutSchedule.NotFound"
             or "TenantRecurringPayment.NotFound"
-            or "TenantRecurringPayment.ScheduleNotFound" => StatusCodes.Status404NotFound,
+            or "TenantRecurringPayment.ScheduleNotFound"
+            or "TermsVersion.NotFound"
+            or "Onboarding.TokenReferenceNotFound"
+            or "Onboarding.NotFound"
+            or "Onboarding.ChallengeNotFound"
+            // Notes Fase 7 (hardening post-Fase-6): Note.NotFound/AttachmentNotFound no tenían
+            // entrada explícita y caían al default (400) en vez del 404 semánticamente correcto —
+            // mismo gap exacto que EventTemplateMapping.NotFound tuvo en Scribe Fase 10.5.
+            or "Note.NotFound"
+            or "Note.AttachmentNotFound"
+            // Reminder Fase 6 — también es la respuesta a un recordatorio ajeno: no hay
+            // Reminder.NotOwner, porque un 403 confirmaría que ese id existe en el tenant.
+            or "Reminder.NotFound"
+            or "Task.NotFound"
+            or "Task.Dependency.NotFound"
+            or "Task.Timer.NotFound"
+            or "Task.Label.NotFound"
+            or "Task.Attachment.NotFound"
+            or "Task.Template.NotFound"
+            or "Calendar.Appointment.NotFound"
+            or "Calendar.Type.NotFound"
+            or "Calendar.Availability.NotFound"
+            or "Calendar.Availability.BlockNotFound"
+            or "Calendar.Exception.NotFound"
+            // El pedido de otro cliente responde igual que uno inexistente: distinguirlos le
+            // confirmaria al cliente que ese pedido existe.
+            or "ClientRequest.NotFound"
+            // Opción B (recuperación pull de permisos, endpoint interno de Auth) — el status exacto
+            // no cambia el comportamiento del caller M2M (IPermissionsSnapshotClient trata cualquier
+            // no-2xx igual, devuelve null), pero se mapea explícito de todos modos por consistencia
+            // con el resto del catálogo.
+            or "Auth.UserNotFound"
+            or "catalog.itemNotFound"
+            or "catalog.categoryNotFound"
+            or "inventory.stockLevelNotFound"
+            or "inventory.supplierNotFound"
+            or "inventory.itemSupplierNotFound" => StatusCodes.Status404NotFound,
             "TenantDomain.SlugLength"
             or "TenantDomain.SlugInvalid"
             or "TenantDomain.SlugReserved"
@@ -94,7 +130,16 @@ public static class ErrorHttpMapping
             or "TenantEmailAccount.InvalidTransition"
             or "IncomingEmailAttachment.InvalidTransition"
             or "IncomingEmailAttachment.NotReady"
-            or "Draft.InvalidTransition" => StatusCodes.Status409Conflict,
+            or "Draft.InvalidTransition"
+            or "catalog.duplicateSku"
+            or "catalog.categoryHasChildren"
+            or "inventory.insufficientStock"
+            // Solapamiento que el tipo de cita declara como error. El aviso, en cambio, sale en un 201.
+            or "Calendar.Appointment.Conflict"
+            or "Calendar.Exception.Duplicate"
+            // El alta y la edicion de un cliente: ya hay uno igual en el tenant.
+            or "Customer.DuplicateFound"
+            or "Customer.EmailAlreadyInUse" => StatusCodes.Status409Conflict,
             "TenantDomain.Disabled"
             or "TenantDomain.PrimaryCannotBeDisabled"
             or "SetupWatchHandler.Forbidden"
@@ -120,9 +165,16 @@ public static class ErrorHttpMapping
             or "CorrespondenceTempBucketUploader.UploadFailed"
             or "PostmasterClient.EmptyResponse"
             or "PostmasterClient.UnexpectedStatus"
+            or "PaymentAppClient.EmptyResponse"
+            or "PaymentAppClient.UnexpectedStatus"
             or "Tenant.Logo.Storage.Upload"
             or "Tenant.Logo.Storage.Download"
-            or "Tenant.Logo.Storage.Delete" => StatusCodes.Status502BadGateway,
+            or "Tenant.Logo.Storage.Delete"
+            or "Onboarding.TermsContentFetchFailed"
+            or "Stripe.CheckoutSession.Failed"
+            or "Stripe.CheckoutSession.MissingPaymentIntent"
+            or "Manual.CheckoutSession.NotSupported"
+            or "Intellipay.CheckoutSession.NotImplemented" => StatusCodes.Status502BadGateway,
             "ConnectorsClient.ServiceAuthUnavailable"
             or "ConnectorsClient.Unavailable"
             or "ConnectorsClient.RequestFailed"
@@ -130,6 +182,7 @@ public static class ErrorHttpMapping
             or "CloudStorageClient.RequestFailed"
             or "PostmasterClient.ServiceAuthUnavailable"
             or "PostmasterClient.RequestFailed"
+            or "PaymentAppClient.RequestFailed"
             or "Tenant.Logo.Storage.Auth" => StatusCodes.Status503ServiceUnavailable,
             "GetMessageBodyHandler.Timeout" or "GetMessageAttachmentHandler.Timeout" or "SendMessageHandler.Timeout" =>
                 StatusCodes.Status504GatewayTimeout,
@@ -169,7 +222,11 @@ public static class ErrorHttpMapping
             or "Role.NotAssignableToCustomerPortal"
             or "ShareLink.Forbidden"
             or "ShareLink.PublicSharingDisabled"
-            or "ShareLink.ElevatedPermissionRequiresManage" => StatusCodes.Status403Forbidden,
+            or "ShareLink.ElevatedPermissionRequiresManage"
+            or "Note.Forbidden"
+            or "Task.Forbidden"
+            or "Task.Timer.NotOwner"
+            or "Auth.UserInactive" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -186,7 +243,34 @@ public static class ErrorHttpMapping
             or "TenantPaymentConfig.AlreadyExists"
             // 2026-07-20 — DeleteFolderHandler: la carpeta tiene subfolders o archivos directos,
             // el llamador debe vaciarla primero. Sin esta entrada caía al default 400.
-            or "Folder.NotEmpty" => StatusCodes.Status409Conflict,
+            or "Folder.NotEmpty"
+            // Notes Fase 7: transiciones/estado inválido de la nota o del adjunto — mismo criterio
+            // que TenantEmailAccount.InvalidTransition/EmailAccount.Conflict (409, no 400).
+            or "Note.Deleted"
+            or "Note.InvalidTransition"
+            or "Note.AttachmentDuplicate"
+            or "Note.AttachmentLimit"
+            // Reminder Fase 6 — conflicto de estado, no de forma: la petición es válida, el
+            // recordatorio simplemente ya no está donde el llamador cree.
+            or "Reminder.InvalidTransition"
+            or "Reminder.DuplicateRequest"
+            or "Reminder.SnoozeLimitReached"
+            // Task: conflicto de estado, no de forma. BlockedByDependencies y HasOpenSubtasks son
+            // retriables — los dos contadores bajan de forma eventual, así que el segundo intento
+            // puede pasar; con 400 el llamador dejaría de reintentar.
+            or "Task.BlockedByDependencies"
+            or "Task.HasOpenSubtasks"
+            or "Task.InvalidTransition"
+            or "Task.CannotAddSubtaskToClosedParent"
+            or "Task.MaxDepthExceeded"
+            or "Task.TooManyChildren"
+            or "Task.WaitingOnClient.TaskClosed"
+            or "Task.Dependency.Cycle"
+            or "Task.Dependency.Duplicate"
+            or "Task.Dependency.AncestorOfSelf"
+            or "Task.Label.CodeTaken"
+            or "Task.Timer.AlreadyRunning"
+            or "Task.Timer.NotRunning" => StatusCodes.Status409Conflict,
             "Auth.LockedOut"
             or "Auth.OtpThrottled"
             or "Invitation.ResendLimit"

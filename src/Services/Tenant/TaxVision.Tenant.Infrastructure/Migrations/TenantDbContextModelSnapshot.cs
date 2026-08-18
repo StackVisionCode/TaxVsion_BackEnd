@@ -98,6 +98,34 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                     b.ToTable("UserPermissionsProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tenant.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tenant.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -151,6 +179,9 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<Guid?>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("PrimaryColor")
                         .HasMaxLength(7)
                         .HasColumnType("nvarchar(7)")
@@ -171,6 +202,10 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .HasColumnName("TextColorHex");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique()
+                        .HasFilter("[OnboardingId] IS NOT NULL");
 
                     b.HasIndex("SubDomain")
                         .IsUnique();

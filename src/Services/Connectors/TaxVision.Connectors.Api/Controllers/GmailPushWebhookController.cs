@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,12 @@ public sealed class GmailPushWebhookController(
 ) : ControllerBase
 {
     [HttpPost("gmail-push")]
+    [RateLimitExempt(
+        "Endpoint anonimo (sin JWT propio, solo el JWT firmado por Google) — TieredRateLimitEvaluator "
+            + "solo soporta particion por Tenant/User, asi que [RateLimit] fallaria abierto aqui. La "
+            + "proteccion real la da el limiter nativo [EnableRateLimiting(\"connectors-webhook\")] "
+            + "(IP, 100/min FixedWindow), que se deja intacto."
+    )]
     public async Task<IActionResult> HandlePush([FromBody] PubSubPushEnvelope envelope, CancellationToken ct)
     {
         var authHeader = Request.Headers.Authorization.ToString();

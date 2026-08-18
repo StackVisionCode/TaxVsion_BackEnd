@@ -6,15 +6,19 @@ using TaxVision.Connectors.Infrastructure.Observability;
 
 namespace TaxVision.Connectors.Infrastructure.RateLimit;
 
-/// <summary>Fallback single-node cuando Redis no está configurado — mismo contrato de ventana+cooldown que <see cref="RedisProviderRateLimiter"/>, sin coordinación entre réplicas.</summary>
+/// <summary>Fallback single-node cuando Redis no está configurado — mismo contrato de ventana global+per-tenant+cooldown que <see cref="RedisProviderRateLimiter"/> (Rate Limit Fase 0.3), sin coordinación entre réplicas.</summary>
 public sealed class InMemoryProviderRateLimiter(IOptions<ProviderRateLimiterOptions> options) : IProviderRateLimiter
 {
     private static readonly TimeSpan MaxCooldown = TimeSpan.FromSeconds(60);
 
     private readonly ConcurrentDictionary<ProviderCode, DateTime> _cooldownUntilUtc = new();
-    private readonly ConcurrentDictionary<ProviderCode, (long Second, int Count)> _windows = new();
+    private readonly ConcurrentDictionary<ProviderCode, (long Second, int Count)> _globalWindows = new();
+    private readonly ConcurrentDictionary<
+        (ProviderCode Provider, Guid TenantId),
+        (long Second, int Count)
+    > _tenantWindows = new();
 
-    public async Task WaitForSlotAsync(ProviderCode providerCode, CancellationToken ct = default)
+    public async Task WaitForSlotAsync(ProviderCode providerCode, Guid tenantId, CancellationToken ct = default)
     {
         if (_cooldownUntilUtc.TryGetValue(providerCode, out var until) && until > DateTime.UtcNow)
             await Task.Delay(until - DateTime.UtcNow, ct);
@@ -22,13 +26,21 @@ public sealed class InMemoryProviderRateLimiter(IOptions<ProviderRateLimiterOpti
         while (true)
         {
             var nowSecond = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var updated = _windows.AddOrUpdate(
+            var globalUpdated = _globalWindows.AddOrUpdate(
                 providerCode,
                 _ => (nowSecond, 1),
                 (_, existing) => existing.Second == nowSecond ? (existing.Second, existing.Count + 1) : (nowSecond, 1)
             );
+            var tenantUpdated = _tenantWindows.AddOrUpdate(
+                (providerCode, tenantId),
+                _ => (nowSecond, 1),
+                (_, existing) => existing.Second == nowSecond ? (existing.Second, existing.Count + 1) : (nowSecond, 1)
+            );
 
-            if (updated.Count <= options.Value.MaxRequestsPerSecond)
+            if (
+                globalUpdated.Count <= options.Value.MaxRequestsPerSecond
+                && tenantUpdated.Count <= options.Value.MaxRequestsPerSecondPerTenant
+            )
                 return;
 
             var msIntoSecond = DateTimeOffset.UtcNow.Millisecond;

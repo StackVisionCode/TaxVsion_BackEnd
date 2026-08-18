@@ -38,6 +38,7 @@ public sealed class AuthzPermissionsProjectionConsumersTests
             PermissionsVersion = 1,
             PermissionCodes = ["notification.template.view"],
             RoleIds = [roleId],
+            ActorType = "TenantEmployee",
         };
 
         await AuthzUserRolesChangedPermissionsProjectionConsumer.Handle(
@@ -73,6 +74,7 @@ public sealed class AuthzPermissionsProjectionConsumersTests
             PermissionsVersion = 2,
             PermissionCodes = ["a", "b"],
             RoleIds = [],
+            ActorType = "TenantEmployee",
         };
 
         await AuthzUserRolesChangedPermissionsProjectionConsumer.Handle(
@@ -105,6 +107,7 @@ public sealed class AuthzPermissionsProjectionConsumersTests
             PermissionsVersion = 4,
             PermissionCodes = ["stale"],
             RoleIds = [],
+            ActorType = "TenantEmployee",
         };
 
         await AuthzUserRolesChangedPermissionsProjectionConsumer.Handle(

@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,6 +23,7 @@ namespace TaxVision.Postmaster.Api.Controllers;
 public sealed class CorrespondenceMessagesController(IMessageBus bus) : ControllerBase
 {
     [HttpPost]
+    [RateLimitExempt("M2M interno — solo Correspondence, nunca expuesto al Gateway público (ServiceOnly).")]
     public async Task<IActionResult> Send([FromBody] SendCorrespondenceMessageRequest body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tokenTenantId) || tokenTenantId != body.TenantId)

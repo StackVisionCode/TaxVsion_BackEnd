@@ -1,6 +1,7 @@
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
+using TaxVision.Subscription.Domain.RateLimiting;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Settings;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -18,6 +19,9 @@ public interface ISubscriptionRepository
 {
     Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantSubscription subscription, CancellationToken ct = default);
+
+    /// <summary>PayFlow (Fase 16) — idempotencia de internal/subscriptions/activate-from-onboarding.</summary>
+    Task<TenantSubscription?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
 
     /// <summary>Active subscriptions whose NextRenewalAtUtc has passed. Batch job query —
     /// crosses tenants intentionally (only the scheduler calls this, never a tenant-scoped handler).</summary>
@@ -150,4 +154,12 @@ public interface ITenantEntitlementSnapshotRepository
 {
     Task<TenantEntitlementSnapshot?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
     Task UpsertAsync(TenantEntitlementSnapshot snapshot, CancellationToken ct = default);
+}
+
+/// <summary>RateLimit Fase 6 — catálogo completo, consultado por otros servicios vía
+/// GET internal/plan-rate-limits (mismo patrón de exposición M2M de datos
+/// globales de Subscription que GetInternalPlanPricingHandler).</summary>
+public interface IPlanRateLimitRepository
+{
+    Task<IReadOnlyList<PlanRateLimit>> GetAllAsync(CancellationToken ct = default);
 }

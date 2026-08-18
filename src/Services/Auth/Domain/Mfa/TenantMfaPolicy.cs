@@ -6,7 +6,6 @@ namespace TaxVision.Auth.Domain.Mfa;
 
 /// <summary>
 /// Política MFA por tenant. Id = TenantId (relación 1:1 con la proyección de Tenant).
-/// MFA para administradores es obligatorio por diseño y no puede desactivarse.
 /// </summary>
 public sealed class TenantMfaPolicy : BaseEntity
 {
@@ -24,7 +23,9 @@ public sealed class TenantMfaPolicy : BaseEntity
         new()
         {
             Id = tenantId,
-            RequireForAdmins = true,
+            // MFA opt-in: no se fuerza al admin en el alta (el enrolamiento queda para más tarde,
+            // activable desde ajustes). Antes era true (obligatorio). Decisión de producto/UX.
+            RequireForAdmins = false,
             RequireForEmployees = false,
             RequireForCustomerPortal = false,
             TrustedDeviceDays = 30,

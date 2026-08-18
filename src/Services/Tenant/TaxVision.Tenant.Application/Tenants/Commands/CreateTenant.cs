@@ -32,6 +32,7 @@ public static class CreateTenantHandler
     public static async Task<Result<CreateTenantResponse>> Handle(
         CreateTenantCommand cmd,
         ITenantRepository repo,
+        IAuthInvitationTokenReferenceClient tokenReferenceClient,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -67,6 +68,13 @@ public static class CreateTenantHandler
         var activationTokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(activationToken)));
         var invitationExpiresAtUtc = DateTime.UtcNow.AddDays(7);
 
+        // Fase 18 — depositar el raw token en Auth ANTES de persistir/publicar: si Auth no está
+        // disponible, se aborta sin efectos secundarios (nada de tenant a medio crear), mismo
+        // criterio de "detener antes de comprometer estado" que el resto del plan de PayFlow.
+        var tokenReferenceResult = await tokenReferenceClient.StoreAsync(activationToken, ct);
+        if (tokenReferenceResult.IsFailure)
+            return Result.Failure<CreateTenantResponse>(tokenReferenceResult.Error);
+
         await repo.AddAsync(tenant, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
@@ -81,7 +89,7 @@ public static class CreateTenantHandler
                 DefaultTimeZoneId = tenant.DefaultTimeZoneId,
                 AdminEmail = adminEmail,
                 AdminInvitationTokenHash = activationTokenHash,
-                AdminInvitationRawToken = activationToken,
+                AdminInvitationTokenReference = tokenReferenceResult.Value,
                 AdminInvitationExpiresAtUtc = invitationExpiresAtUtc,
                 CorrelationId = correlation.CorrelationId,
             }

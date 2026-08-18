@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { COMMUNICATION_RECORDING_KINDS, recordingKindsSchema } from './contracts/recording-kinds.js';
 /**
  * Config loader con validacion Zod — mismo patron que Communication
  * (src/infrastructure/config.ts): falla al arrancar si falta algo requerido.
@@ -34,7 +35,16 @@ const rawEnv = z
     // a taxvision-temp/transcript/* (ver deploy/docker/minio/policies/transcript-source.json).
     TRANSCRIPT_WORKER_MINIO_ENDPOINT: z.string().min(1),
     TRANSCRIPT_WORKER_MINIO_PORT: z.coerce.number().int().default(9000),
-    TRANSCRIPT_WORKER_MINIO_USE_SSL: z.coerce.boolean().default(false),
+    // z.coerce.boolean() NO parsea "true"/"false" como texto — hace Boolean(valor),
+    // y CUALQUIER string no vacio (incluido literalmente "false") da true. Con
+    // USE_SSL=false en .env eso dejaba useSSL:true en runtime, y el cliente MinIO
+    // intentaba negociar TLS contra el puerto 9000 en HTTP plano (EPROTO "packet
+    // length too long" al subir el transcript). z.string().transform compara el
+    // valor real contra "true".
+    TRANSCRIPT_WORKER_MINIO_USE_SSL: z
+        .string()
+        .default('false')
+        .transform((value) => value === 'true'),
     TRANSCRIPT_WORKER_MINIO_ACCESS_KEY: z.string().min(1),
     TRANSCRIPT_WORKER_MINIO_SECRET_KEY: z.string().min(1),
     TRANSCRIPT_WORKER_MINIO_TEMP_BUCKET: z.string().default('taxvision-temp'),
@@ -77,8 +87,24 @@ const rawEnv = z
     // tiene ninguna otra ruta) solo para exponer /metrics a Prometheus. Puerto
     // por defecto = el convencional del ecosistema prom-client para Node.
     TRANSCRIPT_WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65_535).default(9464),
+    // Este worker es un pipeline generico de transcripcion (ver
+    // contracts/recording-kinds.ts): lo que varia por dominio es solo el
+    // contrato de mensajeria (que eventos disparan una transcripcion, en que
+    // campo viene el id del dueño de la grabacion, con que eventos se publica
+    // el resultado). JSON con RecordingKindMapping[] — si se deja vacio (el
+    // default), se usa COMMUNICATION_RECORDING_KINDS tal cual, reproduciendo
+    // el comportamiento exacto de este worker desde su version original.
+    // Cualquier otro microservicio puede reusar esta misma imagen/codigo
+    // desplegando su propia instancia con esta variable seteada a su propio
+    // mapeo, sin tocar una linea de codigo.
+    TRANSCRIPT_WORKER_RECORDING_KINDS: z.string().default(''),
 })
     .parse(process.env);
+function parseRecordingKinds(raw) {
+    if (!raw.trim())
+        return COMMUNICATION_RECORDING_KINDS;
+    return recordingKindsSchema.parse(JSON.parse(raw));
+}
 export const config = {
     env: rawEnv.NODE_ENV,
     isProduction: rawEnv.NODE_ENV === 'production',
@@ -131,5 +157,6 @@ export const config = {
     metrics: {
         port: rawEnv.TRANSCRIPT_WORKER_METRICS_PORT,
     },
+    recordingKinds: parseRecordingKinds(rawEnv.TRANSCRIPT_WORKER_RECORDING_KINDS),
 };
 //# sourceMappingURL=config.js.map

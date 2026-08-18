@@ -47,6 +47,7 @@ public class GetMessageBodyHandlerTests
             auditRepository,
             unitOfWork,
             bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -77,6 +78,7 @@ public class GetMessageBodyHandlerTests
             new FakeProviderConnectionAuditLogRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -95,6 +97,7 @@ public class GetMessageBodyHandlerTests
             new FakeProviderConnectionAuditLogRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -119,6 +122,7 @@ public class GetMessageBodyHandlerTests
             new FakeProviderConnectionAuditLogRepository(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -149,6 +153,7 @@ public class GetMessageBodyHandlerTests
             auditRepository,
             new FakeUnitOfWork(),
             bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 

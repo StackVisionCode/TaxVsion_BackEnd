@@ -25,6 +25,7 @@ public static class TenantCreatedConsumer
         ITenantDomainRepository domains,
         ITenantSubdomainReservationRepository reservations,
         IOptions<TenantDomainOptions> domainOptions,
+        ITokenReferenceStore tokenReferences,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -53,50 +54,62 @@ public static class TenantCreatedConsumer
 
                 await EnsurePrimaryDomainAsync(evt, domains, reservations, domainOptions.Value, logger, ct);
 
-                var existing = await invitations.GetByTokenHashAsync(evt.AdminInvitationTokenHash, ct);
-                if (existing is null)
+                // PayFlow (Fase 16) — un tenant creado vía onboarding pago-primero ya tiene su
+                // TenantAdmin creado directo por la Saga (internal/tenants/{id}/owners, Fase 16),
+                // no por invitación: crear una Invitation acá sería redundante (y el AdminEmail/
+                // AdminInvitationTokenHash de ese evento son placeholders vacíos, ver
+                // CreateTenantFromOnboardingHandler en Tenant).
+                if (evt.OnboardingId is null)
                 {
-                    var expiresAtUtc = evt.AdminInvitationExpiresAtUtc ?? DateTime.UtcNow.AddDays(7);
-
-                    if (expiresAtUtc <= DateTime.UtcNow)
+                    var existing = await invitations.GetByTokenHashAsync(evt.AdminInvitationTokenHash, ct);
+                    if (existing is null)
                     {
-                        await unitOfWork.SaveChangesAsync(ct);
-                        return;
-                    }
+                        var expiresAtUtc = evt.AdminInvitationExpiresAtUtc ?? DateTime.UtcNow.AddDays(7);
 
-                    var invitationResult = Invitation.Create(
-                        evt.NewTenantId,
-                        evt.AdminEmail,
-                        UserActorType.TenantAdmin,
-                        customerId: null,
-                        invitedByUserId: null,
-                        tokenHash: evt.AdminInvitationTokenHash,
-                        expiresAtUtc: expiresAtUtc
-                    );
-                    if (invitationResult.IsFailure)
-                        throw new InvalidOperationException(invitationResult.Error.Message);
+                        if (expiresAtUtc <= DateTime.UtcNow)
+                        {
+                            await unitOfWork.SaveChangesAsync(ct);
+                            return;
+                        }
 
-                    if (!string.IsNullOrWhiteSpace(evt.AdminInvitationRawToken))
-                    {
-                        invitationResult.Value.MarkSent();
-                        await bus.PublishAsync(
-                            new InvitationCreatedIntegrationEvent
-                            {
-                                TenantId = evt.NewTenantId,
-                                InvitationId = invitationResult.Value.Id,
-                                Email = evt.AdminEmail,
-                                ActorType = UserActorType.TenantAdmin.ToString(),
-                                RawToken = evt.AdminInvitationRawToken,
-                                ExpiresAtUtc = expiresAtUtc,
-                                TenantName = evt.Name,
-                                TenantSubdomain = evt.SubDomain,
-                                InviterName = "TaxVision",
-                                CorrelationId = correlationId,
-                            }
+                        var invitationResult = Invitation.Create(
+                            evt.NewTenantId,
+                            evt.AdminEmail,
+                            UserActorType.TenantAdmin,
+                            customerId: null,
+                            invitedByUserId: null,
+                            tokenHash: evt.AdminInvitationTokenHash,
+                            expiresAtUtc: expiresAtUtc
                         );
-                    }
+                        if (invitationResult.IsFailure)
+                            throw new InvalidOperationException(invitationResult.Error.Message);
 
-                    await invitations.AddAsync(invitationResult.Value, ct);
+                        var rawToken = evt.AdminInvitationTokenReference is { } reference
+                            ? await tokenReferences.ConsumeAsync(reference, ct)
+                            : null;
+
+                        if (!string.IsNullOrWhiteSpace(rawToken))
+                        {
+                            invitationResult.Value.MarkSent();
+                            await bus.PublishAsync(
+                                new InvitationCreatedIntegrationEvent
+                                {
+                                    TenantId = evt.NewTenantId,
+                                    InvitationId = invitationResult.Value.Id,
+                                    Email = evt.AdminEmail,
+                                    ActorType = UserActorType.TenantAdmin.ToString(),
+                                    RawToken = rawToken,
+                                    ExpiresAtUtc = expiresAtUtc,
+                                    TenantName = evt.Name,
+                                    TenantSubdomain = evt.SubDomain,
+                                    InviterName = "TaxVision",
+                                    CorrelationId = correlationId,
+                                }
+                            );
+                        }
+
+                        await invitations.AddAsync(invitationResult.Value, ct);
+                    }
                 }
             }
 

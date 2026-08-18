@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace BuildingBlocks.Health;
+namespace BuildingBlocks.Web.Health;
 
 public sealed class HttpEndpointHealthCheck(IHttpClientFactory httpClientFactory, string endpoint) : IHealthCheck
 {

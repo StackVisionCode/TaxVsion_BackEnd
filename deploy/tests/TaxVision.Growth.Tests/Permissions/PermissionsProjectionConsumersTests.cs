@@ -32,6 +32,7 @@ public sealed class PermissionsProjectionConsumersTests
             PermissionsVersion = 1,
             PermissionCodes = ["growth.codes.manage"],
             RoleIds = [roleId],
+            ActorType = "TenantEmployee",
         };
 
         await UserRolesChangedPermissionsProjectionConsumer.Handle(
@@ -67,6 +68,7 @@ public sealed class PermissionsProjectionConsumersTests
             PermissionsVersion = 2,
             PermissionCodes = ["a", "b"],
             RoleIds = [],
+            ActorType = "TenantEmployee",
         };
 
         await UserRolesChangedPermissionsProjectionConsumer.Handle(
@@ -99,6 +101,7 @@ public sealed class PermissionsProjectionConsumersTests
             PermissionsVersion = 4,
             PermissionCodes = ["stale"],
             RoleIds = [],
+            ActorType = "TenantEmployee",
         };
 
         await UserRolesChangedPermissionsProjectionConsumer.Handle(

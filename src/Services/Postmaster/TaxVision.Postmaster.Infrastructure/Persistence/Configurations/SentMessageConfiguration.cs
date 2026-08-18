@@ -49,6 +49,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.Property(m => m.Metadata).HasColumnType("nvarchar(max)");
         builder.Property(m => m.RequiredProviderScope).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(m => m.CorrespondenceDraftId);
+        builder.Property(m => m.CampaignId);
         builder.Property(m => m.InReplyToInternetMessageId).HasMaxLength(500);
         builder.Property(m => m.ProviderThreadId).HasMaxLength(500);
 
@@ -124,6 +125,7 @@ public sealed class SentMessageConfiguration : IEntityTypeConfiguration<SentMess
         builder.HasIndex(m => new { m.TenantId, m.QueuedAtUtc });
         builder.HasIndex(m => new { m.TenantId, m.NotificationLogId });
         builder.HasIndex(m => new { m.TenantId, m.CorrespondenceDraftId });
+        builder.HasIndex(m => new { m.TenantId, m.CampaignId });
         // IdempotencyKey es NOT NULL (validado en el aggregate) — índice único simple, sin filtro.
         builder.HasIndex(m => new { m.TenantId, m.IdempotencyKey }).IsUnique();
     }

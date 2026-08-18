@@ -1,15 +1,19 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
+using BuildingBlocks.Messaging.PaymentIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +21,8 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using TaxVision.PaymentApp.Api.Common;
+using TaxVision.PaymentApp.Api.RateLimiting;
+using TaxVision.PaymentApp.Application.Consumers;
 using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ChargeSaaSPayment;
 using TaxVision.PaymentApp.Infrastructure;
 using TaxVision.PaymentApp.Infrastructure.Observability;
@@ -54,14 +60,16 @@ builder.Services.AddRedisCache(builder.Configuration);
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// PayFlow (Fase 8) — M2M-only: Auth's onboarding Saga (Fase 15) llama al endpoint de checkout
+// inicial con un token de servicio, nunca con un JWT de tenant/usuario.
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Rate limiter para /webhooks/*: 1000 req/min por IP (§28.4/§K.1 del diseño) — deja pasar
 // reintentos legítimos del provider sin abrir la puerta a un flood.
@@ -87,6 +95,33 @@ builder.Services.AddRateLimiter(options =>
     );
 });
 
+// RateLimit Fase 2 — piloto Customer (Fase 6) extendido a PaymentApp. Flag OFF por default
+// (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+
+// Rate limiting tiered por tenant/usuario (Fase 4.13 del plan) — IConnectionMultiplexer/IRateCounter
+// ya estaban registrados desde F26.4 (PaymentAttemptThrottle), solo hace falta conectar el
+// evaluador; mismo [RateLimit]/[RateLimitExempt] que el resto del monorepo desde Fase 3/4.2. No
+// reemplaza el limiter nativo "webhooks" de arriba (categoría D/E, StripeWebhookController queda
+// [RateLimitExempt]).
+builder.Services.AddTieredRateLimiting();
+
+// Auditoría independiente post-Fase-9 (invariante §4, categoría M) — PaymentApp es el otro de los
+// 2 servicios con al menos una política M (payment_app.m.refund). Debe registrarse DESPUÉS de
+// AddTieredRateLimiting() para ganar sobre el NoOp default (last-registration-wins).
+builder.Services.AddScoped<IRateLimitAuditSink, PaymentAuditLogRateLimitAuditSink>();
+
 // Resuelve pagos atascados en Processing tras una caída a mitad de cobro (§B.6).
 builder.Services.AddHostedService<PendingChargeReconciliationJob>();
 
@@ -111,6 +146,18 @@ builder
 builder.Host.UseWolverine(options =>
 {
     options.Discovery.IncludeAssembly(typeof(ChargeSaaSPaymentCommand).Assembly);
+    // Registro explícito de los consumers de la proyección RBAC: la discovery convencional no los
+    // engancha en este servicio (Wolverine loguea "No known handler para UserRolesChangedIntegrationEvent"),
+    // así que la proyección UserPermissionsProjections quedaba vacía y [HasPermission] daba 403. Idénticos
+    // a los de Subscription, que sí discovery-ean solos — este include fuerza su registro.
+    options.Discovery.IncludeType(typeof(UserRolesChangedPermissionsProjectionConsumer));
+    options.Discovery.IncludeType(typeof(RolePermissionsChangedPermissionsProjectionConsumer));
+    // RateLimit Fase 2 — mismo motivo que los 2 consumers de arriba: fuerza el registro explícito
+    // del consumer de TenantEntitlementsChangedIntegrationEvent por si la discovery convencional
+    // tampoco lo engancha en este servicio.
+    options.Discovery.IncludeType(
+        typeof(TaxVision.PaymentApp.Application.RateLimiting.Consumers.TenantPlanCodeProjectionConsumer)
+    );
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =
@@ -135,6 +182,13 @@ builder.Host.UseWolverine(options =>
         .ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionPlanChangePaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SaaSPaymentMethodExpiringSoonIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // PayFlow (Fase 8) — resultado del pago inicial de un onboarding pago-primero.
+    options.PublishMessage<OnboardingPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<OnboardingPaymentFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Bug real encontrado en auditoría: SaaSPaymentChargeOutcome ya publicaba este evento para
+    // liquidar beneficios de referidos en Growth, pero nunca tuvo ruta registrada -- Wolverine
+    // lo descartaba silenciosamente y los descuentos de referidos nunca se liquidaban.
+    options.PublishMessage<PaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Consume TenantCreated/TenantStatusChanged (proyección local) y
     // SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue/SubscriptionPlanChangeDue
@@ -149,16 +203,14 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
-    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
     options
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
-        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
-    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+        .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 
 var app = builder.Build();
@@ -181,7 +233,7 @@ app.UseAuthentication();
 // invocado vía bus.InvokeAsync nunca heredaba el tenant de la petición HTTP). RBAC Fase 7 hotfix
 // (2026-07-22): va ANTES de UseAuthorization() — en modo Projection, [HasPermission] necesita el
 // tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
@@ -193,3 +245,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

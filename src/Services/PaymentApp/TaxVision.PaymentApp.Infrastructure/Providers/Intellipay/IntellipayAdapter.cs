@@ -181,6 +181,16 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
     /// <summary>Intellipay no modela "adjuntar una tarjeta extra" — el custId ya es el token
     /// reusable. Gestión de múltiples tarjetas por customer queda para cuando el negocio lo
     /// pida (§44.12: Intellipay production-ready cubre charge/refund/status, no card vault).</summary>
+    public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct) =>
+        Task.FromResult(
+            Result.Failure<SetupIntentInfo>(
+                new Error(
+                    "Intellipay.SetupIntent.NotSupported",
+                    "Intellipay does not support client-side SetupIntents; use its own hosted flow."
+                )
+            )
+        );
+
     public Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
         ProviderCustomerToken customer,
         string paymentMethodReference,
@@ -201,6 +211,25 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
                 new Error(
                     "Intellipay.PaymentMethod.NotSupported",
                     "Intellipay does not support detaching payment methods yet."
+                )
+            )
+        );
+
+    /// <summary>PayFlow (Fase 8) — <see cref="IntellipayCapabilities.Instance"/> declara
+    /// <c>SupportsHostedCheckoutRedirect=true</c> (Intellipay sí ofrece un hosted flow propio),
+    /// pero ese flujo nunca se cableó a este método de <see cref="IPaymentProvider"/> — PayFlow
+    /// solo necesita Stripe (ver <c>CreateOnboardingCheckoutHandler</c>), así que este gap
+    /// preexistente queda documentado y fuera de alcance en vez de "NotSupported" (que sería
+    /// inexacto dado lo que el propio catálogo de capacidades afirma).</summary>
+    public Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
+        HostedCheckoutSessionRequest request,
+        CancellationToken ct
+    ) =>
+        Task.FromResult(
+            Result.Failure<HostedCheckoutSessionResult>(
+                new Error(
+                    "Intellipay.CheckoutSession.NotImplemented",
+                    "Intellipay's hosted checkout is not wired to this interface yet."
                 )
             )
         );

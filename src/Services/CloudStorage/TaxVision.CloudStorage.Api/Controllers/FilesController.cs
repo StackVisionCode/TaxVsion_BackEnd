@@ -3,10 +3,11 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Api.Common;
 using TaxVision.CloudStorage.Application.Abstractions;
@@ -38,6 +39,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.i.upload")]
     [ProducesResponseType<InitiatedUploadResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> InitiateUpload(InitiateUploadRequest request, CancellationToken ct)
     {
@@ -61,6 +63,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.i.upload")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteUpload(Guid fileId, CancellationToken ct)
     {
@@ -85,6 +88,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.i.upload")]
     [ProducesResponseType<InitiatedMultipartUploadResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> InitiateMultipartUpload(
         InitiateMultipartUploadRequest request,
@@ -112,6 +116,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.i.upload")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> CompleteMultipartUpload(
         Guid fileId,
@@ -139,6 +144,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.f.file_get")]
     [ProducesResponseType<FileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid fileId, CancellationToken ct)
     {
@@ -157,6 +163,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
+    [RateLimit("cloudstorage.f.file_list")]
     [ProducesResponseType<IReadOnlyList<FileResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] int skip = 0,
@@ -188,6 +195,7 @@ public sealed class FilesController(
         // con 403 en ActorTypeAuthorizationFilter antes de llegar siquiera al chequeo de permiso.
         ActorType.Service
     )]
+    [RateLimit("cloudstorage.f.download_url")]
     [ProducesResponseType<DownloadUrlResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> IssueDownloadUrl(Guid fileId, CancellationToken ct)
     {
@@ -220,7 +228,7 @@ public sealed class FilesController(
         ActorType.PlatformAdmin,
         ActorType.CustomerPortal
     )]
-    [EnableRateLimiting("zip-download")]
+    [RateLimit("cloudstorage.i.zip_download")]
     public async Task<IActionResult> DownloadZip(ZipDownloadRequest request, CancellationToken ct)
     {
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
@@ -260,6 +268,7 @@ public sealed class FilesController(
     [HttpDelete("{fileId:guid}")]
     [HasPermission(CloudStoragePermissions.FileDelete)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.file_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid fileId, CancellationToken ct)
     {
@@ -279,6 +288,7 @@ public sealed class FilesController(
     [HttpPut("{fileId:guid}/folder")]
     [HasPermission(CloudStoragePermissions.FolderManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.file_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> MoveToFolder(Guid fileId, MoveToFolderRequest request, CancellationToken ct)
     {
@@ -298,6 +308,7 @@ public sealed class FilesController(
     [HttpPut("{fileId:guid}/legal-hold")]
     [HasPermission(CloudStoragePermissions.LegalManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.file_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetLegalHold(Guid fileId, LegalHoldRequest request, CancellationToken ct)
     {
@@ -314,6 +325,7 @@ public sealed class FilesController(
     [HttpDelete("{fileId:guid}/legal-hold")]
     [HasPermission(CloudStoragePermissions.LegalManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.g.file_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> LiftLegalHold(Guid fileId, LegalHoldRequest request, CancellationToken ct)
     {

@@ -2,11 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { getRabbitContext } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import { TranscriptFailedEventTypes } from '../contracts/events.js';
-const KIND_TO_EVENT_TYPE = {
-    call: 'communication.call.transcript_ready.v1',
-    meeting: 'communication.meeting.transcript_ready.v1',
-};
+import { buildRecordingKindLookups } from '../contracts/recording-kinds.js';
+const { byKind } = buildRecordingKindLookups(config.recordingKinds);
+function mappingForKind(kind) {
+    const mapping = byKind.get(kind);
+    if (!mapping)
+        throw new Error(`Unknown recording kind: ${kind} (ver config.recordingKinds)`);
+    return mapping;
+}
 /**
  * Publica al mismo exchange fanout `taxvision-events` que usa Communication.
  * El `eventType` va tanto en el JSON body como en el header AMQP `type`,
@@ -18,7 +21,8 @@ const KIND_TO_EVENT_TYPE = {
  */
 export function publishTranscriptReady(event) {
     const rabbit = getRabbitContext();
-    const eventType = KIND_TO_EVENT_TYPE[event.kind];
+    const mapping = mappingForKind(event.kind);
+    const eventType = mapping.transcriptReadyEventType;
     const readyAtUtc = new Date().toISOString();
     const eventId = randomUUID();
     const body = {
@@ -27,7 +31,7 @@ export function publishTranscriptReady(event) {
         tenantId: event.tenantId,
         correlationId: event.correlationId,
         occurredOnUtc: readyAtUtc,
-        ...(event.kind === 'call' ? { callId: event.targetId } : { meetingId: event.targetId }),
+        [mapping.targetIdField]: event.targetId,
         recordingFileId: event.recordingFileId,
         transcriptFileId: event.transcriptFileId,
         detectedLanguage: event.detectedLanguage,
@@ -53,7 +57,8 @@ export function publishTranscriptReady(event) {
  */
 export function publishTranscriptFailed(event) {
     const rabbit = getRabbitContext();
-    const eventType = TranscriptFailedEventTypes[event.kind];
+    const mapping = mappingForKind(event.kind);
+    const eventType = mapping.transcriptFailedEventType;
     const occurredAtUtc = new Date().toISOString();
     const eventId = randomUUID();
     const body = {
@@ -62,7 +67,7 @@ export function publishTranscriptFailed(event) {
         tenantId: event.tenantId,
         correlationId: event.correlationId,
         occurredOnUtc: occurredAtUtc,
-        ...(event.kind === 'call' ? { callId: event.targetId } : { meetingId: event.targetId }),
+        [mapping.targetIdField]: event.targetId,
         recordingFileId: event.recordingFileId,
         failureReason: event.failureReason,
         errorMessage: event.errorMessage,

@@ -161,4 +161,84 @@ internal sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, I
 
         return matches;
     }
+
+    /// <summary>
+    /// El mismo criterio y el mismo orden de prioridad que el import, para un solo candidato.
+    ///
+    /// <para>
+    /// Es una consulta y no reusa la del chunk porque acá no hay identificador fiscal —el alta no lo
+    /// pide— y porque hay que poder excluirse a uno mismo al editar.
+    /// </para>
+    /// </summary>
+    public async Task<DuplicateMatch?> FindDuplicateAsync(
+        Guid tenantId,
+        CustomerDuplicateCandidate candidate,
+        Guid? excludeCustomerId,
+        CancellationToken ct
+    )
+    {
+        var email = candidate.Email.Trim().ToLowerInvariant();
+        var phone = string.IsNullOrWhiteSpace(candidate.PhoneE164) ? null : candidate.PhoneE164.Trim();
+        var name = string.IsNullOrWhiteSpace(candidate.DisplayName)
+            ? null
+            : candidate.DisplayName.Trim().ToLowerInvariant();
+        var dob = candidate.DateOfBirth;
+
+        var candidates = await db
+            .Customers.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.Status != CustomerStatus.Archived)
+            .Where(c => excludeCustomerId == null || c.Id != excludeCustomerId)
+            .Where(c =>
+                c.PrimaryEmail.NormalizedValue == email
+                || (
+                    phone != null
+                    && name != null
+                    && c.PrimaryPhone != null
+                    && c.PrimaryPhone.E164Value == phone
+                    && c.DisplayName.ToLower() == name
+                )
+                || (name != null && dob != null && c.DateOfBirth == dob && c.DisplayName.ToLower() == name)
+            )
+            .Select(c => new
+            {
+                c.Id,
+                c.DisplayName,
+                c.DateOfBirth,
+                EmailNormalized = c.PrimaryEmail.NormalizedValue,
+                PhoneE164 = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
+            })
+            .ToListAsync(ct);
+
+        if (candidates.Count == 0)
+            return null;
+
+        // El correo manda: es la llave del portal y la que la base exige unica por tenant.
+        var byEmail = candidates.FirstOrDefault(c => c.EmailNormalized == email);
+        if (byEmail is not null)
+            return new DuplicateMatch(0, byEmail.Id, byEmail.DisplayName, "Email");
+
+        // El telefono NO alcanza solo, y esto se aprendio dandole de alta a alguien de verdad: una
+        // familia comparte el numero de la casa, asi que el telefono a secas bloquea al conyuge y al
+        // hijo. Y con Overwrite encima, sobreescribiria a la persona equivocada. Tiene que coincidir
+        // tambien el nombre — que es lo que pedia el CRM viejo.
+        if (phone is not null && name is not null)
+        {
+            var byPhone = candidates.FirstOrDefault(c =>
+                c.PhoneE164 == phone && c.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase)
+            );
+            if (byPhone is not null)
+                return new DuplicateMatch(0, byPhone.Id, byPhone.DisplayName, "Phone+Name");
+        }
+
+        if (name is not null && dob is not null)
+        {
+            var byName = candidates.FirstOrDefault(c =>
+                c.DateOfBirth == dob && c.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase)
+            );
+            if (byName is not null)
+                return new DuplicateMatch(0, byName.Id, byName.DisplayName, "Name+DOB");
+        }
+
+        return null;
+    }
 }

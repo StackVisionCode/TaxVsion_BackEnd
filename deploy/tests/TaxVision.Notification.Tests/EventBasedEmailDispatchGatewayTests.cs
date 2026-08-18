@@ -325,6 +325,13 @@ public sealed class EventBasedEmailDispatchGatewayTests
             int size,
             CancellationToken ct = default
         ) => Task.FromResult<(IReadOnlyList<NotificationLog>, int)>((Logs, Logs.Count));
+
+        public Task<NotificationLog?> GetByRelatedEventIdAsync(
+            Guid tenantId,
+            Guid relatedEventId,
+            string templateKey,
+            CancellationToken ct = default
+        ) => Task.FromResult<NotificationLog?>(null);
     }
 
     private sealed class NoOpUnitOfWork : IUnitOfWork

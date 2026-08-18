@@ -17,6 +17,7 @@ import { registerNotificationHandlers } from './api/socket/handlers/notification
 import { startMissedCallScheduler } from './infrastructure/schedulers/missed-call-scheduler.js';
 import { startPurgeScheduler } from './infrastructure/schedulers/purge-scheduler.js';
 import { startRecordingConsentTimeoutScheduler } from './infrastructure/schedulers/recording-consent-timeout-scheduler.js';
+import { startCustomerReconciliationScheduler } from './infrastructure/schedulers/customer-reconciliation-scheduler.js';
 import { startOutboxDrainer } from './infrastructure/rabbit/outbox-drainer.js';
 import { ConsumerRuntime } from './infrastructure/rabbit/consumer-runtime.js';
 import { bindSignatureConsumers } from './application/event-handlers/signature-consumers.js';
@@ -28,6 +29,7 @@ import { bindConnectorsConsumers } from './application/event-handlers/connectors
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
+import { bindCalendarConsumers } from './application/event-handlers/calendar-consumers.js';
 import { SocketRealtimeEmitter } from './infrastructure/socket/socket-realtime-emitter.js';
 import { startSessionDenylistWatcher } from './infrastructure/redis/session-denylist-watcher.js';
 import { startPresenceChangedWatcher } from './infrastructure/redis/presence-changed-watcher.js';
@@ -93,6 +95,14 @@ async function main(): Promise<void> {
       lock: container.distributedLock,
     },
   );
+  const customerReconciliation = startCustomerReconciliationScheduler(
+    { enabled: config.customerReconcile.enabled, intervalHours: config.customerReconcile.intervalHours },
+    {
+      client: container.customerReconciliation,
+      customerDirectory: container.customerDirectory,
+      lock: container.distributedLock,
+    },
+  );
 
   // Consumer runtime + registro de handlers Signature/Customer/Auth.
   const consumers = new ConsumerRuntime(container.processedEvents);
@@ -114,7 +124,10 @@ async function main(): Promise<void> {
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
   });
-  bindSubscriptionConsumers(consumers.register.bind(consumers), { limits: container.limits });
+  bindSubscriptionConsumers(consumers.register.bind(consumers), {
+    limits: container.limits,
+    planCodeCache: container.planCodeCache,
+  });
   bindCloudStorageConsumers(consumers.register.bind(consumers), {
     attachmentTracking: container.attachmentTracking,
     notifications: container.notifications,
@@ -126,6 +139,13 @@ async function main(): Promise<void> {
   });
   bindConnectorsConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
+    emitter,
+  });
+  bindCalendarConsumers(consumers.register.bind(consumers), {
+    meetings: container.meetings,
+    publisher: container.publisher,
+    passcodes: container.passcodes,
+    settings: container.settings,
     emitter,
   });
   bindAnalyticsConsumers(consumers.register.bind(consumers), { analytics: container.analytics });
@@ -162,6 +182,7 @@ async function main(): Promise<void> {
         outbox,
         purge,
         recordingConsentTimeout,
+        customerReconciliation,
         sessionWatcher,
         presenceWatcher,
         consumers,
@@ -181,6 +202,7 @@ async function shutdown(
   outbox: ReturnType<typeof startOutboxDrainer>,
   purge: ReturnType<typeof startPurgeScheduler>,
   recordingConsentTimeout: ReturnType<typeof startRecordingConsentTimeoutScheduler>,
+  customerReconciliation: ReturnType<typeof startCustomerReconciliationScheduler>,
   sessionWatcher: ReturnType<typeof startSessionDenylistWatcher>,
   presenceWatcher: ReturnType<typeof startPresenceChangedWatcher>,
   consumers: ConsumerRuntime,
@@ -191,6 +213,7 @@ async function shutdown(
     outbox.stop();
     purge.stop();
     recordingConsentTimeout.stop();
+    customerReconciliation.stop();
     await container.sfu.stop();
     await sessionWatcher.stop();
     await presenceWatcher.stop();

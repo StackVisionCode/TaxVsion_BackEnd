@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <!--
+    Los contadores del motor (RegisterBlocker*, RegisterSubtask*, ReconcileCounters) son `internal`
+    a propósito: los mueve el handler de dependencias, nunca el usuario. Application necesita verlos
+    para hacer su trabajo; Api NO, y ese es justo el punto — un controller que intente llamarlos no
+    compila. El guardrail queda enforced por el compilador y no por una revisión de código.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="TaxVision.Tasks.Application" />
+    <InternalsVisibleTo Include="TaxVision.Tasks.Tests" />
+  </ItemGroup>
+
+  <!--
+    Ical.Net vive en Domain a propósito: RecurrenceRule valida el RRULE en el constructor del VO,
+    no al usarlo (guardrail T-R6). Es una librería de dominio puro — no trae IO ni EF.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Ical.Net" Version="5.1.0" />
+  </ItemGroup>
+</Project>

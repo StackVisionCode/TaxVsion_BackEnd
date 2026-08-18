@@ -47,6 +47,9 @@ public sealed class UserPermissionsProjectionRepository(PaymentClientDbContext d
         return candidates.Where(p => p.RoleIds().Contains(roleId)).ToList();
     }
 
+    // IgnoreQueryFilters: mismo patrón que GetAsync/FindActiveByTenantAndRoleIdAsync arriba —
+    // tenantId ya viene explícito y confiable del caller (ProjectionPermissionsSource), no depende
+    // del filtro ambiental roto en scopes de Wolverine.
     public async Task<UserPermissionsSnapshot?> GetSnapshotAsync(
         Guid tenantId,
         Guid userId,
@@ -55,6 +58,7 @@ public sealed class UserPermissionsProjectionRepository(PaymentClientDbContext d
     {
         var projection = await db
             .UserPermissionsProjections.AsNoTracking()
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.UserId == userId && p.IsActive, ct);
 
         return projection is null

@@ -1,11 +1,12 @@
-using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace BuildingBlocks.Observability;
+namespace BuildingBlocks.Web.Observability;
 
 public static class OpenTelemetryRegistration
 {
@@ -47,7 +48,10 @@ public static class OpenTelemetryRegistration
                     .AddMeter(serviceName)
                     // RBAC Fase 10 — Layer 1/2/3b corren en los 14 servicios, así que este Meter
                     // compartido de BuildingBlocks se exporta siempre (no opt-in vía additionalMeterNames).
-                    .AddMeter(AuthorizationMetrics.MeterName);
+                    .AddMeter(AuthorizationMetrics.MeterName)
+                    // RateLimit Fase 8 — AddTieredRateLimiting() ya lo llaman los 17 servicios desde
+                    // que Fase 4 cerró la migración completa de endpoints; mismo criterio que arriba.
+                    .AddMeter(RateLimitMetrics.MeterName);
 
                 foreach (var meterName in additionalMeterNames)
                     metrics.AddMeter(meterName);

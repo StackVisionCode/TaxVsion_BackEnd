@@ -25,6 +25,15 @@ public sealed class TenantEmailProvider : TenantEntity
     public string FromAddressDefault { get; private set; } = default!;
     public string? FromDisplayNameDefault { get; private set; }
     public int RateLimitPerMinute { get; private set; }
+
+    /// <summary>
+    /// Cupo por-minuto de la partición <see cref="Sending.EmailStream.Bulk"/> (envíos masivos, ej.
+    /// campañas) — separado de <see cref="RateLimitPerMinute"/> (partición Transactional) para que un
+    /// stream nunca compita por la cuota del otro. Null hasta que un admin lo configure explícitamente
+    /// — <see cref="Sending.EmailStream.Bulk"/> no cae al cupo Transactional por defecto: mientras esté
+    /// null, cualquier envío Bulk falla como no-configurado en vez de compartir presupuesto en silencio.
+    /// </summary>
+    public int? BulkRateLimitPerMinute { get; private set; }
     public bool Enabled { get; private set; }
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
@@ -44,7 +53,8 @@ public sealed class TenantEmailProvider : TenantEntity
         string? passwordCipher,
         int rateLimitPerMinute,
         Guid createdByUserId,
-        DateTime createdAtUtc
+        DateTime createdAtUtc,
+        int? bulkRateLimitPerMinute = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -56,7 +66,8 @@ public sealed class TenantEmailProvider : TenantEntity
             fromAddressDefault,
             providerType,
             host,
-            rateLimitPerMinute
+            rateLimitPerMinute,
+            bulkRateLimitPerMinute
         );
         if (validationError is not null)
             return Result.Failure<TenantEmailProvider>(validationError);
@@ -79,6 +90,7 @@ public sealed class TenantEmailProvider : TenantEntity
             Username = username,
             PasswordCipher = secretResult.Value,
             RateLimitPerMinute = rateLimitPerMinute,
+            BulkRateLimitPerMinute = bulkRateLimitPerMinute,
             Enabled = true,
             CreatedByUserId = createdByUserId,
             CreatedAtUtc = createdAtUtc,
@@ -97,7 +109,8 @@ public sealed class TenantEmailProvider : TenantEntity
         string fromAddressDefault,
         string? fromDisplayNameDefault,
         int rateLimitPerMinute,
-        DateTime updatedAtUtc
+        DateTime updatedAtUtc,
+        int? bulkRateLimitPerMinute = null
     )
     {
         var validationError = ValidateConnectionFields(
@@ -106,7 +119,8 @@ public sealed class TenantEmailProvider : TenantEntity
             fromAddressDefault,
             ProviderType,
             host,
-            rateLimitPerMinute
+            rateLimitPerMinute,
+            bulkRateLimitPerMinute
         );
         if (validationError is not null)
             return Result.Failure(validationError);
@@ -123,6 +137,7 @@ public sealed class TenantEmailProvider : TenantEntity
         FromAddressDefault = fromAddressDefault.Trim().ToLowerInvariant();
         FromDisplayNameDefault = fromDisplayNameDefault;
         RateLimitPerMinute = rateLimitPerMinute;
+        BulkRateLimitPerMinute = bulkRateLimitPerMinute;
         UpdatedAtUtc = updatedAtUtc;
         return Result.Success();
     }
@@ -145,7 +160,8 @@ public sealed class TenantEmailProvider : TenantEntity
         string fromAddressDefault,
         EmailProviderType providerType,
         string? host,
-        int rateLimitPerMinute
+        int rateLimitPerMinute,
+        int? bulkRateLimitPerMinute
     )
     {
         if (string.IsNullOrWhiteSpace(providerCode) || providerCode.Length > 50)
@@ -165,6 +181,12 @@ public sealed class TenantEmailProvider : TenantEntity
 
         if (rateLimitPerMinute <= 0)
             return new Error("TenantEmailProvider.RateLimitPerMinute", "RateLimitPerMinute must be greater than zero.");
+
+        if (bulkRateLimitPerMinute is <= 0)
+            return new Error(
+                "TenantEmailProvider.BulkRateLimitPerMinute",
+                "BulkRateLimitPerMinute must be greater than zero when provided."
+            );
 
         return null;
     }

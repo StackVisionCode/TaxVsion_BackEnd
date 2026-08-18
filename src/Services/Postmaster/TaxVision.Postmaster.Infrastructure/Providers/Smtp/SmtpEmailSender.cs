@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Resilience;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Logging;
@@ -8,7 +9,6 @@ using Polly.Retry;
 using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Domain.Sending;
-using TaxVision.Postmaster.Infrastructure.RateLimit;
 using TaxVision.Postmaster.Infrastructure.Sending;
 
 namespace TaxVision.Postmaster.Infrastructure.Providers.Smtp;
@@ -16,12 +16,16 @@ namespace TaxVision.Postmaster.Infrastructure.Providers.Smtp;
 /// <summary>
 /// Implementación SMTP de <see cref="IEmailSender"/> vía MailKit. El MIME lo arma
 /// <see cref="MimeMessageBuilder"/> (Fase 3.5) con <c>LinkedResources</c> para logos CID. Transitorios
-/// (4xx) reintentan con backoff exponencial vía Polly; rechazos de destinatario (5xx) se aíslan por
-/// dirección y no abortan el envío al resto — ver <see cref="SendAsync"/>. Todo el intento (connect +
-/// send) pasa por un <see cref="ProviderCircuitBreaker"/> propio por <c>ProviderCode</c> (Fase 9): tras
-/// 5 fallos consecutivos deja de intentar contra ese proveedor por 60s.
+/// (4xx) reintentan con backoff exponencial vía <see cref="TransientRetryPipeline"/>, propio de este
+/// sender y con <c>ShouldHandle</c> específico de <see cref="SmtpCommandException"/> (MailKit no lanza
+/// <c>HttpRequestException</c>); rechazos de destinatario (5xx) se aíslan por dirección y no abortan el
+/// envío al resto — ver <see cref="SendAsync"/>. Todo el intento (connect + send) pasa además por un
+/// <see cref="HttpResiliencePipeline"/> compartido por <c>ProviderCode</c> (F24): tras 5 fallos
+/// consecutivos deja de intentar contra ese proveedor por 60s. Su etapa de retry (2 intentos,
+/// <c>HttpRequestException</c>/<c>TaskCanceledException</c>) existe pero es efectivamente inerte
+/// para SMTP — el retry real de este sender sigue siendo <see cref="TransientRetryPipeline"/>.
 /// </summary>
-public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, ProviderCircuitBreakerRegistry circuitBreakers)
+public sealed class SmtpEmailSender(ILogger<SmtpEmailSender> logger, HttpResiliencePipelineRegistry circuitBreakers)
     : IEmailSender
 {
     private static readonly ResiliencePipeline TransientRetryPipeline = new ResiliencePipelineBuilder()

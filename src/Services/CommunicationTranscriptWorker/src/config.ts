@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { COMMUNICATION_RECORDING_KINDS, recordingKindsSchema, type RecordingKindMapping } from './contracts/recording-kinds.js';
 
 /**
  * Config loader con validacion Zod — mismo patron que Communication
@@ -98,8 +99,25 @@ const rawEnv = z
     // tiene ninguna otra ruta) solo para exponer /metrics a Prometheus. Puerto
     // por defecto = el convencional del ecosistema prom-client para Node.
     TRANSCRIPT_WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65_535).default(9464),
+
+    // Este worker es un pipeline generico de transcripcion (ver
+    // contracts/recording-kinds.ts): lo que varia por dominio es solo el
+    // contrato de mensajeria (que eventos disparan una transcripcion, en que
+    // campo viene el id del dueño de la grabacion, con que eventos se publica
+    // el resultado). JSON con RecordingKindMapping[] — si se deja vacio (el
+    // default), se usa COMMUNICATION_RECORDING_KINDS tal cual, reproduciendo
+    // el comportamiento exacto de este worker desde su version original.
+    // Cualquier otro microservicio puede reusar esta misma imagen/codigo
+    // desplegando su propia instancia con esta variable seteada a su propio
+    // mapeo, sin tocar una linea de codigo.
+    TRANSCRIPT_WORKER_RECORDING_KINDS: z.string().default(''),
   })
   .parse(process.env);
+
+function parseRecordingKinds(raw: string): readonly RecordingKindMapping[] {
+  if (!raw.trim()) return COMMUNICATION_RECORDING_KINDS;
+  return recordingKindsSchema.parse(JSON.parse(raw));
+}
 
 export const config = {
   env: rawEnv.NODE_ENV,
@@ -163,6 +181,8 @@ export const config = {
   metrics: {
     port: rawEnv.TRANSCRIPT_WORKER_METRICS_PORT,
   },
+
+  recordingKinds: parseRecordingKinds(rawEnv.TRANSCRIPT_WORKER_RECORDING_KINDS),
 } as const;
 
 export type AppConfig = typeof config;

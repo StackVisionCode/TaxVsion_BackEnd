@@ -8,7 +8,7 @@ namespace TaxVision.Notification.Domain.Authorization;
 /// unión de permisos de un usuario multi-rol cuando llega <c>RolePermissionsChangedIntegrationEvent</c>
 /// para SOLO uno de sus roles, sin perder los permisos heredados de sus otros roles. Sibling de
 /// <see cref="AuthzUserPermissionsProjection"/> — ver el comentario XML de esa clase para por qué
-/// esto es una entidad DISTINTA de <c>TaxVision.Notification.Domain.Permissions.RolePermissionsProjection</c>
+/// esto es una entidad DISTINTA de <c>TaxVision.Notification.Domain.Permissions.NotificationRecipientRolePermissionsProjection</c>
 /// (Fase 4 del plan de notificaciones dinámicas, usada por <c>IRecipientResolver</c>).
 /// </summary>
 public sealed class AuthzRolePermissionsProjection : TenantEntity

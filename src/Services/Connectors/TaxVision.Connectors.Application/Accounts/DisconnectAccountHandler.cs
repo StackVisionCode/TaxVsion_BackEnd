@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -20,6 +21,7 @@ public static class DisconnectAccountHandler
         IProviderConnectionAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -59,6 +61,7 @@ public static class DisconnectAccountHandler
         await bus.PublishAsync(
             new ConnectorsTenantEmailAccountDisconnectedIntegrationEvent
             {
+                CorrelationId = correlation.CorrelationId,
                 TenantId = cmd.TenantId,
                 AccountId = account.Id,
                 EmailAddress = account.EmailAddress,

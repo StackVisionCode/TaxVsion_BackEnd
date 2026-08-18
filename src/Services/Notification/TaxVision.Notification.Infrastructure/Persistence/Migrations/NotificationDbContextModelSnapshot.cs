@@ -96,6 +96,76 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("AuthzUserPermissionsProjections", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Notification.Domain.Directory.CustomerEmailDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerEmailDirectoryEntries", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Notification.Domain.Directory.UserEmailDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsStale")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserEmailDirectoryEntries", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaign", b =>
                 {
                     b.Property<Guid>("Id")
@@ -805,39 +875,35 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.ToTable("PushDeviceTokens", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Notification.Domain.Permissions.RolePermissionsProjection", b =>
+            modelBuilder.Entity("TaxVision.Notification.Domain.Onboarding.OnboardingReceiptLookup", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("PermissionCodesJson")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
 
-                    b.Property<int>("PermissionsVersion")
-                        .HasColumnType("int");
-
-                    b.Property<string>("RoleName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid>("TenantId")
+                    b.Property<Guid>("OnboardingId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
+                    b.Property<string>("ReceiptDownloadUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ReceiptFileId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("OnboardingId")
+                        .IsUnique();
 
-                    b.ToTable("RolePermissionsProjections", (string)null);
+                    b.ToTable("OnboardingReceiptLookups", (string)null);
                 });
 
-            modelBuilder.Entity("TaxVision.Notification.Domain.Permissions.UserPermissionsProjection", b =>
+            modelBuilder.Entity("TaxVision.Notification.Domain.Permissions.NotificationRecipientPermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -878,7 +944,39 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("UserPermissionsProjections", (string)null);
+                    b.ToTable("NotificationRecipientPermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Notification.Domain.Permissions.NotificationRecipientRolePermissionsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("NotificationRecipientRolePermissionsProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Notification.Domain.Preferences.UserNotificationPreference", b =>
@@ -915,6 +1013,34 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("UserNotificationPreferences", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Notification.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Notification.Domain.Emailing.Campaigns.EmailCampaignRecipient", b =>

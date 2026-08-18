@@ -22,7 +22,7 @@ public sealed class OutboundEmailSendException(
 /// <see cref="IEmailProviderClient"/> tiene un contrato explícito de solo-lectura (D3 §3.1); envío es
 /// una responsabilidad distinta. <c>GmailApiClient</c>/<c>GraphApiClient</c> implementan ambas
 /// interfaces sobre la misma instancia (reusan <c>HttpClient</c>/<c>IOAuthTokenManager</c>/
-/// <c>ProviderCircuitBreakerRegistry</c> ya inyectados). <c>ImapClient</c> no la implementa — IMAP no
+/// <c>HttpResiliencePipelineRegistry</c> ya inyectados). <c>ImapClient</c> no la implementa — IMAP no
 /// envía correo (eso es SMTP manual, D1 de Postmaster, fuera de alcance acá).
 /// </summary>
 public interface IOutboundEmailProviderClient
@@ -32,13 +32,15 @@ public interface IOutboundEmailProviderClient
     /// <summary>
     /// Envía <paramref name="message"/> desde la cuenta <paramref name="accountId"/>. El caller (el
     /// handler, que ya cargó el <c>TenantEmailAccount</c> para verificar tenant) provee
-    /// <paramref name="fromAddress"/>/<paramref name="fromDisplayName"/> — el client nunca resuelve la
-    /// cuenta por su cuenta, solo sabe hablar con el proveedor. Lanza
+    /// <paramref name="fromAddress"/>/<paramref name="fromDisplayName"/>/<paramref name="tenantId"/>
+    /// (Rate Limit Fase 0.3, para el cupo per-tenant de <see cref="IProviderRateLimiter"/>) — el
+    /// client nunca resuelve la cuenta por su cuenta, solo sabe hablar con el proveedor. Lanza
     /// <see cref="OutboundEmailSendException"/> en cualquier fallo — nunca devuelve un resultado que
     /// represente un envío fallido.
     /// </summary>
     Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string fromAddress,
         string? fromDisplayName,
         OutboundMessage message,

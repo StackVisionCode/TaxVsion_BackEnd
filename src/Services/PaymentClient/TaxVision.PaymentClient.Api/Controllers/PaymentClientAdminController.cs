@@ -2,7 +2,9 @@ using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Csv;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +27,7 @@ namespace TaxVision.PaymentClient.Api.Controllers;
 public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("payments")]
+    [RateLimit("payment_client.f.admin_read")]
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [ProducesResponseType<IReadOnlyList<TenantPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchAllTenants(
@@ -37,6 +40,7 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
     ) => Search(tenantId: null, status, from, to, page, pageSize, ct);
 
     [HttpGet("tenants/{tenantId:guid}/payments")]
+    [RateLimit("payment_client.f.admin_read")]
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [ProducesResponseType<IReadOnlyList<TenantPaymentAdminResponse>>(StatusCodes.Status200OK)]
     public Task<IActionResult> SearchForTenant(
@@ -55,6 +59,7 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
     /// paginación (capado a <see cref="ExportMaxRows"/>; para volúmenes mayores el reporte
     /// debería moverse a un job async, fuera de scope de J.3).</summary>
     [HttpGet("payments/export")]
+    [RateLimit("payment_client.h.admin_export")]
     [HasPermission(PaymentClientPermissions.AdminCrossTenant)]
     [Produces("text/csv")]
     public async Task<IActionResult> ExportCsv(
@@ -73,7 +78,9 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
         if (result.IsFailure)
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 
-        var csv = CsvWriter.Write(
+        // BB-17 — WriteWithBom: sin BOM, Excel abre el CSV con la codepage ANSI y los acentos de los
+        // nombres de clientes salen como mojibake. Encoding.UTF8.GetBytes() NO emite BOM.
+        var csv = CsvWriter.WriteWithBom(
             [
                 "Id",
                 "TenantId",
@@ -107,7 +114,7 @@ public sealed class PaymentClientAdminController(IMessageBus bus) : ControllerBa
             )
         );
 
-        return File(Encoding.UTF8.GetBytes(csv), "text/csv", $"tenant-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
+        return File(csv, "text/csv", $"tenant-payments-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
     }
 
     private async Task<IActionResult> Search(

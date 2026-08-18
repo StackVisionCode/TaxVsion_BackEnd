@@ -31,6 +31,7 @@ public static class PermissionCatalog
     public const string SignaturesRequest = "signatures.request";
     public const string DocumentsView = "documents.view";
     public const string DocumentsManage = "documents.manage";
+    public const string DocumentsBrandingManage = DocumentsPermissions.BrandingManage;
     public const string EmailUse = "email.use";
     public const string CommsCalls = "comms.calls";
     public const string CampaignsManage = "campaigns.manage";
@@ -117,6 +118,24 @@ public static class PermissionCatalog
     public const string ScribeCampaignsWrite = ScribePermissions.CampaignsWrite;
     public const string ScribeRender = ScribePermissions.Render;
 
+    // SMS — envío de SMS/MMS agnóstico de proveedor (bounded context propio, microservicio Sms).
+    // Lo exige "POST /sms/messages" vía [HasPermission(SmsPermissions.Send)]. A diferencia de
+    // ScribeRender, sí lo reciben roles humanos (TenantAdmin/TenantEmployee) además del caller M2M
+    // (un microservicio que envía SMS lo lleva como claim "perm" vía ServiceAuth:Clients de Auth).
+    public const string SmsSend = SmsPermissions.Send;
+
+    // Catalog — productos/servicios/categorías (microservicio Catalog). Humano-asignables: TenantAdmin
+    // los recibe vía SystemRoleDefaults; los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
+    public const string CatalogRead = CatalogPermissions.Read;
+    public const string CatalogWrite = CatalogPermissions.Write;
+    public const string CatalogDelete = CatalogPermissions.Delete;
+
+    // Inventory — stock/proveedores/movimientos (microservicio Inventory). Humano-asignables (TenantAdmin
+    // vía defaults); los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
+    public const string InventoryRead = InventoryPermissions.Read;
+    public const string InventoryWrite = InventoryPermissions.Write;
+    public const string InventoryAdjust = InventoryPermissions.Adjust;
+
     // Postmaster — envío/entrega de correo, proveedores por tenant y suppression list (bounded
     // context propio, ver microservicio Postmaster). Estos 5 permisos ya los exigían los 3
     // controllers de Postmaster vía [HasPermission(...)], pero nunca se habían sembrado en este
@@ -144,6 +163,42 @@ public static class PermissionCatalog
     public const string NotificationCampaignView = NotificationPermissions.CampaignView;
     public const string NotificationCampaignManage = NotificationPermissions.CampaignManage;
     public const string NotificationLogView = NotificationPermissions.LogView;
+
+    // Notes — notas internas/portal sobre customers y otras entidades (bounded context propio,
+    // ver microservicio Notes). Read/Manage son el uso normal de staff (Manage exige además ser
+    // el autor, chequeado en Application — ver ADR-06); ViewAll es gobernanza: un TenantAdmin
+    // puede leer/archivar/borrar notas ajenas, pero NUNCA editar su contenido (no hay override de
+    // Manage). PortalRead es exclusivo del cliente final leyendo sus propias notas ClientVisible.
+    // Reminder — recordatorios personales sobre tareas, eventos, notas o sueltos (bounded context
+    // propio, microservicio Reminder). Un recordatorio pertenece siempre a un usuario del tenant,
+    // así que no hay variante de portal ni permiso de gobernanza: nadie ve ni edita recordatorios
+    // ajenos, y ese filtro por UserId lo aplica el handler, no el permiso.
+    public const string RemindersRead = ReminderPermissions.Read;
+    public const string RemindersWrite = ReminderPermissions.Write;
+
+    public const string NotesRead = NotesPermissions.Read;
+    public const string NotesManage = NotesPermissions.Manage;
+    public const string NotesViewAll = NotesPermissions.ViewAll;
+    public const string NotesPortalRead = NotesPermissions.PortalRead;
+
+    // Task — trabajo interno de la firma (bounded context propio, microservicio Task). A diferencia
+    // de Reminder, acá SÍ hay gobernanza: ManageAll es el override del supervisor que cierra o
+    // reasigna la tarea de otro. Assign existe aparte de Write porque poner trabajo en la bandeja
+    // ajena no es lo mismo que crear el propio. Sin variante de portal: el cliente final nunca ve
+    // la lista de tareas — lo que le llega sale por Notification.
+    public const string TasksRead = TasksPermissions.Read;
+    public const string TasksWrite = TasksPermissions.Write;
+    public const string TasksAssign = TasksPermissions.Assign;
+    public const string TasksManageAll = TasksPermissions.ManageAll;
+    public const string TasksTemplatesManage = TasksPermissions.TemplatesManage;
+    public const string TasksClientRequestsManage = TasksPermissions.ClientRequestsManage;
+    public const string TasksPortalClientRequests = TasksPermissions.PortalClientRequests;
+
+    public const string CalendarRead = CalendarPermissions.Read;
+    public const string CalendarWrite = CalendarPermissions.Write;
+    public const string CalendarManageAll = CalendarPermissions.ManageAll;
+    public const string CalendarTypesManage = CalendarPermissions.TypesManage;
+    public const string CalendarAvailabilityManage = CalendarPermissions.AvailabilityManage;
 
     // Portal del cliente final
     public const string PortalCallsUse = "portal.calls.use";
@@ -232,6 +287,12 @@ public static class PermissionCatalog
     // [AuthorizedByCapabilityToken], un mecanismo de Capa 3 distinto y deliberado).
     public const string TenantStatusChange = TenantPermissions.StatusChange;
     public const string TenantListView = TenantPermissions.ListView;
+
+    // PayFlow (Fase 17) — OnboardingAdminController: listar/inspeccionar onboardings en
+    // ManualReview/ProvisioningFailed y actuar sobre ellos (resume/update-and-resume/force-complete/
+    // cancel-and-refund) de CUALQUIER tenant en curso — el tenant todavía no existe en la mayoría de
+    // los casos, así que "cross-tenant" ni siquiera aplica: es inherentemente PlatformOnly.
+    public const string OnboardingAdminManage = "onboarding.admin.manage";
 
     // Growth — Codes y Referrals comparten deployment, pero conservan permisos de dominio
     // separados. AdminCrossTenant nunca se asigna a roles de tenant.
@@ -370,6 +431,13 @@ public static class PermissionCatalog
             DocumentsManage,
             "documents",
             "Gestionar documentos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000152"),
+            DocumentsBrandingManage,
+            "documents",
+            "Configurar el branding de documentos del tenant",
             false
         ),
         new(
@@ -717,6 +785,62 @@ public static class PermissionCatalog
             false,
             IsAssignableByTenant: false,
             PlatformOnly: true
+        ),
+        // SMS — a diferencia de ScribeRender, sí es un permiso humano-asignable: un TenantAdmin lo
+        // recibe vía SystemRoleDefaults (no CustomerPortal, no PlatformOnly, no Dangerous), y el
+        // caller M2M lo lleva como claim "perm" vía ServiceAuth:Clients (config, no rol). El
+        // endpoint "POST /sms/messages" toma el TenantId del TOKEN (no del body), así que no aplica
+        // el riesgo cross-tenant que obligó a marcar ScribeRender como PlatformOnly.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000158"),
+            SmsSend,
+            "sms",
+            "Enviar SMS/MMS (batch 1..N) vía el microservicio SMS",
+            false
+        ),
+        // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000159"),
+            CatalogRead,
+            "catalog",
+            "Ver el catálogo de productos/servicios",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000160"),
+            CatalogWrite,
+            "catalog",
+            "Crear/editar productos, servicios y categorías",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000161"),
+            CatalogDelete,
+            "catalog",
+            "Borrar productos, servicios y categorías",
+            false
+        ),
+        // Inventory
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000162"),
+            InventoryRead,
+            "inventory",
+            "Ver stock, proveedores y movimientos",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000163"),
+            InventoryWrite,
+            "inventory",
+            "Gestionar proveedores y umbrales de stock",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000164"),
+            InventoryAdjust,
+            "inventory",
+            "Ajustar stock (registrar movimientos)",
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000029"),
@@ -1537,6 +1661,153 @@ public static class PermissionCatalog
             IsAssignableByTenant: false,
             PlatformOnly: true
         ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000153"),
+            OnboardingAdminManage,
+            "onboarding",
+            "Ver y administrar onboardings de PayFlow en ManualReview/ProvisioningFailed de cualquier tenant (resume, corrección, force-complete, cancelar y reembolsar)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(new Guid("a1000000-0000-0000-0000-000000000154"), NotesRead, "notes", "Ver notas del tenant", false),
+        new(
+            // ADR-06: Manage cubre crear/editar/pin/color/visibilidad/adjuntar — la regla "solo
+            // el propio autor" NO vive acá (Permission no modela ownership), la aplica el handler
+            // (note.CreatedByUserId == actorUserId) en Application, igual que Correspondence Draft.
+            new Guid("a1000000-0000-0000-0000-000000000155"),
+            NotesManage,
+            "notes",
+            "Crear, editar, archivar/restaurar y adjuntar archivos a notas propias",
+            false
+        ),
+        new(
+            // Gobernanza (ADR-06): un TenantAdmin/PlatformAdmin puede leer, archivar o borrar
+            // notas de CUALQUIER autor del tenant — nunca editar su contenido (eso exige ser el
+            // autor vía NotesManage). Explícitamente sin TenantEmployee: leer notas ajenas no es
+            // parte del bundle por defecto de un empleado.
+            new Guid("a1000000-0000-0000-0000-000000000156"),
+            NotesViewAll,
+            "notes",
+            "Ver, archivar y borrar notas de cualquier autor del tenant (gobernanza)",
+            false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.PlatformAdmin]
+        ),
+        new(
+            // IsCustomerPortal:true → InferAllowedActorTypes ya limita esto a [CustomerPortal]
+            // (ver Permission.InferAllowedActorTypes) — el cliente final solo ve sus propias
+            // notas con Visibility=ClientVisible, filtro que aplica el handler, no este permiso.
+            new Guid("a1000000-0000-0000-0000-000000000157"),
+            NotesPortalRead,
+            "notes",
+            "El cliente puede ver sus notas marcadas como visibles para el cliente",
+            true
+        ),
+        // Reminder — sin AllowedActorTypes explícito a propósito: la inferencia por defecto de
+        // Permission da [TenantEmployee, TenantAdmin, PlatformAdmin], que es exactamente lo que
+        // pide el diseño. Marcarlo a mano sería duplicar la regla y arriesgarse a que se desincronice.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000165"),
+            RemindersRead,
+            "reminders",
+            "Ver los recordatorios propios",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000166"),
+            RemindersWrite,
+            "reminders",
+            "Crear, reprogramar, posponer, descartar y cancelar recordatorios propios",
+            false
+        ),
+        // Task — los cinco sin AllowedActorTypes explícito, incluido ManageAll. La inferencia por
+        // defecto da [TenantEmployee, TenantAdmin, PlatformAdmin] y eso es lo correcto acá, a
+        // diferencia de NotesViewAll (que sí excluye a TenantEmployee): en una firma fiscal el
+        // supervisor que revisa y desatasca es normalmente un preparador senior, no el admin del
+        // tenant. Restringirlo a TenantAdmin dejaría al override sin poder otorgarse nunca a quien
+        // de verdad lo ejerce. Lo que sí se hace es dejarlo FUERA del bundle por defecto del
+        // empleado: se otorga por rol explícito.
+        new(new Guid("a1000000-0000-0000-0000-000000000167"), TasksRead, "tasks", "Ver las tareas del tenant", false),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000168"),
+            TasksWrite,
+            "tasks",
+            "Crear, editar, cerrar y reabrir tareas propias o asignadas a uno mismo",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000169"),
+            TasksAssign,
+            "tasks",
+            "Asignar una tarea a otra persona del tenant (sin restricción de dirección)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000170"),
+            TasksManageAll,
+            "tasks",
+            "Cerrar, editar o reasignar la tarea de cualquier usuario del tenant (supervisión)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000171"),
+            TasksTemplatesManage,
+            "tasks",
+            "Crear y editar las plantillas de tarea de la firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000172"),
+            TasksClientRequestsManage,
+            "tasks",
+            "Pedirle documentacion al cliente y cerrar lo que mande",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000174"),
+            CalendarRead,
+            "calendar",
+            "Ver el calendario del tenant y consultar disponibilidad",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000175"),
+            CalendarWrite,
+            "calendar",
+            "Crear, mover y cancelar las citas propias",
+            false
+        ),
+        // No anula ADR-C-09: el agregado sigue exigiendo organizador. Permite actuar como tal.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000176"),
+            CalendarManageAll,
+            "calendar",
+            "Reorganizar agendas ajenas actuando como organizador (supervision)",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000177"),
+            CalendarTypesManage,
+            "calendar",
+            "Definir los tipos de cita de la firma",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000178"),
+            CalendarAvailabilityManage,
+            "calendar",
+            "Definir horarios de atencion y bloqueos de agenda",
+            false
+        ),
+        // El unico de este modulo cuyo destinatario esta fuera de la firma: el cliente ve su lista
+        // de pedidos, no la tarea interna de la que salieron.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000173"),
+            TasksPortalClientRequests,
+            "tasks",
+            "El cliente ve sus pedidos y registra lo que sube",
+            true
+        ),
     ];
 
     private static readonly Dictionary<string, Guid> IdsByCode = All.ToDictionary(
@@ -1659,10 +1930,34 @@ public static class PermissionCatalog
                 PaymentClientConnectAccountRead,
                 PaymentClientPayoutRead,
                 PaymentClientRecurringRead,
+                // Reminder sí entra en el bundle por defecto del empleado, a diferencia de Notes:
+                // un recordatorio es del propio usuario (Reminder.UserId), no un recurso compartido
+                // del tenant. Sin estos dos permisos un empleado no podría ni crearse un
+                // recordatorio propio — el servicio le quedaría inservible.
+                RemindersRead,
+                RemindersWrite,
+                // Task: los tres operativos entran en el bundle del empleado. Assign también, y no
+                // es una concesión: el flujo estrella del servicio es «preparar → revisión interna»,
+                // donde el preparador le pasa la tarea al revisor. Sin tasks.assign por defecto ese
+                // flujo no existe el día uno (§2.2 del modelo). Quedan fuera manage_all (override de
+                // supervisión, por rol explícito) y templates.manage (configuración de la firma,
+                // reservada a TenantAdmin — mismo criterio que ScribeTemplatesWrite).
+                TasksRead,
+                TasksWrite,
+                TasksAssign,
+                // Quien pide el documento es quien cierra lo que llega: separarlo obligaria a que
+                // otra persona valide cada W-2, que no es como trabaja una firma.
+                TasksClientRequestsManage,
+                // El preparador agenda con sus clientes y bloquea su propia agenda. Fuera quedan
+                // manage_all y types.manage: configuracion de la firma.
+                CalendarRead,
+                CalendarWrite,
+                CalendarAvailabilityManage,
             ],
             Role.SystemCustomerPortal =>
             [
                 PortalFoldersView,
+                TasksPortalClientRequests,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,
@@ -1677,6 +1972,28 @@ public static class PermissionCatalog
             ],
             _ => [],
         };
+
+    /// <summary>
+    /// 2026-08-06 (hallazgo real, encontrado verificando self-healing de RolePermissionsProjections
+    /// en Notes) — permisos con los que se siembra/reconcilia el rol de sistema TenantAdmin de CADA
+    /// tenant (<see cref="RoleRepository.EnsureSystemRolesAsync"/> al crear el tenant,
+    /// <c>SystemRolePermissionsSyncService</c> para reconciliar tenants existentes cuando el
+    /// catálogo cambia). A diferencia de <see cref="SystemRoleDefaults"/>/<see cref="DefaultsFor"/>
+    /// (que SÍ excluyen <see cref="Permission.IsDangerous"/> — correcto para el bundle sugerido al
+    /// crear un rol CUSTOM vía <see cref="RolePermissionGuard"/>, donde un TenantAdmin no debe poder
+    /// otorgar auto-escalada/billing/legal a un rol de staff sin decisión explícita), este método
+    /// SÍ incluye <c>IsDangerous</c>: el rol de sistema TenantAdmin representa al dueño/admin raíz
+    /// del propio tenant, y el propio catálogo documenta caso por caso que roles.manage/billing.*/
+    /// subscription.manage/tenant_domains.manage/cloudstorage.legal.manage "SÍ tienen un caso de uso
+    /// legítimo para un TenantAdmin" — la exclusión de IsDangerous nunca tuvo un mecanismo real de
+    /// "asignación explícita" para llegar a ese rol de sistema, dejando a TODO tenant sin nadie
+    /// capaz de gestionar roles/billing/dominios/legal-hold desde que existe el tenant. Sigue
+    /// excluyendo PlatformOnly e IsCustomerPortal, igual que <see cref="SystemRoleDefaults"/>.
+    /// </summary>
+    public static IReadOnlyCollection<string> SystemTenantAdminRootPermissions() =>
+        All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly)
+            .Select(definition => definition.Code)
+            .ToArray();
 
     /// <summary>
     /// Permisos efectivos de respaldo cuando un usuario aún no tiene roles asignados

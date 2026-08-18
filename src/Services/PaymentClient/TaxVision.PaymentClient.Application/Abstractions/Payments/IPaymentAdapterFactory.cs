@@ -14,4 +14,9 @@ public interface IPaymentAdapterFactory
     /// provider ausente es un error de configuración del host, no un caso de negocio
     /// recuperable con <see cref="BuildingBlocks.Results.Result{T}"/>.</summary>
     IPaymentProvider Resolve(PaymentProviderCode code);
+
+    /// <summary>True si hay un adapter registrado para <paramref name="code"/> (sin lanzar). Lo usa el
+    /// checkout para presentar solo los métodos ACTIVOS del tenant que además se pueden cobrar — un
+    /// provider con config activa pero sin adapter todavía no debe ofrecerse.</summary>
+    bool IsRegistered(PaymentProviderCode code);
 }

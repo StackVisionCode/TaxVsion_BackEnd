@@ -73,6 +73,53 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         return new PagedResult<CustomerSummaryResponse>(items, page, size, totalCount);
     }
 
+    public async Task<PagedResult<CustomerReconciliationResponse>> ListForReconciliationAsync(
+        CustomerStatusFilter status,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        if (page < 1)
+            page = 1;
+        if (size < 1)
+            size = 200;
+
+        // Reconciliación cross-tenant: SIN filtro por tenant (a diferencia de SearchAsync). El gate de
+        // autorización (solo token de PlatformTenant) vive en InternalCustomersController.Reconciliation.
+        // IgnoreQueryFilters() para saltar el HasQueryFilter ambiental — igual criterio que SearchAsync.
+        var query = db.Customers.AsNoTracking().IgnoreQueryFilters();
+
+        query = status switch
+        {
+            CustomerStatusFilter.Active => query.Where(c => c.Status == CustomerStatus.Active),
+            CustomerStatusFilter.Inactive => query.Where(c => c.Status == CustomerStatus.Inactive),
+            CustomerStatusFilter.Archived => query.Where(c => c.Status == CustomerStatus.Archived),
+            CustomerStatusFilter.NotArchived => query.Where(c => c.Status != CustomerStatus.Archived),
+            CustomerStatusFilter.All => query,
+            _ => query.Where(c => c.Status == CustomerStatus.Active),
+        };
+
+        var totalCount = await query.CountAsync(ct);
+
+        // Orden estable por (TenantId, Id) para que la paginación sea consistente entre páginas.
+        var items = await query
+            .OrderBy(c => c.TenantId)
+            .ThenBy(c => c.Id)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(c => new CustomerReconciliationResponse(
+                c.TenantId,
+                c.Id,
+                c.DisplayName,
+                c.PrimaryEmail.Value,
+                c.Status
+            ))
+            .ToListAsync(ct);
+
+        return new PagedResult<CustomerReconciliationResponse>(items, page, size, totalCount);
+    }
+
     public async Task<CustomerResponse?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
         var data = await (

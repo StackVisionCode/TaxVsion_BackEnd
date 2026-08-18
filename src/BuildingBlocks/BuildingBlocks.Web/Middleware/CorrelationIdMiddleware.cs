@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using BuildingBlocks.Common;
 using Microsoft.AspNetCore.Http;
 
-namespace BuildingBlocks.Middleware;
+namespace BuildingBlocks.Web.Middleware;
 
 public sealed class CorrelationIdMiddleware(RequestDelegate next)
 {

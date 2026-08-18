@@ -1,18 +1,24 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Minio;
 using StackExchange.Redis;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.RateLimiting.Abstractions;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
 using TaxVision.Signature.Infrastructure.Locking;
+using TaxVision.Signature.Infrastructure.Permissions;
 using TaxVision.Signature.Infrastructure.Persistence;
 using TaxVision.Signature.Infrastructure.Persistence.Queries;
 using TaxVision.Signature.Infrastructure.Persistence.Repositories;
+using TaxVision.Signature.Infrastructure.RateLimiting;
 using TaxVision.Signature.Infrastructure.Scheduling;
 using TaxVision.Signature.Infrastructure.Sealing;
 using TaxVision.Signature.Infrastructure.Sealing.Cms;
@@ -120,11 +126,11 @@ public static class DependencyInjection
         }
         services.AddScoped<ICustomerEmailProjectionRepository, CustomerEmailProjectionRepository>();
         services.AddScoped<IFileMetadataRefRepository, FileMetadataRefRepository>();
-        services.AddScoped<IUserPermissionsProjectionRepository, UserPermissionsProjectionRepository>();
+        services.AddScoped<ISignerRoleAuditSnapshotRepository, SignerRoleAuditSnapshotRepository>();
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos de AUTORIZACION
         // consultada por ProjectionPermissionsSource cuando Authorization:PermissionsSource=
-        // "Projection". Distinta de IUserPermissionsProjectionRepository de arriba (esa alimenta
-        // la proyeccion de auditoria homonima, no de autorizacion). La misma instancia scoped
+        // "Projection". Distinta de ISignerRoleAuditSnapshotRepository de arriba (esa alimenta
+        // la proyeccion de auditoria, no de autorizacion). La misma instancia scoped
         // satisface el puerto local rico (para los consumers) y el puerto compartido y angosto de
         // BuildingBlocks (para la autorizacion), evitando dos lecturas separadas del mismo dato.
         services.AddScoped<AuthzUserPermissionsProjectionRepository>();
@@ -155,6 +161,7 @@ public static class DependencyInjection
         services
             .AddOptions<CloudStorageClientOptions>()
             .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
+        services.AddOptions<CustomerClientOptions>().Bind(configuration.GetSection(CustomerClientOptions.SectionName));
         services.AddOptions<SignatureMinioOptions>().Bind(configuration.GetSection(SignatureMinioOptions.SectionName));
 
         services.AddHttpClient<ISignatureServiceTokenAcquirer, SignatureServiceTokenAcquirer>(
@@ -165,6 +172,8 @@ public static class DependencyInjection
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
             }
         );
+
+        AddRateLimitTierQuotas(services, configuration);
 
         // Fase D1 — cliente MinIO propio de Signature, credenciales scoped (IAM
         // signature-source, ver deploy/docker/minio/policies/signature-source.json),
@@ -190,7 +199,77 @@ public static class DependencyInjection
             }
         );
 
+        // Auto-reparación de la proyección CustomerEmailProjection: cliente M2M al endpoint global de
+        // reconciliación de Customer + job periódico. Reusa el IServiceTokenAcquirer compartido (pide el
+        // token para PlatformTenant, única identidad que el gate del endpoint acepta).
+        services.AddHttpClient<ICustomerReconciliationClient, Reconciliation.SignatureCustomerReconciliationClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<CustomerClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHostedService<CustomerProjectionReconciliationJob>();
+
+        AddPermissionsPullRecovery(services);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El
+    // mapeo a ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver
+    // realmente consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en
+    // Program.cs, ANTES de AddTieredRateLimiting().
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
+    {
+        // HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) depende del
+        // contrato compartido; SignatureServiceTokenAcquirer ya lo implementa (F25 + Fase 2), solo
+        // falta el forwarding.
+        services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+            (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)
+                sp.GetRequiredService<ISignatureServiceTokenAcquirer>()
+        );
+
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services
+            .AddOptions<SubscriptionClientOptions>()
+            .Bind(configuration.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+    }
+
+    // H-04 — recuperación pull bajo demanda de permisos. Cuando ProjectionPermissionsSource
+    // (BuildingBlocks.Web) no encuentra la fila local, pregunta a Auth en vez de negar sin más:
+    // evento perdido, backfill pendiente o usuario recién creado dejan de ser un 403 permanente.
+    // Reutiliza el IServiceTokenAcquirer y el ServiceAuthClientOptions que ya apuntan a Auth.
+    private static void AddPermissionsPullRecovery(IServiceCollection services)
+    {
+        services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

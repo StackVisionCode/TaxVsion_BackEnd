@@ -2,6 +2,7 @@ using System.Text.Json;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Invitations.Commands;
@@ -59,6 +60,46 @@ public sealed class AcceptInvitationHandlerTests
         public string Hash(string rawToken) => FixedTokenHash;
     }
 
+    private sealed class FakeLoginThrottler : ILoginThrottler
+    {
+        public Task<TimeSpan?> GetIpRetryAfterAsync(string? ipAddress, CancellationToken ct = default) =>
+            Task.FromResult<TimeSpan?>(null);
+
+        public Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default) =>
+            Task.FromResult(false);
+
+        public Task RegisterOtpSentAsync(Guid userId, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<TimeSpan?> GetPasswordResetRetryAfterAsync(
+            string email,
+            string? ipAddress,
+            CancellationToken ct = default
+        ) => Task.FromResult<TimeSpan?>(null);
+
+        public Task RegisterPasswordResetRequestAsync(
+            string email,
+            string? ipAddress,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
+        public Task<TimeSpan?> GetInvitationAcceptRetryAfterAsync(string? ipAddress, CancellationToken ct = default) =>
+            Task.FromResult<TimeSpan?>(null);
+
+        public Task RegisterInvitationAcceptAttemptAsync(string? ipAddress, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task<Result> AuthorizeOnboardingChallengeCreationAsync(
+            string email,
+            string ipAddress,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success());
+
+        public Task<Result> AuthorizeOnboardingResendAsync(Guid challengeId, CancellationToken ct = default) =>
+            Task.FromResult(Result.Success());
+    }
+
     private sealed class FakeUserRepository : IUserRepository
     {
         public User? Added { get; private set; }
@@ -70,6 +111,9 @@ public sealed class AcceptInvitationHandlerTests
 
         public Task<bool> EmailExistsAsync(Guid tenantId, string email, CancellationToken ct = default) =>
             Task.FromResult(false);
+
+        public Task<User?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+            Task.FromResult<User?>(null);
 
         public Task<IReadOnlyList<Guid>> GetActiveTenantIdsByEmailAsync(string email, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -248,6 +292,7 @@ public sealed class AcceptInvitationHandlerTests
             new FakeTenantRegistry(tenant),
             new FakePasswordHasher(),
             roles,
+            new FakeLoginThrottler(),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeUnitOfWork(),
@@ -316,6 +361,7 @@ public sealed class AcceptInvitationHandlerTests
             ),
             new FakePasswordHasher(),
             roles,
+            new FakeLoginThrottler(),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeUnitOfWork(),
@@ -388,6 +434,7 @@ public sealed class AcceptInvitationHandlerTests
             new FakeTenantRegistry(tenant),
             new FakePasswordHasher(),
             roles,
+            new FakeLoginThrottler(),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeUnitOfWork(),

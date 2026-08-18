@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
+    <ProjectReference Include="..\TaxVision.Documents.Domain\TaxVision.Documents.Domain.csproj" />
+    <ProjectReference Include="..\TaxVision.Documents.Application\TaxVision.Documents.Application.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive; compile</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
+    <PackageReference Include="WolverineFx" Version="6.14.0" />
+    <!-- Motor HTML->PDF (ADR-004): Chromium headless. Se usa en Rendering/ con pool + limite de concurrencia. -->
+    <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
+    <!-- Motor de plantillas Liquid para el HTML previo al PDF. Fluid.Core directo (no el renderer
+         acoplado a Scribe/Redis): Documents es dueño de sus plantillas. -->
+    <PackageReference Include="Fluid.Core" Version="2.31.0" />
+    <!-- Cliente MinIO propio para subir el archivo generado al bucket temporal (patron Scribe). -->
+    <PackageReference Include="Minio" Version="7.0.0" />
+    <!-- QR del link de pago. PngByteQRCode no depende de System.Drawing (cross-platform, apto contenedor). -->
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+  </ItemGroup>
+</Project>

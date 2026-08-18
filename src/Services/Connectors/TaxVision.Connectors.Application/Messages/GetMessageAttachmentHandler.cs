@@ -54,7 +54,12 @@ public static class GetMessageAttachmentHandler
             // CancellationTokenSource local acá; `ct` solo. Si el HttpClient corta por timeout,
             // lanza OperationCanceledException con `ct` sin cancelar — el catch de abajo lo sigue
             // distinguiendo de una cancelación real del caller.
-            var message = await clientResult.Value.GetMessageAsync(account.Id, query.ProviderMessageId, ct);
+            var message = await clientResult.Value.GetMessageAsync(
+                account.Id,
+                account.TenantId,
+                query.ProviderMessageId,
+                ct
+            );
             var metadata = message.Attachments.FirstOrDefault(a => a.ProviderAttachmentId == query.AttachmentId);
             if (metadata is null)
             {
@@ -74,6 +79,7 @@ public static class GetMessageAttachmentHandler
 
             var content = await clientResult.Value.GetAttachmentAsync(
                 account.Id,
+                account.TenantId,
                 query.ProviderMessageId,
                 query.AttachmentId,
                 ct

@@ -1,14 +1,18 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
@@ -43,6 +47,11 @@ builder.Services.AddSwaggerGen();
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
 builder.Services.AddPaymentClientInfrastructure(builder.Configuration);
+
+// Base pública para componer la URL estable de facturas (la embebe Billing en el PDF).
+builder
+    .Services.AddOptions<TaxVision.PaymentClient.Api.Common.PaymentClientPublicOptions>()
+    .Bind(builder.Configuration.GetSection(TaxVision.PaymentClient.Api.Common.PaymentClientPublicOptions.SectionName));
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(
@@ -52,19 +61,57 @@ builder.Services.AddTaxVisionOpenTelemetry(
 );
 builder.Services.AddRedisCache(builder.Configuration);
 
+// Rate limiting tiered por tenant/usuario (Fase 4.14 del plan). IConnectionMultiplexer ya está
+// registrado desde Infrastructure/DependencyInjection.cs (RedisDistributedLockFactory) — a
+// diferencia de PaymentApp/Auth, PaymentClient no tenía IRateCounter registrado por ninguna
+// fase previa, así que se agrega acá igual que Tenant/Billing/Correspondence/Notification/
+// Customer/CloudStorage/Subscription/Scribe/Signature (Fase 3/4.x del plan).
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// Auditoria RateLimit hallazgo #2 — PaymentClient ganó un IServiceTokenAcquirer M2M dedicado
+// (ver Infrastructure/RateLimiting/ServiceTokenAcquirer.cs) solo para que
+// HttpPlanRateLimitReader pueda leer el catálogo de Subscription; la cuota ahora sí escala
+// por plan en vez de caer siempre a NullPlanRateLimitReader/BaseQuota.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+builder.Services.AddTieredRateLimiting();
+
 // Autorización por permiso ([HasPermission("payment_client.*")]); los admins pasan siempre.
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// Endpoint M2M interno (internal/payables): no basta con "es un servicio" — exige el scope
+// específico además del actor type. La audiencia taxvision-payments ya la valida el JWT
+// (Jwt__ValidAudiences__1). Así, un token de OTRO servicio (p. ej. taxvision-documents) no puede
+// consumir este endpoint aunque también sea actor_type=Service. El service-token emite cada scope
+// como claim "scope" (JwtTokenGenerator.GenerateScopedServiceToken). PermissionPolicyProvider delega
+// los nombres no-"perm:" al provider por defecto, así que esta policy con nombre se resuelve normal.
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy(
+        "CreatePaymentLinksService",
+        policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireClaim("actor_type", "Service");
+            policy.RequireClaim("scope", "payments.links.create");
+        }
+    );
+
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Rate limiter para /webhooks/* y /checkout/*: 1000 req/min por IP (§28.4/§K.1 del diseño) —
 // deja pasar reintentos legítimos del provider y tráfico normal de checkout sin abrir la
@@ -157,16 +204,21 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
-    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // Fase 3: routing explícito del "pago exitoso" al fanout compartido (guardrail #13). PaymentClient
+    // no declaraba routing saliente, así que sin esto el evento nunca llegaba a Billing (que escucha el
+    // fanout). Billing lo consume (InvoicePaymentSucceededConsumer) para marcar la factura Paid.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.PaymentClientIntegrationEvents.TenantPaymentSucceededIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
+    // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
     options
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
-        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
-    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+        .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 
 var app = builder.Build();
@@ -189,7 +241,7 @@ app.UseAuthentication();
 // invocado vía bus.InvokeAsync nunca heredaba el tenant de la petición HTTP). RBAC Fase 7 hotfix
 // (2026-07-22): va ANTES de UseAuthorization() — en modo Projection, [HasPermission] necesita el
 // tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
@@ -201,3 +253,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

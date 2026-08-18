@@ -1,0 +1,96 @@
+apiVersion: 1
+
+# RateLimit Fase 8 (Plan_Implementacion_Fases.md §8) — primeras reglas de alerta que se
+# provisionan en este repo (la carpeta estaba vacia, sin convención previa que copiar). Grafana
+# unified alerting nativo (no hay Alertmanager en docker-compose.yml) — la única fuente de datos
+# es el Prometheus ya provisionado (uid "prometheus", ver datasources.yml). Grafana descubre
+# cualquier YAML bajo esta carpeta automáticamente, sin necesidad de un archivo provider aparte
+# (a diferencia de dashboards.yml, que sí lo requiere).
+groups:
+  - orgId: 1
+    name: ratelimit-tenant-quota
+    folder: TaxVision
+    interval: 1m
+    rules:
+      - uid: ratelimit-tenant-quota-90pct
+        title: "RateLimit — tenant al >90% de cuota sostenido 5 min"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: "sum(rate(ratelimit_blocked_total[5m])) by (tenant_id) / sum(rate(ratelimit_evaluated_total[5m])) by (tenant_id)"
+              intervalMs: 60000
+              maxDataPoints: 43200
+              refId: A
+              instant: false
+              range: true
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+              refId: B
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.9] }
+              refId: C
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: business
+        annotations:
+          summary: "Un tenant lleva 5+ min con >90% de su cuota de rate limit bloqueada (429)."
+          description: "Revisar RateLimit_ByTenant.json en Grafana filtrando por tenant_id para identificar cuál y decidir si necesita upgrade de plan o si es tráfico anómalo."
+
+  - orgId: 1
+    name: ratelimit-load-shedder
+    folder: TaxVision
+    interval: 30s
+    rules:
+      - uid: ratelimit-load-shedder-active
+        title: "RateLimit — load shedder de flota disparando (Gateway)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: "sum(rate(gateway_requests_shed_total[1m]))"
+              intervalMs: 30000
+              maxDataPoints: 43200
+              refId: A
+              instant: false
+              range: true
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+              refId: B
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              refId: C
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "El load shedder de flota (Fase 5, Gateway) está rechazando requests con 503 hace 2+ min."
+          description: "Revisar RateLimit_Overview.json panel 'Load shedder de flota' — indica saturación real de p99+5xx en algún servicio, no solo rate limiting por tenant."

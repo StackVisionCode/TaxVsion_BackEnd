@@ -20,12 +20,15 @@ public static class ForgotPasswordHandler
 {
     private static readonly TimeSpan ResetValidity = TimeSpan.FromMinutes(30);
 
-    /// <summary>Siempre devuelve éxito (anti-enumeración). El email solo se envía si el usuario existe.</summary>
+    /// <summary>Siempre devuelve éxito (anti-enumeración). El email solo se envía si el usuario existe.
+    /// Fase 18 — throttle por email (3/hora) e IP (10/hora, cooldown 60s) antes de tocar la DB: un
+    /// intento tirado por rate limit tampoco distingue email existente vs inexistente.</summary>
     public static async Task<Result> Handle(
         ForgotPasswordCommand command,
         IUserRepository users,
         ICredentialTokenRepository credentials,
         ISecureTokenService tokens,
+        ILoginThrottler throttler,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -35,6 +38,11 @@ public static class ForgotPasswordHandler
     )
     {
         var email = command.Email?.Trim().ToLowerInvariant() ?? string.Empty;
+
+        if (await throttler.GetPasswordResetRetryAfterAsync(email, request.IpAddress, ct) is not null)
+            return Result.Success();
+        await throttler.RegisterPasswordResetRequestAsync(email, request.IpAddress, ct);
+
         var user = await users.GetByEmailAsync(command.TenantId, email, ct);
         if (user is null || !user.IsActive)
             return Result.Success();
@@ -118,11 +126,19 @@ public static class ResetPasswordHandler
 
         var policyResult = PasswordPolicy.Validate(command.NewPassword, user.Email);
         if (policyResult.IsFailure)
+        {
+            resetToken.RegisterAttempt();
+            await unitOfWork.SaveChangesAsync(ct);
             return policyResult;
+        }
 
         var changeResult = user.ChangePassword(hasher.Hash(command.NewPassword), now);
         if (changeResult.IsFailure)
+        {
+            resetToken.RegisterAttempt();
+            await unitOfWork.SaveChangesAsync(ct);
             return changeResult;
+        }
 
         resetToken.MarkUsed();
         user.RegisterSuccessfulLogin(); // limpia lockout previo

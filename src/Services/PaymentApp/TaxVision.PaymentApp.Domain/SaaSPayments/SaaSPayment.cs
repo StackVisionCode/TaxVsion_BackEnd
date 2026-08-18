@@ -47,6 +47,16 @@ public sealed class SaaSPayment : TenantEntity
     public Guid? CodeReservationPaymentId { get; private set; }
     public long? DiscountAmountCents { get; private set; }
     public string? PromotionSnapshotHash { get; private set; }
+
+    /// <summary>PayFlow (Fase 8) — solo poblado cuando <see cref="Type"/> es
+    /// <see cref="SaaSPaymentType.OnboardingInitial"/>: el <c>TenantOnboarding</c> que este pago
+    /// financia, del lado de Auth. No hay FK — Auth y PaymentApp son bases de datos separadas.</summary>
+    public Guid? OnboardingId { get; private set; }
+
+    /// <summary>PayFlow (Fase 8) — id de la Checkout Session hosteada del provider (p.ej.
+    /// <c>cs_...</c> de Stripe). Distinto de <see cref="ExternalChargeReference"/>, que guarda
+    /// la referencia del PaymentIntent subyacente (lo que el webhook usa para resolver el pago).</summary>
+    public string? ProviderCheckoutSessionId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public Guid CreatedBy { get; private set; }
@@ -109,6 +119,100 @@ public sealed class SaaSPayment : TenantEntity
         return Result.Success(payment);
     }
 
+    /// <summary>
+    /// PayFlow (Fase 8) — primer pago de un onboarding pago-primero, antes de que el tenant
+    /// exista. A diferencia de <see cref="Create"/>, permite deliberadamente
+    /// <c>TenantId=Guid.Empty</c> como sentinel: no hay FK de <c>SaaSPayments.TenantId</c> hacia
+    /// una tabla Tenants (confirmado en <c>SaaSPaymentConfiguration</c>), y los repos de lectura
+    /// que necesitan encontrar este pago antes de conocer el tenant (por IdempotencyKey, por
+    /// ExternalChargeReference) ya usan <c>IgnoreQueryFilters()</c> explícito — el filtro global
+    /// fail-closed de RBAC Fase 5 nunca los alcanza. El tenant real se reconcilia más adelante
+    /// (Fase 15, cuando el Saga de Auth crea el tenant) mediante un mecanismo fuera del alcance
+    /// de esta fase.
+    /// </summary>
+    public static Result<SaaSPayment> CreateForOnboarding(
+        Guid onboardingId,
+        IdempotencyKey key,
+        Money amount,
+        Guid planId,
+        PaymentProviderCode provider,
+        StatementDescriptor descriptor,
+        DateTime nowUtc
+    )
+    {
+        if (onboardingId == Guid.Empty)
+            return Result.Failure<SaaSPayment>(new Error("SaaSPayment.InvalidOnboarding", "OnboardingId is required."));
+
+        if (planId == Guid.Empty)
+            return Result.Failure<SaaSPayment>(new Error("SaaSPayment.InvalidTarget", "PlanId is required."));
+
+        if (amount.AmountCents <= 0)
+            return Result.Failure<SaaSPayment>(
+                new Error("SaaSPayment.InvalidAmount", "Amount must be greater than zero.")
+            );
+
+        var payment = new SaaSPayment
+        {
+            IdempotencyKey = key,
+            Amount = amount,
+            Type = SaaSPaymentType.OnboardingInitial,
+            TargetAggregateId = planId,
+            ProviderCode = provider,
+            Status = PaymentStatus.Pending,
+            StatementDescriptor = descriptor,
+            OnboardingId = onboardingId,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = Guid.Empty,
+            UpdatedBy = Guid.Empty,
+        };
+        payment.SetTenant(Guid.Empty);
+        return Result.Success(payment);
+    }
+
+    /// <summary>PayFlow (Fase 8) — vincula la Checkout Session hosteada del provider a este
+    /// pago y lo marca en curso. Desde la perspectiva del dominio, entregarle el flujo al
+    /// checkout hosteado equivale a "sometimos el intento de cobro y esperamos su resultado" —
+    /// lo mismo que <see cref="MarkProcessing"/> para un cargo directo, solo que la referencia
+    /// externa que correlaciona el webhook posterior (<paramref name="paymentIntentReference"/>)
+    /// llega junto con el id de sesión en vez de con el resultado inmediato de un charge.</summary>
+    public Result RecordHostedCheckoutSession(
+        string providerSessionId,
+        ExternalPaymentReference paymentIntentReference,
+        string checkoutUrl,
+        DateTime nowUtc
+    )
+    {
+        if (Status == PaymentStatus.Processing && ProviderCheckoutSessionId == providerSessionId)
+            return Result.Success();
+
+        if (Status != PaymentStatus.Pending)
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidTransition", $"Cannot record a checkout session from {Status}.")
+            );
+
+        if (string.IsNullOrWhiteSpace(providerSessionId))
+            return Result.Failure(new Error("SaaSPayment.InvalidCheckoutSession", "ProviderSessionId is required."));
+
+        ProviderCheckoutSessionId = providerSessionId;
+        ExternalChargeReference = paymentIntentReference;
+        NextActionType = "HostedCheckout";
+        NextActionUrl = checkoutUrl;
+        Status = PaymentStatus.Processing;
+        _attempts.Add(
+            SaaSPaymentAttempt.Record(
+                Id,
+                TenantId,
+                _attempts.Count + 1,
+                providerResponseCode: "checkout_session_created",
+                providerResponseBody: null,
+                nowUtc
+            )
+        );
+        Touch(Guid.Empty, nowUtc);
+        return Result.Success();
+    }
+
     /// <summary>Registra el envío del cobro al provider y agrega el intento correspondiente
     /// al historial auditable.</summary>
     public Result MarkProcessing(
@@ -152,6 +256,25 @@ public sealed class SaaSPayment : TenantEntity
         NextActionType = nextActionType;
         NextActionUrl = nextActionUrl;
         Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>PayFlow — Stripe documenta <c>payment_intent</c> como <c>nullable</c> en la
+    /// respuesta de creación de una Checkout Session en modo <c>payment</c> (no se crea
+    /// sincrónicamente pese a <c>Expand</c>). <see cref="RecordHostedCheckoutSession"/> guarda
+    /// por eso el id de la propia Session como referencia provisoria; cuando el webhook
+    /// <c>checkout.session.completed</c> confirma el pago y ya trae el PaymentIntent real, este
+    /// método lo reconcilia para que futuros webhooks de refund/dispute (que sí referencian el
+    /// PaymentIntent/charge, no la Session) puedan resolver este pago.</summary>
+    public Result ReconcileProviderChargeReference(ExternalPaymentReference reference, DateTime nowUtc)
+    {
+        if (Status is not (PaymentStatus.Processing or PaymentStatus.RequiresAction or PaymentStatus.Succeeded))
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidTransition", $"Cannot reconcile charge reference from {Status}.")
+            );
+
+        ExternalChargeReference = reference;
+        Touch(Guid.Empty, nowUtc);
         return Result.Success();
     }
 

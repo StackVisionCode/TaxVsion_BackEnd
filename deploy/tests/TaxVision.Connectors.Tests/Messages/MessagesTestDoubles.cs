@@ -71,6 +71,7 @@ internal sealed class FakeOutboundEmailProviderClient(ProviderCode providerCode)
 
     public Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string fromAddress,
         string? fromDisplayName,
         OutboundMessage message,

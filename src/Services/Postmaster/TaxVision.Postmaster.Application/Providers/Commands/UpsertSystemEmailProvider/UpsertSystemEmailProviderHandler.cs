@@ -43,7 +43,8 @@ public static class UpsertSystemEmailProviderHandler
             cmd.FromAddressDefault,
             cmd.FromDisplayNameDefault,
             cmd.RateLimitPerMinute,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            cmd.BulkRateLimitPerMinute
         );
 
     private static async Task<Result> CreateNew(
@@ -65,7 +66,8 @@ public static class UpsertSystemEmailProviderHandler
             cmd.Username,
             passwordCipher,
             cmd.RateLimitPerMinute,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            cmd.BulkRateLimitPerMinute
         );
         if (createResult.IsFailure)
             return Result.Failure(createResult.Error);

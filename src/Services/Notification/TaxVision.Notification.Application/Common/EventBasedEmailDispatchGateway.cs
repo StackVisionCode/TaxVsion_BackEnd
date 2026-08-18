@@ -29,6 +29,40 @@ public sealed class EventBasedEmailDispatchGateway(
 {
     public async Task<EmailDispatchResult> QueueEmailAsync(EmailDispatchRequest request, CancellationToken ct = default)
     {
+        // Idempotencia real (bug encontrado en la verificación E2E de PayFlow): si Wolverine
+        // reintenta el consumer que invoca este gateway, sin este chequeo se creaba un
+        // NotificationLog/attempt nuevo -- y un segundo correo real -- por cada reintento, pese a
+        // que el IdempotencyKey publicado hacia Postmaster ya era estable (ver comentario más abajo).
+        // Buscar por RelatedEventId es lo mismo que exige ese IdempotencyKey: estable entre
+        // reintentos porque viene del evento de dominio original, no de un Guid recién generado.
+        if (request.RelatedEventId is { } relatedEventId)
+        {
+            var existing = await logRepository.GetByRelatedEventIdAsync(
+                request.TenantId,
+                relatedEventId,
+                request.TemplateKey,
+                ct
+            );
+            if (existing is not null)
+            {
+                var lastAttempt = existing.Attempts.OrderByDescending(a => a.QueuedAtUtc).FirstOrDefault();
+                logger.LogInformation(
+                    "Email {TemplateKey} for tenant {TenantId} already queued for event {RelatedEventId} (log {LogId}); skipping duplicate dispatch.",
+                    request.TemplateKey,
+                    request.TenantId,
+                    relatedEventId,
+                    existing.Id
+                );
+                return new EmailDispatchResult(
+                    existing.Id,
+                    lastAttempt?.Id ?? Guid.Empty,
+                    lastAttempt?.Status ?? NotificationDispatchAttemptStatus.Queued,
+                    lastAttempt?.ProviderMessageId,
+                    Error: null
+                );
+            }
+        }
+
         var logCreation = NotificationLog.Create(
             request.TenantId,
             NotificationChannel.Email,
@@ -61,17 +95,13 @@ public sealed class EventBasedEmailDispatchGateway(
         // El log queda en estado Pending y el attempt en Queued hasta que Postmaster devuelva
         // el callback. Nunca invocamos MarkSent aquí — solo el consumer de succeeded lo hará.
         //
-        // Este método crea un NotificationLog/DispatchAttempt con GUIDs nuevos en CADA llamada, sin
-        // chequear si ya existe uno para el mismo evento de origen. Si Wolverine reintenta el
-        // consumer (RetryWithCooldown en Program.cs) por una falla transitoria, cada reintento
-        // generaría un log.Id/attempt.Id nuevos y, al no pasar IdempotencyKey, la clave de
-        // idempotencia caería a esos GUIDs recién generados — distinta en cada intento, así que
-        // SqlIdempotencyGuard (Postmaster) no podría dedupear y se enviaría un correo real duplicado
-        // por cada reintento. Por eso se prefiere RelatedEventId (el EventId del evento de dominio
-        // original — UserRegistered, InvitationCreated, etc. — estable entre reintentos porque viene
-        // deserializado del mismo payload) antes de caer a GUIDs frescos. Solo los despachos sin
-        // evento de origen (ninguno hoy, pero el contrato lo permite) siguen usando el fallback
-        // anterior.
+        // El chequeo de arriba (GetByRelatedEventIdAsync) ya cubrió el caso "hay un log de un
+        // intento anterior para este mismo evento" -- llegar hasta acá significa que este es el
+        // primer intento. RelatedEventId sigue siendo la base preferida del IdempotencyKey (en vez
+        // de log.Id/attempt.Id recién generados) como defensa en profundidad: si dos réplicas
+        // llegaran a correr esta creación en paralelo para el mismo evento (carrera que el chequeo
+        // de arriba no cierra del todo, al no tener lock), SqlIdempotencyGuard (Postmaster) todavía
+        // puede dedupear el envío real porque ambas calcularían la MISMA key.
         var idempotencyKey =
             request.IdempotencyKey ?? request.RelatedEventId?.ToString("N") ?? $"{log.Id:N}:{attempt.Id:N}";
         var evt = new NotificationsEmailSendRequestedIntegrationEvent

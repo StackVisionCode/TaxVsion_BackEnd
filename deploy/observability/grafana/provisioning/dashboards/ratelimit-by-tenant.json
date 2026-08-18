@@ -1,0 +1,113 @@
+{
+  "title": "TaxVision — Rate Limit por Tenant",
+  "uid": "taxvision-ratelimit-by-tenant",
+  "tags": ["taxvision", "ratelimit"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(ratelimit_evaluated_total, tenant_id)", "refId": "tenant_id" },
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Evaluados (rate 5m)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(ratelimit_evaluated_total{tenant_id=\"$tenant_id\"}[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Bloqueados 429 (rate 5m)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(ratelimit_blocked_total{tenant_id=\"$tenant_id\"}[5m]))", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "% de cuota consumida (bloqueados/evaluados)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.75 },
+              { "color": "red", "value": 0.9 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(ratelimit_blocked_total{tenant_id=\"$tenant_id\"}[5m])) / sum(rate(ratelimit_evaluated_total{tenant_id=\"$tenant_id\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Evaluados vs bloqueados por policy (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(ratelimit_evaluated_total{tenant_id=\"$tenant_id\"}[5m])) by (policy)", "legendFormat": "evaluados — {{policy}}", "refId": "A" },
+        { "expr": "sum(rate(ratelimit_blocked_total{tenant_id=\"$tenant_id\"}[5m])) by (policy)", "legendFormat": "bloqueados — {{policy}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "% de cuota consumida por policy (histórico)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum(rate(ratelimit_blocked_total{tenant_id=\"$tenant_id\"}[5m])) by (policy) / sum(rate(ratelimit_evaluated_total{tenant_id=\"$tenant_id\"}[5m])) by (policy)",
+          "legendFormat": "{{policy}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Top policies por volumen (24h)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "topk(10, sum(increase(ratelimit_evaluated_total{tenant_id=\"$tenant_id\"}[24h])) by (policy))",
+          "legendFormat": "{{policy}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

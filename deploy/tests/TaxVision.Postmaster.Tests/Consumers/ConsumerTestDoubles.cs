@@ -216,13 +216,23 @@ internal sealed class FakeSentMessageRepository : ISentMessageRepository
 internal sealed class FakeEmailProviderRateLimiter : IEmailProviderRateLimiter
 {
     public RateLimitDecision DecisionReturnValue { get; set; } = new(true, null);
+    public EmailStream? LastStream { get; private set; }
+    public int? LastLimitPerMinute { get; private set; }
+    public int CallCount { get; private set; }
 
     public Task<RateLimitDecision> AcquireAsync(
         string providerCode,
         Guid tenantId,
+        EmailStream stream,
         int limitPerMinute,
         CancellationToken ct = default
-    ) => Task.FromResult(DecisionReturnValue);
+    )
+    {
+        CallCount++;
+        LastStream = stream;
+        LastLimitPerMinute = limitPerMinute;
+        return Task.FromResult(DecisionReturnValue);
+    }
 }
 
 internal sealed class FakeOAuthProviderResolver : IOAuthProviderResolver

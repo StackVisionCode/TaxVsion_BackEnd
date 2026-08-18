@@ -23,4 +23,19 @@ public sealed class CodeReservationRepository(GrowthDbContext dbContext, ITenant
         TenantRepositoryGuard.EnsureMatches(tenantContext, reservation.TenantId);
         await dbContext.CodeReservations.AddAsync(reservation, ct);
     }
+
+    // Scan de sistema (cross-tenant): sin guard de tenant, IgnoreQueryFilters. El sweeper corre fuera
+    // de todo request (sin TenantContext), así que no puede depender del filtro global por tenant.
+    public async Task<IReadOnlyList<ExpiredReservationRef>> GetActiveExpiredAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .CodeReservations.IgnoreQueryFilters()
+            .Where(r => r.Status == CodeReservationStatus.Active && r.ExpiresAtUtc <= nowUtc)
+            .OrderBy(r => r.ExpiresAtUtc)
+            .Take(batchSize)
+            .Select(r => new ExpiredReservationRef(r.TenantId, r.Id))
+            .ToListAsync(ct);
 }

@@ -6,6 +6,13 @@ namespace TaxVision.PaymentApp.Application.Abstractions;
 public interface ISaaSPaymentRepository
 {
     Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>PayFlow (Fase 17) — resuelve por Id sin conocer el tenant: usado por
+    /// <c>OnboardingRefundConsumer</c>, que solo recibe el <c>PaymentId</c> de un pago
+    /// <see cref="SaaSPaymentType.OnboardingInitial"/> creado con <c>TenantId=Guid.Empty</c>
+    /// (mismo sentinel documentado en <see cref="SaaSPayment.CreateForOnboarding"/>).</summary>
+    Task<SaaSPayment?> GetByIdAsync(Guid saaSPaymentId, CancellationToken ct = default);
+
     Task<SaaSPayment?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default);
 
     /// <summary>Resuelve el aggregate a partir de la referencia opaca que el provider

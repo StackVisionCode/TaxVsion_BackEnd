@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -9,11 +10,13 @@ using StackExchange.Redis;
 using TaxVision.Scribe.Application.Abstractions;
 using TaxVision.Scribe.Application.EventMappings;
 using TaxVision.Scribe.Application.Layouts;
+using TaxVision.Scribe.Application.RateLimiting.Abstractions;
 using TaxVision.Scribe.Application.Rendering;
 using TaxVision.Scribe.Application.Templates;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Infrastructure.Persistence;
 using TaxVision.Scribe.Infrastructure.Persistence.Repositories;
+using TaxVision.Scribe.Infrastructure.RateLimiting;
 using TaxVision.Scribe.Infrastructure.Rendering;
 using TaxVision.Scribe.Infrastructure.Storage;
 
@@ -64,7 +67,40 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddRateLimitTierQuotas(services, configuration);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El
+    // mapeo a ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver
+    // realmente consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en
+    // Program.cs, ANTES de AddTieredRateLimiting(). El forwarding de
+    // BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer ya existe en
+    // AddCloudStorageClient (ServiceTokenAcquirer ya implementa ambos contratos).
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration config)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services.AddOptions<SubscriptionClientOptions>().Bind(config.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
 
     /// <summary>L1 (MemoryCache, LRU 1000 entries vía SizeLimit) siempre disponible; L2 (Redis) se degrada a no-op si no hay Redis configurado — mismo criterio que Postmaster.</summary>
@@ -100,6 +136,11 @@ public static class DependencyInjection
                 var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
             }
+        );
+        // RateLimit Fase 2 — HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting)
+        // depende del contrato compartido; ServiceTokenAcquirer ya lo implementa, solo falta el forwarding.
+        services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+            (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)sp.GetRequiredService<IServiceTokenAcquirer>()
         );
 
         // Sube directo a MinIO con credenciales propias de Scribe (Fase 5, patrón D1); la lectura

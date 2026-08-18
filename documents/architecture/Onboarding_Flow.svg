@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1300" width="1440" height="1300" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#10b981"/>
+    </marker>
+    <marker id="ai" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0ea5e9"/>
+    </marker>
+  </defs>
+
+  <rect width="1440" height="1300" fill="#ffffff"/>
+
+  <!-- ===== HEADER ===== -->
+  <text x="50" y="44" font-size="26" font-weight="700" fill="#0f172a">Onboarding TaxVision — flujo completo (pay-first)</text>
+  <text x="50" y="70" font-size="14" fill="#475569"><tspan font-weight="600">7 pasos lineales</tspan> hasta el pago, y ahí el flujo <tspan font-weight="600">se bifurca en 2 ramas paralelas</tspan> — no es una cadena de 14 pasos.</text>
+  <text x="50" y="90" font-size="13" fill="#475569">Dos mecanismos transaccionales distintos: <tspan font-weight="600" fill="#065f46">TCC (Try-Confirm/Cancel)</tspan> para giftcard/promo/referido · <tspan font-weight="600" fill="#3730a3">saga de orquestación (Process Manager)</tspan> para el provisioning</text>
+
+  <!-- ===== BANDAS (se dibujan primero; los conectores van al final para que nada los tape) ===== -->
+  <rect x="40" y="112" width="1360" height="164" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="136" font-size="13" font-weight="700" fill="#475569">FASE 1 · PRE-PAGO — todavía no existe el tenant (dueño = PlatformTenant.Id · sujeto = Anonymous(OnboardingId))</text>
+
+  <rect x="40" y="292" width="1360" height="112" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="316" font-size="13" font-weight="700" fill="#475569">FASE 2 · PAGO</text>
+
+  <rect x="40" y="468" width="1360" height="248" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="492" font-size="13" font-weight="700" fill="#475569">RAMA A · OPERACIÓN COMERCIAL — automática, la dispara el pago. Auth orquesta; Billing es la fuente de verdad financiera.</text>
+
+  <rect x="40" y="732" width="1360" height="330" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="756" font-size="13" font-weight="700" fill="#475569">RAMA B · REGISTRO DEL USUARIO → PROVISIONING — aquí sí hay saga</text>
+
+  <!-- ===== FASE 1 ===== -->
+  <rect x="70" y="156" width="200" height="72" rx="8" fill="#eef2ff" stroke="#6366f1"/>
+  <text x="170" y="182" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">① Verificar email</text>
+  <text x="170" y="200" font-size="10" fill="#4338ca" text-anchor="middle">EmailVerificationChallenge (OTP)</text>
+  <text x="170" y="215" font-size="9" fill="#6366f1" text-anchor="middle">POST /onboarding/email-challenges/{id}/verify</text>
+
+  <rect x="310" y="156" width="200" height="72" rx="8" fill="#eef2ff" stroke="#6366f1"/>
+  <text x="410" y="182" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">② Aceptar términos</text>
+  <text x="410" y="200" font-size="10" fill="#4338ca" text-anchor="middle">TermsVersion + hash del contenido</text>
+  <text x="410" y="215" font-size="9" fill="#6366f1" text-anchor="middle">GET/POST auth/onboarding/terms</text>
+
+  <rect x="550" y="156" width="200" height="72" rx="8" fill="#eef2ff" stroke="#6366f1"/>
+  <text x="650" y="182" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">③ Reservar subdominio</text>
+  <text x="650" y="200" font-size="10" fill="#4338ca" text-anchor="middle">SubdomainReservation + ticket firmado</text>
+  <text x="650" y="215" font-size="9" fill="#6366f1" text-anchor="middle">POST auth/subdomains/reserve</text>
+
+  <rect x="790" y="156" width="240" height="72" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="910" y="182" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">④ Checkout + códigos</text>
+  <text x="910" y="200" font-size="10" fill="#4338ca" text-anchor="middle">StartOnboardingCheckout → CodeReserver</text>
+  <text x="910" y="215" font-size="9" fill="#6366f1" text-anchor="middle">POST /onboarding/checkout</text>
+
+  <rect x="1090" y="148" width="280" height="88" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+  <text x="1230" y="172" font-size="14" font-weight="700" fill="#065f46" text-anchor="middle">⑤ Growth · Quote → Reserve</text>
+  <text x="1230" y="190" font-size="10.5" font-weight="600" fill="#047857" text-anchor="middle">TCC — fase «Try»</text>
+  <text x="1230" y="206" font-size="10" fill="#059669" text-anchor="middle">una reserva por beneficio, secuencial contra el residual:</text>
+  <text x="1230" y="222" font-size="10" font-weight="600" fill="#065f46" text-anchor="middle">Referral → Promo → Gift</text>
+
+  <!-- ===== FASE 2 ===== -->
+  <text x="58" y="344" font-size="11" fill="#64748b">Si el neto es <tspan font-weight="700">$0</tspan></text>
+  <text x="58" y="360" font-size="11" fill="#64748b">(cubierto 100% por códigos)</text>
+  <text x="58" y="376" font-size="11" fill="#64748b">se salta el cobro, pero</text>
+  <text x="58" y="392" font-size="11" font-weight="700" fill="#64748b">igual se emite factura.</text>
+
+  <rect x="790" y="322" width="240" height="64" rx="8" fill="#fffbeb" stroke="#f59e0b"/>
+  <text x="910" y="346" font-size="14" font-weight="700" fill="#92400e" text-anchor="middle">⑥ PaymentApp · Checkout</text>
+  <text x="910" y="364" font-size="10" fill="#b45309" text-anchor="middle">OnboardingInitial (M2M) → Stripe</text>
+  <text x="910" y="378" font-size="9" fill="#d97706" text-anchor="middle">PaymentAttemptThrottle (Redis atómico)</text>
+
+  <rect x="1090" y="322" width="280" height="64" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+  <text x="1230" y="346" font-size="14" font-weight="700" fill="#92400e" text-anchor="middle">⑦ Pago confirmado</text>
+  <text x="1230" y="364" font-size="10" fill="#b45309" text-anchor="middle">OnboardingPaymentSucceededConsumer</text>
+  <text x="1230" y="378" font-size="9" fill="#d97706" text-anchor="middle">status → PaymentCompleted</text>
+
+  <!-- ===== BARRA DE BIFURCACIÓN ===== -->
+  <rect x="60" y="418" width="1330" height="34" rx="7" fill="#eef2ff" stroke="#6366f1" stroke-dasharray="6 4"/>
+  <text x="725" y="440" font-size="12.5" font-weight="700" fill="#3730a3" text-anchor="middle">⑦ hace DOS cosas a la vez en OnboardingSuccessCompleter: encola el OnboardingFinalizeCommand (rama A)  ·  emite el RegistrationToken para el email con el link /register (rama B)</text>
+
+  <!-- ===== RAMA A ===== -->
+  <rect x="60" y="524" width="240" height="96" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="180" y="550" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">A1 · OnboardingFinalizer</text>
+  <text x="180" y="570" font-size="10" fill="#4338ca" text-anchor="middle">Responsabilidad única de Auth:</text>
+  <text x="180" y="586" font-size="10" fill="#4338ca" text-anchor="middle">commit de códigos + qualify +</text>
+  <text x="180" y="602" font-size="10" fill="#4338ca" text-anchor="middle">pedir la factura. NO genera documentos.</text>
+
+  <rect x="340" y="516" width="225" height="58" rx="8" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="452" y="538" font-size="13" font-weight="700" fill="#065f46" text-anchor="middle">A2 · Growth · Commit ×N</text>
+  <text x="452" y="555" font-size="10" fill="#047857" text-anchor="middle">TCC «Confirm» · idempotente por reserva</text>
+  <text x="452" y="568" font-size="9" fill="#059669" text-anchor="middle">revalida el SnapshotHash</text>
+
+  <rect x="340" y="590" width="225" height="58" rx="8" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="452" y="612" font-size="13" font-weight="700" fill="#065f46" text-anchor="middle">A3 · Qualify referido</text>
+  <text x="452" y="629" font-size="10" fill="#047857" text-anchor="middle">solo si net &gt; 0 y hay atribución</text>
+  <text x="452" y="642" font-size="9" fill="#059669" text-anchor="middle">si falla, NO bloquea la factura</text>
+
+  <rect x="600" y="524" width="245" height="96" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="2"/>
+  <text x="722" y="550" font-size="14" font-weight="700" fill="#6b21a8" text-anchor="middle">A4 · Billing · Invoice</text>
+  <text x="722" y="570" font-size="10" fill="#7e22ce" text-anchor="middle">Gross / Discount / Net + SettlementType</text>
+  <text x="722" y="586" font-size="10" fill="#7e22ce" text-anchor="middle">1 InvoiceAdjustmentLine por código</text>
+  <text x="722" y="602" font-size="9.5" font-weight="600" fill="#6b21a8" text-anchor="middle">SIEMPRE, incluso total $0 sin PaymentId</text>
+
+  <rect x="880" y="516" width="225" height="58" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
+  <text x="992" y="538" font-size="13" font-weight="700" fill="#115e59" text-anchor="middle">A5 · Documents</text>
+  <text x="992" y="555" font-size="10" fill="#0f766e" text-anchor="middle">renderiza el PDF de factura/recibo</text>
+  <text x="992" y="568" font-size="9" fill="#14b8a6" text-anchor="middle">→ CloudStorage (MinIO)</text>
+
+  <rect x="880" y="590" width="225" height="58" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
+  <text x="992" y="612" font-size="13" font-weight="700" fill="#9d174d" text-anchor="middle">A6 · Scribe + Notification</text>
+  <text x="992" y="629" font-size="10" fill="#be185d" text-anchor="middle">render de plantilla → Postmaster</text>
+  <text x="992" y="642" font-size="9" fill="#ec4899" text-anchor="middle">correo de bienvenida + recibo</text>
+
+  <!-- ===== RAMA B ===== -->
+  <rect x="60" y="776" width="380" height="60" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="250" y="800" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">B1 · El usuario completa su registro</text>
+  <text x="250" y="818" font-size="10" fill="#4338ca" text-anchor="middle">POST /onboarding/register/complete (con RegistrationToken)</text>
+  <text x="250" y="831" font-size="9" fill="#6366f1" text-anchor="middle">→ publica OnboardingProvisioningStartedIntegrationEvent</text>
+
+  <rect x="60" y="856" width="1330" height="152" rx="10" fill="#f5f3ff" stroke="#6366f1" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="725" y="882" font-size="14" font-weight="700" fill="#3730a3" text-anchor="middle">TenantOnboardingProcessManager : Wolverine.Saga — saga de ORQUESTACIÓN (Process Manager), con estado</text>
+  <text x="725" y="900" font-size="10.5" fill="#4338ca" text-anchor="middle">Id = OnboardingId (no un id propio) · persistida vía EF Core en AuthDbContext · la saga devuelve el comando del paso siguiente; los servicios no se encadenan solos</text>
+
+  <rect x="80" y="920" width="200" height="60" rx="7" fill="#f0f9ff" stroke="#0ea5e9"/>
+  <text x="180" y="944" font-size="12.5" font-weight="700" fill="#075985" text-anchor="middle">1 · Tenant</text>
+  <text x="180" y="962" font-size="9" fill="#0369a1" text-anchor="middle">crea el tenant real</text>
+
+  <rect x="300" y="920" width="200" height="60" rx="7" fill="#f0f9ff" stroke="#0ea5e9"/>
+  <text x="400" y="944" font-size="12.5" font-weight="700" fill="#075985" text-anchor="middle">2 · TenantAdmin</text>
+  <text x="400" y="962" font-size="9" fill="#0369a1" text-anchor="middle">usa y destruye PasswordHashRef</text>
+
+  <rect x="520" y="920" width="200" height="60" rx="7" fill="#f0f9ff" stroke="#0ea5e9"/>
+  <text x="620" y="944" font-size="12.5" font-weight="700" fill="#075985" text-anchor="middle">3 · Subscription</text>
+  <text x="620" y="962" font-size="9" fill="#0369a1" text-anchor="middle">activa el plan</text>
+
+  <rect x="740" y="920" width="200" height="60" rx="7" fill="#f0f9ff" stroke="#0ea5e9"/>
+  <text x="840" y="944" font-size="12.5" font-weight="700" fill="#075985" text-anchor="middle">4 · CloudStorage</text>
+  <text x="840" y="962" font-size="9" fill="#0369a1" text-anchor="middle">provisiona cuota y carpetas</text>
+
+  <rect x="960" y="920" width="200" height="60" rx="7" fill="#f0f9ff" stroke="#0ea5e9"/>
+  <text x="1060" y="944" font-size="12.5" font-weight="700" fill="#075985" text-anchor="middle">5 · Subdomain</text>
+  <text x="1060" y="962" font-size="9" fill="#0369a1" text-anchor="middle">activa el host del tenant</text>
+
+  <rect x="1180" y="920" width="200" height="60" rx="7" fill="#f0f9ff" stroke="#0ea5e9"/>
+  <text x="1280" y="944" font-size="12.5" font-weight="700" fill="#075985" text-anchor="middle">6 · Defaults</text>
+  <text x="1280" y="962" font-size="9" fill="#0369a1" text-anchor="middle">roles, permisos, seed</text>
+
+  <!-- fallos -->
+  <rect x="60" y="1022" width="250" height="28" rx="6" fill="#fef2f2" stroke="#ef4444"/>
+  <text x="185" y="1041" font-size="10.5" fill="#991b1b" text-anchor="middle"><tspan font-weight="700">Fallo</tspan> → la saga NO muere, queda viva</text>
+
+  <rect x="345" y="1022" width="210" height="28" rx="6" fill="#fffbeb" stroke="#f59e0b"/>
+  <text x="450" y="1041" font-size="10.5" font-weight="700" fill="#92400e" text-anchor="middle">FailureClassifier</text>
+
+  <rect x="590" y="1008" width="330" height="26" rx="5" fill="#f0fdf4" stroke="#22c55e"/>
+  <text x="755" y="1026" font-size="10.5" fill="#166534" text-anchor="middle"><tspan font-weight="700">Transient</tspan> → OnboardingRetryScheduler</text>
+
+  <rect x="590" y="1038" width="330" height="26" rx="5" fill="#fef2f2" stroke="#ef4444"/>
+  <text x="755" y="1056" font-size="10.5" fill="#991b1b" text-anchor="middle"><tspan font-weight="700">Permanent</tspan> → ManualReview inmediato</text>
+
+  <rect x="955" y="1022" width="435" height="28" rx="6" fill="#eef2ff" stroke="#6366f1"/>
+  <text x="1172" y="1041" font-size="10.5" fill="#3730a3" text-anchor="middle"><tspan font-weight="700">Admin</tspan> /auth/onboarding/admin/{id}/ resume · force-complete · cancel-and-refund</text>
+
+  <!-- ===== CONECTORES (al final: así ninguna banda los tapa) ===== -->
+  <line x1="270" y1="192" x2="304" y2="192" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="510" y1="192" x2="544" y2="192" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="750" y1="192" x2="784" y2="192" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="1030" y1="180" x2="1084" y2="180" stroke="#10b981" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="1057" y="174" font-size="9" fill="#059669" text-anchor="middle">reserva</text>
+  <line x1="1084" y1="212" x2="1030" y2="212" stroke="#10b981" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ag)"/>
+  <text x="1057" y="226" font-size="9" fill="#059669" text-anchor="middle">neto a cobrar</text>
+
+  <line x1="910" y1="228" x2="910" y2="316" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="1030" y1="354" x2="1084" y2="354" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <line x1="1230" y1="386" x2="1230" y2="412" stroke="#64748b" stroke-width="1.8" marker-end="url(#a)"/>
+
+  <!-- fork -> rama A -->
+  <polyline points="180,452 180,518" fill="none" stroke="#64748b" stroke-width="1.8" marker-end="url(#a)"/>
+  <text x="192" y="482" font-size="9.5" font-weight="600" fill="#475569">rama A · OnboardingFinalizeCommand</text>
+
+  <!-- fork -> rama B (indigo, cruza la banda A por zona vacía) -->
+  <polyline points="1270,452 1270,690 250,690 250,770" fill="none" stroke="#6366f1" stroke-width="1.8" stroke-dasharray="7 4" marker-end="url(#ai)"/>
+  <text x="1258" y="478" font-size="9.5" font-weight="600" fill="#4338ca" text-anchor="end">rama B · RegistrationToken → email con el link /register</text>
+  <text x="700" y="683" font-size="9.5" font-weight="600" fill="#4338ca" text-anchor="middle">las ramas A y B corren en paralelo — B espera al usuario, A no</text>
+
+  <!-- rama A interna -->
+  <line x1="300" y1="545" x2="334" y2="545" stroke="#10b981" stroke-width="1.6" marker-end="url(#ag)"/>
+  <line x1="300" y1="598" x2="334" y2="615" stroke="#10b981" stroke-width="1.6" marker-end="url(#ag)"/>
+  <line x1="565" y1="572" x2="594" y2="572" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="845" y1="558" x2="874" y2="545" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="845" y1="586" x2="874" y2="615" stroke="#64748b" stroke-width="1.6" marker-end="url(#a)"/>
+
+  <!-- B1 -> saga -->
+  <line x1="180" y1="836" x2="180" y2="914" stroke="#0ea5e9" stroke-width="1.8" marker-end="url(#ab)"/>
+
+  <!-- pasos de la saga -->
+  <line x1="280" y1="950" x2="294" y2="950" stroke="#0ea5e9" stroke-width="1.8" marker-end="url(#ab)"/>
+  <line x1="500" y1="950" x2="514" y2="950" stroke="#0ea5e9" stroke-width="1.8" marker-end="url(#ab)"/>
+  <line x1="720" y1="950" x2="734" y2="950" stroke="#0ea5e9" stroke-width="1.8" marker-end="url(#ab)"/>
+  <line x1="940" y1="950" x2="954" y2="950" stroke="#0ea5e9" stroke-width="1.8" marker-end="url(#ab)"/>
+  <line x1="1160" y1="950" x2="1174" y2="950" stroke="#0ea5e9" stroke-width="1.8" marker-end="url(#ab)"/>
+
+  <!-- fallos -->
+  <line x1="310" y1="1036" x2="339" y2="1036" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="555" y1="1030" x2="584" y2="1021" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="555" y1="1042" x2="584" y2="1051" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="920" y1="1036" x2="949" y2="1036" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- ===== NOTAS ===== -->
+  <rect x="40" y="1082" width="660" height="186" rx="10" fill="#f5f3ff" stroke="#6366f1"/>
+  <text x="60" y="1108" font-size="14" font-weight="700" fill="#3730a3">Qué tipo de saga es (y qué no)</text>
+  <text x="60" y="1132" font-size="11.5" fill="#312e81">✔ <tspan font-weight="600">Orquestación</tspan> (Process Manager), no coreografía: un componente central</text>
+  <text x="76" y="1150" font-size="11.5" fill="#312e81">decide el paso siguiente y devuelve el comando.</text>
+  <text x="60" y="1172" font-size="11.5" fill="#312e81">✔ <tspan font-weight="600">Con estado y persistida</tspan> en EF Core — sobrevive reinicios del proceso.</text>
+  <text x="60" y="1194" font-size="11.5" fill="#312e81">✔ <tspan font-weight="600">Correlación natural</tspan>: el Id de la saga ES el OnboardingId.</text>
+  <text x="60" y="1216" font-size="11.5" fill="#312e81">✔ La saga <tspan font-weight="600">no es la fuente de verdad</tspan>: el negocio vive en el aggregate</text>
+  <text x="76" y="1234" font-size="11.5" fill="#312e81">TenantOnboarding (12 estados, de PendingPayment a Completed).</text>
+  <text x="60" y="1258" font-size="11.5" fill="#7f1d1d">✘ <tspan font-weight="600">Sin rollback automático</tspan>: retry (Transient) o humano (Permanent). Deliberado.</text>
+
+  <rect x="730" y="1082" width="670" height="186" rx="10" fill="#fef2f2" stroke="#ef4444"/>
+  <text x="750" y="1108" font-size="14" font-weight="700" fill="#991b1b">⚠ Hueco detectado: la pata «Cancel» del TCC no la llama nadie</text>
+  <text x="750" y="1134" font-size="11.5" fill="#7f1d1d">El protocolo de reserva está completo <tspan font-weight="600">salvo la compensación</tspan>. Verificado así:</text>
+  <text x="750" y="1156" font-size="11.5" fill="#7f1d1d">1. <tspan font-weight="600">Existe</tspan> IGrowthOnboardingClient.CancelAsync en Auth.</text>
+  <text x="750" y="1176" font-size="11.5" fill="#7f1d1d">2. <tspan font-weight="600">Existe</tspan> el endpoint en Growth: POST reservations/{id}/cancel + handler.</text>
+  <text x="750" y="1196" font-size="11.5" fill="#7f1d1d">3. <tspan font-weight="600">Cero llamadas</tspan> desde Auth — solo se usan Reserve (⑤) y Commit (A2).</text>
+  <text x="750" y="1220" font-size="11.5" fill="#7f1d1d">Tampoco hay red de seguridad: el estado <tspan font-family="Consolas, monospace">Expired</tspan> existe en el enum, pero no</text>
+  <text x="750" y="1238" font-size="11.5" fill="#7f1d1d">hay ningún BackgroundService en Growth que barra reservas vencidas.</text>
+  <text x="750" y="1260" font-size="11.5" font-weight="600" fill="#991b1b">Efecto: checkout abandonado → reserva Active para siempre → código quemado.</text>
+</svg>

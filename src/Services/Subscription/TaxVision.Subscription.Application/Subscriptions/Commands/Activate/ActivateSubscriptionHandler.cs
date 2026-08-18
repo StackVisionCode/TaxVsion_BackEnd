@@ -130,6 +130,7 @@ public static class ActivateSubscriptionHandler
             new SubscriptionRenewalDueIntegrationEvent
             {
                 TenantId = command.TenantId,
+                CorrelationId = correlation.CorrelationId,
                 TenantSubscriptionId = subscription.Id,
                 PlanCode = subscription.PlanCode,
                 PeriodStartUtc = subscription.CurrentPeriodStartUtc,

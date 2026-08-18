@@ -2,6 +2,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Correspondence.Application.Messages;
@@ -26,6 +28,7 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
 
     [HttpGet("correspondence/customers/{customerId:guid}/threads")]
     [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.thread_read")]
     public async Task<IActionResult> ListCustomerThreads(
         Guid customerId,
         [FromQuery] int page,
@@ -45,6 +48,7 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
 
     [HttpGet("correspondence/threads/{threadId:guid}/messages")]
     [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.thread_read")]
     public async Task<IActionResult> ListThreadMessages(
         Guid threadId,
         [FromQuery] int page,
@@ -64,6 +68,7 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("correspondence/threads/{threadId:guid}/archive")]
     [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.thread_manage")]
     public async Task<IActionResult> Archive(Guid threadId, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))

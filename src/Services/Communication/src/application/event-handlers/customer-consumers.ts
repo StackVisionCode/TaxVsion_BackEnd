@@ -164,6 +164,17 @@ export function bindCustomerConsumers(
     await deps.customerDirectory.markInactive(customerId);
   });
 
+  // 2026-08-06 (auditoria de proyecciones de customer): antes solo se escuchaba
+  // customer.deactivated.v1, asi que un cliente ARCHIVADO seguia con isActive=true
+  // en el directorio y aparecia en el autocomplete de invitaciones. Archive se
+  // trata igual que deactivate para esta proyeccion (mismo criterio que las 3
+  // proyecciones .NET: Signature/Correspondence/Notes).
+  register('customer.archived.v1', async (env) => {
+    const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
+    if (!customerId) return;
+    await deps.customerDirectory.markInactive(customerId);
+  });
+
   // Fase B2 (chat tipado) — mantiene al dia CustomerPreparerAssignment, la
   // proyeccion que start-direct-conversation.ts usa para calcular
   // isPrimaryPreparer sin round-trip HTTP a Customer, mismo criterio que

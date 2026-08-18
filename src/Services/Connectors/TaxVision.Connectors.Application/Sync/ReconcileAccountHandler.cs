@@ -21,7 +21,7 @@ namespace TaxVision.Connectors.Application.Sync;
 ///     paralelo, se serializan. Si el lock está tomado, este pase se salta limpio
 ///     (Result.Success con Skipped=true): el sync en vuelo ya cubre lo que este pase hubiera hecho.
 ///   - Mismo IEmailProviderClientFactory → mismos GmailApiClient/GraphApiClient/ImapClient → mismo
-///     IProviderRateLimiter + ProviderCircuitBreaker que ya los protegen (Fase 10) — la
+///     IProviderRateLimiter + HttpResiliencePipeline que ya los protegen (F24) — la
 ///     reconciliación nunca le pega a un provider por fuera de esas defensas.
 ///   - GetHistoryAsync (Gmail history.list / Graph delta / IMAP UID search) ya es incremental por
 ///     diseño — reconciliar es simplemente "correr el mismo fetch de siempre otra vez" contra el

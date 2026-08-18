@@ -1,9 +1,11 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Domain.TenantDomains;
 using Wolverine;
 
@@ -39,9 +41,11 @@ public static class ReserveSubdomainHandler
         ReserveSubdomainCommand command,
         ITenantDomainRepository domains,
         ITenantSubdomainReservationRepository reservations,
+        IOnboardingSubdomainReservationRepository onboardingReservations,
         IOptions<TenantDomainOptions> options,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         IJwtTokenGenerator jwt,
         CancellationToken ct
     )
@@ -63,6 +67,14 @@ public static class ReserveSubdomainHandler
                 new Error("TenantDomain.SlugReservedTemporarily", "This subdomain is temporarily reserved.")
             );
 
+        // Auditoría F11 — cruza también contra la reserva de PayFlow (Path C, Fase 14): sin este
+        // chequeo, un comprador en pleno onboarding pago-primero podía perder su slug frente a
+        // alguien completando el alta directa (Path A) al mismo tiempo, y viceversa.
+        if (await onboardingReservations.GetActiveBySlugAsync(slug.Value, nowUtc, ct) is not null)
+            return Result.Failure<SubdomainReservationResponse>(
+                new Error("TenantDomain.SlugReservedTemporarily", "This subdomain is temporarily reserved.")
+            );
+
         var reservationResult = TenantSubdomainReservation.Create(
             slug,
             command.Email ?? string.Empty,
@@ -79,6 +91,7 @@ public static class ReserveSubdomainHandler
             new TenantDomainReservedIntegrationEvent
             {
                 TenantId = PlatformTenant.Id,
+                CorrelationId = correlation.CorrelationId,
                 Slug = reservation.SubdomainSlug,
                 ReservedByEmail = reservation.ReservedByEmail,
                 ExpiresAtUtc = reservation.ExpiresAtUtc,

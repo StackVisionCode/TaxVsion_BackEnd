@@ -69,6 +69,17 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
         builder.Property(payment => payment.DiscountAmountCents);
         builder.Property(payment => payment.PromotionSnapshotHash).HasMaxLength(64);
 
+        // PayFlow (Fase 8) — OnboardingId nullable, único cuando presente (un solo checkout
+        // inicial por onboarding); reusa el patrón idempotente vía IdempotencyKey para replays.
+        builder.Property(payment => payment.OnboardingId);
+        builder
+            .HasIndex(payment => payment.OnboardingId)
+            .IsUnique()
+            .HasFilter("[OnboardingId] IS NOT NULL")
+            .HasDatabaseName("UX_SaaSPayments_OnboardingId");
+
+        builder.Property(payment => payment.ProviderCheckoutSessionId).HasMaxLength(200);
+
         builder.Property(payment => payment.RowVersion).IsRowVersion();
 
         builder

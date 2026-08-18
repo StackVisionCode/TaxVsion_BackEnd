@@ -49,11 +49,21 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
     public async Task<IReadOnlyList<Permission>> GetPermissionsCatalogAsync(CancellationToken ct = default) =>
         await db.Permissions.AsNoTracking().ToListAsync(ct);
 
+    // IgnoreQueryFilters() (2026-08-06, Opción B): mismo bug que UserRepository.GetByIdAsync (ver
+    // su comentario) — link.UserId ya es el límite real de autorización (un UserRole solo existe
+    // para roles legítimamente asignados a ESE usuario, sin importar el tenant ambiental), así que
+    // el HasQueryFilter de Role sobre ITenantContext era puramente redundante en el caso correcto y
+    // activamente roto cuando el llamador corre en un scope sin ITenantContext poblado (handlers de
+    // Wolverine invocados vía bus.InvokeAsync desde un controller, ver comentario de
+    // UserRepository.GetByIdAsync) — devolvía 0 roles/permisos en silencio en vez de fallar. Hallado
+    // implementando GetPermissionsSnapshotHandler (endpoint M2M interno), que hasta ahora era el
+    // único llamador de estos dos métodos sin poder llamar tenantContext.SetTenant primero
+    // (PermissionsBackfillService sí puede, por eso nunca lo disparó).
     public async Task<IReadOnlyList<Role>> GetUserRolesAsync(Guid userId, CancellationToken ct = default) =>
         await db
             .UserRoles.Where(link => link.UserId == userId)
             .Join(
-                db.Roles.Include(role => role.Permissions),
+                db.Roles.IgnoreQueryFilters().Include(role => role.Permissions),
                 link => link.RoleId,
                 role => role.Id,
                 (link, role) => role
@@ -67,7 +77,12 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
     ) =>
         await db
             .UserRoles.Where(link => link.UserId == userId)
-            .Join(db.Roles.Where(role => role.IsActive), link => link.RoleId, role => role.Id, (link, role) => role.Id)
+            .Join(
+                db.Roles.IgnoreQueryFilters().Where(role => role.IsActive),
+                link => link.RoleId,
+                role => role.Id,
+                (link, role) => role.Id
+            )
             .Join(
                 db.Set<RolePermission>(),
                 roleId => roleId,
@@ -115,7 +130,14 @@ public sealed class RoleRepository(AuthDbContext db) : IRoleRepository
             if (roleResult.IsFailure)
                 continue;
 
-            var permissionIds = PermissionCatalog.SystemRoleDefaults(name).Select(PermissionCatalog.IdOf).ToList();
+            // 2026-08-06: el rol TenantAdmin de sistema usa el set que SÍ incluye IsDangerous
+            // (roles.manage/billing.*/subscription.manage/tenant_domains.manage/
+            // cloudstorage.legal.manage) — ver doc-comment de SystemTenantAdminRootPermissions.
+            var permissionCodes =
+                name == Role.SystemTenantAdmin
+                    ? PermissionCatalog.SystemTenantAdminRootPermissions()
+                    : PermissionCatalog.SystemRoleDefaults(name);
+            var permissionIds = permissionCodes.Select(PermissionCatalog.IdOf).ToList();
             roleResult.Value.SetPermissions(permissionIds, seeding: true);
             await db.Roles.AddAsync(roleResult.Value, ct);
         }

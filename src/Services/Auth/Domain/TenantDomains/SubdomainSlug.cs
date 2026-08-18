@@ -4,7 +4,7 @@ using BuildingBlocks.Results;
 namespace TaxVision.Auth.Domain.TenantDomains;
 
 /// <summary>
-/// Slug de subdominio de una oficina (ej. "oficina1" en oficina1.taxprocore.com).
+/// Slug de subdominio de una oficina (ej. "oficina1" en oficina1.taxproffice.com).
 /// Valida formato de etiqueta DNS y rechaza los nombres reservados de plataforma.
 /// La unicidad real (contra otros tenants) la garantiza el índice único de BD + el
 /// endpoint de disponibilidad (Fase A4) — este VO solo valida forma, no unicidad.

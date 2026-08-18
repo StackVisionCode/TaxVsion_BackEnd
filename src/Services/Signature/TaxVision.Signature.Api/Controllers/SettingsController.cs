@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +22,7 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
 {
     [HttpGet]
     [HasPermission(SignaturePermissions.SettingsManage)]
+    [RateLimit("signature.f.settings_read")]
     [ProducesResponseType(typeof(TenantSignatureSettingsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -43,6 +46,7 @@ public sealed class SettingsController(ITenantSignatureSettingsRepository reposi
     /// </summary>
     [HttpPut]
     [HasPermission(SignaturePermissions.SettingsManage)]
+    [RateLimit("signature.g.settings_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(Error), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +30,7 @@ public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBa
     // ---------- GET /signature/analytics/summary ----------
     [HttpGet("summary")]
     [HasPermission(SignaturePermissions.RequestRead)]
+    [RateLimit("signature.f.analytics_read")]
     [ProducesResponseType<SignatureAnalyticsSummary>(StatusCodes.Status200OK)]
     public async Task<ActionResult<SignatureAnalyticsSummary>> Summary(
         [FromQuery] DateOnly? from = null,
@@ -49,6 +52,7 @@ public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBa
     // ---------- GET /signature/analytics/timeline ----------
     [HttpGet("timeline")]
     [HasPermission(SignaturePermissions.RequestRead)]
+    [RateLimit("signature.f.analytics_read")]
     [ProducesResponseType<SignatureAnalyticsTimeline>(StatusCodes.Status200OK)]
     public async Task<ActionResult<SignatureAnalyticsTimeline>> Timeline(
         [FromQuery] DateOnly? from = null,
@@ -70,6 +74,7 @@ public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBa
     // ---------- GET /signature/analytics/by-category ----------
     [HttpGet("by-category")]
     [HasPermission(SignaturePermissions.RequestRead)]
+    [RateLimit("signature.f.analytics_read")]
     [ProducesResponseType<SignatureAnalyticsByCategory>(StatusCodes.Status200OK)]
     public async Task<ActionResult<SignatureAnalyticsByCategory>> ByCategory(
         [FromQuery] DateOnly? from = null,

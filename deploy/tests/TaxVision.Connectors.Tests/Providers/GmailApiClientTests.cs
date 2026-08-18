@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using MimeKit;
 using TaxVision.Connectors.Application.Providers;
@@ -20,7 +21,7 @@ public class GmailApiClientTests
             new HttpClient(handler),
             new FakeOAuthTokenManager(),
             rateLimiter ?? new NoWaitProviderRateLimiter(),
-            new ProviderCircuitBreakerRegistry(NullLogger<ProviderCircuitBreakerRegistry>.Instance),
+            new HttpResiliencePipelineRegistry(),
             NullLogger<GmailApiClient>.Instance
         );
 
@@ -40,7 +41,7 @@ public class GmailApiClientTests
             """
         );
 
-        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), "50");
+        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), "50");
 
         Assert.Single(result.NewMessageIds);
         Assert.Equal("msg1", result.NewMessageIds[0]);
@@ -78,7 +79,7 @@ public class GmailApiClientTests
             """
         );
 
-        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), "msg1");
+        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
 
         Assert.Equal("msg1", message.ProviderMessageId);
         Assert.Equal("thread1", message.ProviderThreadId);
@@ -100,7 +101,8 @@ public class GmailApiClientTests
         var handler = new FakeHttpMessageHandler();
         handler.Enqueue(HttpStatusCode.OK, """{ "size": 3, "data": "SGkh" }""");
 
-        await using var stream = await CreateClient(handler).GetAttachmentAsync(Guid.NewGuid(), "msg1", "att1");
+        await using var stream = await CreateClient(handler)
+            .GetAttachmentAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1", "att1");
         using var reader = new StreamReader(stream);
         var content = await reader.ReadToEndAsync();
 
@@ -122,7 +124,7 @@ public class GmailApiClientTests
         handler.Enqueue(HttpStatusCode.OK, """{ "history": [], "historyId": "1" }""");
 
         var rateLimiter = new NoWaitProviderRateLimiter();
-        var result = await CreateClient(handler, rateLimiter).GetHistoryAsync(Guid.NewGuid(), null);
+        var result = await CreateClient(handler, rateLimiter).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), null);
 
         Assert.Equal("1", result.NextCursor);
         Assert.Equal(2, handler.Requests.Count);
@@ -137,7 +139,7 @@ public class GmailApiClientTests
         handler.Enqueue(HttpStatusCode.InternalServerError, "{}");
 
         await Assert.ThrowsAsync<TaxVision.Connectors.Application.Providers.EmailProviderException>(() =>
-            CreateClient(handler).GetMessageAsync(Guid.NewGuid(), "msg1")
+            CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1")
         );
     }
 
@@ -148,7 +150,7 @@ public class GmailApiClientTests
         handler.Enqueue(_ => throw new HttpRequestException("simulated network blip"));
         handler.Enqueue(HttpStatusCode.OK, """{ "history": [], "historyId": "1" }""");
 
-        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), null);
+        var result = await CreateClient(handler).GetHistoryAsync(Guid.NewGuid(), Guid.NewGuid(), null);
 
         Assert.Equal("1", result.NextCursor);
         Assert.Equal(2, handler.Requests.Count);
@@ -184,7 +186,7 @@ public class GmailApiClientTests
             """
         );
 
-        var body = await CreateClient(handler).GetMessageBodyAsync(Guid.NewGuid(), "msg1");
+        var body = await CreateClient(handler).GetMessageBodyAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
 
         Assert.Equal(4096, body.MimeSizeBytes);
         Assert.Equal("Hi!", body.HtmlBody);
@@ -213,7 +215,7 @@ public class GmailApiClientTests
         });
 
         var result = await CreateClient(handler)
-            .SendMessageAsync(Guid.NewGuid(), "office@gmail.com", "Office", NewOutboundMessage());
+            .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@gmail.com", "Office", NewOutboundMessage());
 
         Assert.Equal("sent1", result.ProviderMessageId);
         Assert.Equal("thread1", result.ProviderThreadId);
@@ -243,7 +245,13 @@ public class GmailApiClientTests
         });
 
         var result = await CreateClient(handler)
-            .SendMessageAsync(Guid.NewGuid(), "office@gmail.com", null, NewOutboundMessage("original1"));
+            .SendMessageAsync(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "office@gmail.com",
+                null,
+                NewOutboundMessage("original1")
+            );
 
         Assert.Equal("thread99", result.ProviderThreadId);
         using var payload = JsonDocument.Parse(capturedBody!);
@@ -257,7 +265,8 @@ public class GmailApiClientTests
         handler.Enqueue(HttpStatusCode.Forbidden, """{ "error": { "errors": [ { "reason": "domainPolicy" } ] } }""");
 
         var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
-            CreateClient(handler).SendMessageAsync(Guid.NewGuid(), "office@gmail.com", null, NewOutboundMessage())
+            CreateClient(handler)
+                .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@gmail.com", null, NewOutboundMessage())
         );
 
         Assert.Equal(SendFailureReason.PermissionDenied, exception.Reason);
@@ -273,7 +282,8 @@ public class GmailApiClientTests
         );
 
         var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
-            CreateClient(handler).SendMessageAsync(Guid.NewGuid(), "office@gmail.com", null, NewOutboundMessage())
+            CreateClient(handler)
+                .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@gmail.com", null, NewOutboundMessage())
         );
 
         Assert.Equal(SendFailureReason.QuotaExceeded, exception.Reason);
@@ -286,7 +296,8 @@ public class GmailApiClientTests
         handler.Enqueue(HttpStatusCode.Unauthorized, "{}");
 
         var exception = await Assert.ThrowsAsync<OutboundEmailSendException>(() =>
-            CreateClient(handler).SendMessageAsync(Guid.NewGuid(), "office@gmail.com", null, NewOutboundMessage())
+            CreateClient(handler)
+                .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@gmail.com", null, NewOutboundMessage())
         );
 
         Assert.Equal(SendFailureReason.AuthExpired, exception.Reason);
@@ -319,7 +330,8 @@ public class GmailApiClientTests
             [new OutboundAttachment("doc.pdf", "application/pdf", Encoding.UTF8.GetBytes("%PDF-1.4 fake"))]
         );
 
-        await CreateClient(handler).SendMessageAsync(Guid.NewGuid(), "office@gmail.com", "Office", message);
+        await CreateClient(handler)
+            .SendMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "office@gmail.com", "Office", message);
 
         using var payload = JsonDocument.Parse(capturedBody!);
         var raw = payload.RootElement.GetProperty("raw").GetString()!;

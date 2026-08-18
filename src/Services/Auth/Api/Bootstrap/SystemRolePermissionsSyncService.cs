@@ -64,7 +64,15 @@ public sealed class SystemRolePermissionsSyncService(
         foreach (var role in systemRoles)
         {
             var currentIds = role.Permissions.Select(link => link.PermissionId).ToHashSet();
-            var expectedIds = PermissionCatalog.SystemRoleDefaults(role.Name).Select(PermissionCatalog.IdOf).ToList();
+            // 2026-08-06: TenantAdmin usa el set que SÍ incluye IsDangerous (ver doc-comment de
+            // PermissionCatalog.SystemTenantAdminRootPermissions) — este resync es también el
+            // mecanismo que cierra el gap retroactivamente para TODOS los tenants ya existentes,
+            // no solo los que se creen de acá en adelante.
+            var expectedCodes =
+                role.Name == Role.SystemTenantAdmin
+                    ? PermissionCatalog.SystemTenantAdminRootPermissions()
+                    : PermissionCatalog.SystemRoleDefaults(role.Name);
+            var expectedIds = expectedCodes.Select(PermissionCatalog.IdOf).ToList();
 
             if (currentIds.SetEquals(expectedIds))
                 continue;

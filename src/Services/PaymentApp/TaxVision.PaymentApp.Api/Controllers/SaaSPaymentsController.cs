@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +21,7 @@ public sealed class SaaSPaymentsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("{id:guid}")]
     [HasPermission(PaymentAppPermissions.SaaSPaymentRead)]
+    [RateLimit("payment_app.f.saas_payment_read")]
     [ProducesResponseType<SaaSPaymentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -37,6 +40,7 @@ public sealed class SaaSPaymentsController(IMessageBus bus) : ControllerBase
     /// sí mismo.</summary>
     [HttpPost("{id:guid}/refund")]
     [HasPermission(PaymentAppPermissions.SaaSPaymentRefund)]
+    [RateLimit("payment_app.m.refund")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Refund(Guid id, RefundRequest request, CancellationToken ct)
     {

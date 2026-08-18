@@ -1,0 +1,11 @@
+# Mismo caso que Communication: el contexto es esta carpeta (compose:
+# context: ../../src/Services/CommunicationTranscriptWorker), asi que el
+# .dockerignore de la raiz del repo no le aplica. El Dockerfile solo copia
+# package.json, los tsconfig y src/ — las dependencias las instala dentro de
+# la imagen, no las toma del host.
+node_modules/
+dist/
+tests/
+coverage/
+*.log
+.env

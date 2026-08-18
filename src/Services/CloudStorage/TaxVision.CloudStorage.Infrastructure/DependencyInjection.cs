@@ -1,15 +1,21 @@
 using Amazon.S3;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
+using TaxVision.CloudStorage.Infrastructure.Permissions;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 using TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
+using TaxVision.CloudStorage.Infrastructure.RateLimiting;
 using TaxVision.CloudStorage.Infrastructure.Security;
 using TaxVision.CloudStorage.Infrastructure.Storage;
 using TaxVision.CloudStorage.Infrastructure.Time;
@@ -156,6 +162,79 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddRateLimitTierQuotas(services, configuration);
+        AddPermissionsPullRecovery(services);
         return services;
     }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (TenantPlanCodeProjectionConsumer, mantiene la proyección al día incluso con el flag
+    // apagado) y los lectores concretos de la proyección local. El mapeo a
+    // BuildingBlocks.RateLimiting.ITenantPlanCodeReader/IPlanRateLimitReader que
+    // RateLimitQuotaResolver realmente consume vive en Program.cs, condicional al flag
+    // RateLimit:EnforceTierQuotas.
+    //
+    // Auditoria RateLimit hallazgo #2 — CloudStorage nunca tuvo un IServiceTokenAcquirer M2M
+    // propio (es un servicio de recursos al que los demás llaman, no un llamador); se agrega
+    // uno dedicado solo para que HttpPlanRateLimitReader pueda leer el catálogo de
+    // Subscription (ver RateLimiting/ServiceTokenAcquirer.cs), cerrando el gap documentado en
+    // Fase 2 — ya no cae a NullPlanRateLimitReader.
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+                sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+                sp.GetRequiredService<EfTenantPlanCodeReader>()
+            )
+        );
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services
+            .AddOptions<ServiceAuthClientOptions>()
+            .Bind(configuration.GetSection(ServiceAuthClientOptions.SectionName));
+        services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+            }
+        );
+
+        services
+            .AddOptions<SubscriptionClientOptions>()
+            .Bind(configuration.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+    }
+
+    // H-04 — recuperación pull bajo demanda de permisos. Cuando ProjectionPermissionsSource
+    // (BuildingBlocks.Web) no encuentra la fila local, pregunta a Auth en vez de negar sin más:
+    // evento perdido, backfill pendiente o usuario recién creado dejan de ser un 403 permanente.
+    // Reutiliza el IServiceTokenAcquirer y el ServiceAuthClientOptions que ya apuntan a Auth.
+    private static void AddPermissionsPullRecovery(IServiceCollection services)
+    {
+        services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(options.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+    }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

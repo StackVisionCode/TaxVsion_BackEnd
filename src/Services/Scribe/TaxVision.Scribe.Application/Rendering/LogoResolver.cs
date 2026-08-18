@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Caching.Memory;
@@ -26,6 +27,7 @@ public sealed class LogoResolver(
     IMemoryCache l1Cache,
     IUnitOfWork unitOfWork,
     IMessageBus messageBus,
+    ICorrelationContext correlation,
     ILogger<LogoResolver> logger
 ) : ILogoResolver
 {
@@ -94,7 +96,12 @@ public sealed class LogoResolver(
         await unitOfWork.SaveChangesAsync(ct);
 
         await messageBus.PublishAsync(
-            new ScribeTenantLogoMissingDetectedIntegrationEvent { TenantId = tenantId, DetectedAtUtc = now }
+            new ScribeTenantLogoMissingDetectedIntegrationEvent
+            {
+                TenantId = tenantId,
+                DetectedAtUtc = now,
+                CorrelationId = correlation.CorrelationId,
+            }
         );
 
         logger.LogInformation("Tenant {TenantId} has no active logo; falling back to the system logo.", tenantId);

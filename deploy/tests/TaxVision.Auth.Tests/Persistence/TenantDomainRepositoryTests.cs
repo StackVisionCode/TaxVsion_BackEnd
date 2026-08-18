@@ -43,7 +43,7 @@ public sealed class TenantDomainRepositoryTests
 
         var slug = SubdomainSlug.Create("assemble").Value;
         var domain = TenantDomain
-            .CreateSubdomain(tenantId, slug, "taxprocore.com", Guid.NewGuid(), DateTime.UtcNow)
+            .CreateSubdomain(tenantId, slug, "taxproffice.com", Guid.NewGuid(), DateTime.UtcNow)
             .Value;
 
         await using (var seedDb = CreateContext(databaseName, tenantContext))
@@ -57,7 +57,7 @@ public sealed class TenantDomainRepositoryTests
         await using var db = CreateContext(databaseName, tenantContext);
         var repository = new TenantDomainRepository(db);
 
-        var resolved = await repository.GetByHostAsync("assemble.taxprocore.com");
+        var resolved = await repository.GetByHostAsync("assemble.taxproffice.com");
 
         Assert.NotNull(resolved);
         Assert.Equal(tenantId, resolved!.TenantId);

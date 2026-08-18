@@ -18,6 +18,14 @@ public sealed record AcceptInvitationCommand(string InvitationToken, string Name
 
 public static class AcceptInvitationHandler
 {
+    private static readonly Error InvalidInvitation = new(
+        "Auth.InvalidInvitation",
+        "Invitation is invalid or expired."
+    );
+
+    /// <summary>Fase 18 — throttle por IP (20/hora, protege contra guessing masivo del token) y
+    /// límite de intentos por invitación (Invitation.MaxAcceptAttempts=5, protege una invitación
+    /// puntual de intentos repetidos de canje una vez que el token ya coincidió).</summary>
     public static async Task<Result<UserResponse>> Handle(
         AcceptInvitationCommand command,
         IInvitationRepository invitations,
@@ -26,6 +34,7 @@ public static class AcceptInvitationHandler
         ITenantRegistry tenants,
         IPasswordHasher passwordHasher,
         IRoleRepository roles,
+        ILoginThrottler throttler,
         IAuthAuditWriter audit,
         IRequestContext request,
         IUnitOfWork unitOfWork,
@@ -34,14 +43,17 @@ public static class AcceptInvitationHandler
         CancellationToken ct
     )
     {
+        if (await throttler.GetInvitationAcceptRetryAfterAsync(request.IpAddress, ct) is not null)
+            return Result.Failure<UserResponse>(InvalidInvitation);
+        await throttler.RegisterInvitationAcceptAttemptAsync(request.IpAddress, ct);
+
         var tokenHash = tokens.Hash(command.InvitationToken);
         var invitation = await invitations.GetByTokenHashAsync(tokenHash, ct);
         if (invitation is null || !invitation.MatchesTokenHash(tokenHash))
-        {
-            return Result.Failure<UserResponse>(
-                new Error("Auth.InvalidInvitation", "Invitation is invalid or expired.")
-            );
-        }
+            return Result.Failure<UserResponse>(InvalidInvitation);
+
+        if (invitation.AcceptAttempts >= Invitation.MaxAcceptAttempts)
+            return Result.Failure<UserResponse>(InvalidInvitation);
 
         if (invitation.Status == InvitationStatus.Accepted && invitation.AcceptedByUserId is Guid existingUserId)
         {
@@ -74,10 +86,16 @@ public static class AcceptInvitationHandler
 
         var passwordResult = PasswordPolicy.Validate(command.Password, invitation.Email);
         if (passwordResult.IsFailure)
+        {
+            invitation.RegisterAcceptAttempt();
+            await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<UserResponse>(passwordResult.Error);
+        }
 
         if (await users.EmailExistsAsync(invitation.TenantId, invitation.Email, ct))
         {
+            invitation.RegisterAcceptAttempt();
+            await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<UserResponse>(
                 new Error("User.EmailConflict", "Email is already registered in this tenant.")
             );
@@ -149,6 +167,7 @@ public static class AcceptInvitationHandler
                     RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
                     RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
                     PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                    ActorType = user.ActorType.ToString(),
                     CorrelationId = correlation.CorrelationId,
                 }
             );

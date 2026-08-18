@@ -21,4 +21,7 @@ public sealed class TenantRepository(TenantDbContext db) : ITenantRepository
         var normalized = subdomain.Trim().ToLowerInvariant();
         return db.Tenants.AnyAsync(t => t.SubDomain == normalized, ct);
     }
+
+    public Task<DomainTenant?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
+        db.Tenants.FirstOrDefaultAsync(t => t.OnboardingId == onboardingId, ct);
 }

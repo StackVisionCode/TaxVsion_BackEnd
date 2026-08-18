@@ -21,4 +21,18 @@ internal sealed class InMemoryCodeReservationRepository : ICodeReservationReposi
         _reservations.Add(reservation);
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<ExpiredReservationRef>> GetActiveExpiredAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<ExpiredReservationRef>>(
+            _reservations
+                .Where(r => r.Status == CodeReservationStatus.Active && r.ExpiresAtUtc <= nowUtc)
+                .OrderBy(r => r.ExpiresAtUtc)
+                .Take(batchSize)
+                .Select(r => new ExpiredReservationRef(r.TenantId, r.Id))
+                .ToList()
+        );
 }

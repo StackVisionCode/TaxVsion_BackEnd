@@ -15,15 +15,36 @@ scrape_configs:
       - targets:
           - otel-collector:9464
 
-  # Metricas de contenedores (CPU/memoria/IO por servicio, incluye sqlserver/minio).
+  # Metricas de contenedores (CPU/memoria/IO por servicio, incluye minio).
   - job_name: cadvisor
     static_configs:
       - targets:
           - cadvisor:8080
 
   # Metricas del host (disco, memoria, CPU del server) — critico para vigilar que
-  # los volumenes de sqlserver-data/minio-data no se llenen en silencio.
+  # el volumen minio-data no se llene en silencio. La base ya no esta en este host:
+  # su disco se vigila desde el servidor Ubuntu que la aloja, no desde aca.
   - job_name: node-exporter
     static_configs:
       - targets:
           - node-exporter:9100
+
+  # H-16 — profundidad por cola, incluida la dead-letter.
+  #
+  # Wolverine crea y usa `wolverine-dead-letter-queue` el solo (AutoProvision): un handler
+  # que agota los reintentos acaba ahi. El agujero nunca fue que faltara la DLQ, es que
+  # nadie la miraba. Los mensajes sin handler NO llegan aqui — Wolverine los descarta, que
+  # con el fanout actual es lo correcto: cada cola recibe los ~183 tipos de evento y solo
+  # maneja un puñado.
+  #
+  # Hace falta /metrics/detailed: el /metrics normal solo da el agregado del broker, sin
+  # desglose por cola, y sin desglose no se puede alertar solo sobre las DLQ.
+  # El puerto 15692 no se publica al host — Prometheus entra por la red interna.
+  - job_name: rabbitmq
+    metrics_path: /metrics/detailed
+    params:
+      family:
+        - queue_coarse_metrics
+    static_configs:
+      - targets:
+          - rabbitmq:15692

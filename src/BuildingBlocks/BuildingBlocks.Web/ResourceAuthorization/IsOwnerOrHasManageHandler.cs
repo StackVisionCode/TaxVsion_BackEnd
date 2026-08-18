@@ -1,9 +1,10 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Domain;
+using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 
-namespace BuildingBlocks.ResourceAuthorization;
+namespace BuildingBlocks.Web.ResourceAuthorization;
 
 /// <summary>
 /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — Layer 3b (resource ownership), complementa a

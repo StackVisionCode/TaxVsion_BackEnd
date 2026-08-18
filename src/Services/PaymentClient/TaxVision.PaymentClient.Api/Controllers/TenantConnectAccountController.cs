@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +26,7 @@ public sealed class TenantConnectAccountController(IMessageBus bus) : Controller
     /// Connected Account y solo emite un <c>AccountLink</c> nuevo (los links de Stripe
     /// expiran a los pocos minutos).</summary>
     [HttpPost("onboard")]
+    [RateLimit("payment_client.l.connect_onboard")]
     [HasPermission(PaymentClientPermissions.ConnectAccountOnboard)]
     [ProducesResponseType<InitiateStripeConnectOnboardingResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Onboard(OnboardRequest request, CancellationToken ct)
@@ -47,6 +50,7 @@ public sealed class TenantConnectAccountController(IMessageBus bus) : Controller
     }
 
     [HttpGet("status")]
+    [RateLimit("payment_client.f.connect_read")]
     [HasPermission(PaymentClientPermissions.ConnectAccountRead)]
     [ProducesResponseType<TenantConnectAccountResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

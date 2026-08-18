@@ -45,6 +45,7 @@ public static class SendMessageHandler
             // distinguiendo de una cancelación real del caller.
             sendResult = await clientResult.Value.SendMessageAsync(
                 account.Id,
+                account.TenantId,
                 account.EmailAddress,
                 account.DisplayName,
                 cmd.Message,

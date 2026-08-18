@@ -7,14 +7,17 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Notification.Domain.Authorization;
+using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Emailing.Campaigns;
 using TaxVision.Notification.Domain.Emailing.Configurations;
 using TaxVision.Notification.Domain.Emailing.Layouts;
 using TaxVision.Notification.Domain.Emailing.Sending;
 using TaxVision.Notification.Domain.Emailing.Templates;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Onboarding;
 using TaxVision.Notification.Domain.Permissions;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Domain.RateLimiting;
 
 namespace TaxVision.Notification.Infrastructure.Persistence;
 
@@ -42,17 +45,37 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     public DbSet<EmailDeliveryLog> EmailDeliveryLogs => Set<EmailDeliveryLog>();
     public DbSet<EmailCampaign> EmailCampaigns => Set<EmailCampaign>();
     public DbSet<EmailCampaignRecipient> EmailCampaignRecipients => Set<EmailCampaignRecipient>();
-    public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
-    public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<NotificationRecipientPermissionsProjection> NotificationRecipientPermissionsProjections =>
+        Set<NotificationRecipientPermissionsProjection>();
+    public DbSet<NotificationRecipientRolePermissionsProjection> NotificationRecipientRolePermissionsProjections =>
+        Set<NotificationRecipientRolePermissionsProjection>();
     public DbSet<UserNotificationPreference> UserNotificationPreferences => Set<UserNotificationPreference>();
 
+    /// <summary>
+    /// Reminder Fase 10 — el primer directorio <c>userId → email</c> del servicio. Hasta ahora
+    /// Notification solo sabía escribirle a quien viniera con la dirección dentro del propio evento.
+    /// </summary>
+    public DbSet<UserEmailDirectoryEntry> UserEmailDirectoryEntries => Set<UserEmailDirectoryEntry>();
+
+    // Hermana de la anterior para los avisos cuyo destinatario es un cliente, no personal de la firma.
+    public DbSet<CustomerEmailDirectoryEntry> CustomerEmailDirectoryEntries => Set<CustomerEmailDirectoryEntry>();
+
+    // PayFlow (Fase 12) — resuelve la carrera OnboardingRegistrationReady/OnboardingReceiptReady.
+    public DbSet<OnboardingReceiptLookup> OnboardingReceiptLookups => Set<OnboardingReceiptLookup>();
+
     // RBAC Fase 7 — proyecciones locales de permisos para AUTORIZACIÓN (perm_v enforcement),
-    // distintas de UserPermissionsProjection/RolePermissionsProjection de arriba (Fase 4,
-    // fan-out de notificaciones). Ver TaxVision.Notification.Domain.Authorization.AuthzUserPermissionsProjection.
+    // distintas de NotificationRecipientPermissionsProjection/NotificationRecipientRolePermissionsProjection
+    // de arriba (Fase 4, fan-out de notificaciones). Ver
+    // TaxVision.Notification.Domain.Authorization.AuthzUserPermissionsProjection.
     public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections =>
         Set<AuthzUserPermissionsProjection>();
     public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>
         Set<AuthzRolePermissionsProjection>();
+
+    // RateLimit Fase 2 — proyección local de "¿qué PlanCode tiene este tenant hoy?", mantenida
+    // por TenantPlanCodeProjectionConsumer (evento de Subscription), consultada por
+    // EfTenantPlanCodeReader para el rate limiting tiered. Ver TenantPlanCodeProjection.
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

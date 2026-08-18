@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -58,6 +60,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost]
     [HasPermission(NotificationPermissions.TemplateManage)]
+    [RateLimit("notification.g.template_manage")]
     [ProducesResponseType<EmailTemplateResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateEmailTemplateRequest request, CancellationToken ct)
     {
@@ -81,6 +84,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpGet]
     [HasPermission(NotificationPermissions.TemplateView)]
+    [RateLimit("notification.f.template_read")]
     [ProducesResponseType<IReadOnlyList<EmailTemplateResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
@@ -94,6 +98,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpGet("{id:guid}")]
     [HasPermission(NotificationPermissions.TemplateView)]
+    [RateLimit("notification.f.template_read")]
     [ProducesResponseType<EmailTemplateDetailResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
@@ -107,6 +112,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/versions")]
     [HasPermission(NotificationPermissions.TemplateManage)]
+    [RateLimit("notification.g.template_manage")]
     [ProducesResponseType<EmailTemplateVersionResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> AddVersion(Guid id, [FromBody] AddVersionRequest request, CancellationToken ct)
     {
@@ -129,6 +135,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/publish")]
     [HasPermission(NotificationPermissions.TemplateManage)]
+    [RateLimit("notification.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Publish(Guid id, [FromBody] PublishRequest request, CancellationToken ct)
     {
@@ -142,6 +149,7 @@ public sealed class EmailTemplatesController(IMessageBus bus) : ControllerBase
 
     [HttpPost("{id:guid}/archive")]
     [HasPermission(NotificationPermissions.TemplateManage)]
+    [RateLimit("notification.g.template_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
     {

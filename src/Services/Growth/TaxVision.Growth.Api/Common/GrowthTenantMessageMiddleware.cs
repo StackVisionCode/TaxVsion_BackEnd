@@ -1,5 +1,5 @@
 using BuildingBlocks.Messaging;
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 
 namespace TaxVision.Growth.Api.Common;
 

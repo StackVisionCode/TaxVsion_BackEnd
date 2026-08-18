@@ -1,21 +1,26 @@
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Providers;
+using TaxVision.Connectors.Application.RateLimiting.Abstractions;
 using TaxVision.Connectors.Application.Sync;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.Jobs;
 using TaxVision.Connectors.Infrastructure.Locking;
 using TaxVision.Connectors.Infrastructure.OAuth;
+using TaxVision.Connectors.Infrastructure.Observability;
 using TaxVision.Connectors.Infrastructure.Persistence;
 using TaxVision.Connectors.Infrastructure.Persistence.Repositories;
 using TaxVision.Connectors.Infrastructure.Providers;
@@ -26,6 +31,7 @@ using TaxVision.Connectors.Infrastructure.Providers.Manual;
 using TaxVision.Connectors.Infrastructure.Providers.OAuth;
 using TaxVision.Connectors.Infrastructure.Providers.Watch;
 using TaxVision.Connectors.Infrastructure.RateLimit;
+using TaxVision.Connectors.Infrastructure.RateLimiting;
 using TaxVision.Connectors.Infrastructure.Security;
 using TaxVision.Connectors.Infrastructure.Watch;
 
@@ -60,6 +66,7 @@ public static class DependencyInjection
         {
             services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
             services.AddSingleton<IDistributedLock, RedisDistributedLock>();
+            services.AddSingleton<IRateCounter, RedisRateCounter>();
             services.AddSingleton<IProviderRateLimiter, RedisProviderRateLimiter>();
         }
         else
@@ -74,7 +81,15 @@ public static class DependencyInjection
             services.AddSingleton<IOAuthConnectStateStore, InMemoryOAuthConnectStateStore>();
 
         services.Configure<ProviderRateLimiterOptions>(configuration.GetSection("Connectors:RateLimit"));
-        services.AddSingleton<ProviderCircuitBreakerRegistry>();
+        services.AddSingleton(sp => new HttpResiliencePipelineRegistry(
+            onRetry: key => ConnectorsMetrics.RetryAttempts.Add(1, new KeyValuePair<string, object?>("provider", key)),
+            onOpened: key =>
+            {
+                sp.GetRequiredService<ILogger<HttpResiliencePipelineRegistry>>()
+                    .LogWarning("Circuit breaker opened for {Key}.", key);
+                ConnectorsMetrics.CircuitBreakerOpened.Add(1, new KeyValuePair<string, object?>("provider", key));
+            }
+        ));
 
         services.Configure<GoogleOAuthOptions>(configuration.GetSection(GoogleOAuthOptions.SectionName));
         services.Configure<MicrosoftOAuthOptions>(configuration.GetSection(MicrosoftOAuthOptions.SectionName));
@@ -163,6 +178,60 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddRateLimitTierQuotas(services, configuration);
         return services;
     }
+
+    // RateLimit Fase 2 — mismo patrón que Customer (Fase 6) y Tenant (Fase 2.1): el consumer del
+    // evento de Subscription mantiene la proyección local al día incluso con el flag apagado.
+    //
+    // Auditoria RateLimit hallazgo #2 — Connectors ganó su primera infraestructura de token M2M
+    // saliente (ver RateLimiting/ServiceTokenAcquirer.cs); antes solo RECIBIA llamadas M2M
+    // (MessagesController), nunca las hacía. HttpPlanRateLimitReader ahora puede leer el
+    // catálogo de Subscription, cerrando el gap documentado en Fase 2.
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services
+            .AddOptions<ServiceAuthClientOptions>()
+            .Bind(configuration.GetSection(ServiceAuthClientOptions.SectionName));
+        services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+            }
+        );
+
+        services
+            .AddOptions<BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions>()
+            .Bind(
+                configuration.GetSection(
+                    BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions.SectionName
+                )
+            );
+        services.AddHttpClient<BuildingBlocks.Infrastructure.RateLimiting.HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt =
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BuildingBlocks.Infrastructure.RateLimiting.SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+    }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

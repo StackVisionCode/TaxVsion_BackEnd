@@ -1,27 +1,37 @@
-using System.Collections.Concurrent;
-using System.Net.Http.Json;
+using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Scribe.Application.Abstractions;
 
 namespace TaxVision.Scribe.Infrastructure.Storage;
 
-/// <summary>M2M puro (sin forward de bearer de usuario): el renderer de Scribe corre siempre en background.</summary>
+/// <summary>
+/// M2M puro (sin forward de bearer de usuario): el renderer de Scribe corre siempre en background.
+/// Implementa tanto el puerto local de Application (dueño del contrato para los consumers internos
+/// de Scribe) como <see cref="BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer"/> —
+/// RateLimit Fase 2 lo necesita para que <c>HttpPlanRateLimitReader</c> (compartido) pueda
+/// consumir este mismo acquirer sin que Scribe duplique la lógica de cache+retry.
+/// </summary>
 public sealed class ServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<ServiceTokenAcquirer> logger
-) : IServiceTokenAcquirer
+)
+    : TaxVision.Scribe.Application.Abstractions.IServiceTokenAcquirer,
+        BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
-    private static readonly ConcurrentDictionary<Guid, CachedToken> Cache = new();
+    private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
+
+    private static readonly ExpiringValueCache<Guid, string> _cache = new(RefreshBuffer);
 
     // Defensa en profundidad ante una carrera de arranque de contenedores (auth-api todavía
     // aceptando conexiones cuando Scribe ya intenta pedir el token) — el ordering correcto lo
     // da docker-compose (depends_on auth-api: condition: service_healthy) más el gate de
     // ApplicationStarted en los callers (TemplateWarmupService/seeders), pero ninguno de los dos
     // cubre una reconexión/restart de auth-api DESPUÉS de que Scribe ya arrancó. Solo reintenta
-    // fallos de conectividad (HttpRequestException) — un 401/invalid_client es un fallo
-    // permanente de credenciales, no algo que un retry vaya a arreglar.
+    // fallos de conectividad (sin respuesta HTTP) — un 401/invalid_client sí llega como respuesta
+    // y es un fallo permanente de credenciales, no algo que un retry vaya a arreglar.
     private static readonly TimeSpan[] RetryDelays =
     [
         TimeSpan.FromMilliseconds(500),
@@ -31,31 +41,45 @@ public sealed class ServiceTokenAcquirer(
 
     public async Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default)
     {
-        if (Cache.TryGetValue(tenantId, out var cached) && cached.ExpiresAtUtc > DateTime.UtcNow.AddSeconds(30))
-            return cached.Token;
-
         var opt = options.Value;
-        if (!AreCredentialsConfigured(opt))
+        if (string.IsNullOrWhiteSpace(opt.ClientId) || string.IsNullOrWhiteSpace(opt.ClientSecret))
         {
             logger.LogWarning("Scribe:ServiceAuth is not configured; cannot acquire a service token.");
             return null;
         }
 
+        try
+        {
+            return await _cache.GetOrCreateAsync(
+                tenantId,
+                async innerCt =>
+                {
+                    var grant = await RequestWithRetryAsync(opt, tenantId, innerCt);
+                    return (grant.AccessToken, grant.ExpiresAtUtc);
+                },
+                ct
+            );
+        }
+        catch (ServiceTokenAcquisitionException ex)
+        {
+            logger.LogWarning(ex, "Could not acquire a service token for tenant {TenantId}.", tenantId);
+            return null;
+        }
+    }
+
+    private async Task<ServiceTokenGrant> RequestWithRetryAsync(
+        ServiceAuthClientOptions opt,
+        Guid tenantId,
+        CancellationToken ct
+    )
+    {
         for (var attempt = 0; ; attempt++)
         {
             try
             {
-                var payload = await RequestTokenAsync(opt, tenantId, ct);
-                if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
-                    return null;
-
-                Cache[tenantId] = new CachedToken(
-                    payload.AccessToken,
-                    DateTime.UtcNow.AddSeconds(payload.ExpiresInSeconds)
-                );
-                return payload.AccessToken;
+                return await http.RequestServiceTokenAsync(opt.ClientId, opt.ClientSecret, tenantId, ct);
             }
-            catch (HttpRequestException ex) when (attempt < RetryDelays.Length)
+            catch (ServiceTokenAcquisitionException ex) when (attempt < RetryDelays.Length && IsConnectivityFailure(ex))
             {
                 logger.LogWarning(
                     ex,
@@ -66,42 +90,12 @@ public sealed class ServiceTokenAcquirer(
                 );
                 await Task.Delay(RetryDelays[attempt], ct);
             }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Could not acquire a service token for tenant {TenantId}.", tenantId);
-                return null;
-            }
         }
     }
 
-    private static bool AreCredentialsConfigured(ServiceAuthClientOptions opt) =>
-        !string.IsNullOrWhiteSpace(opt.ClientId) && !string.IsNullOrWhiteSpace(opt.ClientSecret);
-
-    private async Task<ServiceTokenDto?> RequestTokenAsync(
-        ServiceAuthClientOptions opt,
-        Guid tenantId,
-        CancellationToken ct
-    )
-    {
-        using var response = await http.PostAsJsonAsync(
-            "auth/service-token",
-            new
-            {
-                clientId = opt.ClientId,
-                clientSecret = opt.ClientSecret,
-                tenantId,
-            },
-            ct
-        );
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("Service token request failed ({Status}).", (int)response.StatusCode);
-            return null;
-        }
-        return await response.Content.ReadFromJsonAsync<ServiceTokenDto>(ct);
-    }
-
-    private sealed record CachedToken(string Token, DateTime ExpiresAtUtc);
-
-    private sealed record ServiceTokenDto(string AccessToken, int ExpiresInSeconds, string? TokenType);
+    // HttpRequestException carries a null StatusCode when the request never got a response
+    // (connection refused, DNS failure, etc.) and a populated StatusCode when Auth answered
+    // with a non-2xx (e.g. 401 invalid_client) — only the former is worth retrying.
+    private static bool IsConnectivityFailure(ServiceTokenAcquisitionException ex) =>
+        ex.InnerException is HttpRequestException { StatusCode: null };
 }

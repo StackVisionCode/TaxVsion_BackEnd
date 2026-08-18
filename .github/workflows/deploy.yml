@@ -45,6 +45,32 @@ jobs:
         run: dotnet test TaxVision.slnx --nologo
 
       # ---------------------------------------------------------------------
+      # H-19 — Communication y CommunicationTranscriptWorker no estan en
+      # TaxVision.slnx (son Node/TypeScript), asi que el gate de arriba NO
+      # ejecutaba ni una linea de sus suites: se desplegaban sin probar. Sus
+      # tests son vitest y corren aparte, uno por servicio.
+      # ---------------------------------------------------------------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test Communication (Node)
+        working-directory: src/Services/Communication
+        run: |
+          npm ci
+          npx prisma generate
+          npm run typecheck
+          npm test
+
+      - name: Test CommunicationTranscriptWorker (Node)
+        working-directory: src/Services/CommunicationTranscriptWorker
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      # ---------------------------------------------------------------------
       # .env de produccion — se escribe en cada run a partir de los Secrets del
       # repo, nunca se versiona. Los nombres de variable son EXACTAMENTE los
       # que docker-compose.yml consume via ${VAR}.
@@ -68,10 +94,37 @@ jobs:
           PAYMENTAPP_DB_CONNECTION=${{ secrets.PAYMENTAPP_DB_CONNECTION }}
           PAYMENTCLIENT_DB_CONNECTION=${{ secrets.PAYMENTCLIENT_DB_CONNECTION }}
           GROWTH_DB_CONNECTION=${{ secrets.GROWTH_DB_CONNECTION }}
-          MSSQL_SA_PASSWORD=${{ secrets.MSSQL_SA_PASSWORD }}
-          # IP privada anunciada en Cloudflare Tunnel (ruta 192.168.100.10/32).
-          # Expone SQL Server solo a esa interfaz para acceso por WARP/VPN.
-          SQLSERVER_BIND_ADDRESS=192.168.100.10
+          # Billing y Documents (servicios mas nuevos) nunca se agregaron aca -- el
+          # step "Apply .NET EF Core migrations" fallaba con "unbound variable" antes
+          # de migrar NINGUN servicio (apply-migrations.sh usa set -eu), y el propio
+          # docker-compose.yml exige estos dos con :? para billing-api/documents-api.
+          # Corregido de paso junto con el docker-compose.yml (ver migrations service).
+          BILLING_DB_CONNECTION=${{ secrets.BILLING_DB_CONNECTION }}
+          DOCUMENTS_DB_CONNECTION=${{ secrets.DOCUMENTS_DB_CONNECTION }}
+          NOTES_DB_CONNECTION=${{ secrets.NOTES_DB_CONNECTION }}
+          # Sms (servicio nuevo, ago-2026). docker-compose.yml la exige con :? en DOS lugares:
+          # sms-api y el servicio migrations. Sin ella el deploy falla duro, y apply-migrations.sh
+          # (set -eu) muere con "unbound variable" ANTES de migrar NINGUN servicio -- el mismo
+          # sintoma que ya se corrigio para Billing/Documents mas arriba.
+          SMS_DB_CONNECTION=${{ secrets.SMS_DB_CONNECTION }}
+          # Reminder (servicio nuevo, ago-2026). Mismo contrato que Sms: docker-compose.yml la
+          # exige con :? en reminder-api y en el servicio migrations.
+          REMINDER_DB_CONNECTION=${{ secrets.REMINDER_DB_CONNECTION }}
+          # Tasks (servicio nuevo, ago-2026). Mismo contrato: docker-compose.yml la exige con :?
+          # en tasks-api y en el servicio migrations.
+          TASKS_DB_CONNECTION=${{ secrets.TASKS_DB_CONNECTION }}
+          # Calendar (servicio nuevo, ago-2026). Mismo contrato: docker-compose.yml la exige
+          # con :? en calendar-api y en el servicio migrations.
+          CALENDAR_DB_CONNECTION=${{ secrets.CALENDAR_DB_CONNECTION }}
+          # Catalog e Inventory (servicios nuevos, ago-2026). Mismo contrato que Sms/Reminder:
+          # docker-compose.yml las exige con :? en catalog-api/inventory-api y en migrations.
+          CATALOG_DB_CONNECTION=${{ secrets.CATALOG_DB_CONNECTION }}
+          INVENTORY_DB_CONNECTION=${{ secrets.INVENTORY_DB_CONNECTION }}
+          # SQL Server ya no corre en este host: vive en su propio servidor Ubuntu. De aca solo sale
+          # a donde esta, para que `db-ready` compruebe el puerto antes de arrancar el resto. La
+          # credencial ya viaja dentro de cada *_DB_CONNECTION, asi que no hay password suelta.
+          SQLSERVER_HOST=${{ secrets.SQLSERVER_HOST }}
+          SQLSERVER_PORT=${{ secrets.SQLSERVER_PORT }}
 
           # ---------- RabbitMQ / MinIO / Grafana ----------
           RABBITMQ_CONNECTION=${{ secrets.RABBITMQ_CONNECTION }}
@@ -87,6 +140,15 @@ jobs:
           CUSTOMER_MINIO_SECRET=${{ secrets.CUSTOMER_MINIO_SECRET }}
           CORRESPONDENCE_MINIO_SECRET=${{ secrets.CORRESPONDENCE_MINIO_SECRET }}
           SCRIBE_MINIO_SECRET=${{ secrets.SCRIBE_MINIO_SECRET }}
+          # Documents (recibos de onboarding PayFlow Fase 10-11 + PDFs de Billing)
+          # faltaba por completo -- Documents__Minio__SecretKey tiene default vacio
+          # en docker-compose.yml, asi que sin esto los uploads a MinIO fallaban con
+          # error de autenticacion en produccion.
+          DOCUMENTS_MINIO_SECRET=${{ secrets.DOCUMENTS_MINIO_SECRET }}
+          # Auth (Auditoria gap MinIO/legal-docs): PlatformAdmin sube documentos legales
+          # (ToS/Privacy) directo a taxvision-temp/auth/*, mismo patron D0/D1. Primer uso
+          # de MinIO en Auth -- Auth__Minio__SecretKey no tiene default en docker-compose.yml.
+          AUTH_MINIO_SECRET=${{ secrets.AUTH_MINIO_SECRET }}
           GRAFANA_ADMIN_USER=${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
@@ -114,6 +176,22 @@ jobs:
           CONNECTORS_GRAPH_NOTIFICATION_URL=${{ secrets.CONNECTORS_GRAPH_NOTIFICATION_URL }}
           CONNECTORS_GRAPH_WATCH_CLIENT_STATE=${{ secrets.CONNECTORS_GRAPH_WATCH_CLIENT_STATE }}
           CONNECTORS_GMAIL_PUSH_AUDIENCE=${{ secrets.CONNECTORS_GMAIL_PUSH_AUDIENCE }}
+
+          # ---------- Sms (proveedores) ----------
+          # Todas OPCIONALES: docker-compose.yml las declara con :- (default), no con :?.
+          # Sin ellas el servicio arranca con el proveedor "fake" y no manda SMS reales --
+          # arranca sano, no rompe el deploy. La API key de Infobip es SECRETA (Authorization:
+          # App {key}); BaseUrl y SenderId no lo son pero se dejan como secret por comodidad
+          # de rotacion por entorno.
+          SMS_DEFAULT_PROVIDER=${{ secrets.SMS_DEFAULT_PROVIDER }}
+          SMS_PROVIDER_ORDER_0=${{ secrets.SMS_PROVIDER_ORDER_0 }}
+          SMS_PROVIDER_ORDER_1=${{ secrets.SMS_PROVIDER_ORDER_1 }}
+          SMS_PROVIDER_ORDER_2=${{ secrets.SMS_PROVIDER_ORDER_2 }}
+          SMS_INFOBIP_BASE_URL=${{ secrets.SMS_INFOBIP_BASE_URL }}
+          SMS_INFOBIP_SENDER_ID=${{ secrets.SMS_INFOBIP_SENDER_ID }}
+          SMS_INFOBIP_API_KEY=${{ secrets.SMS_INFOBIP_API_KEY }}
+          SMS_INFOBIP_WEBHOOK_SECRET=${{ secrets.SMS_INFOBIP_WEBHOOK_SECRET }}
+          SMS_GENERIC_BASE_URL=${{ secrets.SMS_GENERIC_BASE_URL }}
 
           # ---------- Clientes M2M (ServiceAuth) ----------
           NOTIFICATION_SERVICE_CLIENT_ID=${{ secrets.NOTIFICATION_SERVICE_CLIENT_ID }}
@@ -143,6 +221,50 @@ jobs:
           PAYMENTCLIENT_GROWTH_CLIENT_SECRET=${{ secrets.PAYMENTCLIENT_GROWTH_CLIENT_SECRET }}
           SUBSCRIPTION_GROWTH_CLIENT_ID=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_ID }}
           SUBSCRIPTION_GROWTH_CLIENT_SECRET=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_SECRET }}
+          # PayFlow Fase 16 -- PaymentApp resuelve el precio real del plan server-side
+          # (GET subscriptions/internal/plans/{id}/pricing) al armar el Stripe Checkout
+          # Session de onboarding, en vez de confiar en un monto del frontend. Faltaba
+          # del todo en este workflow -- ServiceAuth__Clients__14__Secret tiene default
+          # vacio en docker-compose.yml, asi que ese M2M quedaba sin autenticar.
+          PAYMENTAPP_SUBSCRIPTION_CLIENT_ID=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_ID }}
+          PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET=${{ secrets.PAYMENTAPP_SUBSCRIPTION_CLIENT_SECRET }}
+          # Auditoria RateLimit hallazgo #2 — 5 acquirers M2M nuevos (ServiceAuth__Clients__15-19
+          # en docker-compose.yml), uno por servicio que antes solo RECIBIA llamadas M2M, solo
+          # para leer el catalogo de PlanRateLimits de Subscription.
+          CLOUDSTORAGE_SERVICE_CLIENT_ID=${{ secrets.CLOUDSTORAGE_SERVICE_CLIENT_ID }}
+          CLOUDSTORAGE_SERVICE_CLIENT_SECRET=${{ secrets.CLOUDSTORAGE_SERVICE_CLIENT_SECRET }}
+          CONNECTORS_SERVICE_CLIENT_ID=${{ secrets.CONNECTORS_SERVICE_CLIENT_ID }}
+          CONNECTORS_SERVICE_CLIENT_SECRET=${{ secrets.CONNECTORS_SERVICE_CLIENT_SECRET }}
+          DOCUMENTS_SERVICE_CLIENT_ID=${{ secrets.DOCUMENTS_SERVICE_CLIENT_ID }}
+          DOCUMENTS_SERVICE_CLIENT_SECRET=${{ secrets.DOCUMENTS_SERVICE_CLIENT_SECRET }}
+          GROWTH_SERVICE_CLIENT_ID=${{ secrets.GROWTH_SERVICE_CLIENT_ID }}
+          GROWTH_SERVICE_CLIENT_SECRET=${{ secrets.GROWTH_SERVICE_CLIENT_SECRET }}
+          PAYMENTCLIENT_SERVICE_CLIENT_ID=${{ secrets.PAYMENTCLIENT_SERVICE_CLIENT_ID }}
+          PAYMENTCLIENT_SERVICE_CLIENT_SECRET=${{ secrets.PAYMENTCLIENT_SERVICE_CLIENT_SECRET }}
+          # RateLimit Fase 4 (Notes) — mismo notes-worker que Fase 4B (Customer M2M) reutilizará.
+          NOTES_SERVICE_CLIENT_ID=${{ secrets.NOTES_SERVICE_CLIENT_ID }}
+          NOTES_SERVICE_CLIENT_SECRET=${{ secrets.NOTES_SERVICE_CLIENT_SECRET }}
+          # Billing -- clientes M2M hacia Documents (PDFs de factura) y hacia
+          # PaymentApp/PaymentClient (Payments). Mismo gap: faltaban del todo, los
+          # secrets correspondientes en docker-compose.yml tienen default vacio.
+          BILLING_DOCUMENTS_CLIENT_ID=${{ secrets.BILLING_DOCUMENTS_CLIENT_ID }}
+          BILLING_DOCUMENTS_CLIENT_SECRET=${{ secrets.BILLING_DOCUMENTS_CLIENT_SECRET }}
+          BILLING_PAYMENTS_CLIENT_ID=${{ secrets.BILLING_PAYMENTS_CLIENT_ID }}
+          BILLING_PAYMENTS_CLIENT_SECRET=${{ secrets.BILLING_PAYMENTS_CLIENT_SECRET }}
+          # billing-worker: audiencia amplia TaxVision.Services. Los dos de arriba llevan audiencia
+          # acotada al destino, asi que no sirven para el snapshot de permisos de Auth ni para el
+          # catalogo de plan-rate-limits de Subscription; sin este, ambos fallan en silencio.
+          BILLING_PLATFORM_CLIENT_ID=${{ secrets.BILLING_PLATFORM_CLIENT_ID }}
+          BILLING_PLATFORM_CLIENT_SECRET=${{ secrets.BILLING_PLATFORM_CLIENT_SECRET }}
+
+          # Reminder: mismo caso — sin esto las cuotas nunca escalan por tier (todos los tenants
+          # se quedan con la cuota base) y la recuperacion pull de permisos queda fail-closed.
+          REMINDER_SERVICE_CLIENT_ID=${{ secrets.REMINDER_SERVICE_CLIENT_ID }}
+          REMINDER_SERVICE_CLIENT_SECRET=${{ secrets.REMINDER_SERVICE_CLIENT_SECRET }}
+
+          # Tasks: idem — cuotas sin escalar por tier y permisos fail-closed si falta.
+          TASKS_SERVICE_CLIENT_ID=${{ secrets.TASKS_SERVICE_CLIENT_ID }}
+          TASKS_SERVICE_CLIENT_SECRET=${{ secrets.TASKS_SERVICE_CLIENT_SECRET }}
 
           # ---------- Cuenta de servicio scoped de MinIO para el logo del tenant ----------
           TENANT_MINIO_SECRET=${{ secrets.TENANT_MINIO_SECRET }}
@@ -159,6 +281,11 @@ jobs:
           # ---------- PaymentClient (Fases E-M) ----------
           STRIPE_CONNECT_PLATFORM_SECRET_KEY=${{ secrets.STRIPE_CONNECT_PLATFORM_SECRET_KEY }}
           STRIPE_CONNECT_WEBHOOK_SECRET=${{ secrets.STRIPE_CONNECT_WEBHOOK_SECRET }}
+          # PaymentClient__Public__BaseUrl solo tenia default http://localhost:5047 (dev)
+          # -- sin esto, cualquier link publico generado por PaymentClient en produccion
+          # (payment links, redirects post-checkout) apuntaba a localhost. Faltaba del
+          # todo en este workflow.
+          PAYMENTCLIENT_PUBLIC_BASE_URL=${{ secrets.PAYMENTCLIENT_PUBLIC_BASE_URL }}
 
           # ---------- Communication (TURN, CORS, plataforma, SFU opcional) ----------
           # TURN corre nativo en el server (fuera de este compose) — solo la URL/secreto
@@ -317,7 +444,7 @@ jobs:
       - name: Provision scoped MinIO service accounts
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm minio-provision
 
-      - name: Apply .NET EF Core migrations (14 servicios)
+      - name: Apply .NET EF Core migrations (19 servicios)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools run --rm migrations
 
       - name: Apply Communication Prisma migrations
@@ -325,8 +452,9 @@ jobs:
 
       # ---------------------------------------------------------------------
       # `up -d` solo recrea contenedores cuya imagen/config cambio. Nunca
-      # borra volumenes nombrados — sqlserver-data/minio-data sobreviven
-      # intactos a este paso siempre (ver seccion 7 del plan de deploy).
+      # borra volumenes nombrados — minio-data sobrevive intacto a este paso
+      # siempre (ver seccion 7 del plan de deploy). La base ya no tiene volumen
+      # aca: vive en su propio servidor.
       # ---------------------------------------------------------------------
       - name: Deploy (up -d, sin tocar volumenes)
         run: docker compose -f "$COMPOSE_FILE" --env-file .env up -d --remove-orphans
@@ -339,7 +467,7 @@ jobs:
       - name: Healthcheck
         run: |
           domain="${{ secrets.TAXVISION_DOMAIN }}"
-          domain="${domain:-api.taxprocore.com}"
+          domain="${domain:-api.taxproffice.com}"
           for i in $(seq 1 20); do
             status="$(curl -sS -o /tmp/taxvision-ready.txt -w '%{http_code}' "https://${domain}/health/ready" || true)"
             if [ "$status" = "200" ]; then

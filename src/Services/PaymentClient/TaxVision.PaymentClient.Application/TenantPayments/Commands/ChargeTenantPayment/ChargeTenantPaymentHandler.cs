@@ -139,8 +139,7 @@ public static class ChargeTenantPaymentHandler
             return;
         }
 
-        var secretKey = secretProtector.Unprotect(config.SecretKeyEncrypted.CipherText);
-        if (string.IsNullOrEmpty(secretKey))
+        if (!secretProtector.TryUnprotect(config.SecretKeyEncrypted.CipherText, out var secretKey, out _))
         {
             TenantPaymentChargeOutcome.FailPayment(
                 payment,

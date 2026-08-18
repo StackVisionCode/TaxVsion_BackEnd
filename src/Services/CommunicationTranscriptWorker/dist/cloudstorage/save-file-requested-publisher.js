@@ -36,7 +36,11 @@ export function publishSaveFileRequested(input) {
         ActorId: SYSTEM_ACTOR_ID,
         OwnerType: 'Communication',
         OwnerId: input.ownerId,
-        FolderType: 'Recordings',
+        // 'Recordings' (RecordingsPolicy) solo permite .webm/.mp4 — un .txt aca
+        // era rechazado siempre por whitelist de extension/content-type
+        // (SaveFileRequested "rejected by upload policy"), nunca por una causa
+        // transitoria. 'Transcripts' (TranscriptsPolicy) es el folder dedicado.
+        FolderType: 'Transcripts',
         TaxYear: null,
         OriginalName: input.originalName,
         ContentType: input.contentType,

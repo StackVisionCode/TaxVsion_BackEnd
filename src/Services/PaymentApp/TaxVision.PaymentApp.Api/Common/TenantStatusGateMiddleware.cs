@@ -1,4 +1,6 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using TaxVision.PaymentApp.Application.Abstractions;
 
 namespace TaxVision.PaymentApp.Api.Common;
@@ -6,7 +8,7 @@ namespace TaxVision.PaymentApp.Api.Common;
 /// <summary>
 /// Rechaza cualquier request de un tenant que no esté activo (Suspended/Closed) o que sea
 /// el Platform tenant (nunca sujeto de cobro). Corre después de
-/// <see cref="BuildingBlocks.Tenancy.JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana
+/// <see cref="BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana
 /// en la que un tenant recién suspendido podría seguir cobrando con un JWT todavía vigente
 /// (§42.4 del diseño).
 /// </summary>
@@ -43,6 +45,25 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         }
 
         if (!tenantContext.HasTenant)
+        {
+            await next(ctx);
+            return;
+        }
+
+        // PayFlow (Fase 8/16): las llamadas M2M pre-tenant (p.ej. onboarding checkout) emiten un
+        // token de servicio con tenant_id=Guid.Empty como sentinela explícito de "todavía no hay
+        // tenant" (ver PaymentAppOnboardingClient.cs) — JwtTenantContextMiddleware igual lo parsea
+        // como "hay tenant" (Guid.Empty es un Guid válido), así que sin esta excepción cualquier
+        // token de servicio con ese sentinela se rechazaba acá con "Tenant.Unknown" (bug real
+        // encontrado corriendo el checkout de onboarding end-to-end: PaymentApp devolvía 403).
+        // Auditoría PayFlow F34 cambió PaymentAppOnboardingClient de Guid.Empty a PlatformTenant.Id
+        // (consistencia con los otros 6 clientes M2M) sin actualizar esta excepción — regresión real
+        // encontrada corriendo el onboarding E2E de nuevo: el mismo 403 volvió, ahora con
+        // TenantId=PlatformTenant.Id en vez de Guid.Empty. Se aceptan ambos sentinelas.
+        if (
+            (tenantContext.TenantId == Guid.Empty || tenantContext.TenantId == PlatformTenant.Id)
+            && ctx.User.GetActorType() == ActorType.Service
+        )
         {
             await next(ctx);
             return;

@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -40,6 +42,7 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     );
 
     [HttpPost]
+    [RateLimit("payment_client.g.recurring_manage")]
     [HasPermission(PaymentClientPermissions.RecurringManage)]
     [ProducesResponseType<Guid>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Create(CreateRecurringPaymentRequest request, CancellationToken ct)
@@ -73,6 +76,7 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     }
 
     [HttpGet]
+    [RateLimit("payment_client.f.recurring_read")]
     [HasPermission(PaymentClientPermissions.RecurringRead)]
     [ProducesResponseType<IReadOnlyList<TenantRecurringPaymentResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
@@ -101,6 +105,7 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     }
 
     [HttpGet("{tenantRecurringPaymentId:guid}")]
+    [RateLimit("payment_client.f.recurring_read")]
     [HasPermission(PaymentClientPermissions.RecurringRead)]
     [ProducesResponseType<TenantRecurringPaymentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -118,6 +123,7 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     }
 
     [HttpPost("{tenantRecurringPaymentId:guid}/pause")]
+    [RateLimit("payment_client.g.recurring_manage")]
     [HasPermission(PaymentClientPermissions.RecurringManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Pause(Guid tenantRecurringPaymentId, CancellationToken ct)
@@ -134,6 +140,7 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     }
 
     [HttpPost("{tenantRecurringPaymentId:guid}/resume")]
+    [RateLimit("payment_client.g.recurring_manage")]
     [HasPermission(PaymentClientPermissions.RecurringManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Resume(Guid tenantRecurringPaymentId, CancellationToken ct)
@@ -152,6 +159,7 @@ public sealed class TenantRecurringPaymentsController(IMessageBus bus) : Control
     public sealed record CancelRecurringPaymentRequest(string Reason);
 
     [HttpPost("{tenantRecurringPaymentId:guid}/cancel")]
+    [RateLimit("payment_client.g.recurring_manage")]
     [HasPermission(PaymentClientPermissions.RecurringManage)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Cancel(

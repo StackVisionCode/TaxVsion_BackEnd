@@ -38,6 +38,9 @@ export const MeetingEventTypes = {
   Cancelled:               'communication.meeting.cancelled.v1',
   Rescheduled:             'communication.meeting.rescheduled.v1',
   ParticipantDenied:       'communication.meeting.participant_denied.v1',
+  // Calendar agendo una cita virtual y aca nacio su sala. Va aparte del `scheduled` generico porque
+  // lleva el id de la cita: es lo unico que le permite a Calendar guardar el codigo corto.
+  LinkedToAppointment:     'communication.meeting.linked_to_appointment.v1',
   ParticipantRoleChanged:  'communication.meeting.participant_role_changed.v1',
   RecordingValidationFailed: 'communication.meeting.recording_validation_failed.v1',
   RecordingFailed:         'communication.meeting.recording_failed.v1',
@@ -50,6 +53,18 @@ export interface MeetingScheduledEvent extends IntegrationEvent {
   readonly hostUserId: string;
   readonly scheduledForUtc: string | null;
   readonly shortCode: string;
+}
+
+/**
+ * La sala de una cita virtual quedo creada. Calendar lo consume para guardar el codigo corto y poder
+ * mostrar el link; sin el id de la cita no sabria a cual pertenece.
+ */
+export interface MeetingLinkedToAppointmentEvent extends IntegrationEvent {
+  readonly eventType: 'communication.meeting.linked_to_appointment.v1';
+  readonly appointmentId: string;
+  readonly meetingId: string;
+  readonly shortCode: string;
+  readonly scheduledForUtc: string | null;
 }
 
 export interface MeetingStartedEvent extends IntegrationEvent {

@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -27,8 +28,16 @@ namespace TaxVision.Signature.Api.Controllers;
 [EnableRateLimiting("public-signature")]
 public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 {
+    private const string PublicExemptReason =
+        "Endpoint anonimo (sin JWT) — TieredRateLimitEvaluator solo soporta particion por "
+        + "Tenant/User, asi que [RateLimit] fallaria abierto aqui. La proteccion real la da el "
+        + "limiter nativo [EnableRateLimiting(\"public-signature\")] (IP+ruta, 15/min FixedWindow), "
+        + "que se deja intacto — mismo criterio que PublicShareController.ResolvePublic en "
+        + "CloudStorage (Fase 4.6).";
+
     // ---------- GET /signature/public/{token} ----------
     [HttpGet("{token}")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType<PublicSignerView>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> View([FromRoute] string token, CancellationToken ct)
@@ -40,6 +49,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 
     // ---------- POST /signature/public/{token}/consent ----------
     [HttpPost("{token}/consent")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> AcceptConsent([FromRoute] string token, CancellationToken ct)
@@ -51,6 +61,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 
     // ---------- POST /signature/public/{token}/sign ----------
     [HttpPost("{token}/sign")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Sign(
@@ -69,6 +80,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 
     // ---------- POST /signature/public/{token}/verify-pin ----------
     [HttpPost("{token}/verify-pin")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> VerifyPin(
@@ -94,6 +106,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     //  - SWITCH-CHANNEL: llamar con un Method distinto → invalida el anterior de ese
     //    método y emite en el nuevo canal, sin cooldown (canal distinto).
     [HttpPost("{token}/challenge")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> IssueChallenge(
@@ -112,6 +125,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 
     // ---------- POST /signature/public/{token}/verify-challenge ----------
     [HttpPost("{token}/verify-challenge")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> VerifyChallenge(
@@ -133,6 +147,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
     // Autorizado por el mismo token que autoriza al firmante; no expone secretos ni
     // permite mutar nada — solo devuelve el veredicto y el material verificable.
     [HttpGet("{token}/verify-audit")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType<AuditChainVerificationResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> VerifyAudit([FromRoute] string token, CancellationToken ct)
@@ -146,6 +161,7 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 
     // ---------- POST /signature/public/{token}/reject ----------
     [HttpPost("{token}/reject")]
+    [RateLimitExempt(PublicExemptReason)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Reject(

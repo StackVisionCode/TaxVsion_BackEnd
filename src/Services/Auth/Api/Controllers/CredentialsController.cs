@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +27,9 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
     /// <summary>Solicita recuperación de contraseña. Siempre responde 202 (anti-enumeración).</summary>
     [HttpPost("password/forgot")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo — protegido por ILoginThrottler.GetPasswordResetRetryAfterAsync (email+IP, Fase 18.1), un mecanismo de dominio separado del RateLimit HTTP."
+    )]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ForgotPassword(
         ForgotPasswordRequest request,
@@ -47,6 +52,9 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("password/reset")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo (token de reset por email) — máx. 5 intentos por token es la protección real (Fase 18.2), no requiere tenant/user JWT."
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ResetPassword(ResetPasswordCommand command, CancellationToken ct)
@@ -66,6 +74,7 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.credentials_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken ct)
     {
@@ -90,6 +99,7 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.credentials_manage")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> RequestEmailChange(RequestEmailChangeRequest request, CancellationToken ct)
     {
@@ -103,6 +113,9 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("me/email/confirm")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo (token de un solo uso por email) — sin JWT que particionar; agregar protección HTTP nueva queda fuera de alcance de esta migración."
+    )]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ConfirmEmailChange(ConfirmEmailChangeCommand command, CancellationToken ct)
     {
@@ -121,6 +134,7 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.credentials_manage")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> RequestPhoneVerification(
         RequestPhoneVerificationRequest request,
@@ -148,6 +162,7 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.credentials_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ConfirmPhoneVerification(ConfirmPhoneRequest request, CancellationToken ct)
     {

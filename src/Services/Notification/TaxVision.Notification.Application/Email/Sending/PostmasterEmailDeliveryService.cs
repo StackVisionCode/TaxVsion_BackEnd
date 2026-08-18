@@ -129,6 +129,7 @@ public sealed class PostmasterEmailDeliveryService(
             ).ToString(),
             Cc = cc.Count == 0 ? null : cc,
             Bcc = bcc.Count == 0 ? null : bcc,
+            CampaignId = message.CampaignId,
         };
 
         await publisher.PublishAsync(evt, ct);

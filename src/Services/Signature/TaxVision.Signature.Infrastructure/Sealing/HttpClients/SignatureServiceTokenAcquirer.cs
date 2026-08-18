@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
-using System.Net.Http.Json;
+using BuildingBlocks.Infrastructure.Security;
+using BuildingBlocks.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,21 +15,25 @@ internal interface ISignatureServiceTokenAcquirer
     Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default);
 }
 
+// RateLimit Fase 2 — implementa también el contrato compartido de BuildingBlocks
+// (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer) directamente sobre esta misma
+// clase, para que HttpPlanRateLimitReader pueda reusar el acquirer M2M ya existente de Signature
+// (F25) sin duplicar lógica de adquisición/caché de tokens. El forwarding de DI vive en
+// DependencyInjection.cs (AddRateLimitTierQuotas).
 internal sealed class SignatureServiceTokenAcquirer(
     HttpClient http,
     IOptions<ServiceAuthClientOptions> options,
     ILogger<SignatureServiceTokenAcquirer> logger
-) : ISignatureServiceTokenAcquirer
+) : ISignatureServiceTokenAcquirer, BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer
 {
-    private static readonly ConcurrentDictionary<Guid, CachedToken> Cache = new();
+    private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
+
+    private static readonly ExpiringValueCache<Guid, string> _cache = new(RefreshBuffer);
 
     public async Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default)
     {
-        if (Cache.TryGetValue(tenantId, out var cached) && cached.ExpiresAtUtc > DateTime.UtcNow.AddSeconds(30))
-            return cached.Token;
-
         var opt = options.Value;
-        if (!AreCredentialsConfigured(opt))
+        if (string.IsNullOrWhiteSpace(opt.ClientId) || string.IsNullOrWhiteSpace(opt.ClientSecret))
         {
             logger.LogWarning("Signature:ServiceAuth is not configured; cannot acquire a service token.");
             return null;
@@ -37,51 +41,20 @@ internal sealed class SignatureServiceTokenAcquirer(
 
         try
         {
-            var payload = await RequestTokenAsync(opt, tenantId, ct);
-            if (payload is null || string.IsNullOrEmpty(payload.AccessToken))
-                return null;
-
-            Cache[tenantId] = new CachedToken(
-                payload.AccessToken,
-                DateTime.UtcNow.AddSeconds(payload.ExpiresInSeconds)
+            return await _cache.GetOrCreateAsync(
+                tenantId,
+                async innerCt =>
+                {
+                    var grant = await http.RequestServiceTokenAsync(opt.ClientId, opt.ClientSecret, tenantId, innerCt);
+                    return (grant.AccessToken, grant.ExpiresAtUtc);
+                },
+                ct
             );
-            return payload.AccessToken;
         }
-        catch (Exception ex)
+        catch (ServiceTokenAcquisitionException ex)
         {
             logger.LogWarning(ex, "Could not acquire a service token for tenant {TenantId}.", tenantId);
             return null;
         }
     }
-
-    private static bool AreCredentialsConfigured(ServiceAuthClientOptions opt) =>
-        !string.IsNullOrWhiteSpace(opt.ClientId) && !string.IsNullOrWhiteSpace(opt.ClientSecret);
-
-    private async Task<ServiceTokenDto?> RequestTokenAsync(
-        ServiceAuthClientOptions opt,
-        Guid tenantId,
-        CancellationToken ct
-    )
-    {
-        using var response = await http.PostAsJsonAsync(
-            "auth/service-token",
-            new
-            {
-                clientId = opt.ClientId,
-                clientSecret = opt.ClientSecret,
-                tenantId,
-            },
-            ct
-        );
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("Service token request failed ({Status}).", (int)response.StatusCode);
-            return null;
-        }
-        return await response.Content.ReadFromJsonAsync<ServiceTokenDto>(ct);
-    }
-
-    private sealed record CachedToken(string Token, DateTime ExpiresAtUtc);
-
-    private sealed record ServiceTokenDto(string AccessToken, int ExpiresInSeconds, string? TokenType);
 }

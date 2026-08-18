@@ -1,21 +1,26 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.ResourceAuthorization;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.ResourceAuthorization;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Correspondence.Application;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Infrastructure;
@@ -53,20 +58,44 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "correspondenc
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // RBAC Fase 4 (RBAC_Hardening_Plan.md) — resource ownership sobre Draft, apagado por default
 // (Authorization:ResourceOwnership:Enabled). Sin permiso "manage" de override (a diferencia de
 // ShareLink/SignatureRequest) — el plan no lo pidió para Correspondence.
 builder.Services.AddResourceOwnershipOptions(builder.Configuration);
 builder.Services.AddOwnershipAuthorization<Draft>();
+
+// Rate limiting por tenant/usuario (Fase 4.9 del plan) — arrancaba en cero, Correspondence no
+// tenia ningun AddRateLimiter/EnableRateLimiting nativo que preservar (los 19 endpoints son
+// todos alcanzables por un empleado humano real, sin M2M/publico/webhook). Mismo
+// [RateLimit]/IRateCounter tiered que ya corre en el resto del monorepo desde Fase 3/4.2.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// RateLimit Fase 2 — piloto Customer (Fase 6) / Tenant extendido a Correspondence. Flag OFF por
+// default (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/
+// NullPlanRateLimitReader de AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+builder.Services.AddTieredRateLimiting();
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -93,21 +122,19 @@ builder.Host.UseWolverine(options =>
     options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, CorrespondenceDbContext>();
     options.Policies.AutoApplyTransactions();
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 
     // Sin esta regla, Wolverine no enruta el evento a RabbitMQ y bus.PublishAsync lo descarta en
     // silencio — ningun otro servicio llega a recibirlo.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceCustomerEmailReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
-    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
     options
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
-        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
-    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+        .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
     // Cola propia desde el arranque (Fase 1) aunque todavia no haya ningun consumer — mismo
     // patron que Connectors/Postmaster/Scribe: el binding queda listo en Rabbit antes de que
@@ -137,12 +164,10 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header
-// X-Tenant-Id sin validar, confiando en el caller — inseguro) por el middleware compartido
-// que resuelve el tenant SOLO del claim tenant_id del JWT verificado. RBAC Fase 7 hotfix
-// (2026-07-22): va ANTES de UseAuthorization() — en modo Projection, [HasPermission] necesita
-// el tenant ya poblado durante su propia evaluación, que corre dentro de UseAuthorization().
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+// Resuelve el tenant solo del claim tenant_id del JWT verificado. Va antes de
+// UseAuthorization: en modo Projection, [HasPermission] consulta una proyección tenant-scoped
+// durante su propia evaluación, que corre dentro de UseAuthorization().
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
@@ -153,3 +178,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

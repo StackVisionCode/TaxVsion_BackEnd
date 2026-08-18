@@ -21,10 +21,10 @@ public static class UserRolesChangedConsumer
 {
     public static async Task Handle(
         UserRolesChangedIntegrationEvent evt,
-        IUserPermissionsProjectionRepository repository,
+        INotificationRecipientPermissionsProjectionRepository repository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        ILogger<UserPermissionsProjection> logger,
+        ILogger<NotificationRecipientPermissionsProjection> logger,
         CancellationToken ct
     )
     {
@@ -33,7 +33,7 @@ public static class UserRolesChangedConsumer
             var existing = await repository.GetAsync(evt.TenantId, evt.UserId, ct);
             if (existing is null)
             {
-                var projection = UserPermissionsProjection.Create(
+                var projection = NotificationRecipientPermissionsProjection.Create(
                     evt.TenantId,
                     evt.UserId,
                     evt.PermissionsVersion,
@@ -42,7 +42,7 @@ public static class UserRolesChangedConsumer
                 );
                 await repository.AddAsync(projection, ct);
                 logger.LogInformation(
-                    "UserPermissionsProjection created for {UserId} version {Version}.",
+                    "NotificationRecipientPermissionsProjection created for {UserId} version {Version}.",
                     evt.UserId,
                     evt.PermissionsVersion
                 );
@@ -60,11 +60,11 @@ public static class RolePermissionsChangedConsumer
 {
     public static async Task Handle(
         RolePermissionsChangedIntegrationEvent evt,
-        IRolePermissionsProjectionRepository roleRepository,
-        IUserPermissionsProjectionRepository userRepository,
+        INotificationRecipientRolePermissionsProjectionRepository roleRepository,
+        INotificationRecipientPermissionsProjectionRepository userRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
-        ILogger<RolePermissionsProjection> logger,
+        ILogger<NotificationRecipientRolePermissionsProjection> logger,
         CancellationToken ct
     )
     {
@@ -90,16 +90,16 @@ public static class RolePermissionsChangedConsumer
         }
     }
 
-    private static async Task<RolePermissionsProjection> UpsertRoleProjectionAsync(
+    private static async Task<NotificationRecipientRolePermissionsProjection> UpsertRoleProjectionAsync(
         RolePermissionsChangedIntegrationEvent evt,
-        IRolePermissionsProjectionRepository roleRepository,
+        INotificationRecipientRolePermissionsProjectionRepository roleRepository,
         CancellationToken ct
     )
     {
         var existing = await roleRepository.GetAsync(evt.TenantId, evt.RoleId, ct);
         if (existing is null)
         {
-            var created = RolePermissionsProjection.Create(
+            var created = NotificationRecipientRolePermissionsProjection.Create(
                 evt.TenantId,
                 evt.RoleId,
                 evt.RoleName,
@@ -117,15 +117,15 @@ public static class RolePermissionsChangedConsumer
     /// <summary>
     /// Un usuario con VARIOS roles no puede sobrescribirse solo con los códigos del rol que
     /// cambió, o perdería los permisos heredados de sus otros roles — recompone la unión
-    /// completa contra el cache de RolePermissionsProjection. <paramref name="changedRole"/>
-    /// se inyecta directamente (en vez de volver a consultarlo) porque su UPDATE todavía no
-    /// se guardó en esta transacción.
+    /// completa contra el cache de NotificationRecipientRolePermissionsProjection.
+    /// <paramref name="changedRole"/> se inyecta directamente (en vez de volver a consultarlo)
+    /// porque su UPDATE todavía no se guardó en esta transacción.
     /// </summary>
     private static async Task ReapplyPermissionsUnionAsync(
         Guid tenantId,
-        RolePermissionsProjection changedRole,
-        IReadOnlyList<UserPermissionsProjection> affectedUsers,
-        IRolePermissionsProjectionRepository roleRepository,
+        NotificationRecipientRolePermissionsProjection changedRole,
+        IReadOnlyList<NotificationRecipientPermissionsProjection> affectedUsers,
+        INotificationRecipientRolePermissionsProjectionRepository roleRepository,
         CancellationToken ct
     )
     {
@@ -161,7 +161,7 @@ public static class UserDeactivatedPermissionsProjectionConsumer
 {
     public static async Task Handle(
         UserDeactivatedIntegrationEvent evt,
-        IUserPermissionsProjectionRepository repository,
+        INotificationRecipientPermissionsProjectionRepository repository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct

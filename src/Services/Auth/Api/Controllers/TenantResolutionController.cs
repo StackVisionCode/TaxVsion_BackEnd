@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -23,6 +24,7 @@ public sealed class TenantResolutionController(IMessageBus bus) : ControllerBase
     [HttpGet("by-host")]
     [AllowAnonymous]
     [EnableRateLimiting("tenant-lookup")]
+    [RateLimitExempt("Anónimo (Fase A4) — conserva el limiter nativo tenant-lookup, sin JWT que particionar.")]
     [ProducesResponseType<TenantResolutionResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ByHost([FromServices] IResolvedTenantContext tenantContext, CancellationToken ct)
@@ -48,6 +50,7 @@ public sealed class TenantResolutionController(IMessageBus bus) : ControllerBase
     [HttpPost("by-email")]
     [AllowAnonymous]
     [EnableRateLimiting("tenant-recovery")]
+    [RateLimitExempt("Anónimo (Fase A4) — conserva el limiter nativo tenant-recovery, sin JWT que particionar.")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     public async Task<IActionResult> ByEmail(TenantRecoveryRequest request, CancellationToken ct)
     {

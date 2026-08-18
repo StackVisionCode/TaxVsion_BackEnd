@@ -1,0 +1,12 @@
+# El contexto de este servicio es su propia carpeta (compose: context:
+# ../../src/Services/Communication), asi que el .dockerignore de la raiz del
+# repo NO le aplica — Docker lo busca en la raiz del contexto. Sin este
+# archivo, cada build enviaba ~811 MB de node_modules que el Dockerfile nunca
+# copia: instala con `npm install` dentro de la imagen (y debe hacerlo, porque
+# los modulos nativos del host son de otra plataforma).
+node_modules/
+dist/
+tests/
+coverage/
+*.log
+.env

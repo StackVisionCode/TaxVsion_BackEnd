@@ -10,6 +10,7 @@ using TaxVision.Scribe.Domain.EventMappings;
 using TaxVision.Scribe.Domain.Layouts;
 using TaxVision.Scribe.Domain.Permissions;
 using TaxVision.Scribe.Domain.Projections;
+using TaxVision.Scribe.Domain.RateLimiting;
 using TaxVision.Scribe.Domain.Templates;
 
 namespace TaxVision.Scribe.Infrastructure.Persistence;
@@ -47,6 +48,7 @@ public sealed class ScribeDbContext(DbContextOptions<ScribeDbContext> options, I
     public DbSet<SystemAssetRef> SystemAssetRefs => Set<SystemAssetRef>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
+    public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

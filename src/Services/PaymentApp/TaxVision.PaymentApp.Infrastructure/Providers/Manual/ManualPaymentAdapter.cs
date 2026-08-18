@@ -105,6 +105,16 @@ public sealed class ManualPaymentAdapter(ILogger<ManualPaymentAdapter> logger) :
             Result.Success(new ChargeAuthorizationResult(providerChargeReference, PaymentStatus.Succeeded))
         );
 
+    public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct) =>
+        Task.FromResult(
+            Result.Failure<SetupIntentInfo>(
+                new Error(
+                    "Manual.SetupIntent.NotSupported",
+                    "The Manual provider has no client-side card tokenization."
+                )
+            )
+        );
+
     public Task<Result<SavedPaymentMethodInfo>> AttachPaymentMethodAsync(
         ProviderCustomerToken customer,
         string paymentMethodReference,
@@ -120,6 +130,16 @@ public sealed class ManualPaymentAdapter(ILogger<ManualPaymentAdapter> logger) :
         Task.FromResult(
             Result.Failure(
                 new Error("Manual.PaymentMethod.NotSupported", "The Manual provider has no tokenized payment methods.")
+            )
+        );
+
+    public Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
+        HostedCheckoutSessionRequest request,
+        CancellationToken ct
+    ) =>
+        Task.FromResult(
+            Result.Failure<HostedCheckoutSessionResult>(
+                new Error("Manual.CheckoutSession.NotSupported", "The Manual provider has no hosted checkout flow.")
             )
         );
 }

@@ -16,4 +16,21 @@ public sealed class TenantTermsAcceptanceRepository(AuthDbContext db) : ITenantT
             .Where(acceptance => acceptance.TenantId == tenantId)
             .OrderByDescending(acceptance => acceptance.AcceptedAtUtc)
             .FirstOrDefaultAsync(ct);
+
+    public Task<TenantTermsAcceptance?> GetByVersionAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid termsVersionId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .TenantTermsAcceptances.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                acceptance =>
+                    acceptance.TenantId == tenantId
+                    && acceptance.AcceptedByUserId == userId
+                    && acceptance.TermsVersionId == termsVersionId,
+                ct
+            );
 }

@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization.Infrastructure;
 
-namespace BuildingBlocks.ResourceAuthorization;
+namespace BuildingBlocks.Web.ResourceAuthorization;
 
 /// <summary>
 /// RBAC Fase 4 (RBAC_Hardening_Plan.md) — operaciones reconocidas por

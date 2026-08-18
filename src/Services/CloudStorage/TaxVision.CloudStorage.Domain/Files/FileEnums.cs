@@ -28,6 +28,11 @@ public enum OwnerType
     Signature,
     Invoice,
     Communication,
+
+    /// <summary>PayFlow (Fase 10) — dueño es un TenantOnboarding en Auth (pre-tenant, no existe
+    /// todavía un Tenant real). Usado por el recibo de pago del onboarding, almacenado bajo el
+    /// tenant plataforma (<c>PlatformTenant.Id</c>) igual que los templates propios de Scribe.</summary>
+    Onboarding,
 }
 
 public enum FolderType

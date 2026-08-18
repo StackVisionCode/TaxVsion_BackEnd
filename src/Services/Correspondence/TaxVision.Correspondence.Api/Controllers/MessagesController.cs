@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Correspondence.Api.Requests;
@@ -22,6 +24,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     /// <summary>Fase 9 — metadata de UN mensaje, mismo DTO que el listado paginado del hilo. Nunca llama a Connectors (a diferencia de <see cref="GetBody"/>).</summary>
     [HttpGet("{id:guid}")]
     [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.message_read")]
     public async Task<IActionResult> GetMetadata(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -33,6 +36,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
 
     [HttpGet("{id:guid}/body")]
     [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.message_read")]
     public async Task<IActionResult> GetBody(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -44,6 +48,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
 
     [HttpGet("{id:guid}/attachments")]
     [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.message_read")]
     public async Task<IActionResult> GetAttachments(Guid id, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -59,6 +64,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     /// <summary>Fase 8 — dispara la descarga bajo demanda. Idempotente: si ya está Downloaded, devuelve el CloudStorageFileId cacheado sin volver a pedirle nada a Connectors.</summary>
     [HttpPost("{id:guid}/attachments/{attachmentId:guid}/download")]
     [HasPermission(CorrespondencePermissions.AttachmentDownload)]
+    [RateLimit("correspondence.i.attachment_download")]
     public async Task<IActionResult> DownloadAttachment(Guid id, Guid attachmentId, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
@@ -74,6 +80,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     /// <summary>Fase 8 — URL presignada de un attachment ya descargado. 409 si todavía no está listo (ver <c>GetAttachmentDownloadUrlHandler</c>).</summary>
     [HttpGet("{id:guid}/attachments/{attachmentId:guid}/download-url")]
     [HasPermission(CorrespondencePermissions.AttachmentDownload)]
+    [RateLimit("correspondence.f.message_read")]
     public async Task<IActionResult> GetAttachmentDownloadUrl(Guid id, Guid attachmentId, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))
@@ -105,6 +112,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpPost("{id:guid}/reply/draft")]
     [HasPermission(CorrespondencePermissions.Reply)]
+    [RateLimit("correspondence.g.reply_start")]
     public async Task<IActionResult> StartReplyDraft(Guid id, [FromBody] StartReplyBody body, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))

@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +30,7 @@ public sealed class NotificationPreferencesController(IMessageBus bus) : Control
     public sealed record SetPreferenceRequest(NotificationCategory Category, NotificationChannel Channel, bool Enabled);
 
     [HttpGet]
+    [RateLimit("notification.f.preferences")]
     [ProducesResponseType<IReadOnlyList<PreferenceResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
@@ -51,6 +54,7 @@ public sealed class NotificationPreferencesController(IMessageBus bus) : Control
     }
 
     [HttpPut]
+    [RateLimit("notification.g.preferences_set")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Set([FromBody] SetPreferenceRequest request, CancellationToken ct)
     {

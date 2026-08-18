@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
-namespace BuildingBlocks.Security;
+namespace BuildingBlocks.Web.Security;
 
 public static class JwtAuthenticationRegistration
 {

@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -50,6 +51,9 @@ public sealed class CampaignSchedulerService(
         var campaigns = scope.ServiceProvider.GetRequiredService<IEmailCampaignRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+        // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
+        using var _ = correlation.Push(Guid.NewGuid().ToString("N"));
 
         var due = await campaigns.GetDueAsync(DateTime.UtcNow, BatchSize, ct);
         foreach (var campaign in due)
@@ -61,7 +65,12 @@ public sealed class CampaignSchedulerService(
             // Se marca Running y se guarda ANTES de publicar (at-most-once) para no re-encolar el fan-out.
             await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(
-                new EmailCampaignStartedIntegrationEvent { CampaignId = campaign.Id, TenantId = campaign.TenantId }
+                new EmailCampaignStartedIntegrationEvent
+                {
+                    CampaignId = campaign.Id,
+                    TenantId = campaign.TenantId,
+                    CorrelationId = correlation.CorrelationId,
+                }
             );
             logger.LogInformation("Campaign {CampaignId} started.", campaign.Id);
         }

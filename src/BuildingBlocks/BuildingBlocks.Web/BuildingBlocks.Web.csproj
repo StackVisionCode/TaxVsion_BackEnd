@@ -23,4 +23,7 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Messaging\BuildingBlocks.Messaging.csproj" />
+  </ItemGroup>
 </Project>

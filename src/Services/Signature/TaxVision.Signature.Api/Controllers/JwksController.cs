@@ -1,3 +1,4 @@
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,12 @@ namespace TaxVision.Signature.Api.Controllers;
 public sealed class JwksController(IRsaKeyProvider keyProvider) : ControllerBase
 {
     [HttpGet("jwks.json")]
+    [RateLimitExempt(
+        "Endpoint anonimo (sin JWT) — TieredRateLimitEvaluator solo soporta particion por "
+            + "Tenant/User, asi que [RateLimit] fallaria abierto aqui. Expone unicamente material "
+            + "publico cacheable (claves RSA de verificacion, sin PII ni estado mutable) — mismo "
+            + "criterio que cualquier endpoint JWKS/OIDC discovery, no necesita proteccion nueva."
+    )]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult Jwks()
     {

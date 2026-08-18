@@ -1,6 +1,7 @@
 import { getRabbitContext } from './rabbit-connection.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { buildRecordingKindLookups } from '../contracts/recording-kinds.js';
 /**
  * Dos triggers distintos segun el path de grabacion (ver docblock de
  * `dispatch`/dispatch.ts arriba y pipeline.ts):
@@ -20,13 +21,14 @@ import { logger } from '../logger.js';
  *     (solo que antes nada lo escuchaba). Communication ya NO re-publica
  *     `recording_ready.v1` despues de transcribir (removido junto con este
  *     fix, era redundante y hubiera causado un reproceso duplicado aca).
+ *
+ * Generico desde el punto de vista de este archivo: el mapeo evento->kind y
+ * kind->campo-de-id vive en `config.recordingKinds` (contracts/recording-kinds.ts),
+ * no hardcodeado aca. Por default es exactamente el mapeo de arriba
+ * (Communication); otro consumidor de este worker configura su propio mapeo
+ * via TRANSCRIPT_WORKER_RECORDING_KINDS sin tocar este archivo.
  */
-const EVENT_TYPE_TO_KIND = {
-    'communication.call.recording_ready.v1': 'call',
-    'communication.meeting.recording_ready.v1': 'meeting',
-    'communication.call.recording_processing_started.v1': 'call',
-    'communication.meeting.recording_processing_started.v1': 'meeting',
-};
+const { eventTypeToKind } = buildRecordingKindLookups(config.recordingKinds);
 let inFlightCount = 0;
 /**
  * Inbox propio via Redis (`TranscriptInbox`) — cierra el gap de idempotencia
@@ -89,13 +91,13 @@ async function dispatchInner(msg, handler, deps) {
         return;
     }
     const eventType = str(parsed['eventType']);
-    const kind = eventType ? EVENT_TYPE_TO_KIND[eventType] : undefined;
-    if (!kind) {
+    const mapping = eventType ? eventTypeToKind.get(eventType) : undefined;
+    if (!mapping) {
         // No es un trigger de transcripcion (chat, presence, etc.) — no nos interesa.
         rabbit.channel.ack(msg);
         return;
     }
-    const event = toRecordingReadyEvent(kind, parsed);
+    const event = toRecordingReadyEvent(mapping, parsed);
     if (!event) {
         logger.warn({ eventType }, 'trigger event missing required fields; ack to skip');
         rabbit.channel.ack(msg);
@@ -128,14 +130,21 @@ async function dispatchInner(msg, handler, deps) {
         rabbit.channel.nack(msg, false, false);
     }
 }
-function toRecordingReadyEvent(kind, raw) {
+function toRecordingReadyEvent(mapping, raw) {
     const eventId = str(raw['eventId']);
     const tenantId = str(raw['tenantId']);
     const recordingFileId = str(raw['recordingFileId']);
-    const targetId = kind === 'call' ? str(raw['callId']) : str(raw['meetingId']);
+    const targetId = str(raw[mapping.targetIdField]);
     if (!eventId || !tenantId || !recordingFileId || !targetId)
         return undefined;
-    return { kind, eventId, tenantId, correlationId: str(raw['correlationId']), targetId, recordingFileId };
+    return {
+        kind: mapping.kind,
+        eventId,
+        tenantId,
+        correlationId: str(raw['correlationId']),
+        targetId,
+        recordingFileId,
+    };
 }
 function str(value) {
     return typeof value === 'string' ? value : undefined;

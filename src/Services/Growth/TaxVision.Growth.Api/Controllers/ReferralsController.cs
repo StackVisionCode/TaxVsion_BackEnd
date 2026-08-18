@@ -1,16 +1,15 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Codes.Application.Definitions.ActivateCode;
 using TaxVision.Codes.Application.Definitions.Common;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Growth.Api.Common;
-using TaxVision.Growth.Api.RateLimiting;
 using TaxVision.Referrals.Application.Abstractions;
 using TaxVision.Referrals.Application.Attributions.CreateReferralAttribution;
 using TaxVision.Referrals.Application.Codes.IssueTenantReferralCode;
@@ -18,9 +17,9 @@ using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
-using AllowActorTypesAttribute = BuildingBlocks.ActorTypeAuthorization.AllowActorTypesAttribute;
+using AllowActorTypesAttribute = BuildingBlocks.Web.ActorTypeAuthorization.AllowActorTypesAttribute;
 // Alias puntual — ver mismo comentario en CodesController.cs.
-using HasPermissionAttribute = BuildingBlocks.ActorTypeAuthorization.HasPermissionAttribute;
+using HasPermissionAttribute = BuildingBlocks.Web.ActorTypeAuthorization.HasPermissionAttribute;
 
 namespace TaxVision.Growth.Api.Controllers;
 
@@ -100,7 +99,7 @@ public sealed class ReferralsController(
     }
 
     [HttpPost("attributions")]
-    [EnableRateLimiting(GrowthRateLimitPolicies.ReferralAttribution)]
+    [RateLimit("growth.h.referral_attribution_create")]
     [ProducesResponseType<CreateAttributionResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateAttribution(
         CreateAttributionRequest request,
@@ -254,6 +253,7 @@ public sealed class ReferralsController(
     /// tenant that already has an active code for this program returns that same code (still
     /// revealed in clear text — see <see cref="IssueCodeResponse"/>) instead of failing.</summary>
     [HttpPost("codes")]
+    [RateLimit("growth.g.referral_code_issue")]
     [HasPermission(GrowthPermissions.ReferralsOwnRead)]
     [ProducesResponseType<IssueCodeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> IssueCode(

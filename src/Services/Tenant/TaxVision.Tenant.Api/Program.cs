@@ -1,24 +1,27 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
-using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.TenantIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Tenant.Api.Common;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Infrastructure;
@@ -72,14 +75,10 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-servic
 // post Fase 3).
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness).
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
 // Acepta el ticket firmado por Auth (ReserveSubdomainHandler, claim reg_slug) o un
 // PlatformAdmin creando un tenant directamente — ver TenantController.Create.
@@ -91,43 +90,40 @@ builder
             policy.RequireAssertion(context =>
                 context.User.HasClaim("purpose", "tenant-registration") || context.User.IsInRole("PlatformAdmin")
             )
-    );
+    )
+    // PayFlow (Fase 14) — M2M desde Auth para chequear disponibilidad de subdominio
+    // (GET internal/tenants/subdomain-available) durante el registro post-pago.
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
 
-builder.Services.AddRateLimiter(options =>
+// Rate limiting por tenant/usuario (Fase 4.2 del plan) — reemplaza el AddRateLimiter nativo de
+// ASP.NET Core que tenía este servicio (una sola policy, "tenant-logo-upload") por el mismo
+// [RateLimit]/IRateCounter tiered que ya corre en Customer desde Fase 3. La policy
+// "tenant-registration" (IP, 5/min sobre POST /tenants) sigue sin existir acá — Fase 0.5 la dejó
+// solo en el Gateway (RateLimitingRegistration.cs), ver el [RateLimitExempt] de
+// TenantController.Create.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// RateLimit Fase 2 — piloto Customer (Fase 6) extendido a Tenant. Flag OFF por default (fail-open
+// a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-
-    options.AddPolicy(
-        "tenant-registration",
-        context =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 5,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                }
-            )
-    );
-
-    // Tenant_Service_LogoSupport_Plan.md §10 — 10 uploads/hora, particionado por tenant (no por IP,
-    // a diferencia de tenant-registration) para que un tenant ruidoso no consuma el cupo de otro
-    // detrás del mismo NAT/proxy corporativo.
-    options.AddPolicy(
-        "tenant-logo-upload",
-        context =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                context.User.TryGetTenantId(out var tid) ? tid.ToString() : "anonymous",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 10,
-                    Window = TimeSpan.FromHours(1),
-                    QueueLimit = 0,
-                }
-            )
-    );
-});
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+builder.Services.AddTieredRateLimiting();
 
 var tenantRabbitUri = new Uri(
     builder.Configuration["RabbitMq:Uri"] ?? throw new InvalidOperationException("RabbitMq:Uri is missing.")
@@ -163,6 +159,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantLogoRemovedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // PayFlow (Fase 16) — publicado por InternalTenantProvisioningController.
+    options.PublishMessage<TenantCreatedForOnboardingIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Sin una cola de entrada bindeada al fanout "taxvision-events", Wolverine descubre el
     // handler en el assembly (Discovery.IncludeAssembly de arriba) pero no tiene de donde
@@ -177,9 +175,7 @@ builder.Host.UseWolverine(options =>
         )
         .UseDurableInbox();
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 var app = builder.Build();
 
@@ -205,20 +201,16 @@ if (!app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 
-// RBAC Fase 5 — reemplaza TenantResolutionMiddleware (leía el tenant de un header
-// X-Tenant-Id sin validar, confiando en el caller — inseguro) por el middleware compartido
-// que resuelve el tenant SOLO del claim tenant_id del JWT verificado. Este servicio no tiene
-// entidades ITenantOwned (Tenant ES el registro de tenants, no algo que le pertenezca a uno),
-// así que hoy nada consume el TenantContext que este middleware llena — se mantiene por
-// consistencia con los otros 12 servicios y para no dejar el header-trust inseguro activo.
-// Va ANTES de UseAuthorization() por consistencia con el resto de servicios, aunque acá no
-// exista todavía un consumer de Projection que dependa del orden.
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+// Tenant no tiene entidades ITenantOwned (ES el registro de tenants), así que hoy nada consume
+// el TenantContext que llena este middleware. Se mantiene por consistencia con los demás
+// servicios y para que el orden ya sea correcto si aparece un consumer de Projection.
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
-app.UseRateLimiter();
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.MapControllers();
 app.Run();
+
+public partial class Program;

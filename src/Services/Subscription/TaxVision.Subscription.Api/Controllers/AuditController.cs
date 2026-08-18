@@ -2,6 +2,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +20,7 @@ namespace TaxVision.Subscription.Api.Controllers;
 public sealed class AuditController(IMessageBus bus) : ControllerBase
 {
     [HttpGet]
+    [RateLimit("subscription.h.audit_read")]
     [ProducesResponseType<PagedResult<AuditLogEntryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
         [FromQuery] string? aggregateType,

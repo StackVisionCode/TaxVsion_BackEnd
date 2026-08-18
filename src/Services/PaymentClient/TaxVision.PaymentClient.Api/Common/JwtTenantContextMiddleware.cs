@@ -1,5 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 
 namespace TaxVision.PaymentClient.Api.Common;
 

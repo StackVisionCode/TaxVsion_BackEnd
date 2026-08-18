@@ -1,8 +1,10 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Onboarding.Abstractions;
 using TaxVision.Auth.Application.TenantDomains;
 using TaxVision.Auth.Application.TenantDomains.Commands;
+using TaxVision.Auth.Domain.Onboarding.SubdomainReservations;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Users;
 
@@ -83,6 +85,21 @@ public sealed class ReserveSubdomainHandlerTests
         }
     }
 
+    // Auditoría F11 — cross-check contra Path C (Onboarding); vacío por defecto (sin reserva activa).
+    private sealed class FakeOnboardingSubdomainReservationRepository : IOnboardingSubdomainReservationRepository
+    {
+        public OnboardingSubdomainReservation? ActiveReservation { get; set; }
+
+        public Task<OnboardingSubdomainReservation?> GetActiveBySlugAsync(
+            string slug,
+            DateTime nowUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult(ActiveReservation);
+
+        public Task AddAsync(OnboardingSubdomainReservation reservation, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
+
     private static IOptions<TenantDomainOptions> DefaultOptions() =>
         Microsoft.Extensions.Options.Options.Create(new TenantDomainOptions { SubdomainReservationTtlMinutes = 15 });
 
@@ -95,9 +112,11 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("ab", "admin@oficina1.com"),
             new FakeTenantDomainRepository(),
             reservations,
+            new FakeOnboardingSubdomainReservationRepository(),
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
@@ -117,9 +136,11 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("oficina1", "admin@oficina1.com"),
             domains,
             reservations,
+            new FakeOnboardingSubdomainReservationRepository(),
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
             new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
@@ -146,9 +167,46 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("oficina1", "admin@oficina1.com"),
             new FakeTenantDomainRepository(),
             reservations,
+            new FakeOnboardingSubdomainReservationRepository(),
             DefaultOptions(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            new FakeJwtTokenGenerator(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("TenantDomain.SlugReservedTemporarily", result.Error.Code);
+        Assert.Null(reservations.Added);
+    }
+
+    // Auditoría F11 — regresión real del cross-check: un slug reservado por Path C (Onboarding,
+    // pago-primero) debe bloquear también a Path A (esta alta directa), no solo su propia tabla.
+    [Fact]
+    public async Task Slug_with_an_active_onboarding_reservation_fails()
+    {
+        var existing = OnboardingSubdomainReservation
+            .Create(
+                SubdomainSlug.Create("oficina1").Value,
+                Guid.NewGuid(),
+                "otro@oficina1.com",
+                DateTime.UtcNow,
+                TimeSpan.FromMinutes(60)
+            )
+            .Value;
+        var reservations = new FakeReservationRepository();
+        var onboardingReservations = new FakeOnboardingSubdomainReservationRepository { ActiveReservation = existing };
+
+        var result = await ReserveSubdomainHandler.Handle(
+            new ReserveSubdomainCommand("oficina1", "admin@oficina1.com"),
+            new FakeTenantDomainRepository(),
+            reservations,
+            onboardingReservations,
+            DefaultOptions(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             new FakeJwtTokenGenerator(),
             CancellationToken.None
         );
@@ -170,9 +228,11 @@ public sealed class ReserveSubdomainHandlerTests
             new ReserveSubdomainCommand("Oficina1", "Admin@Oficina1.com"),
             new FakeTenantDomainRepository(),
             reservations,
+            new FakeOnboardingSubdomainReservationRepository(),
             DefaultOptions(),
             unitOfWork,
             bus,
+            new FakeCorrelationContext(),
             jwt,
             CancellationToken.None
         );

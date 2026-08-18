@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +17,7 @@ namespace TaxVision.Subscription.Api.Controllers;
 public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
 {
     [HttpGet("summary")]
+    [RateLimit("subscription.f.entitlement_read")]
     [ProducesResponseType<EntitlementSummaryResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSummary(CancellationToken ct)
     {
@@ -30,6 +33,7 @@ public sealed class EntitlementsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("{key}")]
+    [RateLimit("subscription.f.entitlement_read")]
     [ProducesResponseType<EntitlementValueResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetByKey(string key, CancellationToken ct)
     {

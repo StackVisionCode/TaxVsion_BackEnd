@@ -1,8 +1,10 @@
 using System.Text.Json;
 using BuildingBlocks.Common;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Tenancy;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
@@ -21,12 +23,25 @@ namespace TaxVision.Auth.Api.Middleware;
 /// Solo lee HttpContext.Request.Host — nunca X-Forwarded-Host directamente. La
 /// confianza en ese header se resuelve antes, en ForwardedHeadersMiddleware, que solo
 /// lo aplica cuando el origen inmediato está en la red de confianza configurada.
-/// No confundir con BuildingBlocks.Middleware.TenantResolutionMiddleware — ese lee el
-/// header X-Tenant-Id ya propagado por el Gateway para requests autenticadas; este
-/// resuelve desde el Host, antes/independiente de la autenticación.
+/// Resuelve desde el Host, antes e independientemente de la autenticación — a diferencia
+/// de JwtTenantContextMiddleware, que resuelve del claim tenant_id del JWT ya verificado.
 /// </summary>
-public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOptions<TenantDomainOptions> options)
+public sealed class TenantHostResolutionMiddleware(
+    RequestDelegate next,
+    IOptions<TenantDomainOptions> options,
+    ILogger<TenantHostResolutionMiddleware> logger
+)
 {
+    /// <summary>
+    /// Ventana de deduplicación del integration event. El audit log se escribe en CADA request
+    /// (es el registro forense), pero al bus solo sale el primer fallo de cada host dentro de la
+    /// ventana. Sin esto el middleware publica un evento por request a un exchange fanout con 17
+    /// colas suscritas, y cada suscriptor lo persiste en su inbox durable antes de descubrir que
+    /// no tiene handler: un host que no resuelve (el apex, un escáner, localhost en desarrollo)
+    /// se multiplica por 17 escrituras a base de datos por request.
+    /// </summary>
+    private static readonly TimeSpan PublishDeduplicationWindow = TimeSpan.FromMinutes(5);
+
     private static readonly string[] ExemptPathPrefixes =
     [
         "/health",
@@ -34,7 +49,7 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
         "/auth/.well-known",
         "/openapi",
         "/swagger",
-        // Fase A4 — llamables desde el apex (taxprocore.com), que nunca resuelve a un
+        // Fase A4 — llamables desde el apex (taxproffice.com), que nunca resuelve a un
         // tenant: alta de oficina (check-availability) y "encuentra tu oficina" por
         // email. "by-host" NO se exime a propósito: depende de que este middleware ya
         // haya resuelto el Host, es justo lo que ese endpoint expone al frontend.
@@ -51,7 +66,8 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
         IUnitOfWork unitOfWork,
         IRequestContext request,
         ICorrelationContext correlation,
-        IMessageBus bus
+        IMessageBus bus,
+        IRateCounter rateCounter
     )
     {
         if (ExemptPathPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix)))
@@ -77,6 +93,7 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
             request,
             correlation,
             bus,
+            rateCounter,
             context.RequestAborted
         );
 
@@ -94,7 +111,7 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
     /// señal de seguridad real de este middleware — se audita siempre, incluso en
     /// Development, para que un intento de Host Header Injection quede rastreable.
     /// </summary>
-    private static async Task RecordResolutionFailureAsync(
+    private async Task RecordResolutionFailureAsync(
         string host,
         TenantResolutionFailureReason? reason,
         IAuthAuditWriter audit,
@@ -102,6 +119,7 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
         IRequestContext request,
         ICorrelationContext correlation,
         IMessageBus bus,
+        IRateCounter rateCounter,
         CancellationToken ct
     )
     {
@@ -122,19 +140,46 @@ public sealed class TenantHostResolutionMiddleware(RequestDelegate next, IOption
 
         // Ademas del audit log (detalle forense completo), se publica como integration
         // event para que otros servicios (alertas/SIEM) puedan reaccionar sin tener que
-        // leer la tabla de auditoria de Auth — a proposito NO se publica un evento
-        // equivalente "Succeeded" (este middleware corre en CADA request, inundaria el
-        // bus sin aportar nada que el audit log local de accesos ya no cubra).
-        await bus.PublishAsync(
-            new TenantResolutionFailedIntegrationEvent
-            {
-                TenantId = PlatformTenant.Id,
-                Host = host,
-                Reason = reason?.ToString() ?? "Unknown",
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
+        // leer la tabla de auditoria de Auth. Deduplicado por host: el audit log ya tiene
+        // la cuenta exacta, y al bus le basta con saber que el host esta fallando.
+        if (await IsFirstFailureInWindowAsync(host, rateCounter, ct))
+        {
+            await bus.PublishAsync(
+                new TenantResolutionFailedIntegrationEvent
+                {
+                    TenantId = PlatformTenant.Id,
+                    Host = host,
+                    Reason = reason?.ToString() ?? "Unknown",
+                    CorrelationId = correlation.CorrelationId,
+                }
+            );
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Un host distinto por request sigue produciendo un evento por request — el contador acota
+    /// la repeticion del mismo host, no la cardinalidad de hosts que un atacante puede inventar.
+    /// Si el contador no esta disponible se omite la publicacion en vez de propagar el fallo: el
+    /// registro forense es el audit log, que ya quedo escrito, y ni tumbar la request ni volver a
+    /// inundar el bus son intercambios aceptables por una señal que nadie consume en tiempo real.
+    /// </summary>
+    private async Task<bool> IsFirstFailureInWindowAsync(string host, IRateCounter rateCounter, CancellationToken ct)
+    {
+        var key = RateCounterKey.From($"auth:tenant-resolution-failed:{host.ToLowerInvariant()}");
+        try
+        {
+            return await rateCounter.IncrementAndGetAsync(key, PublishDeduplicationWindow, ct) == 1;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "No se pudo deduplicar el evento de fallo de resolucion para {Host}; se omite la publicacion",
+                host
+            );
+            return false;
+        }
     }
 }

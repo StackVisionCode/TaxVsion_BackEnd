@@ -47,6 +47,16 @@ public static class NotificationTemplateSeedSource
             SignatureExpired,
             SignatureDeclined,
             SignatureVerificationChallenge,
+            OnboardingOtpRequested,
+            OnboardingRegistrationReady,
+            OnboardingReceiptReady,
+            ReminderDue,
+            TaskWaitingOnClient,
+            AppointmentScheduled,
+            AppointmentRescheduled,
+            AppointmentCancelled,
+            ClientRequestCreated,
+            ClientRequestDocumentRejected,
         ];
 
     private static NotificationTemplateSeed Invitation { get; } =
@@ -493,6 +503,460 @@ public static class NotificationTemplateSeedSource
                 ("code", VariableType.String, true, null, "Código de verificación de un solo uso."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+            ]
+        );
+
+    // PayFlow (Fase 12) — Auth (Fase 5/9) publica estos 2 eventos pre-tenant (TenantId=Guid.Empty)
+    // durante el flujo pago-primero. El firstName ya viene resuelto con fallback desde el consumer
+    // (evt.FirstNameHint ?? "there" / evt.FirstName), igual que "office"/"inviter" en Invitation de
+    // arriba — no se usa el filtro `default` de Fluid en ningún template existente de este archivo.
+    private static NotificationTemplateSeed OnboardingOtpRequested { get; } =
+        new(
+            EventKey: "onboarding.otp_requested.v1",
+            TemplateKey: "onboarding.otp_code",
+            Name: "Onboarding — Código de verificación",
+            Subject: "{{ otp_code }} es tu código de verificación de {{ product_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  Hola {{ first_name }}, tu código de verificación para continuar con el alta en {{ product_name }} es:
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:8px 0 20px 0;font-family:Arial,Helvetica,sans-serif;font-size:32px;letter-spacing:8px;font-weight:bold;color:#111111;">
+                  {{ otp_code }}
+                </td>
+              </tr>
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#718096;">
+                  Expira en {{ expires_in_minutes }} minutos. Nunca lo compartas: el equipo de {{ product_name }} jamás te lo pedirá.
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("otp_code", VariableType.String, true, null, "Código OTP de un solo uso."),
+                (
+                    "first_name",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Nombre del comprador (con fallback ya resuelto por el consumer)."
+                ),
+                ("expires_in_minutes", VariableType.Number, true, null, "Minutos hasta la expiración del código."),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed OnboardingRegistrationReady { get; } =
+        new(
+            EventKey: "onboarding.registration_ready.v1",
+            TemplateKey: "onboarding.registration_ready",
+            Name: "Onboarding — Completar registro",
+            Subject: "Tu pago fue confirmado — completa tu cuenta de {{ product_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  Hola {{ first_name }}, confirmamos tu pago de {{ price_formatted }} el {{ paid_at }} para el plan {{ plan_name }}. Ya podés completar tu cuenta:
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ registration_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Completar mi cuenta</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              {% if receipt_download_url != blank %}
+              <tr>
+                <td align="center" style="padding:0 0 16px 0;">
+                  <a href="{{ receipt_download_url }}" target="_blank" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#2b6cb0;text-decoration:underline;">Descargar recibo</a>
+                </td>
+              </tr>
+              {% endif %}
+              <tr>
+                <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#718096;">
+                  Si no reconocés esta compra, contactá a soporte de inmediato.
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del comprador."),
+                (
+                    "plan_name",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Nombre del plan (con fallback ya resuelto por el consumer)."
+                ),
+                ("price_formatted", VariableType.String, true, null, "Monto ya formateado (p. ej. '49.00 USD')."),
+                ("paid_at", VariableType.String, true, null, "Fecha de pago ya formateada (UTC)."),
+                (
+                    "registration_url",
+                    VariableType.Url,
+                    true,
+                    null,
+                    "URL de registro con el raw token, resuelta vía Auth."
+                ),
+                (
+                    "receipt_download_url",
+                    VariableType.Url,
+                    false,
+                    null,
+                    "Link mediador de descarga del recibo, si ya llegó."
+                ),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
+            ]
+        );
+
+    // Sigue a OnboardingRegistrationReady: en la práctica el PDF (Playwright + subida a
+    // CloudStorage) siempre tarda más que el envío del email de bienvenida disparado por el mismo
+    // pago, así que el botón de descarga condicional de ese email casi nunca sale — este es el
+    // segundo envío que faltaba (ver comentario de cabecera del archivo de consumers).
+    private static NotificationTemplateSeed OnboardingReceiptReady { get; } =
+        new(
+            EventKey: "onboarding.receipt_ready.v1",
+            TemplateKey: "onboarding.receipt_ready",
+            Name: "Onboarding — Recibo disponible",
+            Subject: "Tu recibo de pago de {{ product_name }} ya está disponible",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  Hola {{ first_name }}, tu recibo de pago de {{ product_name }} ya está listo para descargar:
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:0 0 16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ receipt_download_url }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Descargar recibo</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del comprador."),
+                (
+                    "receipt_download_url",
+                    VariableType.Url,
+                    true,
+                    null,
+                    "Link mediador de descarga del recibo (Auth), nunca vence."
+                ),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
+            ]
+        );
+
+    /// <summary>
+    /// El único correo de este catálogo cuyo destinatario es el <b>cliente</b> y no personal de la
+    /// firma. Por eso no lleva enlace al panel interno: el botón va al portal donde el cliente sube
+    /// lo que le pidieron.
+    /// </summary>
+    /// <summary>
+    /// El pedido concreto que el cliente ve en su lista del portal. Distinto de
+    /// <c>task.waiting_on_client.v1</c>: aquél avisa de que falta algo, éste es la entrada de la
+    /// lista con su propio enlace para subir.
+    /// </summary>
+    /// <summary>
+    /// La invitación. La hora va con su zona escrita al lado: «10:00» a secas es exactamente lo que
+    /// hace que alguien se presente con una hora de diferencia.
+    /// </summary>
+    private static NotificationTemplateSeed AppointmentScheduled { get; } =
+        new(
+            EventKey: "calendar.appointment_scheduled.v1",
+            TemplateKey: "calendar.appointment_scheduled.v1",
+            Name: "Calendar — Te agendaron una cita",
+            Subject: "{{ product_name }} — {{ appointment_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola,</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Te agendaron una cita: <strong>{{ appointment_title }}</strong>.</td></tr>
+              <tr><td style="padding:8px 12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">{{ start_local }} <span style="color:#4a5568;">({{ time_zone }})</span></td></tr>
+              {% if is_recurring %}<tr><td style="padding-bottom:0px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Se repite: revisá el calendario para ver todas las fechas.</td></tr>{% endif %}
+              {% if is_virtual %}<tr><td style="padding-bottom:0px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Es una reunión por video; el enlace está en la cita.</td></tr>{% endif %}
+            </table>
+            """,
+            Variables:
+            [
+                ("appointment_title", VariableType.String, true, null, "Titulo de la cita."),
+                ("start_local", VariableType.String, true, null, "Inicio en la zona de la cita, ya formateado."),
+                ("time_zone", VariableType.String, true, null, "Zona de la cita, escrita al lado de la hora."),
+                ("is_recurring", VariableType.Bool, false, null, "Si la cita se repite."),
+                ("is_virtual", VariableType.Bool, false, null, "Si es una reunion por video."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    /// <summary>
+    /// El cambio de hora lleva la vieja y la nueva. Decir solo la nueva obliga a recordar cuál era, y
+    /// quien tiene ocho citas esa semana no la recuerda.
+    /// </summary>
+    private static NotificationTemplateSeed AppointmentRescheduled { get; } =
+        new(
+            EventKey: "calendar.appointment_rescheduled.v1",
+            TemplateKey: "calendar.appointment_rescheduled.v1",
+            Name: "Calendar — Se movió tu cita",
+            Subject: "{{ product_name }} — Se movió tu cita",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola,</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Se movió una cita.</td></tr>
+              {% if previous_local %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Antes: <s>{{ previous_local }}</s></td></tr>{% endif %}
+              <tr><td style="padding:8px 12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">Ahora: <strong>{{ new_local }}</strong> <span style="color:#4a5568;">({{ time_zone }})</span></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("scope", VariableType.String, false, null, "Si se movio una ocurrencia o la serie."),
+                ("previous_local", VariableType.String, false, null, "La hora vieja, para no obligar a recordarla."),
+                ("new_local", VariableType.String, true, null, "La hora nueva, en la zona de la cita."),
+                ("time_zone", VariableType.String, true, null, "Zona de la cita."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    /// <summary>El aviso que más importa: no mandarlo deja a alguien presentándose a algo que no existe.</summary>
+    private static NotificationTemplateSeed AppointmentCancelled { get; } =
+        new(
+            EventKey: "calendar.appointment_cancelled.v1",
+            TemplateKey: "calendar.appointment_cancelled.v1",
+            Name: "Calendar — Se canceló tu cita",
+            Subject: "{{ product_name }} — Se canceló tu cita",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola,</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Se canceló una cita que tenías agendada.</td></tr>
+              {% if reason %}<tr><td style="padding:8px 12px;background-color:#fff5f5;border-left:3px solid #c53030;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">{{ reason }}</td></tr>{% endif %}
+              <tr><td style="padding-bottom:0px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">No hace falta que hagas nada.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("scope", VariableType.String, false, null, "Si se cancelo una ocurrencia o la serie."),
+                ("reason", VariableType.String, false, null, "Motivo, si el organizador lo escribio."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed ClientRequestCreated { get; } =
+        new(
+            EventKey: "task.client_request_created.v1",
+            TemplateKey: "task.client_request_created.v1",
+            Name: "Task — Tu contador te pidió documentación",
+            Subject: "{{ product_name }} — {{ request_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola {{ customer_name }},</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Tu contador necesita que le envíes:</td></tr>
+              <tr><td style="padding:8px 12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;"><strong>{{ request_title }}</strong>{% if request_details %}<br/>{{ request_details }}{% endif %}</td></tr>
+              {% if due_at_utc %}
+              <tr><td style="padding-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Te agradecemos enviarlo antes del <strong>{{ due_at_utc }}</strong>.</td></tr>
+              {% endif %}
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Subir en mi portal</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Nombre del cliente, del directorio local."),
+                ("request_title", VariableType.String, true, null, "Qué se le pide, en el idioma del cliente."),
+                ("request_details", VariableType.String, false, null, "Detalle opcional del pedido."),
+                ("due_at_utc", VariableType.String, false, null, "La fecha que se le dio al cliente."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    /// <summary>
+    /// El archivo del cliente no pasó el escaneo.
+    ///
+    /// <para>
+    /// <b>Aquí no entra el motivo técnico.</b> «Tiene un virus» no le dice al cliente qué hacer y da
+    /// información de la infraestructura; el preparador sí recibe el motivo real, por otro canal.
+    /// </para>
+    /// </summary>
+    private static NotificationTemplateSeed ClientRequestDocumentRejected { get; } =
+        new(
+            EventKey: "task.client_request_document_rejected.v1",
+            TemplateKey: "task.client_request_document_rejected.v1",
+            Name: "Task — No pudimos procesar tu archivo",
+            Subject: "{{ product_name }} — No pudimos procesar {{ document_name }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola {{ customer_name }},</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">{{ client_message }}</td></tr>
+              <tr><td style="padding:8px 12px;background-color:#fffaf0;border-left:3px solid #dd6b20;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">Archivo: <strong>{{ document_name }}</strong><br/>Pedido: {{ request_title }}</td></tr>
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Volver a subirlo</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Nombre del cliente, del directorio local."),
+                ("document_name", VariableType.String, true, null, "Nombre del archivo que subió."),
+                ("request_title", VariableType.String, true, null, "A qué pedido corresponde."),
+                (
+                    "client_message",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Mensaje accionable para el cliente. Nunca el motivo técnico del rechazo."
+                ),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    private static NotificationTemplateSeed TaskWaitingOnClient { get; } =
+        new(
+            EventKey: "task.waiting_on_client.v1",
+            TemplateKey: "task.waiting_on_client.v1",
+            Name: "Task — Documentación pendiente del cliente",
+            Subject: "{{ product_name }} — Nos falta documentación tuya",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Hola {{ customer_name }},</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Para seguir con <strong>{{ task_title }}</strong>{% if tax_year %} (año fiscal {{ tax_year }}){% endif %} necesitamos que nos envíes:</td></tr>
+              <tr><td style="padding:8px 12px;margin-bottom:12px;background-color:#f7fafc;border-left:3px solid #2b6cb0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1a202c;">{{ expected_items }}</td></tr>
+              {% if client_due_at_utc %}
+              <tr><td style="padding-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">Te agradecemos enviarlo antes del <strong>{{ client_due_at_utc }}</strong>.</td></tr>
+              {% endif %}
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Subir documentos</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("customer_name", VariableType.String, true, null, "Nombre del cliente, del directorio local."),
+                ("task_title", VariableType.String, true, null, "Título de la tarea que quedó esperando."),
+                (
+                    "expected_items",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Qué se le pide al cliente, tal como lo escribió el preparador."
+                ),
+                (
+                    "client_due_at_utc",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Para cuándo se le pide; distinta del vencimiento de la tarea."
+                ),
+                ("tax_year", VariableType.Number, false, null, "Año fiscal de la tarea, si tiene."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ]
+        );
+
+    /// <summary>
+    /// Reminder Fase 10 — el template que la Fase 8 difirió a propósito: hasta que Notification tuvo
+    /// el directorio <c>userId → email</c>, nadie podía invocarlo y sembrarlo habría sido superficie
+    /// muerta (lección de la Fase 8 de Postmaster, implementada y luego retirada).
+    /// </summary>
+    private static NotificationTemplateSeed ReminderDue { get; } =
+        new(
+            EventKey: "reminder.due.v1",
+            TemplateKey: "reminder.due",
+            Name: "Reminder — Recordatorio vencido",
+            Subject: "{{ title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding-bottom:8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:22px;color:#1a202c;font-weight:bold;">
+                  {{ title }}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#333333;">
+                  {{ body }}
+                </td>
+              </tr>
+              {% if snooze_count > 0 %}
+              <tr>
+                <td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#718096;">
+                  Pospuesto {{ snooze_count }} vez(ces).
+                </td>
+              </tr>
+              {% endif %}
+              <tr>
+                <td align="center" style="padding:16px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#2b6cb0" style="background-color:#2b6cb0;border-radius:6px;">
+                        <a href="{{ portal_link }}" target="_blank" style="display:inline-block;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#ffffff;text-decoration:none;font-weight:bold;">Abrir {{ product_name }}</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            """,
+            Variables:
+            [
+                (
+                    "title",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Título del recordatorio (con el sufijo de pospuesto si aplica)."
+                ),
+                (
+                    "body",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Cuerpo del usuario, o la hora del ancla en su zona horaria."
+                ),
+                ("category", VariableType.String, true, "General", "General | Calendar | Task | Note."),
+                ("snooze_count", VariableType.Number, true, "0", "Cuántas veces se pospuso."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, "TaxVision", "Branding del producto."),
             ]
         );
 }

@@ -59,14 +59,14 @@ public sealed class ChangeSubdomainHandlerTests
     }
 
     private static IOptions<TenantDomainOptions> DefaultOptions() =>
-        Microsoft.Extensions.Options.Options.Create(new TenantDomainOptions { BaseDomain = "taxprocore.com" });
+        Microsoft.Extensions.Options.Options.Create(new TenantDomainOptions { BaseDomain = "taxproffice.com" });
 
     private static TenantDomain PrimarySubdomain(Guid tenantId) =>
         TenantDomain
             .CreateSubdomain(
                 tenantId,
                 SubdomainSlug.Create("oficina1").Value,
-                "taxprocore.com",
+                "taxproffice.com",
                 Guid.NewGuid(),
                 DateTime.UtcNow,
                 isPrimary: true
@@ -208,10 +208,10 @@ public sealed class ChangeSubdomainHandlerTests
         );
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("oficina2.taxprocore.com", domain.Host);
+        Assert.Equal("oficina2.taxproffice.com", domain.Host);
         var evt = Assert.Single(domain.DomainEvents.OfType<TenantSubdomainChanged>());
-        Assert.Equal("oficina1.taxprocore.com", evt.OldHost);
-        Assert.Equal("oficina2.taxprocore.com", evt.NewHost);
+        Assert.Equal("oficina1.taxproffice.com", evt.OldHost);
+        Assert.Equal("oficina2.taxproffice.com", evt.NewHost);
         Assert.Equal(actingUserId, evt.ActingUserId);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
     }

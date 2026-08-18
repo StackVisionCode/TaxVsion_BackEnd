@@ -17,7 +17,7 @@ public sealed class GetTenantDomainsHandlerTests
                 .CreateSubdomain(
                     tenantA,
                     SubdomainSlug.Create("oficina1").Value,
-                    "taxprocore.com",
+                    "taxproffice.com",
                     Guid.NewGuid(),
                     DateTime.UtcNow
                 )
@@ -28,7 +28,7 @@ public sealed class GetTenantDomainsHandlerTests
                 .CreateSubdomain(
                     tenantB,
                     SubdomainSlug.Create("oficina2").Value,
-                    "taxprocore.com",
+                    "taxproffice.com",
                     Guid.NewGuid(),
                     DateTime.UtcNow
                 )
@@ -43,6 +43,6 @@ public sealed class GetTenantDomainsHandlerTests
 
         Assert.True(result.IsSuccess);
         var domain = Assert.Single(result.Value);
-        Assert.Equal("oficina1.taxprocore.com", domain.Host);
+        Assert.Equal("oficina1.taxproffice.com", domain.Host);
     }
 }

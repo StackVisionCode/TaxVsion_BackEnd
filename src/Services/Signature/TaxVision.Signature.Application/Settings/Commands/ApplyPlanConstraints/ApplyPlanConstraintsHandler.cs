@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -14,6 +15,7 @@ public static class ApplyPlanConstraintsHandler
         ITenantSignatureSettingsRepository repository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -46,6 +48,7 @@ public static class ApplyPlanConstraintsHandler
             new SignaturePlanConstraintsUpdatedIntegrationEvent
             {
                 TenantId = cmd.TenantId,
+                CorrelationId = correlation.CorrelationId,
                 ChangedByUserId = cmd.ChangedByUserId,
                 UpdatedAtUtc = settings.UpdatedAtUtc,
             }

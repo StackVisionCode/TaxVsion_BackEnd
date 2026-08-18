@@ -1,7 +1,7 @@
 using BuildingBlocks.Messaging;
 using Wolverine;
 
-namespace BuildingBlocks.Tenancy;
+namespace BuildingBlocks.Web.Tenancy;
 
 /// <summary>
 /// RBAC Fase 5 (RBAC_Hardening_Plan.md) — establece el tenant del scope de un consumer desde el

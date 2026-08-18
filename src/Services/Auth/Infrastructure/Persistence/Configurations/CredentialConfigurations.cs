@@ -16,6 +16,7 @@ public sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<P
         builder.Property(token => token.UserId).IsRequired();
         builder.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
         builder.Property(token => token.RequestedIp).HasMaxLength(45);
+        builder.Property(token => token.Attempts).IsRequired();
         builder.Property(token => token.CreatedAtUtc).IsRequired();
         builder.Property(token => token.ExpiresAtUtc).IsRequired();
 

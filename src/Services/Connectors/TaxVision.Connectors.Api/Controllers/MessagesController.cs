@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,7 +24,13 @@ namespace TaxVision.Connectors.Api.Controllers;
 [Route("connectors/messages")]
 public sealed class MessagesController(IMessageBus bus) : ControllerBase
 {
+    private const string ServiceOnlyExemptReason =
+        "M2M interno — solo otro microservicio backend (Postmaster/Correspondence), nunca expuesto al "
+        + "Gateway publico (ServiceOnly, actor_type=Service). Mismo criterio que "
+        + "CorrespondenceMessagesController.Send de Postmaster (Fase 4.4).";
+
     [HttpPost("{providerMessageId}/body")]
+    [RateLimitExempt(ServiceOnlyExemptReason)]
     public async Task<IActionResult> GetBody(
         string providerMessageId,
         [FromBody] GetMessageBodyRequest body,
@@ -37,6 +45,7 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("{providerMessageId}/attachments/{attachmentId}")]
+    [RateLimitExempt(ServiceOnlyExemptReason)]
     public async Task<IActionResult> GetAttachment(
         string providerMessageId,
         string attachmentId,
@@ -57,6 +66,11 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
 
     /// <summary>D3 §3.7 — el token nunca sale de Connectors: el caller (Postmaster) manda un DTO normalizado, nunca ve el access token de Gmail/Graph.</summary>
     [HttpPost("~/connectors/accounts/{accountId:guid}/send")]
+    [RateLimitExempt(
+        ServiceOnlyExemptReason
+            + " Ademas ya protegido por el limiter de dominio connectors.k.send (ISendRateLimiter/Redis, "
+            + "D3 Fase 5) — capa completamente separada del HTTP [RateLimit] de esta fase."
+    )]
     public async Task<IActionResult> Send(Guid accountId, [FromBody] SendMessageRequest body, CancellationToken ct)
     {
         List<OutboundAttachment> attachments;

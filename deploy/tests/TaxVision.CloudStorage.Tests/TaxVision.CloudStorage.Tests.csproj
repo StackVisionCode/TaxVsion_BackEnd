@@ -7,6 +7,8 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.9" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -15,10 +17,13 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\CloudStorage\TaxVision.CloudStorage.Domain\TaxVision.CloudStorage.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\CloudStorage\TaxVision.CloudStorage.Infrastructure\TaxVision.CloudStorage.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
+    <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
     <!-- ActorType Fase 6: agregado para probar la fitness function AllowActorTypes vía reflexión
          sobre los controllers reales del Api. -->
     <ProjectReference Include="..\..\..\src\Services\CloudStorage\TaxVision.CloudStorage.Api\TaxVision.CloudStorage.Api.csproj" />

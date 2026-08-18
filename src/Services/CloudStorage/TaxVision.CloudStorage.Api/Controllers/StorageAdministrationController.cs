@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +19,7 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
 {
     [HttpGet("usage")]
     [HasPermission(CloudStoragePermissions.SettingsManage)]
+    [RateLimit("cloudstorage.f.admin_read")]
     [ProducesResponseType<StorageUsageResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUsage(CancellationToken ct)
     {
@@ -29,6 +32,7 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
 
     [HttpGet("audit")]
     [HasPermission(CloudStoragePermissions.AuditView)]
+    [RateLimit("cloudstorage.f.admin_read")]
     [ProducesResponseType<IReadOnlyList<AuditEntryResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAudit(
         [FromQuery] int skip = 0,
@@ -51,6 +55,7 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
     /// <summary>Fase C3 — habilita/deshabilita links Visibility.Public. Deshabilitado por defecto (datos fiscales).</summary>
     [HttpPut("settings/public-sharing")]
     [HasPermission(CloudStoragePermissions.SettingsManage)]
+    [RateLimit("cloudstorage.g.settings_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetPublicSharingPolicy(SetPublicSharingPolicyRequest request, CancellationToken ct)
     {

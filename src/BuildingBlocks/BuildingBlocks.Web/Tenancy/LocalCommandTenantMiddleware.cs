@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using Wolverine;
 
-namespace BuildingBlocks.Tenancy;
+namespace BuildingBlocks.Web.Tenancy;
 
 /// <summary>
 /// RBAC Fase 5 (RBAC_Hardening_Plan.md) — restaura el tenant dentro del DI scope que Wolverine crea

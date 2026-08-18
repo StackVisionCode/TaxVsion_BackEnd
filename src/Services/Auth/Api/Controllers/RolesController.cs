@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Auth.Api.Common;
@@ -23,6 +25,7 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Lista los roles definidos en el tenant del usuario autenticado.</summary>
     [HttpGet]
+    [RateLimit("auth.f.role_read")]
     [ProducesResponseType<IReadOnlyList<RoleResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetRoles(CancellationToken ct)
     {
@@ -36,6 +39,7 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
 
     /// <summary>Devuelve el catálogo global de permisos disponibles para asignar a roles.</summary>
     [HttpGet("/auth/permissions")]
+    [RateLimit("auth.f.role_read")]
     [ProducesResponseType<IReadOnlyList<PermissionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPermissionsCatalog(CancellationToken ct)
     {
@@ -61,6 +65,7 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
 
     /// <summary>Crea un nuevo rol en el tenant con los permisos indicados.</summary>
     [HttpPost]
+    [RateLimit("auth.g.role_manage")]
     [ProducesResponseType<RoleResponse>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateRoleRequest request, CancellationToken ct)
     {
@@ -90,6 +95,7 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
 
     /// <summary>Actualiza el nombre y la descripción de un rol existente.</summary>
     [HttpPut("{roleId:guid}")]
+    [RateLimit("auth.g.role_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Update(Guid roleId, UpdateRoleRequest request, CancellationToken ct)
     {
@@ -109,6 +115,7 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
 
     /// <summary>Reemplaza por completo el conjunto de permisos asignados a un rol.</summary>
     [HttpPut("{roleId:guid}/permissions")]
+    [RateLimit("auth.g.role_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetPermissions(Guid roleId, SetPermissionsRequest request, CancellationToken ct)
     {
@@ -125,6 +132,7 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
 
     /// <summary>Desactiva un rol para que deje de aplicarse sin eliminarlo del historial.</summary>
     [HttpDelete("{roleId:guid}")]
+    [RateLimit("auth.g.role_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Deactivate(Guid roleId, CancellationToken ct)
     {

@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,6 +24,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     [HttpPost]
     [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.g.invitation_manage")]
     [ProducesResponseType<CreateInvitationResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(CreateInvitationRequest request, CancellationToken ct)
@@ -49,6 +52,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     [HttpGet]
     [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.f.invitation_read")]
     [ProducesResponseType<PagedResult<InvitationResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetInvitations(
         [FromQuery] InvitationStatus? status = null,
@@ -70,6 +74,9 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
 
     [HttpPost("accept")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo (canje de invitación por token) — protegido por ILoginThrottler.GetInvitationAcceptRetryAfterAsync (Fase 18.4), un mecanismo de dominio separado del RateLimit HTTP."
+    )]
     [ProducesResponseType<UserResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Accept(AcceptInvitationCommand command, CancellationToken ct)
@@ -82,6 +89,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     [HttpPost("{invitationId:guid}/resend")]
     [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.g.invitation_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Resend(Guid invitationId, CancellationToken ct)
@@ -97,6 +105,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     [HttpPost("{invitationId:guid}/cancel")]
     [HasPermission(PermissionCatalog.UsersInvite)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.g.invitation_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Cancel(Guid invitationId, CancellationToken ct)

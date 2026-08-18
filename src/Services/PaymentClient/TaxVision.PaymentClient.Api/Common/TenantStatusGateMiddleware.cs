@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Tenancy;
 using TaxVision.PaymentClient.Application.Abstractions;
 
@@ -6,7 +7,7 @@ namespace TaxVision.PaymentClient.Api.Common;
 /// <summary>
 /// Rechaza cualquier request de un tenant que no esté activo (Suspended/Closed) o que sea el
 /// Platform tenant (nunca sujeto de cobro). Corre después de
-/// <see cref="BuildingBlocks.Tenancy.JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana en
+/// <see cref="BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware"/> y antes de los controllers — cierra la ventana en
 /// la que un tenant recién suspendido podría seguir cobrando con un JWT todavía vigente.
 /// </summary>
 public sealed class TenantStatusGateMiddleware(RequestDelegate next)
@@ -24,6 +25,8 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         "/health/ready",
         "/payments-client/webhooks",
         "/payments-client/checkout",
+        // URL estable pública de facturas (resolver): sin JWT, el tenant sale del payable.
+        "/payments-client/invoices",
         "/payments-client/admin",
     ];
 
@@ -41,6 +44,20 @@ public sealed class TenantStatusGateMiddleware(RequestDelegate next)
         }
 
         if (!tenantContext.HasTenant)
+        {
+            await next(ctx);
+            return;
+        }
+
+        // Mismo bug que PaymentApp.TenantStatusGateMiddleware (copia duplicada): un token de
+        // servicio M2M pre-tenant con tenant_id=Guid.Empty se parsea como "hay tenant" (Guid.Empty
+        // es un Guid válido) y sin esta excepción se rechazaría acá con "Tenant.Unknown".
+        // Auditoría PayFlow F34 movió los clientes M2M de Guid.Empty a PlatformTenant.Id por
+        // consistencia — misma regresión que en PaymentApp, mismo fix: aceptar ambos sentinelas.
+        if (
+            (tenantContext.TenantId == Guid.Empty || tenantContext.TenantId == PlatformTenant.Id)
+            && ctx.User.GetActorType() == ActorType.Service
+        )
         {
             await next(ctx);
             return;

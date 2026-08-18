@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +20,7 @@ namespace TaxVision.Auth.Api.Controllers;
 public sealed class SessionsController(IMessageBus bus, IUserPermissionsSource permissionsSource) : ControllerBase
 {
     [HttpGet("me")]
+    [RateLimit("auth.f.session_read")]
     [ProducesResponseType<IReadOnlyList<SessionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> MySessions(CancellationToken ct)
     {
@@ -33,6 +36,7 @@ public sealed class SessionsController(IMessageBus bus, IUserPermissionsSource p
     [HttpGet("users/{targetUserId:guid}")]
     [HasPermission(PermissionCatalog.UsersManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.f.session_read")]
     [ProducesResponseType<IReadOnlyList<SessionResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> UserSessions(Guid targetUserId, CancellationToken ct)
     {
@@ -49,6 +53,7 @@ public sealed class SessionsController(IMessageBus bus, IUserPermissionsSource p
 
     /// <summary>Revoca una sesión (propia o, con users.manage, de otro usuario del tenant).</summary>
     [HttpDelete("{sessionId:guid}")]
+    [RateLimit("auth.g.session_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RevokeSession(Guid sessionId, CancellationToken ct)
     {
@@ -70,6 +75,7 @@ public sealed class SessionsController(IMessageBus bus, IUserPermissionsSource p
 
     /// <summary>"Cerrar sesión en todos los dispositivos" (conserva la sesión actual).</summary>
     [HttpDelete]
+    [RateLimit("auth.g.session_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RevokeAllMySessions([FromQuery] bool includeCurrent, CancellationToken ct)
     {

@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -31,10 +32,15 @@ public static class ImportFileScanResultConsumer
         ICustomerImportRepository repository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         ILogger<CustomerImportAttempt> logger,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         var attempt = await repository.GetByIdAsync(msg.FileId, ct);
         if (attempt is null || attempt.TenantId != msg.TenantId)
             return;
@@ -62,10 +68,15 @@ public static class ImportFileScanResultConsumer
         ICustomerImportRepository repository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         ILogger<CustomerImportAttempt> logger,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         var attempt = await repository.GetByIdAsync(msg.FileId, ct);
         if (attempt is null || attempt.TenantId != msg.TenantId || attempt.IsTerminal)
             return;
@@ -102,10 +113,15 @@ public static class ImportFileScanResultConsumer
         ICustomerImportRepository repository,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         ILogger<CustomerImportAttempt> logger,
         CancellationToken ct
     )
     {
+        using var _ = correlation.Push(
+            string.IsNullOrWhiteSpace(msg.CorrelationId) ? msg.EventId.ToString("N") : msg.CorrelationId
+        );
+
         var attempt = await repository.GetByIdAsync(msg.FileId, ct);
         if (attempt is null || attempt.TenantId != msg.TenantId || attempt.IsTerminal)
             return;

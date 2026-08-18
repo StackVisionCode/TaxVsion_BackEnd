@@ -10,6 +10,7 @@ import type {
 import { SocketRealtimeEmitter } from '../../../infrastructure/socket/socket-realtime-emitter.js';
 import { resolveDisplayName } from './resolve-display-name.js';
 import { resolveActorType } from './resolve-actor-type.js';
+import { CommunicationRateLimitPolicyNames } from '../../../domain/rate-limit/rate-limit-policies.js';
 import { startDirectConversation } from '../../../application/use-cases/start-direct-conversation.js';
 import { startGroupConversation } from '../../../application/use-cases/start-group-conversation.js';
 import { addGroupParticipant } from '../../../application/use-cases/add-group-participant.js';
@@ -360,10 +361,10 @@ async function wireSocket(
       return;
     }
     const allowed = await container.rateLimiter.allow({
-      scope: 'chat.send',
+      scope: CommunicationRateLimitPolicyNames.ChatSend,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.chatSend.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.chatSend.maxPerWindow),
       windowSeconds: config.rateLimit.chatSend.windowSeconds,
     });
     if (!allowed) {
@@ -410,10 +411,10 @@ async function wireSocket(
       return;
     }
     const allowed = await container.rateLimiter.allow({
-      scope: 'chat.edit',
+      scope: CommunicationRateLimitPolicyNames.ChatEdit,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.chatEdit.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.chatEdit.maxPerWindow),
       windowSeconds: config.rateLimit.chatEdit.windowSeconds,
     });
     if (!allowed) {
@@ -522,10 +523,10 @@ async function wireSocket(
     const parsed = TypingPayloadSchema.safeParse(args[0]);
     if (!parsed.success) return;
     const allowed = await container.rateLimiter.allow({
-      scope: 'chat.typing',
+      scope: CommunicationRateLimitPolicyNames.ChatTyping,
       tenantId,
       userId,
-      maxPerWindow: config.rateLimit.chatTyping.maxPerWindow,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.chatTyping.maxPerWindow),
       windowSeconds: config.rateLimit.chatTyping.windowSeconds,
     });
     if (!allowed) return;

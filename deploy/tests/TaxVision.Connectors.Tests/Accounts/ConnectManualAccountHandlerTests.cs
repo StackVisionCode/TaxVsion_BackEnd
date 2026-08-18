@@ -76,6 +76,7 @@ public class ConnectManualAccountHandlerTests
             fixture.WatchClientFactory,
             fixture.UnitOfWork,
             fixture.Bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 

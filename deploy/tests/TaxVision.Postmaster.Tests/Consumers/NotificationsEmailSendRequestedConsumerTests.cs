@@ -560,6 +560,145 @@ public sealed class NotificationsEmailSendRequestedConsumerTests
         Assert.Contains("RateLimited", failed.Reason);
     }
 
+    /// <summary>
+    /// Aislamiento Bulk/Transactional: un envío Bulk con cupo configurado debe pedirle al rate
+    /// limiter la partición Bulk y la cuota Bulk del provider — nunca la cuota Transactional, aunque
+    /// ambas existan en el mismo <see cref="ResolvedEmailProvider"/>.
+    /// </summary>
+    [Fact]
+    public async Task Handle_uses_bulk_quota_and_bulk_stream_partition_when_stream_is_Bulk_and_configured()
+    {
+        var evt = CreateEvent() with { Stream = "Bulk" };
+        var idempotencyGuard = new FakeIdempotencyGuard();
+        var provider = CreateResolvedProvider() with { BulkRateLimitPerMinute = 5 };
+        var providerResolver = new FakeProviderResolver
+        {
+            ResolveReturnValue = new ResolveResult(ProviderResolutionStatus.Resolved, provider, null),
+        };
+        var rateLimiter = new FakeEmailProviderRateLimiter();
+        var emailSender = new FakeEmailSender { SendReturnValue = new SendResult(true, "provider-msg-bulk", null, []) };
+        var sentMessages = new FakeSentMessageRepository();
+        var bus = new FakeMessageBus();
+
+        await NotificationsEmailSendRequestedConsumer.Handle(
+            evt,
+            idempotencyGuard,
+            providerResolver,
+            new FakeOAuthProviderResolver(),
+            new FakeSuppressionListRepository(),
+            rateLimiter,
+            emailSender,
+            new FakeOAuthEmailSender(),
+            new FakeInlineAssetFetcher(),
+            sentMessages,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(1, rateLimiter.CallCount);
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.EmailStream.Bulk, rateLimiter.LastStream);
+        Assert.Equal(5, rateLimiter.LastLimitPerMinute);
+        var message = Assert.Single(sentMessages.Added);
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Sent, message.Status);
+    }
+
+    /// <summary>
+    /// Bulk nunca cae al cupo Transactional por defecto: si el provider no tiene
+    /// <c>BulkRateLimitPerMinute</c> configurado, el mensaje falla explícito como no-configurado y el
+    /// rate limiter ni siquiera se invoca — evita compartir presupuesto en silencio con el tráfico
+    /// transaccional del mismo tenant.
+    /// </summary>
+    [Fact]
+    public async Task Handle_fails_without_calling_rate_limiter_when_stream_is_Bulk_and_not_configured()
+    {
+        var evt = CreateEvent() with { Stream = "Bulk" };
+        var idempotencyGuard = new FakeIdempotencyGuard();
+        var providerResolver = new FakeProviderResolver
+        {
+            ResolveReturnValue = new ResolveResult(ProviderResolutionStatus.Resolved, CreateResolvedProvider(), null),
+        };
+        var rateLimiter = new FakeEmailProviderRateLimiter();
+        var emailSender = new FakeEmailSender();
+        var sentMessages = new FakeSentMessageRepository();
+        var bus = new FakeMessageBus();
+
+        await NotificationsEmailSendRequestedConsumer.Handle(
+            evt,
+            idempotencyGuard,
+            providerResolver,
+            new FakeOAuthProviderResolver(),
+            new FakeSuppressionListRepository(),
+            rateLimiter,
+            emailSender,
+            new FakeOAuthEmailSender(),
+            new FakeInlineAssetFetcher(),
+            sentMessages,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(0, rateLimiter.CallCount);
+        Assert.Null(emailSender.LastMessage);
+        var message = Assert.Single(sentMessages.Added);
+        Assert.Equal(TaxVision.Postmaster.Domain.Sending.SentMessageStatus.Failed, message.Status);
+        Assert.Contains("BulkRateLimitNotConfigured", message.ErrorReason);
+
+        var published = Assert.Single(bus.Published);
+        var failed = Assert.IsType<PostmasterEmailDeliveryFailedIntegrationEvent>(published);
+        Assert.Contains("BulkRateLimitNotConfigured", failed.Reason);
+    }
+
+    /// <summary>
+    /// Correlación de vuelta hacia Campaña (futuro microservicio de campañas): el CampaignId del
+    /// evento de solicitud debe quedar persistido en el SentMessage y viajar de vuelta en el evento
+    /// de resultado, sin que Postmaster interprete su significado.
+    /// </summary>
+    [Fact]
+    public async Task Handle_threads_CampaignId_from_request_event_into_SentMessage_and_result_event()
+    {
+        var campaignId = Guid.NewGuid();
+        var evt = CreateEvent() with { CampaignId = campaignId };
+        var idempotencyGuard = new FakeIdempotencyGuard();
+        var providerResolver = new FakeProviderResolver
+        {
+            ResolveReturnValue = new ResolveResult(ProviderResolutionStatus.Resolved, CreateResolvedProvider(), null),
+        };
+        var emailSender = new FakeEmailSender { SendReturnValue = new SendResult(true, "provider-msg-camp", null, []) };
+        var sentMessages = new FakeSentMessageRepository();
+        var bus = new FakeMessageBus();
+
+        await NotificationsEmailSendRequestedConsumer.Handle(
+            evt,
+            idempotencyGuard,
+            providerResolver,
+            new FakeOAuthProviderResolver(),
+            new FakeSuppressionListRepository(),
+            new FakeEmailProviderRateLimiter(),
+            emailSender,
+            new FakeOAuthEmailSender(),
+            new FakeInlineAssetFetcher(),
+            sentMessages,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger.Instance,
+            CancellationToken.None
+        );
+
+        var message = Assert.Single(sentMessages.Added);
+        Assert.Equal(campaignId, message.CampaignId);
+
+        var published = Assert.Single(bus.Published);
+        var succeeded = Assert.IsType<PostmasterEmailDeliverySucceededIntegrationEvent>(published);
+        Assert.Equal(campaignId, succeeded.CampaignId);
+    }
+
     [Fact]
     public async Task Handle_routes_to_ConnectorsSendClient_and_publishes_Succeeded_when_scope_is_TenantOAuth()
     {

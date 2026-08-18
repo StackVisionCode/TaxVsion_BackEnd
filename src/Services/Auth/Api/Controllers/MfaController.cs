@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +21,9 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     /// <summary>Paso 2 del login: verifica el código del desafío MFA.</summary>
     [HttpPost("verify")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo (paso 2 del login, identificado por LoginTicket, sin JWT todavía) — VerifyMfaChallengeHandler ya limita intentos por challenge (RegisterAttempt); agregar protección HTTP nueva queda fuera de alcance de esta migración."
+    )]
     [ProducesResponseType<AuthTokensResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Verify(VerifyMfaChallengeCommand command, CancellationToken ct)
@@ -36,6 +41,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.mfa_manage")]
     [ProducesResponseType<SetupTotpResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SetupTotp(CancellationToken ct)
     {
@@ -57,6 +63,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.mfa_manage")]
     [ProducesResponseType<ConfirmTotpResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ConfirmTotp(ConfirmTotpRequest request, CancellationToken ct)
     {
@@ -81,6 +88,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.mfa_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Disable(DisableMfaRequest request, CancellationToken ct)
     {
@@ -102,6 +110,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.mfa_manage")]
     [ProducesResponseType<RegenerateRecoveryCodesResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> RegenerateRecoveryCodes(
         RegenerateRecoveryCodesRequest request,
@@ -127,6 +136,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.mfa_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RevokeTrustedDevice(Guid deviceId, CancellationToken ct)
     {
@@ -146,6 +156,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.f.mfa_read")]
     [ProducesResponseType<MfaStatusResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Status(CancellationToken ct)
     {
@@ -160,6 +171,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [HttpGet("policy")]
     [HasPermission(PermissionCatalog.SettingsManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.f.mfa_policy_read")]
     [ProducesResponseType<TenantMfaPolicyResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPolicy(CancellationToken ct)
     {
@@ -180,6 +192,7 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [HttpPut("policy")]
     [HasPermission(PermissionCatalog.SettingsManage)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("auth.g.mfa_policy_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> UpdatePolicy(UpdateMfaPolicyRequest request, CancellationToken ct)
     {

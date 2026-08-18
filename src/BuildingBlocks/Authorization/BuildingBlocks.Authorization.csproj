@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Los catálogos de permisos de los 19 servicios salen del núcleo por el mismo motivo que
+    Messaging: son el segundo folder más volátil (18 commits en 3 meses) y solo los consume la
+    capa Api (58 de sus 61 usos). Sin dependencias a propósito — son constantes de cadena, no
+    tienen por qué arrastrar nada.
+  -->
+</Project>

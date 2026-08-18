@@ -100,4 +100,58 @@ apply_migration \
   "src/Services/Growth/TaxVision.Growth.Api/TaxVision.Growth.Api.csproj" \
   "$GROWTH_DB_CONNECTION"
 
+apply_migration \
+  "Billing" \
+  "src/Services/Billing/TaxVision.Billing.Infrastructure/TaxVision.Billing.Infrastructure.csproj" \
+  "src/Services/Billing/TaxVision.Billing.Api/TaxVision.Billing.Api.csproj" \
+  "$BILLING_DB_CONNECTION"
+
+apply_migration \
+  "Documents" \
+  "src/Services/Documents/TaxVision.Documents.Infrastructure/TaxVision.Documents.Infrastructure.csproj" \
+  "src/Services/Documents/TaxVision.Documents.Api/TaxVision.Documents.Api.csproj" \
+  "$DOCUMENTS_DB_CONNECTION"
+
+apply_migration \
+  "Notes" \
+  "src/Services/Notes/TaxVision.Notes.Infrastructure/TaxVision.Notes.Infrastructure.csproj" \
+  "src/Services/Notes/TaxVision.Notes.Api/TaxVision.Notes.Api.csproj" \
+  "$NOTES_DB_CONNECTION"
+
+apply_migration \
+  "Sms" \
+  "src/Services/Sms/TaxVision.Sms.Infrastructure/TaxVision.Sms.Infrastructure.csproj" \
+  "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj" \
+  "$SMS_DB_CONNECTION"
+
+apply_migration \
+  "Reminder" \
+  "src/Services/Reminder/TaxVision.Reminder.Infrastructure/TaxVision.Reminder.Infrastructure.csproj" \
+  "src/Services/Reminder/TaxVision.Reminder.Api/TaxVision.Reminder.Api.csproj" \
+  "$REMINDER_DB_CONNECTION"
+
+apply_migration \
+  "Tasks" \
+  "src/Services/Tasks/TaxVision.Tasks.Infrastructure/TaxVision.Tasks.Infrastructure.csproj" \
+  "src/Services/Tasks/TaxVision.Tasks.Api/TaxVision.Tasks.Api.csproj" \
+  "$TASKS_DB_CONNECTION"
+
+apply_migration \
+  "Calendar" \
+  "src/Services/Calendar/TaxVision.Calendar.Infrastructure/TaxVision.Calendar.Infrastructure.csproj" \
+  "src/Services/Calendar/TaxVision.Calendar.Api/TaxVision.Calendar.Api.csproj" \
+  "$CALENDAR_DB_CONNECTION"
+
+apply_migration \
+  "Catalog" \
+  "src/Services/Catalog/TaxVision.Catalog.Infrastructure/TaxVision.Catalog.Infrastructure.csproj" \
+  "src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" \
+  "$CATALOG_DB_CONNECTION"
+
+apply_migration \
+  "Inventory" \
+  "src/Services/Inventory/TaxVision.Inventory.Infrastructure/TaxVision.Inventory.Infrastructure.csproj" \
+  "src/Services/Inventory/TaxVision.Inventory.Api/TaxVision.Inventory.Api.csproj" \
+  "$INVENTORY_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

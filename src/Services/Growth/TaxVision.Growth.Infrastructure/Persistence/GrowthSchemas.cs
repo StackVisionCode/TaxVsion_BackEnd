@@ -14,4 +14,8 @@ public static class GrowthSchemas
     /// <summary>RBAC Fase 7/8 — proyección local de permisos (UserPermissionsProjection /
     /// RolePermissionsProjection), transversal a Codes y Referrals igual que Audit.</summary>
     public const string Permissions = "permissions";
+
+    /// <summary>RateLimit Fase 2 — proyección local de PlanCode por tenant (TenantPlanCodeProjection),
+    /// transversal a Codes y Referrals igual que Permissions y Audit.</summary>
+    public const string RateLimiting = "ratelimiting";
 }

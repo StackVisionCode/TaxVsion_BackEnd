@@ -15,8 +15,10 @@ public interface ISecretProtector
     string Protect(string plaintext);
 
     /// <summary>
-    /// Descifra un valor previamente protegido. Devuelve <c>null</c> si el formato o la clave
-    /// no son válidos (no lanza excepción por datos corruptos).
+    /// Descifra un valor previamente protegido. No lanza por datos corruptos: devuelve
+    /// <c>false</c> y el motivo en <paramref name="failure"/>, para que el llamante distinga
+    /// "no había nada guardado" (normal) de "el tag no valida" (evento de seguridad o clave mal
+    /// configurada) — ver <see cref="SecretUnprotectFailure"/>.
     /// </summary>
-    string? Unprotect(string ciphertext);
+    bool TryUnprotect(string? protectedValue, out string plaintext, out SecretUnprotectFailure failure);
 }

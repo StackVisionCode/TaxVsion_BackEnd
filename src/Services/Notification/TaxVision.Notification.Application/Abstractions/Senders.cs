@@ -77,4 +77,16 @@ public interface INotificationLogRepository
         int size,
         CancellationToken ct = default
     );
+
+    /// <summary>Chequeo de idempotencia para <c>IEmailDispatchGateway.QueueEmailAsync</c> — busca un
+    /// log ya creado para el mismo evento de origen y plantilla, para que un reintento de Wolverine
+    /// (misma entrega, el handler se re-ejecuta desde cero) no cree un segundo
+    /// <see cref="NotificationLog"/> ni dispare un segundo envío real. Ver comentario en
+    /// <c>EventBasedEmailDispatchGateway.QueueEmailAsync</c>.</summary>
+    Task<NotificationLog?> GetByRelatedEventIdAsync(
+        Guid tenantId,
+        Guid relatedEventId,
+        string templateKey,
+        CancellationToken ct = default
+    );
 }

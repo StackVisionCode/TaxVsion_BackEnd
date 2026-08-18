@@ -1,0 +1,1250 @@
+{
+  "info": {
+    "_postman_id": "00000000-0000-0000-0000-000000007a11",
+    "name": "TaxVision — New Services (SMS, Catalog, Inventory, Billing)",
+    "description": "Colección de los microservicios construidos/verificados: Auth (tokens), SMS, Catalog, Inventory y el wiring de Billing. Todo pasa por el Gateway ({{gateway}}). Ver postman/README.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Service token (M2M)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/auth/service-token",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "auth",
+                "service-token"
+              ]
+            },
+            "description": "M2M token. clientSecret viene de .env (NOTIFICATION_SERVICE_CLIENT_SECRET). Guarda {{serviceToken}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{serviceClientId}}\",\n  \"clientSecret\": \"{{serviceClientSecret}}\",\n  \"tenantId\": \"{{tenantId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "let t = j.accessToken || j.token || (j.tokens && j.tokens.accessToken);",
+                  "if (t) { pm.collectionVariables.set('serviceToken', t); pm.test('token saved', () => pm.expect(t).to.be.ok); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (usuario, 2-step MFA opt-in)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/auth/login",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login humano. Si MFA está activo, seguir con /auth/mfa/verify. Guarda {{userToken}} si viene directo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "let t = j.accessToken || (j.tokens && j.tokens.accessToken);",
+                  "if (t) { pm.collectionVariables.set('userToken', t); }",
+                  "pm.test('login ok (may need MFA/terms)', () => pm.expect(pm.response.code).to.be.oneOf([200,202]));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Tokens. Ejecutar 'Service token' primero para poblar {{serviceToken}}."
+    },
+    {
+      "name": "SMS",
+      "item": [
+        {
+          "name": "Send SMS (batch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sms/messages",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sms",
+                "messages"
+              ]
+            },
+            "description": "Requiere sms.send. El proveedor activo lo define Sms:DefaultProvider (fake/infobip/twilio…).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"customerId\": \"22222222-2222-2222-2222-222222222222\",\n      \"to\": \"+18095551234\",\n      \"message\": \"Hola desde TaxVision\",\n      \"idempotencyKey\": \"pm-sms-1\",\n      \"sourceContext\": \"postman\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook — delivery status (fake)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sms/webhooks/fake/status",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sms",
+                "webhooks",
+                "fake",
+                "status"
+              ]
+            },
+            "description": "Anónimo (firma del proveedor). Cambiá {provider} por infobip/twilio para reales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"providerMessageId\": \"fake-xxxx\",\n  \"status\": \"delivered\",\n  \"eventType\": \"dlr\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook — inbound STOP (fake)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/sms/webhooks/fake/inbound",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "sms",
+                "webhooks",
+                "fake",
+                "inbound"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": \"+18095557777\",\n  \"keyword\": \"STOP\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"customerId\": \"22222222-2222-2222-2222-222222222222\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Envío 1..N + webhooks. Ver documents/architecture/sms/SMS_Service_Guide.md",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{serviceToken}}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "Categories",
+          "item": [
+            {
+              "name": "Create category",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/catalog/categories",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "categories"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Servicios\",\n  \"description\": \"Servicios profesionales\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "let j = pm.response.json();",
+                      "if (j && j.id) pm.collectionVariables.set('categoryId', j.id);",
+                      "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List categories",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/catalog/categories?activeOnly=false",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "categories"
+                  ],
+                  "query": [
+                    {
+                      "key": "activeOnly",
+                      "value": "false"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get category",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/catalog/categories/{{categoryId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "categories",
+                    "{{categoryId}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update category",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/catalog/categories/{{categoryId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "categories",
+                    "{{categoryId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Servicios 2\",\n  \"description\": null,\n  \"parentCategoryId\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Set active",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/catalog/categories/{{categoryId}}/active",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "categories",
+                    "{{categoryId}}",
+                    "active"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete category",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/catalog/categories/{{categoryId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "categories",
+                    "{{categoryId}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Items",
+          "item": [
+            {
+              "name": "Create item",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/catalog/items",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "items"
+                  ]
+                },
+                "description": "kind: Product|Service. Service ⇒ trackInventory forzado a false. Precio multi-moneda.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Declaración ISR\",\n  \"sku\": \"isr-001\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"kind\": \"Service\",\n  \"priceAmount\": 5000.0,\n  \"priceCurrency\": \"DOP\",\n  \"costAmount\": 1500.0,\n  \"costCurrency\": \"DOP\",\n  \"unit\": \"servicio\",\n  \"trackInventory\": false,\n  \"attributes\": [\n    {\n      \"key\": \"duracion\",\n      \"value\": \"2h\",\n      \"valueType\": \"string\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "let j = pm.response.json();",
+                      "if (j && j.id) pm.collectionVariables.set('catalogItemId', j.id);",
+                      "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List items",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/catalog/items?activeOnly=true&categoryId=&search=&page=1&pageSize=50",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "items"
+                  ],
+                  "query": [
+                    {
+                      "key": "activeOnly",
+                      "value": "true"
+                    },
+                    {
+                      "key": "categoryId",
+                      "value": ""
+                    },
+                    {
+                      "key": "search",
+                      "value": ""
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get item",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/catalog/items/{{catalogItemId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "items",
+                    "{{catalogItemId}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update item",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/catalog/items/{{catalogItemId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "items",
+                    "{{catalogItemId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Declaración ISR v2\",\n  \"description\": null,\n  \"barcode\": null,\n  \"categoryId\": \"{{categoryId}}\",\n  \"unit\": \"servicio\",\n  \"imageUrl\": null,\n  \"attributes\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Change price",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/catalog/items/{{catalogItemId}}/price",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "items",
+                    "{{catalogItemId}}",
+                    "price"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"priceAmount\": 5500.0,\n  \"priceCurrency\": \"DOP\",\n  \"costAmount\": null,\n  \"costCurrency\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Set active",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/catalog/items/{{catalogItemId}}/active",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "items",
+                    "{{catalogItemId}}",
+                    "active"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete item",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/catalog/items/{{catalogItemId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "catalog",
+                    "items",
+                    "{{catalogItemId}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "description": "Productos/servicios/categorías. RBAC: catalog.read/write/delete.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{serviceToken}}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "Stock",
+          "item": [
+            {
+              "name": "Adjust stock (Purchase)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/inventory/stock/{{catalogItemId}}/adjust",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "stock",
+                    "{{catalogItemId}}",
+                    "adjust"
+                  ]
+                },
+                "description": "type: Purchase|Sale|Adjustment|Return|Transfer|Damaged. Purchase/Return suman; Sale/Damaged restan; Adjustment/Transfer con signo. RBAC: inventory.adjust.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"type\": \"Purchase\",\n  \"quantity\": 10,\n  \"reference\": \"PO-1\",\n  \"notes\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Set thresholds",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/inventory/stock/{{catalogItemId}}/thresholds",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "stock",
+                    "{{catalogItemId}}",
+                    "thresholds"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"minLevel\": 5,\n  \"maxLevel\": 100,\n  \"reorderPoint\": 10\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get stock level",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/stock/{{catalogItemId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "stock",
+                    "{{catalogItemId}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List stock levels",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/stock?lowStockOnly=false&page=1&pageSize=50",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "stock"
+                  ],
+                  "query": [
+                    {
+                      "key": "lowStockOnly",
+                      "value": "false"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List movements (ledger)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/stock/movements?catalogItemId={{catalogItemId}}&page=1&pageSize=50",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "stock",
+                    "movements"
+                  ],
+                  "query": [
+                    {
+                      "key": "catalogItemId",
+                      "value": "{{catalogItemId}}"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Suppliers",
+          "item": [
+            {
+              "name": "Create supplier",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/inventory/suppliers",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "suppliers"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"ACME Supplies\",\n  \"contactName\": \"Bob\",\n  \"email\": \"bob@acme.co\",\n  \"phone\": null,\n  \"address\": null,\n  \"taxId\": \"RNC1\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "let j = pm.response.json();",
+                      "if (j && j.id) pm.collectionVariables.set('supplierId', j.id);",
+                      "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List suppliers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/suppliers?activeOnly=false",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "suppliers"
+                  ],
+                  "query": [
+                    {
+                      "key": "activeOnly",
+                      "value": "false"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get supplier",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/suppliers/{{supplierId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "suppliers",
+                    "{{supplierId}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update supplier",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/inventory/suppliers/{{supplierId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "suppliers",
+                    "{{supplierId}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"ACME Supplies 2\",\n  \"contactName\": null,\n  \"email\": null,\n  \"phone\": null,\n  \"address\": null,\n  \"taxId\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Set active",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/inventory/suppliers/{{supplierId}}/active",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "suppliers",
+                    "{{supplierId}}",
+                    "active"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"isActive\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete supplier",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/suppliers/{{supplierId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "suppliers",
+                    "{{supplierId}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Item-Suppliers",
+          "item": [
+            {
+              "name": "Upsert item-supplier link",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/inventory/item-suppliers",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "item-suppliers"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"catalogItemId\": \"{{catalogItemId}}\",\n  \"supplierId\": \"{{supplierId}}\",\n  \"supplierSku\": \"SUP-A\",\n  \"priceAmount\": 50.0,\n  \"priceCurrency\": \"USD\",\n  \"leadTimeDays\": 7,\n  \"isPreferred\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List by item",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/item-suppliers?catalogItemId={{catalogItemId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "item-suppliers"
+                  ],
+                  "query": [
+                    {
+                      "key": "catalogItemId",
+                      "value": "{{catalogItemId}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete link",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/inventory/item-suppliers/{{itemSupplierId}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "inventory",
+                    "item-suppliers",
+                    "{{itemSupplierId}}"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "description": "Stock + ledger + proveedores. Consume eventos de Catalog. RBAC: inventory.read/write/adjust.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{serviceToken}}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Billing",
+      "item": [
+        {
+          "name": "Create invoice draft (con catalogItemId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/billing/invoices",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoices"
+              ]
+            },
+            "description": "Requiere actor TenantAdmin/PlatformAdmin + billing.manage (usar {{userToken}}). La línea guarda catalogItemId (referencia débil).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer\": {\n    \"customerId\": \"22222222-2222-2222-2222-222222222222\",\n    \"name\": \"Cliente Demo\",\n    \"email\": null,\n    \"phone\": null,\n    \"taxId\": null,\n    \"billing\": null\n  },\n  \"currency\": \"USD\",\n  \"lines\": [\n    {\n      \"description\": \"Wired Product\",\n      \"quantity\": 2,\n      \"unitAmountCents\": 2500,\n      \"taxBasisPoints\": 1800,\n      \"catalogItemId\": \"{{catalogItemId}}\"\n    }\n  ],\n  \"notes\": \"desde Postman\",\n  \"issuer\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let j = pm.response.json();",
+                  "if (j && j.invoiceId) pm.collectionVariables.set('invoiceId', j.invoiceId);",
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Issue invoice (genera PDF)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/billing/invoices/{{invoiceId}}/issue",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoices",
+                "{{invoiceId}}",
+                "issue"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get invoice",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/billing/invoices/{{invoiceId}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoices",
+                "{{invoiceId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Facturación tenant→cliente. Las líneas pueden referenciar un ítem del catálogo (Fase 8).",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{userToken}}"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "gateway",
+      "value": "http://localhost:5047"
+    },
+    {
+      "key": "tenantId",
+      "value": "11111111-1111-1111-1111-111111111111"
+    },
+    {
+      "key": "serviceClientId",
+      "value": "notification-worker"
+    },
+    {
+      "key": "serviceClientSecret",
+      "value": ""
+    },
+    {
+      "key": "serviceToken",
+      "value": ""
+    },
+    {
+      "key": "userEmail",
+      "value": "bootstrap-admin@taxvision.local"
+    },
+    {
+      "key": "userPassword",
+      "value": ""
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    },
+    {
+      "key": "categoryId",
+      "value": ""
+    },
+    {
+      "key": "catalogItemId",
+      "value": ""
+    },
+    {
+      "key": "supplierId",
+      "value": ""
+    },
+    {
+      "key": "itemSupplierId",
+      "value": ""
+    },
+    {
+      "key": "invoiceId",
+      "value": ""
+    }
+  ]
+}

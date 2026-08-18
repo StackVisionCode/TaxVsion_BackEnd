@@ -1,6 +1,8 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,6 +39,7 @@ public sealed class TenantPaymentsController(IMessageBus bus) : ControllerBase
     /// <see cref="ChargeTenantPaymentRequest.PlatformFeeAmountCents"/> solo aplica si el
     /// config del tenant está en modo Connect.</summary>
     [HttpPost]
+    [RateLimit("payment_client.l.payment_charge")]
     [HasPermission(PaymentClientPermissions.PaymentCharge)]
     [ProducesResponseType<Guid>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Charge(ChargeTenantPaymentRequest request, CancellationToken ct)
@@ -67,6 +70,7 @@ public sealed class TenantPaymentsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpGet("{tenantPaymentId:guid}")]
+    [RateLimit("payment_client.f.payment_read")]
     [HasPermission(PaymentClientPermissions.PaymentRead)]
     [ProducesResponseType<TenantPaymentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

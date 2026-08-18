@@ -37,6 +37,9 @@ public sealed class Invitation : TenantEntity
     public int ResendCount { get; private set; }
     public DateTime? LastSentAtUtc { get; private set; }
 
+    public const int MaxAcceptAttempts = 5;
+    public int AcceptAttempts { get; private set; }
+
     public static Result<Invitation> Create(
         Guid tenantId,
         string email,
@@ -153,6 +156,10 @@ public sealed class Invitation : TenantEntity
     }
 
     public void MarkSent() => LastSentAtUtc = DateTime.UtcNow;
+
+    /// <summary>Fase 18 — máx. 5 intentos fallidos de canje sobre la misma invitación (policy de
+    /// password / conflicto de email tras un token válido), tras eso se trata como inválida.</summary>
+    public void RegisterAcceptAttempt() => AcceptAttempts++;
 
     public bool MatchesTokenHash(string tokenHash)
     {

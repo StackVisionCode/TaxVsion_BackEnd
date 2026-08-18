@@ -35,7 +35,7 @@ internal static class RawMessageSyncOrchestrator
         HistoryPage history;
         try
         {
-            history = await client.GetHistoryAsync(account.Id, cursor.CursorValue, ct);
+            history = await client.GetHistoryAsync(account.Id, account.TenantId, cursor.CursorValue, ct);
         }
         catch (EmailProviderException ex)
         {
@@ -48,7 +48,7 @@ internal static class RawMessageSyncOrchestrator
             RawMessage message;
             try
             {
-                message = await client.GetMessageAsync(account.Id, messageId, ct);
+                message = await client.GetMessageAsync(account.Id, account.TenantId, messageId, ct);
             }
             catch (EmailProviderException ex)
             {

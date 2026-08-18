@@ -1,24 +1,30 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
-using BuildingBlocks.ActorTypeAuthorization;
-using BuildingBlocks.Caching;
-using BuildingBlocks.Common;
-using BuildingBlocks.Health;
+using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
-using BuildingBlocks.Middleware;
-using BuildingBlocks.Observability;
 using BuildingBlocks.Persistence;
-using BuildingBlocks.Security;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Common;
+using BuildingBlocks.Web.Health;
+using BuildingBlocks.Web.Middleware;
+using BuildingBlocks.Web.Observability;
+using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Security;
 using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Serilog;
+using StackExchange.Redis;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Api.Jobs;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Infrastructure;
+using TaxVision.Notification.Infrastructure.Onboarding;
 using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Scribe;
 using TaxVision.Notification.Infrastructure.Storage;
@@ -53,18 +59,37 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
-// RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos para enforzar perm_v.
-// Flag OFF por default (Authorization:PermissionsSource ausente o "Jwt") preserva el
-// comportamiento historico (permisos embebidos en el JWT, sin chequeo de staleness). Cierra un
-// gap real: Notification ya usaba [HasPermission] en ~28 acciones de controller sin registrar
-// nunca ningun IUserPermissionsSource en DI — cualquier endpoint asi decorado tiraba
-// InvalidOperationException al resolver la policy. Mismo bloque de 5 lineas que CloudStorage/
-// Customer/Connectors/Correspondence/PaymentApp/PaymentClient/Postmaster/Scribe/Tenant.
-builder.Services.AddMemoryCache();
-if (builder.Configuration["Authorization:PermissionsSource"] == "Projection")
-    builder.Services.AddScoped<IUserPermissionsSource, ProjectionPermissionsSource>();
-else
-    builder.Services.AddScoped<IUserPermissionsSource, JwtEmbeddedPermissionsSource>();
+// H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
+// [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
+// 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
+builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
+
+// Rate limiting por tenant/usuario (Fase 4.3 del plan) — arrancaba en cero (sin AddRateLimiter ni
+// ninguna política previa), mismo [RateLimit]/IRateCounter tiered que ya corre en
+// Customer/Tenant desde Fase 3/4.2.
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+    ConnectionMultiplexer.Connect(
+        builder.Configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
+    )
+);
+builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
+
+// RateLimit Fase 2 — piloto Customer (Fase 6) extendido a Notification. Flag OFF por default
+// (fail-open a la cuota base sin escalar, vía NullTenantPlanCodeReader/NullPlanRateLimitReader de
+// AddTieredRateLimiting) hasta rollout coordinado.
+if (builder.Configuration.GetValue<bool>("RateLimit:EnforceTierQuotas"))
+{
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.ITenantPlanCodeReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedTenantPlanCodeReader
+    >();
+    builder.Services.AddSingleton<
+        BuildingBlocks.RateLimiting.IPlanRateLimitReader,
+        BuildingBlocks.Infrastructure.RateLimiting.ScopedPlanRateLimitReader
+    >();
+}
+builder.Services.AddTieredRateLimiting();
 
 // Cliente HTTP a CloudStorage (plantillas/layouts). El token del usuario se reenvía en contexto request;
 // en background (sync) se usa un token de servicio M2M del Auth.
@@ -90,6 +115,12 @@ builder.Services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
     }
 );
 
+// RateLimit Fase 2 — HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) depende
+// del contrato compartido; ServiceTokenAcquirer ya lo implementa, solo falta el forwarding.
+builder.Services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+    (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)sp.GetRequiredService<IServiceTokenAcquirer>()
+);
+
 // Fase 8: cliente HTTP a Scribe (render de emails) — reusa el mismo IServiceTokenAcquirer M2M ya
 // registrado arriba para CloudStorage (no está atado a un downstream específico).
 builder.Services.Configure<ScribeClientOptions>(builder.Configuration.GetSection(ScribeClientOptions.SectionName));
@@ -98,6 +129,29 @@ builder.Services.AddHttpClient<IScribeRenderClient, ScribeRenderClient>(
     {
         var options = sp.GetRequiredService<IOptions<ScribeClientOptions>>().Value;
         client.BaseAddress = new Uri(options.BaseUrl);
+    }
+);
+
+// Reminder Fase 10: recuperación pull del correo de un usuario contra el endpoint interno de Auth,
+// para los usuarios que ya existían cuando se creó el directorio userId → email. Reusa el mismo
+// IServiceTokenAcquirer M2M (ya apunta a Auth) — un acquirer por servicio, un HttpClient por destino.
+builder.Services.AddHttpClient<IUserContactSnapshotClient, UserContactSnapshotClient>(
+    (sp, client) =>
+    {
+        var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+        client.BaseAddress = new Uri(options.AuthBaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(15);
+    }
+);
+
+// PayFlow (Fase 12): cliente HTTP al endpoint one-shot de Auth que resuelve un TokenReference a la
+// URL real de registro — reusa el mismo IServiceTokenAcquirer M2M (apunta a Auth, mismo host que
+// ServiceAuthClientOptions.AuthBaseUrl ya configurado arriba).
+builder.Services.AddHttpClient<IOnboardingTokenClient, OnboardingTokenClient>(
+    (sp, client) =>
+    {
+        var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+        client.BaseAddress = new Uri(options.AuthBaseUrl);
     }
 );
 
@@ -166,16 +220,14 @@ builder.Host.UseWolverine(options =>
         .Sequential()
         .UseDurableInbox();
 
-    // RBAC Fase 5 — restaura BuildingBlocks.Tenancy.TenantContext dentro del scope que Wolverine
+    // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).
     options
         .Policies.ForMessagesOfType<BuildingBlocks.Messaging.IIntegrationEvent>()
-        .AddMiddleware(typeof(BuildingBlocks.Tenancy.IntegrationEventTenantMiddleware));
-    options.Policies.AddMiddleware(typeof(BuildingBlocks.Tenancy.LocalCommandTenantMiddleware));
+        .AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware));
+    options.Policies.AddMiddleware(typeof(BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware));
 
-    options
-        .Policies.OnException<Exception>()
-        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
+    options.ApplyStandardFailurePolicies();
 });
 
 var app = builder.Build();
@@ -194,12 +246,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 app.UseAuthentication();
 
-// RBAC Fase 5 — setea BuildingBlocks.Tenancy.TenantContext desde el JWT para el HasQueryFilter
-// global de NotificationDbContext. Reemplaza al TenantResolutionMiddleware anterior (leía
-// X-Tenant-Id sin nunca sellar IMessageBus.TenantId). Va antes de UseAuthorization() — en modo
-// Projection, [HasPermission] necesita el tenant ya poblado durante su propia evaluación, que
-// corre dentro de UseAuthorization().
-app.UseMiddleware<BuildingBlocks.Tenancy.JwtTenantContextMiddleware>();
+// Puebla TenantContext desde el JWT para el HasQueryFilter global de NotificationDbContext.
+// Va antes de UseAuthorization: en modo Projection, [HasPermission] consulta una proyección
+// tenant-scoped durante su propia evaluación, que corre dentro de UseAuthorization().
+app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
@@ -209,3 +259,5 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;

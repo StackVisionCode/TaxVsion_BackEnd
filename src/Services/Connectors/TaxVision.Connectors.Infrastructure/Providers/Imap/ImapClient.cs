@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Resilience;
 using MailKit;
 using MailKit.Search;
 using MailKit.Security;
@@ -6,7 +7,6 @@ using Polly.CircuitBreaker;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Shared;
-using TaxVision.Connectors.Infrastructure.RateLimit;
 using MailKitImapClient = MailKit.Net.Imap.ImapClient;
 
 namespace TaxVision.Connectors.Infrastructure.Providers.Imap;
@@ -16,10 +16,14 @@ namespace TaxVision.Connectors.Infrastructure.Providers.Imap;
 /// tenant (SMTP manual en Postmaster solo envía; sin esto esas oficinas no tendrían forma de
 /// recibir nada en Correspondence). Inbox-only siempre (D1, §34.5): abre <c>client.Inbox</c>
 /// explícitamente, nunca itera otras carpetas. Connect+operate pasa por un
-/// <see cref="ProviderCircuitBreaker"/> propio (Fase 10, clave <c>"Imap:messages"</c>) que abre tras
-/// fallos consecutivos — a diferencia de Gmail/Graph, acá NO hay retry Polly automático: MailKit no
-/// distingue de forma limpia un fallo de red transitorio de un fallo de auth/protocolo a través de su
-/// superficie de excepciones, así que forzar reintentos sería una apuesta a ciegas.
+/// <see cref="HttpResiliencePipeline"/> propio (F24, clave <c>"Imap:messages"</c>) que abre tras
+/// fallos consecutivos — el stage de retry compartido (F24) solo reintenta
+/// <see cref="HttpRequestException"/>/<see cref="TaskCanceledException"/>, que MailKit rara vez
+/// lanza para fallos de protocolo/auth IMAP (esos llegan como <c>ImapProtocolException</c>,
+/// <c>AuthenticationException</c> o <c>IOException</c>) — en la práctica sigue sin haber reintento
+/// real para la mayoría de fallos IMAP, igual que antes de F24: MailKit no distingue de forma
+/// limpia un fallo de red transitorio de un fallo de auth/protocolo, así que forzar reintentos
+/// ahí sería una apuesta a ciegas.
 ///
 /// Esta clase está registrada Scoped (un scope = un ReconcileAccountCommand / notificación de
 /// push), así que cachear la conexión autenticada como campo de instancia y reusarla entre
@@ -31,7 +35,7 @@ public sealed class ImapClient(
     IImapCredentialsRepository credentialsRepository,
     IEncryptedSecretProtector protector,
     IProviderRateLimiter rateLimiter,
-    ProviderCircuitBreakerRegistry circuitBreakers,
+    HttpResiliencePipelineRegistry circuitBreakers,
     ILogger<ImapClient> logger
 ) : IEmailProviderClient, IAsyncDisposable
 {
@@ -59,9 +63,15 @@ public sealed class ImapClient(
     /// (BackfillLastUid/BackfillCeiling en ImapCursor) que solo consume el presupuesto que el live
     /// lane no usó ese pase — nunca compite con correo nuevo.
     /// </summary>
-    public Task<HistoryPage> GetHistoryAsync(Guid accountId, string? sinceCursor, CancellationToken ct = default) =>
+    public Task<HistoryPage> GetHistoryAsync(
+        Guid accountId,
+        Guid tenantId,
+        string? sinceCursor,
+        CancellationToken ct = default
+    ) =>
         ExecuteAsync(
             accountId,
+            tenantId,
             async (inbox, token) =>
             {
                 var parsedCursor = ImapCursor.Parse(sinceCursor);
@@ -174,9 +184,15 @@ public sealed class ImapClient(
             ct
         );
 
-    public Task<RawMessage> GetMessageAsync(Guid accountId, string providerMessageId, CancellationToken ct = default) =>
+    public Task<RawMessage> GetMessageAsync(
+        Guid accountId,
+        Guid tenantId,
+        string providerMessageId,
+        CancellationToken ct = default
+    ) =>
         ExecuteAsync(
             accountId,
+            tenantId,
             async (inbox, token) =>
             {
                 var uid = ParseUid(providerMessageId);
@@ -223,11 +239,13 @@ public sealed class ImapClient(
     /// <summary>MailKit ya resuelve la "mejor" parte html/text vía BODYSTRUCTURE (summary.HtmlBody/TextBody) — no hace falta caminar el árbol a mano como con Gmail. Octets viene de la propia BODYSTRUCTURE, sin descargas extra.</summary>
     public Task<MessageBody> GetMessageBodyAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         CancellationToken ct = default
     ) =>
         ExecuteAsync(
             accountId,
+            tenantId,
             async (inbox, token) =>
             {
                 var uid = ParseUid(providerMessageId);
@@ -273,12 +291,14 @@ public sealed class ImapClient(
 
     public Task<Stream> GetAttachmentAsync(
         Guid accountId,
+        Guid tenantId,
         string providerMessageId,
         string attachmentId,
         CancellationToken ct = default
     ) =>
         ExecuteAsync(
             accountId,
+            tenantId,
             async (inbox, token) =>
             {
                 var uid = ParseUid(providerMessageId);
@@ -308,11 +328,12 @@ public sealed class ImapClient(
 
     private async Task<T> ExecuteAsync<T>(
         Guid accountId,
+        Guid tenantId,
         Func<IMailFolder, CancellationToken, Task<T>> operation,
         CancellationToken ct
     )
     {
-        await rateLimiter.WaitForSlotAsync(ProviderCode, ct);
+        await rateLimiter.WaitForSlotAsync(ProviderCode, tenantId, ct);
 
         var breaker = circuitBreakers.GetOrCreate("Imap:messages");
         try

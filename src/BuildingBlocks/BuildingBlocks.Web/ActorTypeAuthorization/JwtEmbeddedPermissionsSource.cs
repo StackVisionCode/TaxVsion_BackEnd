@@ -1,6 +1,7 @@
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 
-namespace BuildingBlocks.ActorTypeAuthorization;
+namespace BuildingBlocks.Web.ActorTypeAuthorization;
 
 /// <summary>
 /// Comportamiento actual (default, sin cambios) — mira únicamente lo que ya trae el JWT.

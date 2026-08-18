@@ -1,3 +1,5 @@
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -10,6 +12,7 @@ using TaxVision.Postmaster.Application.Abstractions;
 using TaxVision.Postmaster.Application.Common;
 using TaxVision.Postmaster.Application.Providers;
 using TaxVision.Postmaster.Application.RateLimit;
+using TaxVision.Postmaster.Application.RateLimiting.Abstractions;
 using TaxVision.Postmaster.Application.Sending;
 using TaxVision.Postmaster.Application.Suppression;
 using TaxVision.Postmaster.Infrastructure.Idempotency;
@@ -20,6 +23,7 @@ using TaxVision.Postmaster.Infrastructure.Providers.Assets;
 using TaxVision.Postmaster.Infrastructure.Providers.Connectors;
 using TaxVision.Postmaster.Infrastructure.Providers.Smtp;
 using TaxVision.Postmaster.Infrastructure.RateLimit;
+using TaxVision.Postmaster.Infrastructure.RateLimiting;
 using TaxVision.Postmaster.Infrastructure.Seed;
 
 namespace TaxVision.Postmaster.Infrastructure;
@@ -54,7 +58,11 @@ public static class DependencyInjection
         );
         services.AddHostedService<SystemEmailProviderSeeder>();
 
-        services.AddSingleton<ProviderCircuitBreakerRegistry>();
+        services.AddSingleton(_ => new HttpResiliencePipelineRegistry(
+            minimumThroughput: 5,
+            onOpened: provider =>
+                PostmasterMetrics.CircuitBreakerOpened.Add(1, new KeyValuePair<string, object?>("provider", provider))
+        ));
         AddRateLimiting(services, configuration);
 
         AddCloudStorageAssetFetching(services, configuration);
@@ -73,7 +81,48 @@ public static class DependencyInjection
             sp.GetRequiredService<UserPermissionsProjectionRepository>()
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
+
+        AddRateLimitTierQuotas(services, configuration);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento de Subscription
+    // (mantiene la proyección al día incluso con el flag apagado) y los lectores concretos. El
+    // mapeo a ITenantPlanCodeReader/IPlanRateLimitReader (los que RateLimitQuotaResolver
+    // realmente consume) es condicional al flag RateLimit:EnforceTierQuotas — decidido en
+    // Program.cs, ANTES de AddTieredRateLimiting().
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
+    {
+        // HttpPlanRateLimitReader (BuildingBlocks.Infrastructure.RateLimiting) depende del
+        // contrato compartido; PostmasterServiceTokenAcquirer ya lo implementa (ver
+        // AddCloudStorageAssetFetching), solo falta el forwarding.
+        services.AddTransient<BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer>(sp =>
+            (BuildingBlocks.Infrastructure.Security.IServiceTokenAcquirer)
+                sp.GetRequiredService<IPostmasterServiceTokenAcquirer>()
+        );
+
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services
+            .AddOptions<SubscriptionClientOptions>()
+            .Bind(configuration.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
     }
 
     /// <summary>Si no hay Redis configurado (dev local) se degrada a un limiter no-op — mismo criterio que Signature Fase 4.</summary>
@@ -83,6 +132,7 @@ public static class DependencyInjection
         if (!string.IsNullOrWhiteSpace(redisConnectionString))
         {
             services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+            services.AddSingleton<IRateCounter, RedisRateCounter>();
             services.AddSingleton<IEmailProviderRateLimiter, RedisEmailProviderRateLimiter>();
         }
         else

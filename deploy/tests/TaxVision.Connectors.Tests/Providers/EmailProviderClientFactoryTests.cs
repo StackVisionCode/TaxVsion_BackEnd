@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Resilience;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.Providers;
@@ -15,7 +16,7 @@ public class EmailProviderClientFactoryTests
     {
         var rateLimiter = new NoWaitProviderRateLimiter();
         var tokenManager = new FakeOAuthTokenManager();
-        var circuitBreakers = new ProviderCircuitBreakerRegistry(NullLogger<ProviderCircuitBreakerRegistry>.Instance);
+        var circuitBreakers = new HttpResiliencePipelineRegistry();
         var gmail = new GmailApiClient(
             new HttpClient(new FakeHttpMessageHandler()),
             tokenManager,

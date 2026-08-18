@@ -257,6 +257,140 @@ public sealed class SaaSPaymentTests
         Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
     }
 
+    // ---------- PayFlow (Fase 8) — CreateForOnboarding / RecordHostedCheckoutSession ----------
+
+    [Fact]
+    public void CreateForOnboarding_starts_Pending_with_TenantId_Empty_and_OnboardingId_set()
+    {
+        var onboardingId = Guid.NewGuid();
+
+        var payment = CreateOnboardingPayment(onboardingId);
+
+        Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.Equal(SaaSPaymentType.OnboardingInitial, payment.Type);
+        Assert.Equal(Guid.Empty, payment.TenantId);
+        Assert.Equal(onboardingId, payment.OnboardingId);
+        Assert.Equal(Guid.Empty, payment.CreatedBy);
+    }
+
+    [Fact]
+    public void CreateForOnboarding_rejects_empty_onboarding_id()
+    {
+        var result = SaaSPayment.CreateForOnboarding(
+            Guid.Empty,
+            IdempotencyKey.Create("onboarding-1").Value,
+            Money.Create(9900, "USD").Value,
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            StatementDescriptor.Create("TAXVISION SAAS").Value,
+            DateTime.UtcNow
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SaaSPayment.InvalidOnboarding", result.Error.Code);
+    }
+
+    [Fact]
+    public void CreateForOnboarding_rejects_zero_amount()
+    {
+        var result = SaaSPayment.CreateForOnboarding(
+            Guid.NewGuid(),
+            IdempotencyKey.Create("onboarding-1").Value,
+            Money.Zero("USD"),
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            StatementDescriptor.Create("TAXVISION SAAS").Value,
+            DateTime.UtcNow
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SaaSPayment.InvalidAmount", result.Error.Code);
+    }
+
+    [Fact]
+    public void RecordHostedCheckoutSession_transitions_Pending_to_Processing_and_records_an_attempt()
+    {
+        var payment = CreateOnboardingPayment(Guid.NewGuid());
+        var reference = ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_onboarding_1").Value;
+        var nowUtc = DateTime.UtcNow;
+
+        var result = payment.RecordHostedCheckoutSession(
+            "cs_test_123",
+            reference,
+            "https://checkout.stripe.com/cs_test_123",
+            nowUtc
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Equal("cs_test_123", payment.ProviderCheckoutSessionId);
+        Assert.Equal(reference, payment.ExternalChargeReference);
+        Assert.Equal("https://checkout.stripe.com/cs_test_123", payment.NextActionUrl);
+        Assert.Single(payment.Attempts);
+    }
+
+    [Fact]
+    public void RecordHostedCheckoutSession_is_idempotent_for_the_same_session_id()
+    {
+        var payment = CreateOnboardingPayment(Guid.NewGuid());
+        var reference = ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_onboarding_1").Value;
+        var nowUtc = DateTime.UtcNow;
+        payment.RecordHostedCheckoutSession(
+            "cs_test_123",
+            reference,
+            "https://checkout.stripe.com/cs_test_123",
+            nowUtc
+        );
+
+        var result = payment.RecordHostedCheckoutSession(
+            "cs_test_123",
+            reference,
+            "https://checkout.stripe.com/cs_test_123",
+            nowUtc.AddSeconds(1)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Single(payment.Attempts);
+    }
+
+    [Fact]
+    public void RecordHostedCheckoutSession_rejects_wrong_state()
+    {
+        var payment = CreateOnboardingPayment(Guid.NewGuid());
+        var reference = ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_onboarding_1").Value;
+        var nowUtc = DateTime.UtcNow;
+        payment.RecordHostedCheckoutSession(
+            "cs_test_123",
+            reference,
+            "https://checkout.stripe.com/cs_test_123",
+            nowUtc
+        );
+
+        var result = payment.RecordHostedCheckoutSession(
+            "cs_test_456",
+            reference,
+            "https://checkout.stripe.com/cs_test_456",
+            nowUtc
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
+    }
+
+    private static SaaSPayment CreateOnboardingPayment(Guid onboardingId, string idempotencyKey = "onboarding-1") =>
+        SaaSPayment
+            .CreateForOnboarding(
+                onboardingId,
+                IdempotencyKey.Create(idempotencyKey).Value,
+                Money.Create(9900, "USD").Value,
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                DateTime.UtcNow
+            )
+            .Value;
+
     private static SaaSPayment CreatePendingPayment(string idempotencyKey = "key-1")
     {
         return SaaSPayment

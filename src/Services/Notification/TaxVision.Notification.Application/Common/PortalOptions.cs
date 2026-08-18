@@ -9,7 +9,7 @@ public sealed class PortalOptions
     public string BaseUrl { get; set; } = "http://localhost:4200";
 
     /// <summary>Dominio base usado para enlaces específicos de cada tenant.</summary>
-    public string BaseDomain { get; set; } = "taxprocore.com";
+    public string BaseDomain { get; set; } = "taxproffice.com";
 
-    public string ProductName { get; set; } = "TaxVision";
+    public string ProductName { get; set; } = "TaxProffice";
 }

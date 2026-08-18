@@ -2,6 +2,8 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,6 +37,7 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
     /// <summary>Equipo legal de la plataforma registra un takedown: bloquea el archivo y lo pone bajo legal hold.</summary>
     [HttpPost]
     [HasPermission(CloudStoragePermissions.LegalManage)]
+    [RateLimit("cloudstorage.g.legal_manage")]
     [ProducesResponseType<object>(StatusCodes.Status201Created)]
     public async Task<IActionResult> RegisterTakedown(RegisterDmcaTakedownRequest request, CancellationToken ct)
     {
@@ -65,6 +68,7 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
     /// <summary>El tenant/uploader disputa un takedown recibido sobre un archivo propio.</summary>
     [HttpPost("{dmcaNoticeId:guid}/counter-notice")]
     [HasPermission(CloudStoragePermissions.DmcaCounterNotice)]
+    [RateLimit("cloudstorage.g.legal_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SubmitCounterNotice(
         Guid dmcaNoticeId,
@@ -94,6 +98,7 @@ public sealed class LegalController(IMessageBus bus, ICorrelationContext correla
     /// <summary>Equipo legal de la plataforma cierra el expediente reinstalando el archivo.</summary>
     [HttpPost("{dmcaNoticeId:guid}/reinstate")]
     [HasPermission(CloudStoragePermissions.LegalManage)]
+    [RateLimit("cloudstorage.g.legal_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Reinstate(Guid dmcaNoticeId, ReinstateRequest request, CancellationToken ct)
     {

@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.Resilience;
 using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -10,7 +11,6 @@ using TaxVision.Connectors.Application.Providers;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Infrastructure.Observability;
-using TaxVision.Connectors.Infrastructure.RateLimit;
 
 namespace TaxVision.Connectors.Infrastructure.Providers.Manual;
 
@@ -24,7 +24,7 @@ namespace TaxVision.Connectors.Infrastructure.Providers.Manual;
 public sealed class SmtpManualClient(
     ISmtpCredentialsRepository credentialsRepository,
     IEncryptedSecretProtector protector,
-    ProviderCircuitBreakerRegistry circuitBreakers,
+    HttpResiliencePipelineRegistry circuitBreakers,
     ILogger<SmtpManualClient> logger
 ) : IOutboundEmailProviderClient
 {
@@ -32,6 +32,7 @@ public sealed class SmtpManualClient(
 
     public async Task<SendMessageResult> SendMessageAsync(
         Guid accountId,
+        Guid tenantId,
         string fromAddress,
         string? fromDisplayName,
         OutboundMessage message,

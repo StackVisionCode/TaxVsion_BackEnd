@@ -1,3 +1,4 @@
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -6,10 +7,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.RateLimiting.Abstractions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
 using TaxVision.Subscription.Infrastructure.Growth;
 using TaxVision.Subscription.Infrastructure.Persistence;
 using TaxVision.Subscription.Infrastructure.Persistence.Repositories;
+using TaxVision.Subscription.Infrastructure.RateLimiting;
 using TaxVision.Subscription.Infrastructure.Scheduling;
 
 namespace TaxVision.Subscription.Infrastructure;
@@ -37,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
         services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
         services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
+        services.AddScoped<IPlanRateLimitRepository, PlanRateLimitRepository>();
         services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
@@ -82,7 +86,37 @@ public static class DependencyInjection
             }
         );
 
+        AddRateLimitTierQuotas(services);
         return services;
+    }
+
+    // RateLimit Fase 2 — piezas siempre registradas: el consumer del evento
+    // TenantEntitlementsChangedIntegrationEvent (que este mismo servicio publica; ver remarks en
+    // TenantPlanCodeProjection) mantiene la proyección local al día incluso con el flag apagado,
+    // y los lectores concretos de esa proyección. NO se registra acá el mapeo a
+    // BuildingBlocks.RateLimiting.ITenantPlanCodeReader (eso vive en Program.cs, condicional al
+    // flag RateLimit:EnforceTierQuotas, como en Customer/Tenant/Connectors).
+    //
+    // Caso especial de Subscription para IPlanRateLimitReader: este servicio ES el dueño de la
+    // tabla PlanRateLimits y expone el propio endpoint M2M (GET internal/plan-rate-limits)
+    // que HttpPlanRateLimitReader llama en TODOS los demás servicios. Apuntar HttpPlanRateLimitReader
+    // a sí mismo implicaría un round-trip HTTP + M2M circular para leer un dato que ya está
+    // disponible en el mismo proceso vía IPlanRateLimitRepository — auditoría RateLimit hallazgo #2
+    // cierra este gap con DirectPlanRateLimitReader (mismo shape que
+    // HttpPlanRateLimitReader.FetchCatalogAsync pero sin HTTP, ver RateLimiting/DirectPlanRateLimitReader.cs).
+    private static void AddRateLimitTierQuotas(IServiceCollection services)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<CachedTenantPlanCodeReader>(sp => new CachedTenantPlanCodeReader(
+            sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+            sp.GetRequiredService<EfTenantPlanCodeReader>()
+        ));
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+        services.AddScoped<DirectPlanRateLimitReader>();
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

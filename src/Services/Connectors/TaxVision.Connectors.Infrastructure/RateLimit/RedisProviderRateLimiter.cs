@@ -1,3 +1,4 @@
+﻿using BuildingBlocks.Infrastructure.RateLimiting;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using TaxVision.Connectors.Application.Providers;
@@ -8,20 +9,28 @@ namespace TaxVision.Connectors.Infrastructure.RateLimit;
 
 /// <summary>
 /// Rate limiter con Redis para que N réplicas compartan el mismo presupuesto por provider.
-/// Ventana fija de 1 segundo (INCR + EXPIRE) más un cooldown explícito activado por 429 real
-/// (<see cref="RecordRateLimitedAsync"/>) — otros nodos lo ven de inmediato sin tener que
-/// descubrir el 429 ellos mismos.
+/// Rate Limit Fase 0.3 — dos ventanas fijas de 1 segundo en paralelo (vía <see cref="IRateCounter"/>),
+/// ambas deben tener hueco: la global (compartida entre TODOS los tenants, protege al provider
+/// externo) y la per-tenant (protege el fair-share de cada tenant sobre ese cupo global — sin
+/// esto, un tenant ruidoso podía consumir el cupo entero y apagar a los demás). Más un cooldown
+/// explícito activado por 429 real (<see cref="RecordRateLimitedAsync"/>) — otros nodos lo ven de
+/// inmediato sin tener que descubrir el 429 ellos mismos. El cooldown es un mecanismo distinto
+/// (flag booleano de TTL, no un contador), siempre global (un 429 real del provider aplica a
+/// todos los tenants por igual), y sigue usando <see cref="IConnectionMultiplexer"/> directo.
 /// </summary>
-public sealed class RedisProviderRateLimiter(IConnectionMultiplexer redis, IOptions<ProviderRateLimiterOptions> options)
-    : IProviderRateLimiter
+public sealed class RedisProviderRateLimiter(
+    IConnectionMultiplexer redis,
+    IRateCounter rateCounter,
+    IOptions<ProviderRateLimiterOptions> options
+) : IProviderRateLimiter
 {
     private static readonly TimeSpan MaxCooldown = TimeSpan.FromSeconds(60);
 
-    public async Task WaitForSlotAsync(ProviderCode providerCode, CancellationToken ct = default)
+    public async Task WaitForSlotAsync(ProviderCode providerCode, Guid tenantId, CancellationToken ct = default)
     {
         var db = redis.GetDatabase();
         await WaitOutCooldownAsync(db, providerCode, ct);
-        await WaitForWindowSlotAsync(db, providerCode, ct);
+        await WaitForWindowSlotAsync(providerCode, tenantId, ct);
     }
 
     public async Task RecordRateLimitedAsync(
@@ -42,16 +51,21 @@ public sealed class RedisProviderRateLimiter(IConnectionMultiplexer redis, IOpti
             await Task.Delay(ttl, ct);
     }
 
-    private async Task WaitForWindowSlotAsync(IDatabase db, ProviderCode providerCode, CancellationToken ct)
+    private async Task WaitForWindowSlotAsync(ProviderCode providerCode, Guid tenantId, CancellationToken ct)
     {
         while (true)
         {
-            var windowKey = WindowKey(providerCode, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            var count = await db.StringIncrementAsync(windowKey);
-            if (count == 1)
-                await db.KeyExpireAsync(windowKey, TimeSpan.FromSeconds(2));
+            var unixSecond = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var globalKey = GlobalWindowKey(providerCode, unixSecond);
+            var tenantKey = TenantWindowKey(providerCode, tenantId, unixSecond);
 
-            if (count <= options.Value.MaxRequestsPerSecond)
+            var globalCount = await rateCounter.IncrementAndGetAsync(globalKey, TimeSpan.FromSeconds(2), ct);
+            var tenantCount = await rateCounter.IncrementAndGetAsync(tenantKey, TimeSpan.FromSeconds(2), ct);
+
+            if (
+                globalCount <= options.Value.MaxRequestsPerSecond
+                && tenantCount <= options.Value.MaxRequestsPerSecondPerTenant
+            )
                 return;
 
             var msIntoSecond = DateTimeOffset.UtcNow.Millisecond;
@@ -61,6 +75,9 @@ public sealed class RedisProviderRateLimiter(IConnectionMultiplexer redis, IOpti
 
     private static string CooldownKey(ProviderCode providerCode) => $"connectors:ratelimit:{providerCode}:cooldown";
 
-    private static string WindowKey(ProviderCode providerCode, long unixSecond) =>
-        $"connectors:ratelimit:{providerCode}:window:{unixSecond}";
+    private static RateCounterKey GlobalWindowKey(ProviderCode providerCode, long unixSecond) =>
+        RateCounterKey.From($"connectors:ratelimit:{providerCode}:window:{unixSecond}");
+
+    private static RateCounterKey TenantWindowKey(ProviderCode providerCode, Guid tenantId, long unixSecond) =>
+        RateCounterKey.From($"connectors:ratelimit:{providerCode}:tenant:{tenantId:N}:window:{unixSecond}");
 }

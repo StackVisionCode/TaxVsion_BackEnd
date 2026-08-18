@@ -1,5 +1,7 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,6 +37,9 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo — protegido por ILoginThrottler.GetIpRetryAfterAsync/RegisterFailureAsync, un mecanismo de dominio (Redis) completamente separado del RateLimit HTTP de esta fase; sin tenant_id/sub en el JWT pre-login, TieredRateLimitEvaluator fallaría-abierto siempre."
+    )]
     [ProducesResponseType<LoginResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Login(
@@ -64,11 +69,23 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Fase 18 — ResolvedTenantId no se bindea del body: sale de IResolvedTenantContext
+    /// (Host de la request, poblado por TenantHostResolutionMiddleware), igual que en Login.</summary>
+    public sealed record RefreshRequest(string RefreshToken);
+
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo — el refresh token en sí ya es el secreto portador (unguessable, host-binding en Fase 18.3); sin JWT propio que particionar, agregar protección HTTP nueva queda fuera de alcance de esta migración."
+    )]
     [ProducesResponseType<AuthTokensResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Refresh(RefreshAccessTokenCommand command, CancellationToken ct)
+    public async Task<IActionResult> Refresh(
+        RefreshRequest request,
+        [FromServices] IResolvedTenantContext tenantContext,
+        CancellationToken ct
+    )
     {
+        var command = new RefreshAccessTokenCommand(request.RefreshToken, tenantContext.ResolvedTenantId);
         var result = await bus.InvokeAsync<Result<AuthTokensResponse>>(command, ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -80,6 +97,9 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpPost("service-token")]
     [AllowAnonymous]
+    [RateLimitExempt(
+        "Grant M2M — anónimo por diseño (todavía no existe un JWT en el momento de la llamada, es la propia emisión); usado por los HttpClients tipados de los otros 21 servicios, nunca por un usuario final."
+    )]
     [ProducesResponseType<ServiceTokenResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ServiceToken(IssueServiceTokenCommand command, CancellationToken ct)
@@ -97,6 +117,7 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.session_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Revoke(RevokeRefreshTokenCommand command, CancellationToken ct)
     {
@@ -113,6 +134,7 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.g.session_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
@@ -131,6 +153,7 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         ActorType.CustomerPortal,
         ActorType.PlatformAdmin
     )]
+    [RateLimit("auth.f.me_read")]
     [ProducesResponseType<MeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Me(CancellationToken ct)
     {
@@ -146,5 +169,8 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
     [HttpGet(".well-known/jwks.json")]
     [AllowAnonymous]
     [ResponseCache(Duration = 300)]
+    [RateLimitExempt(
+        "Catálogo público cacheable (claves RSA de verificación, sin PII ni estado mutable) — mismo criterio que JwksController.Jwks de Signature en Fase 4.7."
+    )]
     public IActionResult Jwks([FromServices] IJwksProvider jwks) => Content(jwks.GetJwksJson(), "application/json");
 }

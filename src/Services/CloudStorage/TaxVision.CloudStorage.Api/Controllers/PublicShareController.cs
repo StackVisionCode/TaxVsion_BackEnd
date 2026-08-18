@@ -1,3 +1,4 @@
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -19,6 +20,11 @@ public sealed class PublicShareController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Fase C4 — fileId es obligatorio cuando el token es de un link de tipo Folder (ver FolderShareCoverage).</summary>
     [HttpGet("public/{token}")]
+    [RateLimitExempt(
+        "Endpoint anonimo (sin JWT) — TieredRateLimitEvaluator solo soporta particion por Tenant/User, "
+            + "asi que [RateLimit] fallaria abierto aqui. La proteccion real la da el limiter nativo "
+            + "[EnableRateLimiting(\"share-public\")] (IP+ruta, 20/min FixedWindow), que se deja intacto."
+    )]
     public async Task<IActionResult> ResolvePublic(
         string token,
         [FromQuery] string? password,

@@ -1,9 +1,12 @@
 using System.Text;
+using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using TaxVision.Codes.Application.Abstractions;
 using TaxVision.Growth.Infrastructure.Idempotency;
 using TaxVision.Growth.Infrastructure.Observability;
@@ -11,8 +14,11 @@ using TaxVision.Growth.Infrastructure.Payments;
 using TaxVision.Growth.Infrastructure.Persistence;
 using TaxVision.Growth.Infrastructure.Persistence.Permissions.Abstractions;
 using TaxVision.Growth.Infrastructure.Persistence.Permissions.Repositories;
+using TaxVision.Growth.Infrastructure.Persistence.RateLimiting.Abstractions;
+using TaxVision.Growth.Infrastructure.Persistence.RateLimiting.Repositories;
 using TaxVision.Growth.Infrastructure.Persistence.Repositories.Codes;
 using TaxVision.Growth.Infrastructure.Persistence.Repositories.Referrals;
+using TaxVision.Growth.Infrastructure.RateLimiting;
 using TaxVision.Growth.Infrastructure.Security;
 using TaxVision.Referrals.Application.Abstractions;
 
@@ -70,6 +76,8 @@ public static class DependencyInjection
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
+        AddRateLimitTierQuotas(services, configuration);
+
         services
             .AddOptions<CodeTokenHashingOptions>()
             .Bind(configuration.GetSection(CodeTokenHashingOptions.SectionName))
@@ -101,4 +109,53 @@ public static class DependencyInjection
 
         return services;
     }
+
+    // RateLimit Fase 2 — mismo patrón que Connectors: el consumer del evento de Subscription
+    // (TenantPlanCodeProjectionConsumer, en Persistence/RateLimiting/Consumers) mantiene la
+    // proyección local al día incluso con el flag apagado.
+    //
+    // Auditoria RateLimit hallazgo #2 — Growth ganó su primera infraestructura de token M2M
+    // saliente (ver RateLimiting/ServiceTokenAcquirer.cs); antes solo RECIBIA llamadas M2M
+    // (endpoints /internal/*), nunca las hacía. HttpPlanRateLimitReader ahora puede leer el
+    // catálogo de Subscription, cerrando el gap documentado en Fase 2.
+    private static void AddRateLimitTierQuotas(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
+        services.AddScoped<EfTenantPlanCodeReader>();
+        services.AddScoped<BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader>(
+            sp => new BuildingBlocks.Infrastructure.RateLimiting.CachedTenantPlanCodeReader(
+                sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
+                sp.GetRequiredService<EfTenantPlanCodeReader>()
+            )
+        );
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantPlanCodeCacheInvalidator,
+            TenantPlanCodeCacheInvalidator
+        >();
+
+        services
+            .AddOptions<ServiceAuthClientOptions>()
+            .Bind(configuration.GetSection(ServiceAuthClientOptions.SectionName));
+        services.AddHttpClient<IServiceTokenAcquirer, ServiceTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+            }
+        );
+
+        services
+            .AddOptions<SubscriptionClientOptions>()
+            .Bind(configuration.GetSection(SubscriptionClientOptions.SectionName));
+        services.AddHttpClient<HttpPlanRateLimitReader>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<SubscriptionClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+    }
+
+    private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";
 }

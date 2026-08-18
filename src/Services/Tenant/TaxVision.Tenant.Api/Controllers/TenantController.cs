@@ -1,10 +1,11 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Tenant.Api.Common;
 using TaxVision.Tenant.Application.Tenants.Commands;
 using TaxVision.Tenant.Application.Tenants.Queries;
@@ -44,7 +45,12 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
     [HttpPost]
     [Authorize(Policy = "TenantRegistration")]
     [AuthorizedByCapabilityToken]
-    [EnableRateLimiting("tenant-registration")]
+    // Rate Limit Fase 0.5 — el gate de tasa vive solo en el Gateway (RateLimitingRegistration.cs,
+    // 10/min por IP+path sobre POST /tenants), no acá también. Tener ambos era doble gate
+    // silencioso: el del Gateway corría igual sin que este servicio se enterara.
+    [RateLimitExempt(
+        "Gate real vive solo en el Gateway (Fase 0.5) — duplicarlo acá sería el mismo doble gate silencioso que se eliminó."
+    )]
     [ProducesResponseType<CreateTenantResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateTenantRequest request, CancellationToken cancellationToken)
@@ -73,6 +79,7 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
     [HttpGet]
     [Authorize]
     [HasPermission(TenantPermissions.ListView)]
+    [RateLimit("tenant.f.list")]
     [ProducesResponseType<IReadOnlyList<TenantResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<TenantResponse>>> Get(
         [FromQuery] int page = 1,
@@ -98,6 +105,7 @@ public sealed class TenantController(IMessageBus bus) : ControllerBase
     [HttpPatch("{tenantId:guid}/status")]
     [Authorize]
     [HasPermission(TenantPermissions.StatusChange)]
+    [RateLimit("tenant.g.status_change")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ChangeStatus(
         Guid tenantId,

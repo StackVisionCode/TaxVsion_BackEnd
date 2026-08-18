@@ -44,7 +44,8 @@ internal sealed class NoWaitProviderRateLimiter : IProviderRateLimiter
 {
     public List<(ProviderCode Provider, TimeSpan RetryAfter)> RecordedRateLimits { get; } = [];
 
-    public Task WaitForSlotAsync(ProviderCode providerCode, CancellationToken ct = default) => Task.CompletedTask;
+    public Task WaitForSlotAsync(ProviderCode providerCode, Guid tenantId, CancellationToken ct = default) =>
+        Task.CompletedTask;
 
     public Task RecordRateLimitedAsync(ProviderCode providerCode, TimeSpan retryAfter, CancellationToken ct = default)
     {

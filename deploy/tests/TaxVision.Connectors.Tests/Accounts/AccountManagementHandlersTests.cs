@@ -142,6 +142,7 @@ public class AccountManagementHandlersTests
             auditLogRepository,
             unitOfWork,
             bus,
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 

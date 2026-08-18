@@ -60,6 +60,9 @@ public sealed class SentMessage : TenantEntity
     /// <summary>Correlación de vuelta a Correspondence (D3 Compose §11.3) — null para el canal existente de notificaciones automáticas.</summary>
     public Guid? CorrespondenceDraftId { get; private set; }
 
+    /// <summary>Correlación de vuelta al microservicio de Campaña — null salvo que el envío haya sido originado por una campaña.</summary>
+    public Guid? CampaignId { get; private set; }
+
     /// <summary>Message-ID (RFC 5322) del mensaje al que este envío responde — null si es correspondencia nueva.</summary>
     public string? InReplyToInternetMessageId { get; private set; }
 
@@ -88,7 +91,8 @@ public sealed class SentMessage : TenantEntity
         ProviderScope requiredProviderScope = ProviderScope.System,
         Guid? correspondenceDraftId = null,
         string? inReplyToInternetMessageId = null,
-        IReadOnlyList<string>? references = null
+        IReadOnlyList<string>? references = null,
+        Guid? campaignId = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -137,6 +141,7 @@ public sealed class SentMessage : TenantEntity
             TemplateKey = templateKey is { Length: > 200 } ? templateKey[..200] : templateKey,
             RequiredProviderScope = requiredProviderScope,
             CorrespondenceDraftId = correspondenceDraftId,
+            CampaignId = campaignId,
             InReplyToInternetMessageId = inReplyToInternetMessageId is { Length: > 500 }
                 ? inReplyToInternetMessageId[..500]
                 : inReplyToInternetMessageId,

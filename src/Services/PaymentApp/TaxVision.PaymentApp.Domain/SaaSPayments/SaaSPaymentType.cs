@@ -26,4 +26,8 @@ public enum SaaSPaymentType
 
     /// <summary>Registro generado a raíz de un chargeback iniciado por el emisor de la tarjeta.</summary>
     ChargeBack = 7,
+
+    /// <summary>PayFlow — primer pago de un onboarding pago-primero, antes de que el tenant
+    /// exista. Único tipo que permite <c>TenantId=Guid.Empty</c> (ver <see cref="SaaSPayment.CreateForOnboarding"/>).</summary>
+    OnboardingInitial = 8,
 }

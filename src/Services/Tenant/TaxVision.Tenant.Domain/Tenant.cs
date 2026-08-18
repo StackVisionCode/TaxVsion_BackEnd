@@ -17,9 +17,19 @@ public partial class Tenant : BaseEntity
 
     public DateTime CreatedAtUtc { get; private set; }
 
+    /// <summary>PayFlow (Fase 16) — presente solo para tenants creados vía
+    /// <c>internal/tenants/from-onboarding</c>. Único índice filtrado: idempotencia de ese endpoint
+    /// contra reintentos del mismo comando M2M.</summary>
+    public Guid? OnboardingId { get; private set; }
+
     public Tenant() { }
 
-    public static Result<Tenant> Create(string name, string subdomain, string defaultTimeZoneId)
+    public static Result<Tenant> Create(
+        string name,
+        string subdomain,
+        string defaultTimeZoneId,
+        Guid? onboardingId = null
+    )
     {
         if (string.IsNullOrWhiteSpace(name))
             return Result.Failure<Tenant>(new Error("Tenant.Name", "Name is required."));
@@ -52,6 +62,7 @@ public partial class Tenant : BaseEntity
             DefaultTimeZoneId = normalizedTimeZoneId,
             Status = EnumTenantStatus.TenantStatus.Active,
             CreatedAtUtc = DateTime.UtcNow,
+            OnboardingId = onboardingId,
         };
 
         return Result.Success(tenant);
@@ -63,6 +74,24 @@ public partial class Tenant : BaseEntity
             return Result.Failure(new Error("Tenant.Status", "Only active tenants can be suspended."));
 
         Status = EnumTenantStatus.TenantStatus.Suspended;
+        return Result.Success();
+    }
+
+    /// <summary>Auditoría F09 — método específico para <c>OnboardingCancelRequestedConsumer</c> en
+    /// vez del setter genérico <see cref="ChangeStatus"/>. Misma guarda de <c>Platform</c>; el
+    /// destino es siempre <c>Closed</c>, así que la guarda anti-reactivación de
+    /// <see cref="ChangeStatus"/> no aplica — Closed→Closed es el propio caso idempotente que este
+    /// consumer necesita ante un replay del evento.</summary>
+    public Result CloseForOnboardingCancellation()
+    {
+        if (Kind == TenantKind.Platform)
+        {
+            return Result.Failure(
+                new Error("Tenant.PlatformProtected", "The reserved platform tenant cannot change status.")
+            );
+        }
+
+        Status = EnumTenantStatus.TenantStatus.Closed;
         return Result.Success();
     }
 

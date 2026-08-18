@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -20,6 +21,7 @@ namespace TaxVision.PaymentApp.Api.Controllers;
 public sealed class StripeWebhookController(IMessageBus bus) : ControllerBase
 {
     [HttpPost]
+    [RateLimitExempt("Anónimo — conserva el limiter nativo webhooks (1000/min/IP), sin JWT que particionar.")]
     public async Task<IActionResult> Receive(CancellationToken ct)
     {
         string rawPayload;

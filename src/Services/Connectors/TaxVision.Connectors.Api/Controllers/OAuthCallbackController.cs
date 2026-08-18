@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -27,7 +28,16 @@ public sealed class OAuthCallbackController(
     ILogger<OAuthCallbackController> logger
 ) : ControllerBase
 {
+    private const string CallbackExemptReason =
+        "Endpoint anonimo (sin JWT, redirect-only visitado por el navegador tras el consentimiento) "
+        + "— TieredRateLimitEvaluator solo soporta particion por Tenant/User, asi que [RateLimit] "
+        + "fallaria abierto aqui. Autorizado enteramente por el state CSRF de un solo uso que "
+        + "IOAuthConnectStateStore consume atomicamente (replay imposible); no tiene limiter nativo "
+        + "previo que preservar, mismo criterio que JwksController.Jwks de Signature (Fase 4.7) — no "
+        + "se le agrega proteccion nueva fuera del alcance de esta migracion.";
+
     [HttpGet("gmail")]
+    [RateLimitExempt(CallbackExemptReason)]
     public Task<IActionResult> Gmail(
         [FromQuery] string? code,
         [FromQuery] string? state,
@@ -36,6 +46,7 @@ public sealed class OAuthCallbackController(
     ) => HandleAsync(ProviderCode.Gmail, code, state, error, ct);
 
     [HttpGet("graph")]
+    [RateLimitExempt(CallbackExemptReason)]
     public Task<IActionResult> Graph(
         [FromQuery] string? code,
         [FromQuery] string? state,
@@ -103,6 +114,7 @@ public sealed class OAuthCallbackController(
     /// frontend que puede reintentar el connect normal (D3 §12.4) sin toparse con AADSTS90094.
     /// </summary>
     [HttpGet("~/connectors/oauth/admin-consent-callback")]
+    [RateLimitExempt(CallbackExemptReason)]
     public async Task<IActionResult> AdminConsentCallback(
         [FromQuery] string? state,
         [FromQuery] string? error,
