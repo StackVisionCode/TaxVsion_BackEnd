@@ -7,9 +7,9 @@ COPY src/BuildingBlocks/ src/BuildingBlocks/
 COPY src/Services/Sms/ src/Services/Sms/
 # Cache mount del NuGet global-packages: hace el restore REANUDABLE ante la red intermitente
 # (un reintento reutiliza lo ya bajado en vez de empezar de cero).
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet restore "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj"
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet publish "src/Services/Sms/TaxVision.Sms.Api/TaxVision.Sms.Api.csproj" \
     -c Release \
     -o /app/publish \
