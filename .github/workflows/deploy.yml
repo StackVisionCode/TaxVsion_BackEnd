@@ -25,6 +25,7 @@ jobs:
       # (antes se llamaba SECRETS_DIR acá y coincidía con el default del compose
       # solo por casualidad de valor — ahora el nombre es el mismo en los dos lados).
       TAXVISION_SECRETS_DIR: /opt/taxvision/secrets
+      DOTNET_INSTALL_DIR: /srv/docker/actions-runner/.dotnet
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,7 +38,7 @@ jobs:
       # global.json (setup-dotnet lo lee solo con global-json-file).
       # ---------------------------------------------------------------------
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
@@ -51,9 +52,10 @@ jobs:
       # tests son vitest y corren aparte, uno por servicio.
       # ---------------------------------------------------------------------
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
 
       - name: Test Communication (Node)
         working-directory: src/Services/Communication
