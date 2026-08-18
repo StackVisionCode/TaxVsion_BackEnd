@@ -60,7 +60,7 @@ services:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     volumes:
-      - minio-data:/data
+      - /srv/minio:/data
     networks:
       - taxvision-network
     healthcheck:
@@ -2046,7 +2046,6 @@ services:
 volumes:
   rabbitmq-data:
   redis-data:
-  minio-data:
   clamav-data:
   loki-data:
   tempo-data:
