@@ -4,9 +4,9 @@ WORKDIR /src
 COPY global.json ./
 COPY src/BuildingBlocks/ src/BuildingBlocks/
 COPY src/Services/Inventory/ src/Services/Inventory/
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet restore "src/Services/Inventory/TaxVision.Inventory.Api/TaxVision.Inventory.Api.csproj"
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet publish "src/Services/Inventory/TaxVision.Inventory.Api/TaxVision.Inventory.Api.csproj" \
     -c Release \
     -o /app/publish \

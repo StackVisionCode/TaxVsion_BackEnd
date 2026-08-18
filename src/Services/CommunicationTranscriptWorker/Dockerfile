@@ -34,9 +34,9 @@ RUN mkdir -p models && curl -fL \
 FROM node:20.11-bookworm-slim AS build
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY tsconfig.json tsconfig.build.json ./
-RUN npm install --include=dev --no-audit --no-fund
+RUN npm ci --include=dev --no-audit --no-fund
 COPY src ./src
 RUN npm run build
 

@@ -6,9 +6,9 @@ COPY global.json ./
 COPY src/BuildingBlocks/ src/BuildingBlocks/
 COPY src/Services/Catalog/ src/Services/Catalog/
 # Cache mount del NuGet global-packages: hace el restore REANUDABLE ante la red intermitente.
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet restore "src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj"
-RUN --mount=type=cache,target=/root/.nuget/packages \
+RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     dotnet publish "src/Services/Catalog/TaxVision.Catalog.Api/TaxVision.Catalog.Api.csproj" \
     -c Release \
     -o /app/publish \
