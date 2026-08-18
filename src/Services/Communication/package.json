@@ -47,7 +47,7 @@
     "ioredis": "5.4.1",
     "jose": "5.9.6",
     "mediasoup": "^3.21.0",
-    "nanoid": "5.0.9",
+    "nanoid": "^5.1.16",
     "pino": "9.5.0",
     "pino-http": "10.3.0",
     "prom-client": "15.1.3",
