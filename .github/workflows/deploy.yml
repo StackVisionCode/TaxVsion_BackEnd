@@ -42,8 +42,11 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Run full test suite (TaxVision.slnx)
-        run: dotnet test TaxVision.slnx --nologo
+      # Gate rápido: sólo los tests que no necesitan infra. Los de .Integration./
+      # .Persistence. (+ ReminderRetentionJob) levantan SQL/RabbitMQ/Redis reales y
+      # user-secrets locales — no existen en el runner. Corren aparte, nunca en el gate.
+      - name: Run unit test suite (gate)
+        run: dotnet test TaxVision.slnx --nologo --filter "FullyQualifiedName!~.Integration.&FullyQualifiedName!~.Persistence.&FullyQualifiedName!~ReminderRetentionJobTests"
 
       # ---------------------------------------------------------------------
       # H-19 — Communication y CommunicationTranscriptWorker no estan en
