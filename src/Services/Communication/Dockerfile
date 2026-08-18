@@ -9,8 +9,7 @@ COPY package.json ./
 COPY tsconfig.json tsconfig.build.json ./
 COPY prisma ./prisma
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm install --include=dev --no-audit --no-fund
+RUN npm install --include=dev --no-audit --no-fund
 
 COPY src ./src
 RUN npx prisma generate

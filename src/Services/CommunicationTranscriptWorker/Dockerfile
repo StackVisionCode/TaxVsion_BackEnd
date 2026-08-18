@@ -36,8 +36,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json ./
 COPY tsconfig.json tsconfig.build.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm install --include=dev --no-audit --no-fund
+RUN npm install --include=dev --no-audit --no-fund
 COPY src ./src
 RUN npm run build
 
