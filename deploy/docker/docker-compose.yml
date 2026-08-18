@@ -1721,7 +1721,7 @@ services:
       # app.taxproffice.com = CRM/staff, client.taxproffice.com = portal de clientes;
       # + localhost para poder seguir probando contra produccion desde un frontend
       # local (mismo criterio que Cors__Origins del gateway).
-      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,http://localhost:5173,http://localhost:4200}
+      COMMUNICATION_CORS_ORIGINS: ${COMMUNICATION_CORS_ORIGINS:-https://app.taxproffice.com,https://client.taxproffice.com,https://taxproffice.com,http://localhost:5173,http://localhost:4200}
       # Secreto HS256 propio (nada que ver con el RS256/JWKS de Auth) para el
       # shortLivedJoinTicket de guests sin cuenta uniendose a un meeting via link
       # de invitacion (Fase Backend 5) — z.string().min(32) en config.ts, requerido,
@@ -1936,10 +1936,11 @@ services:
       # Origins reales de produccion (app = CRM/staff, client = portal de clientes)
       # + localhost para poder seguir probando contra la API de produccion desde
       # un frontend corrido local durante desarrollo (pedido explicito).
-      Cors__Origins__0: https://app.taxproffice.com
-      Cors__Origins__1: https://client.taxproffice.com
-      Cors__Origins__2: http://localhost:5173
-      Cors__Origins__3: http://localhost:4200
+      Cors__Origins__0: https://taxproffice.com
+      Cors__Origins__1: https://app.taxproffice.com
+      Cors__Origins__2: https://client.taxproffice.com
+      Cors__Origins__3: http://localhost:5173
+      Cors__Origins__4: http://localhost:4200
       # GW-08 — las 8 claves escalares del load shedder (Capa 1) expuestas para poder
       # ajustar umbrales en un incidente sin reconstruir la imagen. Los valores repiten los
       # defaults de appsettings.json a proposito: el compose documenta que existen y son
