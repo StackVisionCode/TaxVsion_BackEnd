@@ -138,6 +138,10 @@ jobs:
           MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
           MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
           MINIO_PUBLIC_ENDPOINT=${{ secrets.MINIO_PUBLIC_ENDPOINT }}
+          # IP interna de la VPN para bindear las UIs de management (rabbitmq:15672,
+          # minio:9001) sin exponerlas. Fuera del repo por si acaso; el compose cae a
+          # loopback si falta, asi que no rompe el deploy.
+          MGMT_BIND_IP=${{ secrets.MGMT_BIND_IP }}
 
           # ---------- Cuentas de servicio scoped de MinIO (ver servicio "minio-provision") ----------
           SIGNATURE_MINIO_SECRET=${{ secrets.SIGNATURE_MINIO_SECRET }}
