@@ -5,13 +5,13 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-    # Solo loopback: nada de esto se expone a la interfaz
-    # publica, se accede via VPN + SSH al server (127.0.0.1 desde ahi mismo).
-    # 5672 (AMQP) y 15672 (management UI) no los necesita nadie fuera del
-    # server: los servicios de la app usan rabbitmq:5672 por DNS interno.
+    # 5672 (AMQP) solo loopback: los servicios de la app usan rabbitmq:5672 por DNS
+    # interno de Docker; fuera del server nadie lo necesita.
+    # 15672 (management UI) se bindea a MGMT_BIND_IP (IP de la VPN, desde .env) para
+    # verla estando en la VPN. Default 127.0.0.1: si falta la var cae a loopback, nunca 0.0.0.0.
     ports:
       - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
+      - "${MGMT_BIND_IP:-127.0.0.1}:15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     networks:
@@ -55,10 +55,12 @@ services:
     # `npm run dev` en el host (no en Docker) necesitan pegarle a localhost:9000 —
     # sin esto ningun servicio local (ni siquiera CloudStorage) puede alcanzar MinIO.
     # En produccion Caddy le pega a minio:9000 por la red interna de docker (no usa
-    # este mapeo), asi que loopback-only no afloja nada ahi. 9001 (consola) igual.
+    # este mapeo), asi que loopback-only no afloja nada ahi.
+    # 9001 (consola) se bindea a MGMT_BIND_IP (IP de la VPN, desde .env). Default 127.0.0.1
+    # si falta la var: cae a loopback, nunca 0.0.0.0.
     ports:
       - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
+      - "${MGMT_BIND_IP:-127.0.0.1}:9001:9001"
     volumes:
       - /srv/minio:/data
     networks:
@@ -116,31 +118,33 @@ services:
     networks:
       - taxvision-network
 
-  loki:
-    image: grafana/loki:3.7.2
-    container_name: taxvision-loki
-    command: ["-config.file=/etc/loki/loki.yml"]
-    volumes:
-      - ../observability/loki.yml:/etc/loki/loki.yml:ro
-      - loki-data:/loki
-    expose:
-      - "3100"
-    networks:
-      - taxvision-network
+  # --- Observabilidad detenida para liberar RAM/CPU. Reactivar: descomentar estos
+  # bloques + el depends_on del otel-collector. Los volumenes de datos se conservan. ---
+  # loki:
+  #   image: grafana/loki:3.7.2
+  #   container_name: taxvision-loki
+  #   command: ["-config.file=/etc/loki/loki.yml"]
+  #   volumes:
+  #     - ../observability/loki.yml:/etc/loki/loki.yml:ro
+  #     - loki-data:/loki
+  #   expose:
+  #     - "3100"
+  #   networks:
+  #     - taxvision-network
 
-  tempo:
-    image: grafana/tempo:2.8.2
-    container_name: taxvision-tempo
-    command: ["-config.file=/etc/tempo/tempo.yml"]
-    volumes:
-      - ../observability/tempo.yml:/etc/tempo/tempo.yml:ro
-      - tempo-data:/var/tempo
-    expose:
-      - "3200"
-      - "4317"
-      - "4318"
-    networks:
-      - taxvision-network
+  # tempo:
+  #   image: grafana/tempo:2.8.2
+  #   container_name: taxvision-tempo
+  #   command: ["-config.file=/etc/tempo/tempo.yml"]
+  #   volumes:
+  #     - ../observability/tempo.yml:/etc/tempo/tempo.yml:ro
+  #     - tempo-data:/var/tempo
+  #   expose:
+  #     - "3200"
+  #     - "4317"
+  #     - "4318"
+  #   networks:
+  #     - taxvision-network
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
@@ -158,90 +162,92 @@ services:
       - "4318"
       - "9464"
     mem_limit: 512m
-    depends_on:
-      - loki
-      - tempo
+    # Backends detenidos: el collector arranca igual y traga los spans/metricas de los
+    # 19 servicios (los descarta). Sin este depends_on no queda referencia colgando.
+    # depends_on:
+    #   - loki
+    #   - tempo
     networks:
       - taxvision-network
 
   # Metricas de contenedores (CPU/memoria/IO por servicio) — sin esto Prometheus
   # solo tiene metricas de aplicacion (OTel), cero visibilidad de infraestructura.
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: taxvision-cadvisor
-    privileged: true
-    devices:
-      - /dev/kmsg
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    expose:
-      - "8080"
-    networks:
-      - taxvision-network
+  # cadvisor:
+  #   image: gcr.io/cadvisor/cadvisor:v0.49.1
+  #   container_name: taxvision-cadvisor
+  #   privileged: true
+  #   devices:
+  #     - /dev/kmsg
+  #   volumes:
+  #     - /:/rootfs:ro
+  #     - /var/run:/var/run:ro
+  #     - /sys:/sys:ro
+  #     - /var/lib/docker/:/var/lib/docker:ro
+  #     - /dev/disk/:/dev/disk:ro
+  #   expose:
+  #     - "8080"
+  #   networks:
+  #     - taxvision-network
 
   # Metricas del host: disco/memoria/CPU del server — vigila que minio-data
   # no se llene en silencio.
-  node-exporter:
-    image: prom/node-exporter:v1.8.2
-    container_name: taxvision-node-exporter
-    pid: host
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - "--path.procfs=/host/proc"
-      - "--path.sysfs=/host/sys"
-      - "--path.rootfs=/rootfs"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
-    expose:
-      - "9100"
-    networks:
-      - taxvision-network
+  # node-exporter:
+  #   image: prom/node-exporter:v1.8.2
+  #   container_name: taxvision-node-exporter
+  #   pid: host
+  #   volumes:
+  #     - /proc:/host/proc:ro
+  #     - /sys:/host/sys:ro
+  #     - /:/rootfs:ro
+  #   command:
+  #     - "--path.procfs=/host/proc"
+  #     - "--path.sysfs=/host/sys"
+  #     - "--path.rootfs=/rootfs"
+  #     - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+  #   expose:
+  #     - "9100"
+  #   networks:
+  #     - taxvision-network
 
-  prometheus:
-    image: prom/prometheus:v3.5.3
-    container_name: taxvision-prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-    volumes:
-      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    # Solo loopback, via VPN+SSH — Grafana ya reexpone lo que hace falta ver.
-    ports:
-      - "127.0.0.1:19090:9090"
-    depends_on:
-      - otel-collector
-      - cadvisor
-      - node-exporter
-    networks:
-      - taxvision-network
+  # prometheus:
+  #   image: prom/prometheus:v3.5.3
+  #   container_name: taxvision-prometheus
+  #   command:
+  #     - "--config.file=/etc/prometheus/prometheus.yml"
+  #     - "--storage.tsdb.path=/prometheus"
+  #   volumes:
+  #     - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus-data:/prometheus
+  #   # Solo loopback, via VPN+SSH — Grafana ya reexpone lo que hace falta ver.
+  #   ports:
+  #     - "127.0.0.1:19090:9090"
+  #   depends_on:
+  #     - otel-collector
+  #     - cadvisor
+  #     - node-exporter
+  #   networks:
+  #     - taxvision-network
 
-  grafana:
-    image: grafana/grafana:13.0.3
-    container_name: taxvision-grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_PLUGINS_PREINSTALL_DISABLED: "true"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
-    # Solo loopback — vos entras via VPN+SSH al server y ahi si abris localhost:3000.
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on:
-      - prometheus
-      - loki
-      - tempo
-    networks:
-      - taxvision-network
+  # grafana:
+  #   image: grafana/grafana:13.0.3
+  #   container_name: taxvision-grafana
+  #   environment:
+  #     GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
+  #     GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+  #     GF_USERS_ALLOW_SIGN_UP: "false"
+  #     GF_PLUGINS_PREINSTALL_DISABLED: "true"
+  #   volumes:
+  #     - grafana-data:/var/lib/grafana
+  #     - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+  #   # Solo loopback — vos entras via VPN+SSH al server y ahi si abris localhost:3000.
+  #   ports:
+  #     - "127.0.0.1:3000:3000"
+  #   depends_on:
+  #     - prometheus
+  #     - loki
+  #     - tempo
+  #   networks:
+  #     - taxvision-network
 
   tenant-api:
     image: taxvision/tenant-api:dev
