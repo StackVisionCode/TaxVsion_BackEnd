@@ -24,6 +24,10 @@ public sealed class EmailLayoutVersion : BaseEntity
     public Guid? PublishedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
+    // Versión del contenido sembrado que produjo esta versión. Null = publicada a mano (API) o
+    // anterior a la columna. El seeder republica cuando su ContentVersion supera al guardado.
+    public int? SeedContentVersion { get; private set; }
+
     internal static Result<EmailLayoutVersion> CreateDraft(
         Guid emailLayoutId,
         int versionNumber,
@@ -33,7 +37,8 @@ public sealed class EmailLayoutVersion : BaseEntity
         Guid? designJsonFileId,
         string? previewImageStorageKey,
         Guid? previewImageFileId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        int? seedContentVersion = null
     )
     {
         if (string.IsNullOrWhiteSpace(htmlStorageKey) || htmlStorageKey.Length > 500)
@@ -63,6 +68,7 @@ public sealed class EmailLayoutVersion : BaseEntity
                 PreviewImageStorageKey = previewImageStorageKey,
                 PreviewImageFileId = previewImageFileId,
                 CreatedAtUtc = nowUtc,
+                SeedContentVersion = seedContentVersion,
             }
         );
     }

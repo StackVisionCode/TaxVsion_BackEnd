@@ -230,7 +230,7 @@ public static class SignerVerificationChallengeIssuedConsumer
         };
 
     private static string BuildSubject(SignerVerificationChallengeIssuedIntegrationEvent evt) =>
-        evt.SignerLanguage == "Es" ? "TaxVision — Código de verificación" : "TaxVision — Verification code";
+        evt.SignerLanguage == "Es" ? "TaxProffice — Código de verificación" : "TaxProffice — Verification code";
 
     private static (string Subject, string Html, string Text) BuildKbaEmail(
         SignerVerificationChallengeIssuedIntegrationEvent evt
@@ -238,8 +238,8 @@ public static class SignerVerificationChallengeIssuedConsumer
     {
         var subject =
             evt.SignerLanguage == "Es"
-                ? "TaxVision — Verificación de identidad requerida"
-                : "TaxVision — Identity verification required";
+                ? "TaxProffice — Verificación de identidad requerida"
+                : "TaxProffice — Identity verification required";
         var body =
             evt.SignerLanguage == "Es"
                 ? $"<p>Hola {evt.SignerFullName},</p><p>Necesitas completar un cuestionario de verificación de identidad antes de firmar.</p>"
@@ -255,8 +255,8 @@ public static class SignerVerificationChallengeIssuedConsumer
     {
         var body =
             evt.SignerLanguage == "Es"
-                ? $"Tu codigo TaxVision: {evt.PlaintextAnswer}. Vence a las {evt.ExpiresAtUtc:HH:mm} UTC."
-                : $"Your TaxVision code: {evt.PlaintextAnswer}. Expires at {evt.ExpiresAtUtc:HH:mm} UTC.";
+                ? $"Tu codigo TaxProffice: {evt.PlaintextAnswer}. Vence a las {evt.ExpiresAtUtc:HH:mm} UTC."
+                : $"Your TaxProffice code: {evt.PlaintextAnswer}. Expires at {evt.ExpiresAtUtc:HH:mm} UTC.";
         return smsSender.SendAsync(evt.DeliveryAddress, body, ct);
     }
 
@@ -277,7 +277,7 @@ public static class SignerVerificationChallengeIssuedConsumer
             );
 
         var title =
-            evt.SignerLanguage == "Es" ? "TaxVision — Verificación requerida" : "TaxVision — Verification required";
+            evt.SignerLanguage == "Es" ? "TaxProffice — Verificación requerida" : "TaxProffice — Verification required";
         var body =
             evt.SignerLanguage == "Es"
                 ? "Abre la app para aprobar tu firma."
