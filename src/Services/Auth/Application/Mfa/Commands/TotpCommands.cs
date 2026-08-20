@@ -62,7 +62,7 @@ public static class SetupTotpHandler
         }
 
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(new SetupTotpResponse(secret, totp.BuildOtpAuthUri(user.Email, secret, "TaxVision")));
+        return Result.Success(new SetupTotpResponse(secret, totp.BuildOtpAuthUri(user.Email, secret, "TaxProffice")));
     }
 }
 

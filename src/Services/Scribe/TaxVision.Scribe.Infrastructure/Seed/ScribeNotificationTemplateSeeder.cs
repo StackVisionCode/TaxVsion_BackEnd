@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TaxVision.Scribe.Application.Templates.BaseLayouts;
 using TaxVision.Scribe.Application.Templates.Seed;
 using TaxVision.Scribe.Application.Templates.Storage;
 using TaxVision.Scribe.Domain;
@@ -61,10 +62,17 @@ public sealed class ScribeNotificationTemplateSeeder(
                         l => l.Scope == TemplateScope.System && l.LayoutKey == systemBaseKey,
                         cancellationToken
                     );
-                publishedLayoutVersion = systemBaseLayout?.Versions.FirstOrDefault(v =>
-                    v.Status == EmailVersionStatus.Published
-                );
-                if (publishedLayoutVersion is not null)
+                publishedLayoutVersion = systemBaseLayout
+                    ?.Versions.Where(v => v.Status == EmailVersionStatus.Published)
+                    .OrderByDescending(v => v.VersionNumber)
+                    .FirstOrDefault();
+                // Esperar a que el layout seeder haya republicado system-base a la versión de contenido
+                // actual: los dos seeders corren concurrentes en ApplicationStarted, y capturar una
+                // versión vieja deja a los templates pineados a un layout archivado.
+                if (
+                    publishedLayoutVersion is not null
+                    && (publishedLayoutVersion.SeedContentVersion ?? 0) >= BaseLayoutHtml.SystemBaseVersion
+                )
                     break;
 
                 await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
@@ -158,15 +166,40 @@ public sealed class ScribeNotificationTemplateSeeder(
                 .FirstOrDefault();
             if (publishedVersion?.HtmlFileId is Guid htmlFileId)
             {
-                var download = await storageService.DownloadTextAsync(htmlFileId, tenantId: null, ct);
-                if (download.IsSuccess)
-                    return mappingRepaired;
+                var stored = publishedVersion.SeedContentVersion ?? 0;
+                // Layout pineado viejo: el render usa version.LayoutVersionNumber, así que si el layout
+                // republicó a una versión nueva hay que re-pinear el template aunque el contenido no cambie.
+                var layoutStale = publishedVersion.LayoutVersionNumber != layoutVersionNumber;
+                if (stored >= definition.ContentVersion && !layoutStale)
+                {
+                    var download = await storageService.DownloadTextAsync(htmlFileId, tenantId: null, ct);
+                    if (download.IsSuccess)
+                        return mappingRepaired;
 
-                logger.LogWarning(
-                    "Published template '{TemplateKey}' references missing CloudStorage file {FileId}; repairing it.",
-                    definition.TemplateKey,
-                    htmlFileId
-                );
+                    logger.LogWarning(
+                        "Published template '{TemplateKey}' references missing CloudStorage file {FileId}; repairing it.",
+                        definition.TemplateKey,
+                        htmlFileId
+                    );
+                }
+                else if (layoutStale)
+                {
+                    logger.LogInformation(
+                        "Template '{TemplateKey}' layout v{OldLayout} -> v{NewLayout}; republishing.",
+                        definition.TemplateKey,
+                        publishedVersion.LayoutVersionNumber,
+                        layoutVersionNumber
+                    );
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Template '{TemplateKey}' content v{Stored} -> v{New}; republishing.",
+                        definition.TemplateKey,
+                        stored,
+                        definition.ContentVersion
+                    );
+                }
             }
 
             var repairUpload = await storageService.UploadAsync(
@@ -209,7 +242,8 @@ public sealed class ScribeNotificationTemplateSeeder(
                 layoutId,
                 layoutVersionNumber,
                 definition.Variables,
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                definition.ContentVersion
             );
             if (repairVersion.IsFailure)
             {
@@ -287,7 +321,8 @@ public sealed class ScribeNotificationTemplateSeeder(
             layoutId,
             layoutVersionNumber,
             definition.Variables,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            definition.ContentVersion
         );
         if (versionResult.IsFailure)
         {

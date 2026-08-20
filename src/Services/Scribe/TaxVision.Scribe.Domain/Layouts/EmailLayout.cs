@@ -75,7 +75,8 @@ public sealed class EmailLayout : BaseEntity, INullableTenantOwned
         Guid? designJsonFileId,
         string? previewImageStorageKey,
         Guid? previewImageFileId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        int? seedContentVersion = null
     )
     {
         if (Status != EmailContentStatus.Active)
@@ -97,7 +98,8 @@ public sealed class EmailLayout : BaseEntity, INullableTenantOwned
             designJsonFileId,
             previewImageStorageKey,
             previewImageFileId,
-            nowUtc
+            nowUtc,
+            seedContentVersion
         );
         if (versionResult.IsFailure)
             return versionResult;

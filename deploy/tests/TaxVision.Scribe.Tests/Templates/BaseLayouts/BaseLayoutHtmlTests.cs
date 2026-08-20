@@ -27,7 +27,8 @@ public sealed class BaseLayoutHtmlTests
 
         Assert.Contains("<p>Hola</p>", html);
         Assert.Contains("2026", html);
-        Assert.Contains("cid:logo-header", html);
+        // El system-base ya no lleva logo por imagen: el header es el wordmark de texto TaxProffice.
+        Assert.Contains("TaxProffice", html);
     }
 
     [Fact]
@@ -42,7 +43,7 @@ public sealed class BaseLayoutHtmlTests
         withFallback.SetValue("tenant_address", "123 Main St");
         withFallback.SetValue("tenant_logo_missing", true);
         var htmlWithFallback = await template!.RenderAsync(withFallback, HtmlEncoder.Default);
-        Assert.Contains("Configura tu logo", htmlWithFallback);
+        Assert.Contains("Set your logo", htmlWithFallback);
         Assert.Contains("Acme &amp; Co", htmlWithFallback);
 
         var withOwnLogo = new TemplateContext();
@@ -51,6 +52,6 @@ public sealed class BaseLayoutHtmlTests
         withOwnLogo.SetValue("tenant_address", "123 Main St");
         withOwnLogo.SetValue("tenant_logo_missing", false);
         var htmlWithOwnLogo = await template.RenderAsync(withOwnLogo, HtmlEncoder.Default);
-        Assert.DoesNotContain("Configura tu logo", htmlWithOwnLogo);
+        Assert.DoesNotContain("Set your logo", htmlWithOwnLogo);
     }
 }

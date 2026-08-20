@@ -102,7 +102,7 @@ public static class TenantCreatedConsumer
                                     ExpiresAtUtc = expiresAtUtc,
                                     TenantName = evt.Name,
                                     TenantSubdomain = evt.SubDomain,
-                                    InviterName = "TaxVision",
+                                    InviterName = "TaxProffice",
                                     CorrelationId = correlationId,
                                 }
                             );

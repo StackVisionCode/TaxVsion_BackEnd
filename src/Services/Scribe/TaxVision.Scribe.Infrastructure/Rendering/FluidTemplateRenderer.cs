@@ -334,6 +334,8 @@ public sealed partial class FluidTemplateRenderer(
         // Guid.Empty = LogoResolver no encontró un SystemAssetRef sembrado todavía (arranque en
         // frío antes de que ScribeSystemAssetSeeder termine, o seed nunca corrido). No referenciar
         // un FileId inexistente — el envío tiene que seguir funcionando sin logo, no romperse.
+        // El layout (system-base y tenant-base) referencia el logo con cid:logo-header en su header,
+        // así que se adjunta siempre que el asset exista — renderiza inline, no queda huérfano.
         var inlineAssets = new List<InlineAsset>();
         if (logoAsset.CloudStorageFileId != Guid.Empty)
             inlineAssets.Add(

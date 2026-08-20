@@ -87,7 +87,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             string? DefaultValue,
             string? Description
         )> variableDefinitions,
-        DateTime nowUtc
+        DateTime nowUtc,
+        int? seedContentVersion = null
     )
     {
         if (Status != EmailContentStatus.Active)
@@ -115,7 +116,8 @@ public sealed class EmailTemplate : BaseEntity, INullableTenantOwned
             layoutId,
             layoutVersionNumber,
             variableDefinitions,
-            nowUtc
+            nowUtc,
+            seedContentVersion
         );
         if (versionResult.IsFailure)
             return versionResult;

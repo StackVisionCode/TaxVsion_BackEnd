@@ -33,6 +33,10 @@ public sealed class EmailTemplateVersion : BaseEntity
     public Guid? PublishedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
+    // Versión del contenido sembrado que produjo esta versión. Null = publicada a mano (API) o
+    // anterior a la columna. El seeder republica cuando su ContentVersion supera al guardado.
+    public int? SeedContentVersion { get; private set; }
+
     public IReadOnlyList<TemplateVariableDefinition> VariableDefinitions => _variableDefinitions.AsReadOnly();
 
     internal static Result<EmailTemplateVersion> CreateDraft(
@@ -56,7 +60,8 @@ public sealed class EmailTemplateVersion : BaseEntity
             string? DefaultValue,
             string? Description
         )> variableDefinitions,
-        DateTime nowUtc
+        DateTime nowUtc,
+        int? seedContentVersion = null
     )
     {
         if (string.IsNullOrWhiteSpace(subject) || subject.Length > 500)
@@ -111,6 +116,7 @@ public sealed class EmailTemplateVersion : BaseEntity
             LayoutId = layoutId,
             LayoutVersionNumber = layoutVersionNumber,
             CreatedAtUtc = nowUtc,
+            SeedContentVersion = seedContentVersion,
         };
 
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

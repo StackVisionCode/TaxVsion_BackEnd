@@ -55,6 +55,7 @@ public sealed class ScribeBaseLayoutSeeder(
                 "system-base",
                 "System base layout",
                 Application.Templates.BaseLayouts.BaseLayoutHtml.SystemBaseV1,
+                Application.Templates.BaseLayouts.BaseLayoutHtml.SystemBaseVersion,
                 cancellationToken
             );
             await SeedIfMissingAsync(
@@ -64,6 +65,7 @@ public sealed class ScribeBaseLayoutSeeder(
                 "tenant-base",
                 "Tenant base layout",
                 Application.Templates.BaseLayouts.BaseLayoutHtml.TenantBaseV1,
+                Application.Templates.BaseLayouts.BaseLayoutHtml.TenantBaseVersion,
                 cancellationToken
             );
         }
@@ -80,6 +82,7 @@ public sealed class ScribeBaseLayoutSeeder(
         string layoutKeyValue,
         string name,
         string html,
+        int contentVersion,
         CancellationToken ct
     )
     {
@@ -95,15 +98,28 @@ public sealed class ScribeBaseLayoutSeeder(
                 .FirstOrDefault();
             if (publishedVersion is not null)
             {
-                var download = await storageService.DownloadTextAsync(publishedVersion.HtmlFileId, null, ct);
-                if (download.IsSuccess)
-                    return;
+                var stored = publishedVersion.SeedContentVersion ?? 0;
+                if (stored >= contentVersion)
+                {
+                    var download = await storageService.DownloadTextAsync(publishedVersion.HtmlFileId, null, ct);
+                    if (download.IsSuccess)
+                        return;
 
-                logger.LogWarning(
-                    "Published base layout '{LayoutKey}' references missing CloudStorage file {FileId}; repairing it.",
-                    layoutKeyValue,
-                    publishedVersion.HtmlFileId
-                );
+                    logger.LogWarning(
+                        "Published base layout '{LayoutKey}' references missing CloudStorage file {FileId}; repairing it.",
+                        layoutKeyValue,
+                        publishedVersion.HtmlFileId
+                    );
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Base layout '{LayoutKey}' content v{Stored} -> v{New}; republishing.",
+                        layoutKeyValue,
+                        stored,
+                        contentVersion
+                    );
+                }
             }
 
             var repairUpload = await storageService.UploadAsync(
@@ -140,7 +156,8 @@ public sealed class ScribeBaseLayoutSeeder(
                 null,
                 null,
                 null,
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                contentVersion
             );
             if (repairVersion.IsFailure)
             {
@@ -212,7 +229,8 @@ public sealed class ScribeBaseLayoutSeeder(
             null,
             null,
             null,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            contentVersion
         );
         if (versionResult.IsFailure)
         {
