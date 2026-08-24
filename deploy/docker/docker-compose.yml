@@ -345,6 +345,10 @@ services:
       Auth__Tenant__BaseUrl: http://tenant-api:8080
       # Loopback de la saga (creación del owner) — debe apuntar al propio auth-api, no a localhost.
       Onboarding__AuthPublicBaseUrl: http://auth-api:8080
+      # Frontend público que sirve /register (completar cuenta post-pago). El registro vive en el
+      # landing (taxproffice.com), no en el CRM. Sin esto cae al default de dev (localhost:5173) y el
+      # correo "Completa tu cuenta" salía con un link a localhost.
+      Onboarding__RegistrationUrlBase: https://taxproffice.com
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
       # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
       # token M2M para llamar POST /scribe/render, gateado por [HasPermission(ScribePermissions.
