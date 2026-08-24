@@ -167,7 +167,7 @@ function wireCallSocket(
     const incoming: IncomingCallDto = {
       callId: result.value.callId,
       callerUserId: userId,
-      callerDisplayName: principal.userId,
+      callerDisplayName,
       calleeUserId: parsed.data.calleeUserId,
       kind: parsed.data.kind,
       conversationId: parsed.data.conversationId ?? null,
@@ -194,6 +194,7 @@ function wireCallSocket(
       ack?.({ ok: false, code: 'Call.BadPayload', message: parsed.error.message });
       return;
     }
+    const actorDisplayName = await resolveDisplayName(container.userDirectory, userId);
     const result = await respondToCall(
       {
         tenantId,
@@ -201,7 +202,7 @@ function wireCallSocket(
         clientKey: parsed.data.clientKey,
         callId: parsed.data.callId,
         actorUserId: userId,
-        actorDisplayName: principal.userId,
+        actorDisplayName,
         action,
       },
       container,

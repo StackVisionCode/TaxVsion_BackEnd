@@ -63,8 +63,10 @@ function isRetriableUploadError(err: unknown): boolean {
  *   2. Transcodifica a WAV 16kHz mono con ffmpeg (whisper.cpp no lee webm/opus).
  *   3. Transcribe con whisper.cpp.
  *   4. Sube el .txt resultante a CloudStorage (OwnerType Communication /
- *      FolderType Recordings) — el propio call/meeting es el "owner" logico
- *      del transcript, no hay otro OwnerId natural disponible aca.
+ *      FolderType Transcripts — 'Recordings' solo admite .webm/.mp4, un .txt lo
+ *      rechazaria la RecordingsPolicy; ver save-file-requested-publisher.ts) — el
+ *      propio call/meeting es el "owner" logico del transcript, no hay otro OwnerId
+ *      natural disponible aca.
  *   5. Publica `TranscriptReady` para que Communication lo adjunte.
  *
  * Los archivos temporales viven bajo `config.whisper.tempDir/{eventId}` y se
