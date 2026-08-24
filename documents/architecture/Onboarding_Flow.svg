@@ -17,7 +17,7 @@
   <rect width="1440" height="1300" fill="#ffffff"/>
 
   <!-- ===== HEADER ===== -->
-  <text x="50" y="44" font-size="26" font-weight="700" fill="#0f172a">Onboarding TaxVision — flujo completo (pay-first)</text>
+  <text x="50" y="44" font-size="26" font-weight="700" fill="#0f172a">Onboarding TaxProffice — flujo completo (pay-first)</text>
   <text x="50" y="70" font-size="14" fill="#475569"><tspan font-weight="600">7 pasos lineales</tspan> hasta el pago, y ahí el flujo <tspan font-weight="600">se bifurca en 2 ramas paralelas</tspan> — no es una cadena de 14 pasos.</text>
   <text x="50" y="90" font-size="13" fill="#475569">Dos mecanismos transaccionales distintos: <tspan font-weight="600" fill="#065f46">TCC (Try-Confirm/Cancel)</tspan> para giftcard/promo/referido · <tspan font-weight="600" fill="#3730a3">saga de orquestación (Process Manager)</tspan> para el provisioning</text>
 
@@ -106,13 +106,14 @@
 
   <rect x="880" y="516" width="225" height="58" rx="8" fill="#f0fdfa" stroke="#14b8a6"/>
   <text x="992" y="538" font-size="13" font-weight="700" fill="#115e59" text-anchor="middle">A5 · Documents</text>
-  <text x="992" y="555" font-size="10" fill="#0f766e" text-anchor="middle">renderiza el PDF de factura/recibo</text>
-  <text x="992" y="568" font-size="9" fill="#14b8a6" text-anchor="middle">→ CloudStorage (MinIO)</text>
+  <text x="992" y="555" font-size="10" fill="#0f766e" text-anchor="middle">factura (Billing) + recibo (Auth)</text>
+  <text x="992" y="568" font-size="9" fill="#14b8a6" text-anchor="middle">PDF → CloudStorage (MinIO)</text>
 
   <rect x="880" y="590" width="225" height="58" rx="8" fill="#fdf2f8" stroke="#ec4899"/>
-  <text x="992" y="612" font-size="13" font-weight="700" fill="#9d174d" text-anchor="middle">A6 · Scribe + Notification</text>
-  <text x="992" y="629" font-size="10" fill="#be185d" text-anchor="middle">render de plantilla → Postmaster</text>
-  <text x="992" y="642" font-size="9" fill="#ec4899" text-anchor="middle">correo de bienvenida + recibo</text>
+  <text x="992" y="610" font-size="13" font-weight="700" fill="#9d174d" text-anchor="middle">A6 · Scribe + Notification</text>
+  <text x="992" y="626" font-size="10" fill="#be185d" text-anchor="middle">render de plantilla → Postmaster</text>
+  <text x="992" y="639" font-size="9" fill="#ec4899" text-anchor="middle">correo de bienvenida + recibo</text>
+  <text x="992" y="666" font-size="8.5" font-weight="600" fill="#059669" text-anchor="middle">✔ recibo re-cableado (2026-08-24): RequestOnboardingReceiptCommand</text>
 
   <!-- ===== RAMA B ===== -->
   <rect x="60" y="776" width="380" height="60" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>

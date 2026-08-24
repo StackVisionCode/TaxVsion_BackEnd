@@ -343,8 +343,16 @@ services:
       Auth__Subscription__BaseUrl: http://subscription-api:8080
       Auth__PaymentApp__BaseUrl: http://payment-app-api:8080
       Auth__Tenant__BaseUrl: http://tenant-api:8080
-      # Loopback de la saga (creación del owner) — debe apuntar al propio auth-api, no a localhost.
+      # Loopback INTERNO de la saga (creación del owner vía /internal/tenants/{id}/owners, NO pasa por
+      # el Gateway) — debe apuntar al propio auth-api, no a localhost ni al host público.
       Onboarding__AuthPublicBaseUrl: http://auth-api:8080
+      # Base PÚBLICO (vía Gateway) del link de descarga del recibo del email — /onboarding/receipts/{id}/
+      # download. Distinto del loopback interno de arriba: este lo abre el navegador del usuario.
+      Onboarding__ReceiptDownloadBaseUrl: https://api.taxproffice.com
+      # Frontend público que sirve /register (completar cuenta post-pago). El registro vive en el
+      # landing (taxproffice.com), no en el CRM. Sin esto cae al default de dev (localhost:5173) y el
+      # correo "Completa tu cuenta" salía con un link a localhost.
+      Onboarding__RegistrationUrlBase: https://taxproffice.com
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
       # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
       # token M2M para llamar POST /scribe/render, gateado por [HasPermission(ScribePermissions.
@@ -702,6 +710,9 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
+      # Portal del CLIENTE (client.taxproffice.com) — los correos del cliente (pedidos de doc, doc
+      # rechazado) linkean acá, NO al CRM (app.). Sin esto caen a BaseUrl=app y el cliente no puede entrar.
+      Portal__ClientBaseUrl: ${CLIENT_PORTAL_BASE_URL:-http://localhost:4200}
       Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
       # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:

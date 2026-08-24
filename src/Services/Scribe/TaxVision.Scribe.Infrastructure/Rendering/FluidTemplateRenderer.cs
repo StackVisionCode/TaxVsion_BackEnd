@@ -306,6 +306,7 @@ public sealed partial class FluidTemplateRenderer(
             bodyHtmlResult.Value,
             logoAsset.IsFallback,
             subjectResult.Value,
+            ResolvePreheader(version, variables, subjectResult.Value),
             locale
         );
         var finalHtmlResult = await RenderTemplateAsync(
@@ -351,14 +352,15 @@ public sealed partial class FluidTemplateRenderer(
     /// El layout recibe las variables del caller más las reservadas que documenta
     /// Scribe_Email_Style_Guide.md §9 — el renderer las calcula, el invocador no las declara: body (el
     /// HTML ya renderizado del template, debe imprimirse con {{ body | raw }}), subject, locale,
-    /// tenant_logo_missing (bool, gobierna el banner de aviso vía {% if %}) y current_year. Si el
-    /// caller manda alguna de esas claves igual se pisa.
+    /// tenant_logo_missing (bool, gobierna el banner de aviso vía {% if %}), current_year y preheader (la
+    /// línea de vista previa del div oculto). Si el caller manda alguna de esas claves igual se pisa.
     /// </summary>
     private static Dictionary<string, object?> BuildLayoutVariables(
         IReadOnlyDictionary<string, object?> requestVariables,
         string bodyHtml,
         bool tenantLogoMissing,
         string subject,
+        string preheader,
         string? locale
     )
     {
@@ -366,11 +368,39 @@ public sealed partial class FluidTemplateRenderer(
         {
             ["body"] = bodyHtml,
             ["subject"] = subject,
+            ["preheader"] = preheader,
             ["locale"] = locale ?? string.Empty,
             ["tenant_logo_missing"] = tenantLogoMissing,
             ["current_year"] = DateTime.UtcNow.Year,
         };
         return merged;
+    }
+
+    /// <summary>
+    /// Línea de preheader (vista previa en inbox/notificación) que el layout imprime en su div oculto. Se
+    /// resuelve: variable 'preheader' del caller si vino no vacía → si no, el DefaultValue de la variable
+    /// 'preheader' declarada en el template (la sembramos por template) → si no, el subject. Así los
+    /// templates viejos o sin declararla caen al subject sin romperse.
+    /// </summary>
+    private static string ResolvePreheader(
+        EmailTemplateVersion version,
+        IReadOnlyDictionary<string, object?> requestVariables,
+        string subject
+    )
+    {
+        if (
+            requestVariables.TryGetValue("preheader", out var provided)
+            && provided is string s
+            && !string.IsNullOrWhiteSpace(s)
+        )
+            return s;
+
+        var definition = version.VariableDefinitions.FirstOrDefault(d =>
+            string.Equals(d.Name, "preheader", StringComparison.OrdinalIgnoreCase)
+        );
+        return definition is not null && !string.IsNullOrWhiteSpace(definition.DefaultValue)
+            ? definition.DefaultValue
+            : subject;
     }
 
     private async Task<Result<string?>> ResolveTextAsync(
@@ -558,8 +588,18 @@ public sealed partial class FluidTemplateRenderer(
             _ => null,
         };
 
-    private static string HtmlToText(string html) =>
-        WebUtility.HtmlDecode(WhitespaceRegex().Replace(TagRegex().Replace(html, " "), " ")).Trim();
+    // Fallback text/plain cuando el template no trae su propio cuerpo de texto. Antes de pelar los tags hay
+    // que quitar el CONTENIDO de <head> (<title>, <style>), los comentarios (incluye el condicional MSO
+    // <!--[if mso]>…<![endif]--> con su <style> y su <o:PixelsPerInch>96</o:PixelsPerInch>) y cualquier
+    // <style>/<script> del body — ese texto no es visible en el HTML, pero sin esto se cuela como cuerpo de
+    // texto plano y Gmail lo muestra en la notificación (el CSS, "TaxProffice", "96"…).
+    private static string HtmlToText(string html)
+    {
+        var stripped = HtmlCommentRegex().Replace(html, " ");
+        stripped = HeadRegex().Replace(stripped, " ");
+        stripped = StyleOrScriptRegex().Replace(stripped, " ");
+        return WebUtility.HtmlDecode(WhitespaceRegex().Replace(TagRegex().Replace(stripped, " "), " ")).Trim();
+    }
 
     private static string BuildCacheKey(Guid? tenantId, string identifier, int versionNumber, string kind) =>
         $"scribe:{tenantId?.ToString() ?? "system"}:{identifier}:{versionNumber}:{kind}";
@@ -572,4 +612,13 @@ public sealed partial class FluidTemplateRenderer(
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex("<!--.*?-->", RegexOptions.Singleline)]
+    private static partial Regex HtmlCommentRegex();
+
+    [GeneratedRegex(@"<head\b[^>]*>.*?</head>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex HeadRegex();
+
+    [GeneratedRegex(@"<(style|script)\b[^>]*>.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex StyleOrScriptRegex();
 }

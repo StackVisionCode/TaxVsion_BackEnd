@@ -241,7 +241,7 @@ public sealed class ScribeNotificationTemplateSeeder(
                 null,
                 layoutId,
                 layoutVersionNumber,
-                definition.Variables,
+                NotificationTemplateSeedSource.VariablesWithPreheader(definition),
                 DateTime.UtcNow,
                 definition.ContentVersion
             );
@@ -320,7 +320,7 @@ public sealed class ScribeNotificationTemplateSeeder(
             null,
             layoutId,
             layoutVersionNumber,
-            definition.Variables,
+            NotificationTemplateSeedSource.VariablesWithPreheader(definition),
             DateTime.UtcNow,
             definition.ContentVersion
         );

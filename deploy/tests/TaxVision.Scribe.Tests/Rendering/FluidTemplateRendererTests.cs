@@ -120,6 +120,204 @@ public sealed class FluidTemplateRendererTests
     }
 
     [Fact]
+    public async Task RenderAsync_text_fallback_strips_head_style_and_mso_comment_so_no_css_leaks()
+    {
+        // Template SIN archivo de texto → fuerza el fallback HtmlToText(finalHtml). El layout trae head con
+        // <title>/<style> y el comentario condicional MSO (<o:PixelsPerInch>96</o:PixelsPerInch>): nada de eso
+        // es texto visible, y sin limpiarlo se cuela como cuerpo de texto plano (lo que Gmail mostraba en la
+        // notificación).
+        var htmlFileId = Guid.NewGuid();
+        var layoutHtmlFileId = Guid.NewGuid();
+
+        var template = EmailTemplate
+            .CreateNew(
+                TemplateScope.System,
+                null,
+                TestTemplateKey,
+                "Password reset",
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var layout = EmailLayout
+            .CreateNew(TemplateScope.System, null, TestLayoutKey, "System base", null, Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+
+        var layoutVersion = layout
+            .AddDraftVersion(
+                "system/layouts/system-base/v1/layout.html",
+                layoutHtmlFileId,
+                null,
+                null,
+                null,
+                null,
+                DateTime.UtcNow
+            )
+            .Value;
+        layout.PublishVersion(layoutVersion.Id, Guid.NewGuid(), DateTime.UtcNow);
+
+        var templateVersion = template
+            .AddDraftVersion(
+                "Reset your password, {{ name }}",
+                "system/templates/auth.password_reset/v1/template.html",
+                htmlFileId,
+                null, // text path
+                null, // text file id → dispara el fallback
+                null,
+                null,
+                null,
+                null,
+                layout.Id,
+                layoutVersion.VersionNumber,
+                [],
+                DateTime.UtcNow
+            )
+            .Value;
+        template.PublishVersion(templateVersion.Id, Guid.NewGuid(), DateTime.UtcNow);
+
+        var cloudStorage = new FakeCloudStorageClient();
+        cloudStorage.Seed(htmlFileId, "<p>Hi {{ name }}, click {{ link }}.</p>");
+        cloudStorage.Seed(
+            layoutHtmlFileId,
+            "<!DOCTYPE html><html><head><title>TaxProffice</title>"
+                + "<!--[if mso]><xml><o:PixelsPerInch>96</o:PixelsPerInch></xml>"
+                + "<style type=\"text/css\">body, table { font-family: Arial !important; }</style><![endif]-->"
+                + "<style type=\"text/css\">html, body { margin:0 !important; } table { border-collapse:collapse; }</style>"
+                + "</head><body>"
+                + "<div style=\"display:none;\">{{ subject }}</div>"
+                + "{{ body | raw }}</body></html>"
+        );
+
+        var renderer = new FluidTemplateRenderer(
+            new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
+            new FakeEmailTemplateRepository(template),
+            new FakeEmailLayoutRepository(layout),
+            cloudStorage,
+            new FakeLogoResolver(SystemLogo),
+            new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
+            new FakeTemplateSourceCache(),
+            NullLogger<FluidTemplateRenderer>.Instance
+        );
+
+        var result = await renderer.RenderAsync(BuildRequest());
+
+        Assert.True(result.IsSuccess);
+        var text = result.Value.Text!;
+        Assert.DoesNotContain("border-collapse", text);
+        Assert.DoesNotContain("font-family", text);
+        Assert.DoesNotContain("PixelsPerInch", text);
+        Assert.DoesNotContain("<style", text);
+        Assert.Contains("Hi Ana, click https://x.", text);
+    }
+
+    [Fact]
+    public async Task RenderAsync_injects_template_preheader_default_into_the_layout_hidden_div()
+    {
+        const string preheader = "Reset your password with the secure link inside.";
+        var renderer = BuildRendererWithPreheaderLayout(preheaderVariableDefault: preheader, out _);
+
+        var result = await renderer.RenderAsync(BuildRequest());
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(preheader, result.Value.Html);
+        // El div oculto va arriba del cuerpo, así que la preview es lo primero del texto plano derivado.
+        Assert.StartsWith(preheader, result.Value.Text);
+    }
+
+    [Fact]
+    public async Task RenderAsync_falls_back_to_subject_when_the_template_has_no_preheader()
+    {
+        var renderer = BuildRendererWithPreheaderLayout(preheaderVariableDefault: null, out _);
+
+        var result = await renderer.RenderAsync(BuildRequest());
+
+        Assert.True(result.IsSuccess);
+        // Sin variable 'preheader' declarada, el div oculto cae al subject.
+        Assert.StartsWith("Reset your password, Ana", result.Value.Text);
+    }
+
+    // Renderer con un template SIN texto propio y un layout cuyo div oculto imprime {{ preheader }}. Si
+    // preheaderVariableDefault no es null se declara la variable 'preheader' con ese default.
+    private FluidTemplateRenderer BuildRendererWithPreheaderLayout(
+        string? preheaderVariableDefault,
+        out EmailTemplate template
+    )
+    {
+        var htmlFileId = Guid.NewGuid();
+        var layoutHtmlFileId = Guid.NewGuid();
+
+        template = EmailTemplate
+            .CreateNew(
+                TemplateScope.System,
+                null,
+                TestTemplateKey,
+                "Password reset",
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var layout = EmailLayout
+            .CreateNew(TemplateScope.System, null, TestLayoutKey, "System base", null, Guid.NewGuid(), DateTime.UtcNow)
+            .Value;
+
+        var layoutVersion = layout
+            .AddDraftVersion(
+                "system/layouts/system-base/v1/layout.html",
+                layoutHtmlFileId,
+                null,
+                null,
+                null,
+                null,
+                DateTime.UtcNow
+            )
+            .Value;
+        layout.PublishVersion(layoutVersion.Id, Guid.NewGuid(), DateTime.UtcNow);
+
+        IReadOnlyList<(string, VariableType, bool, string?, string?)> variables = preheaderVariableDefault is null
+            ? []
+            : [("preheader", VariableType.String, false, preheaderVariableDefault, null)];
+
+        var templateVersion = template
+            .AddDraftVersion(
+                "Reset your password, {{ name }}",
+                "system/templates/auth.password_reset/v1/template.html",
+                htmlFileId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                layout.Id,
+                layoutVersion.VersionNumber,
+                variables,
+                DateTime.UtcNow
+            )
+            .Value;
+        template.PublishVersion(templateVersion.Id, Guid.NewGuid(), DateTime.UtcNow);
+
+        var cloudStorage = new FakeCloudStorageClient();
+        cloudStorage.Seed(htmlFileId, "<p>Hi {{ name }}, click {{ link }}.</p>");
+        cloudStorage.Seed(
+            layoutHtmlFileId,
+            "<html><body><div style=\"display:none;\">{{ preheader }}</div>{{ body | raw }}</body></html>"
+        );
+
+        return new FluidTemplateRenderer(
+            new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
+            new FakeEmailTemplateRepository(template),
+            new FakeEmailLayoutRepository(layout),
+            cloudStorage,
+            new FakeLogoResolver(SystemLogo),
+            new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }),
+            new FakeTemplateSourceCache(),
+            NullLogger<FluidTemplateRenderer>.Instance
+        );
+    }
+
+    [Fact]
     public async Task RenderAsync_wraps_the_rendered_body_inside_the_layout_placeholder()
     {
         var renderer = BuildRenderer(new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }));

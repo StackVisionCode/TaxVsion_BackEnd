@@ -16,9 +16,11 @@ namespace TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services;
 /// <summary>
 /// Camino de éxito COMPARTIDO del onboarding (una vez que la operación quedó completada: pago exitoso o
 /// cobertura 100% por código). Emite el RegistrationToken, publica <c>OnboardingRegistrationReady</c>
-/// (para el email con el link /register) y encola el <c>OnboardingFinalizeCommand</c> (commit de códigos
-/// + qualify + factura en Billing). NO hace SaveChanges — eso lo hace el caller (publish-before-save,
-/// outbox de Wolverine). Reusado por el consumer de pago (net &gt; 0) y por el carril $0 en el checkout.
+/// (para el email con el link /register), encola el <c>OnboardingFinalizeCommand</c> (commit de códigos
+/// + qualify + factura en Billing) y el <c>RequestOnboardingReceiptCommand</c> (recibo de pago al
+/// comprador, cortesía distinta de la factura). NO hace SaveChanges — eso lo hace el caller
+/// (publish-before-save, outbox de Wolverine). Reusado por el consumer de pago (net &gt; 0) y por el
+/// carril $0 en el checkout.
 /// </summary>
 public sealed class OnboardingSuccessCompleter(
     ISecureTokenService tokens,
@@ -35,6 +37,8 @@ public sealed class OnboardingSuccessCompleter(
         Guid? paymentId,
         string? planName,
         DateTime paidAtUtc,
+        string? providerPaymentReference,
+        string? paymentMethodMasked,
         string correlationId,
         CancellationToken ct
     )
@@ -103,21 +107,42 @@ public sealed class OnboardingSuccessCompleter(
             ))
             .ToList();
 
+        var planLabel = string.IsNullOrWhiteSpace(planName) ? "Suscripción TaxProffice" : planName!;
+        var receiptCurrency = onboarding.Currency ?? currency;
+
         await bus.PublishAsync(
             new OnboardingFinalizeCommand(
                 onboarding.Id,
                 onboarding.PlanId,
-                string.IsNullOrWhiteSpace(planName) ? "Suscripción TaxVision" : planName!,
+                planLabel,
                 $"{onboarding.FirstName} {onboarding.LastName}".Trim(),
                 onboarding.Email,
                 paymentId,
                 gross,
                 discount,
                 net,
-                onboarding.Currency ?? currency,
+                receiptCurrency,
                 settlement,
                 onboarding.ReferralAttributionId,
                 reservations
+            )
+        );
+
+        // Recibo de pago para el comprador (cortesía, distinto de la factura de Billing). Comando local
+        // reintentable e idempotente en Documents; el monto es lo efectivamente cobrado (0 en el carril $0).
+        await bus.PublishAsync(
+            new RequestOnboardingReceiptCommand(
+                onboarding.Id,
+                onboarding.FirstName,
+                onboarding.LastName,
+                onboarding.Email,
+                planLabel,
+                amountPaidCents,
+                receiptCurrency,
+                paidAtUtc,
+                providerPaymentReference,
+                paymentMethodMasked,
+                correlationId
             )
         );
 

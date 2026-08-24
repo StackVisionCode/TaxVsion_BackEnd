@@ -22,7 +22,8 @@ public sealed record NotificationTemplateSeed(
     IReadOnlyList<(string Name, VariableType Type, bool Required, string? DefaultValue, string? Description)> Variables,
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
-    int ContentVersion = 1
+    // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
+    int ContentVersion = 2
 );
 
 /// <summary>
@@ -62,6 +63,70 @@ public static class NotificationTemplateSeedSource
             ClientRequestCreated,
             ClientRequestDocumentRejected,
         ];
+
+    // Preheader (línea de vista previa que muestran el inbox y la notificación) por template, en inglés
+    // (idioma por defecto). Se inyecta como variable 'preheader' con default vía VariablesWithPreheader; el
+    // layout la imprime en su div oculto. Los templates de Signature son bilingües en el cuerpo, pero el
+    // preheader va en inglés (es un default estático, no se re-renderiza como Liquid). Sin entrada acá, el
+    // renderer cae al subject.
+    private static readonly IReadOnlyDictionary<string, string> Preheaders = new Dictionary<string, string>(
+        StringComparer.OrdinalIgnoreCase
+    )
+    {
+        ["auth.invitation"] = "You've been invited to collaborate — activate your account to get started.",
+        ["auth.password_reset"] = "Use the secure link inside to reset your password. It expires soon.",
+        ["auth.otp_code"] = "Here's your one-time verification code. It's valid for a few minutes.",
+        ["auth.email_change"] = "Confirm your new email address to keep your account secure.",
+        ["auth.security_alert"] = "We noticed important activity on your account. Please review it.",
+        ["auth.tenant_recovery"] = "Here are the offices linked to your email so you can get back in.",
+        ["auth.welcome"] = "Your account is ready — here's how to make the most of it.",
+        ["sig.invitation.v1"] = "A document is waiting for your signature. It only takes a minute.",
+        ["sig.reminder.v1"] = "A friendly reminder: your signature is still pending.",
+        ["sig.completed.v1"] = "All signatures are in — your document is complete.",
+        ["sig.expired.v1"] = "This signature request has expired. Reach out if you still need to sign.",
+        ["sig.declined.v1"] = "A signature request was cancelled. Here are the details.",
+        ["sig.verification-challenge.v1"] = "Here's your verification code to continue signing securely.",
+        ["onboarding.otp_code"] = "Here's your verification code to continue setting up your account.",
+        ["onboarding.registration_ready"] = "Payment confirmed — finish creating your account to get started.",
+        ["onboarding.receipt_ready"] = "Your payment receipt is ready to view and download.",
+        ["reminder.due"] = "A quick reminder about something on your list.",
+        ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
+        ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
+        ["calendar.appointment_rescheduled.v1"] = "Your appointment time has changed. See the new details.",
+        ["calendar.appointment_cancelled.v1"] = "Your appointment was cancelled. Here's what happened.",
+        ["task.client_request_created.v1"] = "Your preparer requested a few items from you. Here's what's needed.",
+        ["task.client_request_document_rejected.v1"] = "We couldn't process a file you uploaded. Please try again.",
+    };
+
+    /// <summary>
+    /// Variables del template + la variable <c>preheader</c> (default = su línea de vista previa del
+    /// diccionario <see cref="Preheaders"/>). El seeder usa esto en vez de <c>def.Variables</c> para
+    /// persistir el preheader por versión sin tener que editar cada bloque Variables. Sin entrada en el
+    /// diccionario devuelve las variables tal cual (el renderer caerá al subject).
+    /// </summary>
+    public static IReadOnlyList<(
+        string Name,
+        VariableType Type,
+        bool Required,
+        string? DefaultValue,
+        string? Description
+    )> VariablesWithPreheader(NotificationTemplateSeed definition)
+    {
+        if (!Preheaders.TryGetValue(definition.TemplateKey, out var preheader))
+            return definition.Variables;
+
+        return
+        [
+            .. definition.Variables,
+            (
+                "preheader",
+                VariableType.String,
+                false,
+                preheader,
+                "Preview/preheader line shown in the inbox and push notifications."
+            ),
+        ];
+    }
 
     private static NotificationTemplateSeed Invitation { get; } =
         new(

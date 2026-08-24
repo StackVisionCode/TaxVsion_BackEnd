@@ -163,6 +163,8 @@ public static class StartOnboardingCheckoutHandler
             paymentId: null,
             planName,
             nowUtc,
+            providerPaymentReference: null,
+            paymentMethodMasked: null,
             correlationId,
             ct
         );

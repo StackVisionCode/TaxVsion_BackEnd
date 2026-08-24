@@ -91,6 +91,21 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.Equal(4900, finalize.GrossAmountCents);
         Assert.Equal(0, finalize.DiscountAmountCents);
         Assert.Equal(4900, finalize.NetAmountCents);
+
+        // Re-cableado: además del FINALIZE, se pide el recibo de pago a Documents (dato crudo; el
+        // handler enmascara la referencia del proveedor).
+        var receipt = Assert.IsType<RequestOnboardingReceiptCommand>(
+            bus.Published.Single(p => p is RequestOnboardingReceiptCommand)
+        );
+        Assert.Equal(onboarding.Id, receipt.OnboardingId);
+        Assert.Equal("Ada", receipt.PayerFirstName);
+        Assert.Equal("Lovelace", receipt.PayerLastName);
+        Assert.Equal("buyer@example.com", receipt.PayerEmail);
+        Assert.Equal("Enterprise", receipt.PlanName);
+        Assert.Equal(4900, receipt.PricePaidCents);
+        Assert.Equal("USD", receipt.Currency);
+        Assert.Equal("pi_123", receipt.ProviderPaymentReference);
+        Assert.Equal("Visa •••• 4242", receipt.PaymentMethodMasked);
     }
 
     [Fact]
