@@ -148,3 +148,15 @@ export function permissionCheckHttpStatus(result: Extract<PermissionCheckResult,
 export function isPlatformAdmin(actorType: string): boolean {
   return actorType === 'PlatformAdmin';
 }
+
+/**
+ * Actores "de personal" (staff): empleados/admins de la oficina y operadores de
+ * plataforma. Excluye a `CustomerPortal` (clientes) y `Guest` (invitados a un
+ * meeting). Se usa para gatear el directorio: sin este chequeo un cliente podia
+ * enumerar TODA la plantilla y TODA la cartera de clientes del tenant por
+ * autocomplete (solo estaba `authenticate`). `Service` (M2M) no llega a rutas
+ * con JWT humano.
+ */
+export function isStaffActor(actorType: string): boolean {
+  return actorType === 'TenantEmployee' || actorType === 'TenantAdmin' || actorType === 'PlatformAdmin';
+}
