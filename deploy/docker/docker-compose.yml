@@ -343,6 +343,9 @@ services:
       Auth__Subscription__BaseUrl: http://subscription-api:8080
       Auth__PaymentApp__BaseUrl: http://payment-app-api:8080
       Auth__Tenant__BaseUrl: http://tenant-api:8080
+      # Recibo de onboarding: Documents genera el PDF y CloudStorage entrega la URL de descarga.
+      Auth__Documents__BaseUrl: http://documents-api:8080
+      Auth__CloudStorage__BaseUrl: http://cloudstorage-api:8080
       # Loopback INTERNO de la saga (creación del owner vía /internal/tenants/{id}/owners, NO pasa por
       # el Gateway) — debe apuntar al propio auth-api, no a localhost ni al host público.
       Onboarding__AuthPublicBaseUrl: http://auth-api:8080
