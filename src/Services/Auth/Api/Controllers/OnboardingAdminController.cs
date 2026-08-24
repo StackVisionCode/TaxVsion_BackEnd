@@ -92,6 +92,14 @@ public sealed class OnboardingAdminController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    [HttpPost("{id:guid}/resend-receipt")]
+    [RateLimit("auth.g.onboarding_admin_manage")]
+    public async Task<IActionResult> ResendReceipt(Guid id, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result>(new ResendOnboardingReceiptAdminCommand(id), ct);
+        return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record CancelAndRefundRequest(string Reason, string Confirmation);
 
     [HttpPost("{id:guid}/cancel-and-refund")]
