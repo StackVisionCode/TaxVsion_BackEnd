@@ -11,8 +11,8 @@ namespace TaxVision.Scribe.Application.Templates.BaseLayouts;
 public static class BaseLayoutHtml
 {
     // Subir esto cuando cambie el HTML del layout: el seeder republica si supera al guardado.
-    public const int SystemBaseVersion = 4;
-    public const int TenantBaseVersion = 2;
+    public const int SystemBaseVersion = 5;
+    public const int TenantBaseVersion = 3;
 
     public const string SystemBaseV1 = """
         <!DOCTYPE html>
@@ -47,7 +47,7 @@ public static class BaseLayoutHtml
         </style>
         </head>
         <body bgcolor="#F7FBFE" style="margin:0;padding:0;background-color:#F7FBFE;">
-        <div style="display:none;font-size:1px;color:#F7FBFE;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ subject }}</div>
+        <div style="display:none;font-size:1px;color:#F7FBFE;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ preheader }}</div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7FBFE" style="background-color:#F7FBFE;">
           <tr>
             <td align="center" class="mobile-shell" style="padding:32px 12px;">
@@ -126,7 +126,7 @@ public static class BaseLayoutHtml
         </style>
         </head>
         <body bgcolor="#F7FBFE" style="margin:0;padding:0;background-color:#F7FBFE;">
-        <div style="display:none;font-size:1px;color:#F7FBFE;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ subject }}</div>
+        <div style="display:none;font-size:1px;color:#F7FBFE;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ preheader }}</div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F7FBFE" style="background-color:#F7FBFE;">
           <tr>
             <td align="center" class="mobile-shell" style="padding:32px 12px;">

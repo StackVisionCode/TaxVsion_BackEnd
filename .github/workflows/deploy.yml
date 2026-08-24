@@ -177,6 +177,7 @@ jobs:
           MSGRAPH_CLIENT_SECRET=${{ secrets.MSGRAPH_CLIENT_SECRET }}
           MSGRAPH_TENANT_ID=${{ secrets.MSGRAPH_TENANT_ID }}
           PORTAL_BASE_URL=${{ secrets.PORTAL_BASE_URL }}
+          CLIENT_PORTAL_BASE_URL=${{ secrets.CLIENT_PORTAL_BASE_URL }}
 
           # ---------- Connectors (OAuth connect-account flow + Watch/webhooks) ----------
           CONNECTORS_GOOGLE_REDIRECT_URI=${{ secrets.CONNECTORS_GOOGLE_REDIRECT_URI }}

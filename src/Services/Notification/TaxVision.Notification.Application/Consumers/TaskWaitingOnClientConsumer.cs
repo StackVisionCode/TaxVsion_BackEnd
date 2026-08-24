@@ -55,7 +55,7 @@ public static class TaskWaitingOnClientConsumer
                         ["expected_items"] = evt.ExpectedItems,
                         ["client_due_at_utc"] = evt.ClientDueAtUtc,
                         ["tax_year"] = evt.TaxYear,
-                        ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
+                        ["portal_link"] = portal.Value.ClientBaseUrl.TrimEnd('/'),
                         ["product_name"] = portal.Value.ProductName,
                     },
                     ct

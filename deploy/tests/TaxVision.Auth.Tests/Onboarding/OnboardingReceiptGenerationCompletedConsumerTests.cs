@@ -13,7 +13,7 @@ namespace TaxVision.Auth.Tests.Onboarding;
 /// de descarga (nunca la URL presignada directa).</summary>
 public sealed class OnboardingReceiptGenerationCompletedConsumerTests
 {
-    private static readonly OnboardingOptions Options_ = new() { AuthPublicBaseUrl = "https://auth.example.com" };
+    private static readonly OnboardingOptions Options_ = new() { ReceiptDownloadBaseUrl = "https://auth.example.com" };
 
     [Fact]
     public async Task Attaches_receipt_and_publishes_ready_event_when_owner_type_is_onboarding()

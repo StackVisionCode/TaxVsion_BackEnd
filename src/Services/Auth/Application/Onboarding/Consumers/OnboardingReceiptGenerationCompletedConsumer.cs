@@ -64,7 +64,7 @@ public static class OnboardingReceiptGenerationCompletedConsumer
             }
 
             var downloadUrl =
-                $"{onboardingOptions.Value.AuthPublicBaseUrl.TrimEnd('/')}/onboarding/receipts/{evt.FileId}/download";
+                $"{onboardingOptions.Value.ReceiptDownloadBaseUrl.TrimEnd('/')}/onboarding/receipts/{evt.FileId}/download";
 
             await bus.PublishAsync(
                 new OnboardingReceiptReadyIntegrationEvent

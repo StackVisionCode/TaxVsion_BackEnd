@@ -52,6 +52,8 @@ public static class OnboardingPaymentSucceededConsumer
                 paymentId: evt.SaaSPaymentId,
                 planName,
                 evt.PaidAtUtc,
+                evt.ProviderPaymentReference,
+                evt.PaymentMethodMasked,
                 correlationId,
                 ct
             );
