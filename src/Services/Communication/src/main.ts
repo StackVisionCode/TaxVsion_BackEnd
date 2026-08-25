@@ -6,7 +6,7 @@ import { config } from './infrastructure/config.js';
 import { logger } from './infrastructure/logger/logger.js';
 import { prisma, connectPrisma, disconnectPrisma } from './infrastructure/persistence/prisma-client.js';
 import { connectRedis, disconnectRedis } from './infrastructure/redis/redis-client.js';
-import { connectRabbit, disconnectRabbit } from './infrastructure/rabbit/rabbit-connection.js';
+import { connectRabbit, disconnectRabbit, onRabbitReconnected } from './infrastructure/rabbit/rabbit-connection.js';
 import { buildHttpServer } from './infrastructure/http/build-server.js';
 import { buildSocketServer, markShuttingDown } from './infrastructure/socket/build-io.js';
 import { buildContainer } from './infrastructure/container.js';
@@ -157,6 +157,10 @@ async function main(): Promise<void> {
     emitter,
   });
   await consumers.start();
+  // Re-suscribir el consumer en cada reconexión de Rabbit: el canal nuevo necesita su propio
+  // channel.consume. Sin esto, tras el primer corte del broker el servicio queda conectado pero
+  // sin consumir (la cola durable se llena y ninguna proyección se actualiza).
+  onRabbitReconnected(() => consumers.start());
 
   // Session-revoked (canal Redis Pub/Sub — separado del canal de notifications
   // de negocio). Cierra CRIT legacy que mezclaba force_logout con notifs.

@@ -144,6 +144,18 @@ builder.Services.AddHttpClient<IUserContactSnapshotClient, UserContactSnapshotCl
     }
 );
 
+// Portal /portal: host primario del tenant (subdominio de plataforma) para armar los links
+// per-tenant de los correos (staff en {host}, cliente en {host}/portal). Mismo patrón M2M y el
+// mismo IServiceTokenAcquirer que el pull de user-contact de arriba.
+builder.Services.AddHttpClient<ITenantHostResolver, TenantHostResolver>(
+    (sp, client) =>
+    {
+        var options = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+        client.BaseAddress = new Uri(options.AuthBaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(15);
+    }
+);
+
 // PayFlow (Fase 12): cliente HTTP al endpoint one-shot de Auth que resuelve un TokenReference a la
 // URL real de registro — reusa el mismo IServiceTokenAcquirer M2M (apunta a Auth, mismo host que
 // ServiceAuthClientOptions.AuthBaseUrl ya configurado arriba).

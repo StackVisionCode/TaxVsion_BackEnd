@@ -19,6 +19,31 @@ export interface RabbitContext {
 let context: RabbitContext | undefined;
 
 /**
+ * Listeners que corren DESPUÉS de cada reconexión exitosa (canal NUEVO). Los usa el
+ * ConsumerRuntime para RE-SUSCRIBIR su `channel.consume`: la reconexión re-crea conexión, canal
+ * y bindings, pero el consume vivía en el canal viejo (ya cerrado). Sin re-arrancarlo, tras el
+ * primer corte de Rabbit el servicio queda conectado pero SORDO — la cola durable se llena y
+ * ningún evento se proyecta (bug real: usuarios nuevos sin UserDirectory/UserPermissions).
+ */
+type ReconnectListener = () => Promise<void> | void;
+const reconnectListeners: ReconnectListener[] = [];
+
+/** Registra un callback a correr tras cada reconexión (p. ej. re-arrancar el consumer). */
+export function onRabbitReconnected(listener: ReconnectListener): void {
+  reconnectListeners.push(listener);
+}
+
+async function notifyReconnected(): Promise<void> {
+  for (const listener of reconnectListeners) {
+    try {
+      await listener();
+    } catch (err) {
+      logger.error({ err: (err as Error).message }, 'rabbit reconnect listener failed');
+    }
+  }
+}
+
+/**
  * H-15 — cooldowns de reintento, en milisegundos. Son los mismos tres que aplican los 17
  * servicios .NET (`WolverineFailurePolicies`), y ese es justamente el punto: hasta ahora un
  * handler que fallaba en .NET tenia 4 intentos y en Node exactamente 1, sin que nadie hubiera
@@ -83,7 +108,9 @@ async function tryConnect(): Promise<RabbitContext> {
     logger.warn('RabbitMQ connection closed — reconnecting');
     context = undefined;
     setTimeout(() => {
-      void connectRabbit();
+      // Tras reconectar (canal nuevo) hay que re-suscribir el consumer: notifyReconnected corre
+      // los listeners registrados (ConsumerRuntime.start), si no el servicio queda sin consumir.
+      void connectRabbit().then(() => notifyReconnected());
     }, 3000);
   });
 

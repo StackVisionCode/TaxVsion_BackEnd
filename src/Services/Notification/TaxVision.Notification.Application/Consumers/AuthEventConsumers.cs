@@ -83,14 +83,17 @@ public static class PasswordResetRequestedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            // Link al subdominio de la oficina (no a un base fijo): el reset lo resuelve el CRM por Host.
+            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var resetLink =
-                $"{portal.Value.BaseUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(evt.RawToken)}";
+                $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={Uri.EscapeDataString(evt.RawToken)}";
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -256,14 +259,17 @@ public static class EmailChangeRequestedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            // Link al subdominio de la oficina (no a un base fijo): la confirmación la resuelve el CRM por Host.
+            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var confirmLink =
-                $"{portal.Value.BaseUrl.TrimEnd('/')}/confirm-email?token={Uri.EscapeDataString(evt.RawToken)}";
+                $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/confirm-email?token={Uri.EscapeDataString(evt.RawToken)}";
 
             // Nota Fase 7: antes, si este primer render fallaba, el bloque se saltaba en silencio y
             // el consumer seguía directo a la alerta de seguridad — el email de confirmación se
@@ -377,12 +383,14 @@ public static class UserRegisteredConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var render = (
                 await scribeClient.RenderAsync(
                     "auth.user_registered.v1",
@@ -390,7 +398,7 @@ public static class UserRegisteredConsumer
                     new Dictionary<string, object?>
                     {
                         ["name"] = ResolveName(evt),
-                        ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
+                        ["portal_link"] = TenantEmailLinks.StaffBase(tenantHost, portal.Value),
                         ["product_name"] = portal.Value.ProductName,
                     },
                     ct

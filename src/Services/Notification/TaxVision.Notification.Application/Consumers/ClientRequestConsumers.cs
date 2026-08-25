@@ -26,6 +26,7 @@ public static class ClientRequestCreatedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -35,6 +36,9 @@ public static class ClientRequestCreatedConsumer
             var customer = await customers.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (customer is null || !customer.IsActive || customer.NormalizedEmail.Length == 0)
                 return;
+
+            // El cliente entra a SU oficina: link al portal bajo el subdominio del tenant, no a un base fijo.
+            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -46,7 +50,7 @@ public static class ClientRequestCreatedConsumer
                         ["request_title"] = evt.Title,
                         ["request_details"] = evt.Details,
                         ["due_at_utc"] = evt.DueAtUtc,
-                        ["portal_link"] = portal.Value.ClientBaseUrl.TrimEnd('/'),
+                        ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
                         ["product_name"] = portal.Value.ProductName,
                     },
                     ct
@@ -141,6 +145,7 @@ public static class ClientRequestDocumentRejectedConsumer
         IScribeRenderClient scribeClient,
         NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -148,7 +153,7 @@ public static class ClientRequestDocumentRejectedConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             await NotifyPreparerAsync(evt, dispatcher, correlation, ct);
-            await NotifyCustomerAsync(evt, customers, gateway, scribeClient, portal, correlation, ct);
+            await NotifyCustomerAsync(evt, customers, gateway, scribeClient, portal, hostResolver, correlation, ct);
         }
     }
 
@@ -176,6 +181,7 @@ public static class ClientRequestDocumentRejectedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -183,6 +189,8 @@ public static class ClientRequestDocumentRejectedConsumer
         var customer = await customers.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
         if (customer is null || !customer.IsActive || customer.NormalizedEmail.Length == 0)
             return;
+
+        var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
 
         var render = (
             await scribeClient.RenderAsync(
@@ -194,7 +202,7 @@ public static class ClientRequestDocumentRejectedConsumer
                     ["document_name"] = evt.DisplayName,
                     ["request_title"] = evt.DisplayName,
                     ["client_message"] = evt.ClientMessage,
-                    ["portal_link"] = portal.Value.ClientBaseUrl.TrimEnd('/'),
+                    ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
                     ["product_name"] = portal.Value.ProductName,
                 },
                 ct
