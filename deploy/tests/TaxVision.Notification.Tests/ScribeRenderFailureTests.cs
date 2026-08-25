@@ -74,6 +74,7 @@ public sealed class ScribeRenderFailureTests
                 gateway,
                 scribeClient,
                 Options.Create(new PortalOptions()),
+                new FakeTenantHostResolver(),
                 new NoOpCorrelationContext(),
                 CancellationToken.None
             )

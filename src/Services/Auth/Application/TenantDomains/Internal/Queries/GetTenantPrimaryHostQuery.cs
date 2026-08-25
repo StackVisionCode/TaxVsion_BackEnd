@@ -33,9 +33,7 @@ public static class GetTenantPrimaryHostHandler
 
         var primary =
             all.FirstOrDefault(d =>
-                d.DomainType == TenantDomainType.Subdomain
-                && d.IsPrimary
-                && d.Status == TenantDomainStatus.Active
+                d.DomainType == TenantDomainType.Subdomain && d.IsPrimary && d.Status == TenantDomainStatus.Active
             )
             ?? all.FirstOrDefault(d =>
                 d.DomainType == TenantDomainType.Subdomain && d.Status == TenantDomainStatus.Active
