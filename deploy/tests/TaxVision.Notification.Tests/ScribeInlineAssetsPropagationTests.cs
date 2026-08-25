@@ -49,6 +49,7 @@ public sealed class ScribeInlineAssetsPropagationTests
             gateway,
             scribeClient,
             Options.Create(new PortalOptions()),
+            new FakeTenantHostResolver(),
             new NoOpCorrelationContext(),
             CancellationToken.None
         );

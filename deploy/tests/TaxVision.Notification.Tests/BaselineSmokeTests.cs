@@ -59,6 +59,7 @@ public sealed class BaselineSmokeTests
             gateway,
             scribeClient,
             portal,
+            new FakeTenantHostResolver(),
             correlation,
             CancellationToken.None
         );

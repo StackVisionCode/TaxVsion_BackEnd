@@ -55,10 +55,7 @@ public sealed class TenantHostResolver(
 
         try
         {
-            using var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                $"internal/tenants/{tenantId:D}/primary-host"
-            );
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"internal/tenants/{tenantId:D}/primary-host");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             using var response = await httpClient.SendAsync(request, ct);
