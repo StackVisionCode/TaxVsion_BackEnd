@@ -24,7 +24,27 @@
 # /storage, etc). Todo lo demas (incluida la resolucion de tenant por Host
 # que hace Auth) va al Gateway, que ya forwardea el Host original — Caddy
 # reenvia el Host real por defecto en reverse_proxy, sin configuracion extra.
-(taxvision_upstreams) {
+#
+# SPA + API en el mismo host de tenant. Un subdominio de oficina
+# (manfer.taxproffice.com) tiene que servir DOS cosas en el mismo Host: la SPA
+# de Angular (paginas y estaticos) Y la API del tenant (que Auth resuelve por
+# Host). El Gateway solo tiene API, asi que solo (taxvision_api) devolvia 404 en
+# `/` y `/login`. Por eso los hosts de tenant usan (taxvision_tenant), que separa
+# por tipo de request:
+#   - estaticos (*.js, *.css, /assets/*, imagenes, fuentes) -> SPA
+#   - navegacion del navegador (Accept: text/html; cubre recargas y deep-links
+#     de rutas Angular como /login, /billing, /documents) -> SPA (index.html)
+#   - el resto (XHR/fetch JSON: /auth/*, etc.) -> Gateway (API del tenant)
+# La SPA se sirve desde app.taxproffice.com (misma build; se autoconfigura
+# leyendo el slug del Host en runtime). Se usa app.* como upstream porque el
+# contenedor del CRM esta atado a 127.0.0.1 en la VM del frontend y no es
+# alcanzable por red interna desde este backend. `header_up Host` reescribe el
+# Host a app.taxproffice.com para que Cloudflare lo enrute al frontend y NO
+# vuelva a entrar a este bloque de tenant (evita el loop). El host de sistema
+# (api.*) y el apex siguen siendo solo-API, sin cambios.
+
+# Upstreams del host de SISTEMA (api.*) y el apex: todo al Gateway, sin SPA.
+(taxvision_api) {
 	@minio path /taxvision-storage/* /taxvision-temp/* /taxvision-quarantine/*
 	handle @minio {
 		reverse_proxy minio:9000
@@ -35,18 +55,58 @@
 	}
 }
 
-# Origen HTTP usado por las rutas publicadas del Cloudflare Tunnel. Incluye
-# tanto la API como los hosts dinamicos de tenant; Cloudflare conserva el Host
-# original y Auth lo utiliza para resolver el tenant correspondiente.
-http://{$TAXVISION_DOMAIN:api.taxproffice.com}, http://*.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
-	import taxvision_upstreams
+# Upstreams de hosts de TENANT: co-alojan la SPA (app.taxproffice.com) + la API
+# del tenant (Gateway). El orden de los handle importa: MinIO primero (los
+# objetos de bucket pueden terminar en .png/.pdf y no deben caer en la SPA),
+# luego estaticos, luego navegacion, y el resto al Gateway.
+(taxvision_tenant) {
+	@minio path /taxvision-storage/* /taxvision-temp/* /taxvision-quarantine/*
+	handle @minio {
+		reverse_proxy minio:9000
+	}
+
+	@spa_assets path *.js *.css *.map *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp *.woff *.woff2 *.ttf *.eot /assets/*
+	handle @spa_assets {
+		reverse_proxy https://app.taxproffice.com {
+			header_up Host app.taxproffice.com
+		}
+	}
+
+	@spa_nav header Accept *text/html*
+	handle @spa_nav {
+		reverse_proxy https://app.taxproffice.com {
+			header_up Host app.taxproffice.com
+		}
+	}
+
+	handle {
+		reverse_proxy gateway:8080
+	}
 }
 
-# Entrada TLS directa y hosts dinamicos de tenant.
-{$TAXVISION_BASE_DOMAIN:taxproffice.com}, *.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
+# Origen HTTP usado por las rutas publicadas del Cloudflare Tunnel. El host de
+# sistema (api.*) queda explicito para no caer en la redireccion HTTP->HTTPS y
+# para que sea solo-API; los subdominios de tenant llevan el split SPA+API.
+http://{$TAXVISION_DOMAIN:api.taxproffice.com} {
+	import taxvision_api
+}
+http://*.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
+	import taxvision_tenant
+}
+
+# Entrada TLS directa (DNS-01 wildcard). El apex y api.* son solo-API (el landing
+# lo sirve el frontend); los subdominios de tenant llevan el split SPA+API.
+{$TAXVISION_BASE_DOMAIN:taxproffice.com}, {$TAXVISION_DOMAIN:api.taxproffice.com} {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}
 
-	import taxvision_upstreams
+	import taxvision_api
+}
+*.{$TAXVISION_BASE_DOMAIN:taxproffice.com} {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+
+	import taxvision_tenant
 }

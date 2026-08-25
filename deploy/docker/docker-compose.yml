@@ -713,9 +713,11 @@ services:
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
-      # Portal del CLIENTE (client.taxproffice.com) — los correos del cliente (pedidos de doc, doc
-      # rechazado) linkean acá, NO al CRM (app.). Sin esto caen a BaseUrl=app y el cliente no puede entrar.
+      # Portal del CLIENTE — los correos del cliente (pedidos de doc, doc rechazado) linkean al portal.
+      # Con el host del tenant resuelto van a https://{host}{ClientPathPrefix} (ej. manfer.taxproffice.com/portal);
+      # ClientBaseUrl solo es el FALLBACK si no se pudo resolver el host.
       Portal__ClientBaseUrl: ${CLIENT_PORTAL_BASE_URL:-http://localhost:4200}
+      Portal__ClientPathPrefix: ${CLIENT_PORTAL_PATH_PREFIX:-/portal}
       Portal__BaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Hardening Fase 21 (2026-07-18) — default flippeado a true: Postmaster es ahora el único
       # camino de envío real de Notification (Fases 17-20 retiraron/migraron todo lo que competía:

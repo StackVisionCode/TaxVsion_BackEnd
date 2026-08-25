@@ -34,6 +34,7 @@ public static class TaskWaitingOnClientConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -43,6 +44,9 @@ public static class TaskWaitingOnClientConsumer
             var customer = await customers.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (customer is null || !customer.IsActive || customer.NormalizedEmail.Length == 0)
                 return;
+
+            // El cliente entra a SU oficina: link al portal bajo el subdominio del tenant.
+            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -55,7 +59,7 @@ public static class TaskWaitingOnClientConsumer
                         ["expected_items"] = evt.ExpectedItems,
                         ["client_due_at_utc"] = evt.ClientDueAtUtc,
                         ["tax_year"] = evt.TaxYear,
-                        ["portal_link"] = portal.Value.ClientBaseUrl.TrimEnd('/'),
+                        ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
                         ["product_name"] = portal.Value.ProductName,
                     },
                     ct
