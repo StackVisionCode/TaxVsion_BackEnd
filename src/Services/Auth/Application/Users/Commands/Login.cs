@@ -209,17 +209,8 @@ public static class LoginHandler
 
         user.RegisterSuccessfulLogin();
 
-        var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
-        var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
-
         // 5. Evaluación MFA (política del tenant + preferencia del usuario).
-        var policy = await mfa.GetPolicyAsync(user.TenantId, ct);
-        var mfaRequired =
-            user.MfaEnabled
-            || (
-                policy?.RequiresFor(user.ActorType)
-                ?? user.ActorType is UserActorType.TenantAdmin or UserActorType.PlatformAdmin
-            );
+        var mfaRequired = await MfaRequirement.EvaluateAsync(user, mfa, ct);
 
         if (mfaRequired)
         {
@@ -231,12 +222,13 @@ public static class LoginHandler
             {
                 // Sin método registrado: se permite el acceso con la bandera de
                 // enrolamiento obligatorio para que el frontend fuerce el setup.
-                var setupTokens = await issuer.StartSessionAsync(
+                var setupTokens = await SessionEstablishment.IssueAsync(
                     user,
-                    timeZone,
-                    roleNames,
+                    tenant,
                     ["pwd"],
                     command.DeviceName,
+                    roles,
+                    issuer,
                     ct
                 );
                 await audit.AddAsync(
@@ -271,12 +263,13 @@ public static class LoginHandler
                 var device = await mfa.GetTrustedDeviceByHashAsync(tokens.Hash(command.DeviceToken), ct);
                 if (device is { IsActive: true } && device.UserId == user.Id)
                 {
-                    var trustedTokens = await issuer.StartSessionAsync(
+                    var trustedTokens = await SessionEstablishment.IssueAsync(
                         user,
-                        timeZone,
-                        roleNames,
+                        tenant,
                         ["pwd"],
                         command.DeviceName,
+                        roles,
+                        issuer,
                         ct
                     );
                     await audit.AddAsync(
@@ -368,7 +361,15 @@ public static class LoginHandler
         }
 
         // 6. Sin MFA: emitir sesión y tokens directamente.
-        var issued = await issuer.StartSessionAsync(user, timeZone, roleNames, ["pwd"], command.DeviceName, ct);
+        var issued = await SessionEstablishment.IssueAsync(
+            user,
+            tenant,
+            ["pwd"],
+            command.DeviceName,
+            roles,
+            issuer,
+            ct
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(

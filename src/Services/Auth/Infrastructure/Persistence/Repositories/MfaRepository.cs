@@ -10,11 +10,16 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
 /// </summary>
 public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
 {
+    // IgnoreQueryFilters(): el login central (discover/handoff) lee esto SIN contexto de tenant
+    // (es anónimo y cross-tenant); con el filtro puesto devolvería vacío y se creería que no hay MFA.
+    // El userId ya acota el resultado a un solo usuario, así que ignorar el filtro es seguro.
     public async Task<IReadOnlyList<MfaMethod>> GetMethodsAsync(Guid userId, CancellationToken ct = default) =>
-        await db.MfaMethods.Where(method => method.UserId == userId).ToListAsync(ct);
+        await db.MfaMethods.IgnoreQueryFilters().Where(method => method.UserId == userId).ToListAsync(ct);
 
     public Task<MfaMethod?> GetMethodAsync(Guid userId, MfaMethodType type, CancellationToken ct = default) =>
-        db.MfaMethods.FirstOrDefaultAsync(method => method.UserId == userId && method.Type == type, ct);
+        db
+            .MfaMethods.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(method => method.UserId == userId && method.Type == type, ct);
 
     // IgnoreQueryFilters(): methodId siempre viene de challenge.MfaMethodId, un desafío ya
     // resuelto por hash del ticket de login (flujo anónimo, ver GetChallengeByTicketHashAsync).
@@ -36,8 +41,10 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
             .MfaChallenges.IgnoreQueryFilters()
             .FirstOrDefaultAsync(challenge => challenge.LoginTicketHash == ticketHash, ct);
 
+    // IgnoreQueryFilters(): el handoff del login central verifica recovery codes sin contexto de
+    // tenant; el userId ya acota. Misma razón que GetMethodsAsync.
     public async Task<IReadOnlyList<RecoveryCode>> GetRecoveryCodesAsync(Guid userId, CancellationToken ct = default) =>
-        await db.RecoveryCodes.Where(code => code.UserId == userId).ToListAsync(ct);
+        await db.RecoveryCodes.IgnoreQueryFilters().Where(code => code.UserId == userId).ToListAsync(ct);
 
     public async Task AddRecoveryCodesAsync(IEnumerable<RecoveryCode> codes, CancellationToken ct = default) =>
         await db.RecoveryCodes.AddRangeAsync(codes, ct);
@@ -58,8 +65,10 @@ public sealed class MfaRepository(AuthDbContext db) : IMfaRepository
     public async Task AddTrustedDeviceAsync(TrustedDevice device, CancellationToken ct = default) =>
         await db.TrustedDevices.AddAsync(device, ct);
 
+    // IgnoreQueryFilters(): el discover del login central evalúa la política de cada oficina sin
+    // contexto de tenant; el tenantId explícito ya acota a una sola política.
     public Task<TenantMfaPolicy?> GetPolicyAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.TenantMfaPolicies.FirstOrDefaultAsync(policy => policy.Id == tenantId, ct);
+        db.TenantMfaPolicies.IgnoreQueryFilters().FirstOrDefaultAsync(policy => policy.Id == tenantId, ct);
 
     public async Task AddPolicyAsync(TenantMfaPolicy policy, CancellationToken ct = default) =>
         await db.TenantMfaPolicies.AddAsync(policy, ct);

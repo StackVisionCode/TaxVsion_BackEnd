@@ -19,6 +19,7 @@ public sealed class ErrorHttpMappingTests
     [Theory]
     [InlineData("User.NotFound", StatusCodes.Status404NotFound)]
     [InlineData("Auth.Invalid", StatusCodes.Status401Unauthorized)]
+    [InlineData("Auth.HandoffInvalid", StatusCodes.Status401Unauthorized)]
     [InlineData("File.Forbidden", StatusCodes.Status403Forbidden)]
     [InlineData("Role.NameConflict", StatusCodes.Status409Conflict)]
     [InlineData("Codes.CodeQuote.Expired", StatusCodes.Status410Gone)]
