@@ -26,4 +26,14 @@ public static class GatewayMetrics
     public static readonly Counter<long> InternalSurfaceProbesBlocked = Meter.CreateCounter<long>(
         "gateway_internal_surface_probes_blocked_total"
     );
+
+    /// <summary>Requests a un subdominio de oficina no registrado, bloqueados con 404 (TenantHostGuard).</summary>
+    public static readonly Counter<long> TenantHostRejected = Meter.CreateCounter<long>(
+        "gateway_tenant_host_rejected_total"
+    );
+
+    /// <summary>Requests bloqueados con 403 por tenant del JWT distinto al del Host (acceso cruzado).</summary>
+    public static readonly Counter<long> TenantHostCrossTenantBlocked = Meter.CreateCounter<long>(
+        "gateway_tenant_host_cross_tenant_blocked_total"
+    );
 }
