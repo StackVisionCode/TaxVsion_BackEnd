@@ -46,6 +46,26 @@ builder
     );
 
 builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
+// Tarea 3 (senior) — validación Host↔tenant en el Gateway (TenantHostGuardMiddleware). El resolver
+// llama al `by-host` de Auth reusando la MISMA dirección del cluster YARP "auth" (dev localhost,
+// docker auth-api), así no se duplica la config del destino. BaseAddress normalizada con "/" final.
+builder.Services.Configure<TenantHostGuardOptions>(
+    builder.Configuration.GetSection(TenantHostGuardOptions.SectionName)
+);
+var authClusterAddress =
+    builder
+        .Configuration.GetSection("ReverseProxy:Clusters:auth:Destinations")
+        .GetChildren()
+        .FirstOrDefault()
+        ?["Address"]
+    ?? "http://localhost:5124/";
+builder.Services.AddHttpClient<IHostTenantResolver, HostTenantResolver>(client =>
+{
+    client.BaseAddress = new Uri(authClusterAddress.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(3);
+});
+
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -68,6 +88,10 @@ app.UseAuthorization();
 // La propia excluye /health/* de la medición y del shedding.
 app.UseMiddleware<LoadSheddingMiddleware>();
 app.UseMiddleware<TenantPropagationMiddleware>();
+
+// Después de UseAuthentication (necesita el tenant_id del JWT ya parseado) y antes del ruteo:
+// subdominio no registrado → 404 plano; tenant del JWT ≠ tenant del Host → 403.
+app.UseMiddleware<TenantHostGuardMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
