@@ -159,6 +159,10 @@ public static class DependencyInjection
         var redisConnectionString = configuration.GetConnectionString("Redis") ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
         services.AddScoped<ITokenReferenceStore, RedisTokenReferenceStore>();
+        // Login central (Opción A): el vale de handoff cross-dominio y la sesión de descubrimiento,
+        // misma dependencia de Redis crudo.
+        services.AddScoped<IHandoffTicketStore, RedisHandoffTicketStore>();
+        services.AddScoped<IDiscoverySessionStore, RedisDiscoverySessionStore>();
 
         // Rate Limit Fase 0.1 — contador atómico compartido entre réplicas para LoginThrottler
         // (antes GET+SET no atómico sobre ICacheService, ver doc-comment de LoginThrottler.cs).

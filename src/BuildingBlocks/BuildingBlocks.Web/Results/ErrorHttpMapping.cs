@@ -199,6 +199,9 @@ public static class ErrorHttpMapping
             or "Auth.InvalidVerificationCode"
             or "Auth.MfaInvalid"
             or "Auth.SessionRevoked"
+            // El vale de handoff del login central es la credencial portadora del canje; uno
+            // inválido/vencido/ya usado es un fallo de autenticación (401), igual que el refresh token.
+            or "Auth.HandoffInvalid"
             or "Auth.InvalidClient" => StatusCodes.Status401Unauthorized,
             "Auth.Inactive"
             or "Tenant.Inactive"
