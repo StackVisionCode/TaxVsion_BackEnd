@@ -5,31 +5,43 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.CentralLogin.Commands;
 
 public sealed record DiscoverLoginCommand(string Email, string Password, string? DeviceName = null);
 
-/// <summary>Una oficina que el frontend puede ofrecer en el selector.</summary>
-public sealed record DiscoverOfficeView(Guid TenantId, string Subdomain, string TenantName, bool MfaRequired);
+/// <summary>
+/// Una oficina que el frontend puede ofrecer en el selector. <see cref="IsClientPortal"/> le dice al
+/// frontend a qué SPA mandar al usuario tras autenticar (cliente → /portal/client, staff → CRM).
+/// </summary>
+public sealed record DiscoverOfficeView(
+    Guid TenantId,
+    string Subdomain,
+    string TenantName,
+    bool MfaRequired,
+    bool IsClientPortal
+);
 
 /// <summary>
 /// Respuesta polimórfica: o se resolvió a una sola oficina sin MFA y ya viaja el vale
-/// (<see cref="Subdomain"/> + <see cref="Ticket"/>), o hace falta que el usuario elija/haga MFA
-/// (<see cref="DiscoverySessionRef"/> + <see cref="Offices"/>). El frontend arma la URL de destino
-/// (staff vs <c>/portal/client</c>) — Auth no conoce las rutas de la SPA.
+/// (<see cref="Subdomain"/> + <see cref="Ticket"/> + <see cref="IsClientPortal"/>), o hace falta que
+/// el usuario elija/haga MFA (<see cref="DiscoverySessionRef"/> + <see cref="Offices"/>). El frontend
+/// arma la URL de destino (staff vs <c>/portal/client</c>) según el actor — Auth no conoce las rutas.
 /// </summary>
 public sealed record DiscoverLoginResponse(
     string? Subdomain,
     Guid? Ticket,
     Guid? DiscoverySessionRef,
-    IReadOnlyList<DiscoverOfficeView>? Offices
+    IReadOnlyList<DiscoverOfficeView>? Offices,
+    bool? IsClientPortal
 )
 {
-    public static DiscoverLoginResponse Direct(string subdomain, Guid ticket) => new(subdomain, ticket, null, null);
+    public static DiscoverLoginResponse Direct(string subdomain, Guid ticket, bool isClientPortal) =>
+        new(subdomain, ticket, null, null, isClientPortal);
 
     public static DiscoverLoginResponse Selection(Guid sessionRef, IReadOnlyList<DiscoverOfficeView> offices) =>
-        new(null, null, sessionRef, offices);
+        new(null, null, sessionRef, offices, null);
 }
 
 /// <summary>
@@ -78,7 +90,7 @@ public static class DiscoverLoginHandler
             );
             await audit.AddAsync(Success(only.TenantId, only.UserId, request, correlation, "discover_direct"), ct);
             await unitOfWork.SaveChangesAsync(ct);
-            return Result.Success(DiscoverLoginResponse.Direct(only.Subdomain, ticket));
+            return Result.Success(DiscoverLoginResponse.Direct(only.Subdomain, ticket, only.IsClientPortal));
         }
 
         // 4. Selección (varias oficinas, o MFA con método pendiente): guardar el set y devolver el
@@ -92,7 +104,7 @@ public static class DiscoverLoginHandler
             ct
         );
         var offices = matches
-            .Select(m => new DiscoverOfficeView(m.TenantId, m.Subdomain, m.TenantName, m.ChallengeRequired))
+            .Select(m => new DiscoverOfficeView(m.TenantId, m.Subdomain, m.TenantName, m.ChallengeRequired, m.IsClientPortal))
             .ToList();
         return Result.Success(DiscoverLoginResponse.Selection(sessionRef, offices));
     }
@@ -103,7 +115,8 @@ public static class DiscoverLoginHandler
         string Subdomain,
         string TenantName,
         bool ChallengeRequired,
-        bool MustEnroll
+        bool MustEnroll,
+        bool IsClientPortal
     );
 
     /// <summary>
@@ -139,7 +152,15 @@ public static class DiscoverLoginHandler
 
             var mfa2 = await MfaRequirement.DisposeAsync(user, mfa, ct);
             matches.Add(
-                new Match(tenantId, user.Id, tenant.SubDomain, tenant.Name, mfa2.ChallengeRequired, mfa2.MustEnroll)
+                new Match(
+                    tenantId,
+                    user.Id,
+                    tenant.SubDomain,
+                    tenant.Name,
+                    mfa2.ChallengeRequired,
+                    mfa2.MustEnroll,
+                    user.ActorType == UserActorType.CustomerPortal
+                )
             );
         }
 

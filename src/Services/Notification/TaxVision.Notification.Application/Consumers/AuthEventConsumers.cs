@@ -398,7 +398,11 @@ public static class UserRegisteredConsumer
                     new Dictionary<string, object?>
                     {
                         ["name"] = ResolveName(evt),
-                        ["portal_link"] = TenantEmailLinks.StaffBase(tenantHost, portal.Value),
+                        // Un cliente (CustomerPortal) entra por el portal (/portal); el staff, por la
+                        // raíz (CRM). Mandar a todos a la raíz llevaba al cliente al CRM del staff.
+                        ["portal_link"] = evt.ActorType == "CustomerPortal"
+                            ? TenantEmailLinks.ClientBase(tenantHost, portal.Value)
+                            : TenantEmailLinks.StaffBase(tenantHost, portal.Value),
                         ["product_name"] = portal.Value.ProductName,
                     },
                     ct
