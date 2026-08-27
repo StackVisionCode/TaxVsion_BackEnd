@@ -104,7 +104,13 @@ public static class DiscoverLoginHandler
             ct
         );
         var offices = matches
-            .Select(m => new DiscoverOfficeView(m.TenantId, m.Subdomain, m.TenantName, m.ChallengeRequired, m.IsClientPortal))
+            .Select(m => new DiscoverOfficeView(
+                m.TenantId,
+                m.Subdomain,
+                m.TenantName,
+                m.ChallengeRequired,
+                m.IsClientPortal
+            ))
             .ToList();
         return Result.Success(DiscoverLoginResponse.Selection(sessionRef, offices));
     }

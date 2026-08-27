@@ -6,6 +6,7 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Credentials;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Credentials.Commands;
@@ -16,11 +17,14 @@ namespace TaxVision.Auth.Application.Credentials.Commands;
 
 public sealed record ForgotPasswordCommand(Guid TenantId, string Email);
 
+public sealed record ForgotPasswordCentralCommand(string Email);
+
 public static class ForgotPasswordHandler
 {
     private static readonly TimeSpan ResetValidity = TimeSpan.FromMinutes(30);
 
-    /// <summary>Siempre devuelve éxito (anti-enumeración). El email solo se envía si el usuario existe.
+    /// <summary>Forgot password POR-TENANT (desde el subdominio de la oficina). Siempre devuelve éxito
+    /// (anti-enumeración). El email solo se envía si el usuario existe.
     /// Fase 18 — throttle por email (3/hora) e IP (10/hora, cooldown 60s) antes de tocar la DB: un
     /// intento tirado por rate limit tampoco distingue email existente vs inexistente.</summary>
     public static async Task<Result> Handle(
@@ -47,6 +51,25 @@ public static class ForgotPasswordHandler
         if (user is null || !user.IsActive)
             return Result.Success();
 
+        await IssueResetForUserAsync(user, credentials, tokens, audit, request, correlation, bus, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    /// <summary>Emite el token de reset de un usuario, publica el evento (con su ActorType, para que
+    /// el link vaya al portal o al CRM) y audita. NO guarda: el caller hace un único SaveChanges.
+    /// Compartido por el forgot por-tenant y el central.</summary>
+    internal static async Task IssueResetForUserAsync(
+        User user,
+        ICredentialTokenRepository credentials,
+        ISecureTokenService tokens,
+        IAuthAuditWriter audit,
+        IRequestContext request,
+        ICorrelationContext correlation,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
         var rawToken = tokens.GenerateToken();
         var resetToken = PasswordResetToken.Create(
             user.TenantId,
@@ -65,6 +88,7 @@ public static class ForgotPasswordHandler
                 Email = user.Email,
                 RawToken = rawToken,
                 ExpiresAtUtc = resetToken.ExpiresAtUtc,
+                ActorType = user.ActorType.ToString(),
                 CorrelationId = correlation.CorrelationId,
             }
         );
@@ -81,7 +105,57 @@ public static class ForgotPasswordHandler
             ),
             ct
         );
-        await unitOfWork.SaveChangesAsync(ct);
+    }
+}
+
+/// <summary>Forgot password CENTRAL (desde app.taxproffice.com, sin oficina en el Host). Descubre
+/// TODAS las oficinas activas del email y emite un reset por cada una — cada link va a su subdominio,
+/// al portal o al CRM según el actor de esa oficina. Siempre 202 (anti-enumeración): la respuesta no
+/// revela cuántas oficinas hubo. El throttle por email+IP corre una sola vez, antes de tocar la DB.</summary>
+public static class ForgotPasswordCentralHandler
+{
+    public static async Task<Result> Handle(
+        ForgotPasswordCentralCommand command,
+        IUserRepository users,
+        ICredentialTokenRepository credentials,
+        ISecureTokenService tokens,
+        ILoginThrottler throttler,
+        IAuthAuditWriter audit,
+        IRequestContext request,
+        ICorrelationContext correlation,
+        IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        CancellationToken ct
+    )
+    {
+        var email = command.Email?.Trim().ToLowerInvariant() ?? string.Empty;
+
+        if (await throttler.GetPasswordResetRetryAfterAsync(email, request.IpAddress, ct) is not null)
+            return Result.Success();
+        await throttler.RegisterPasswordResetRequestAsync(email, request.IpAddress, ct);
+
+        var issued = false;
+        foreach (var tenantId in await users.GetActiveTenantIdsByEmailAsync(email, ct))
+        {
+            var user = await users.GetByEmailAsync(tenantId, email, ct);
+            if (user is null || !user.IsActive)
+                continue;
+
+            await ForgotPasswordHandler.IssueResetForUserAsync(
+                user,
+                credentials,
+                tokens,
+                audit,
+                request,
+                correlation,
+                bus,
+                ct
+            );
+            issued = true;
+        }
+
+        if (issued)
+            await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 }
