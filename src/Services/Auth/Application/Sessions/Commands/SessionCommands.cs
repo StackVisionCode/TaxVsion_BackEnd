@@ -15,7 +15,6 @@ public static class LogoutHandler
         LogoutCommand command,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
-        ISessionRevocationPublisher revocationPublisher,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -27,6 +26,9 @@ public static class LogoutHandler
         if (session is null || session.UserId != command.UserId)
             return Result.Success();
 
+        // Logout de la sesión ACTUAL: se revoca y denylista, pero NO se publica al socket. Publicar
+        // avisaría al propio dispositivo que se está deslogueando (su socket sigue vivo un instante) y
+        // le dispararía el modal de "cerrada en otro dispositivo". No hay otra sesión que notificar.
         await sessions.RevokeSessionAsync(session.Id, "user_logout", ct);
         await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
         await audit.AddAsync(
@@ -44,8 +46,6 @@ public static class LogoutHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
-        // Aviso en tiempo real a los otros dispositivos del usuario (best-effort, post-commit).
-        await revocationPublisher.PublishRevokedAsync(session.TenantId, command.UserId, session.Id, "user_logout", ct);
         return Result.Success();
     }
 }
