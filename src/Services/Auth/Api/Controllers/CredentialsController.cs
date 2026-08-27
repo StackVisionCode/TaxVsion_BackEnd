@@ -38,15 +38,21 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
+        // Con oficina resuelta (subdominio) → reset POR-TENANT. Sin oficina (app.taxproffice.com, el
+        // Host no resuelve a ningún tenant) → reset CENTRAL: descubre todas las oficinas del email y
+        // manda un link por cada una. Ambos caminos devuelven el mismo 202 (anti-enumeración): el
+        // caller no puede distinguirlos ni saber si el email existe.
         var tenantResult = EffectiveLoginTenantResolver.Resolve(
             tenantDomainOptions.Value.EnforceHostResolution,
             tenantContext.ResolvedTenantId,
             request.TenantId
         );
-        if (tenantResult.IsFailure)
-            return StatusCode(tenantResult.Error.ToHttpStatusCode(), tenantResult.Error);
 
-        await bus.InvokeAsync<Result>(new ForgotPasswordCommand(tenantResult.Value, request.Email), ct);
+        if (tenantResult.IsSuccess)
+            await bus.InvokeAsync<Result>(new ForgotPasswordCommand(tenantResult.Value, request.Email), ct);
+        else
+            await bus.InvokeAsync<Result>(new ForgotPasswordCentralCommand(request.Email), ct);
+
         return Accepted();
     }
 

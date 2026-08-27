@@ -90,10 +90,15 @@ public static class PasswordResetRequestedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            // Link al subdominio de la oficina (no a un base fijo): el reset lo resuelve el CRM por Host.
+            // Link al subdominio de la oficina (no a un base fijo): el reset lo resuelve por Host.
+            // El destino depende del actor de ESTA oficina: cliente → portal, staff → CRM. Un email
+            // multi-oficina recibe un correo por oficina, cada uno con su link al destino correcto.
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
+            var resetToken = Uri.EscapeDataString(evt.RawToken);
             var resetLink =
-                $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={Uri.EscapeDataString(evt.RawToken)}";
+                evt.ActorType == "CustomerPortal"
+                    ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/reset-password/new?token={resetToken}"
+                    : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={resetToken}";
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -400,9 +405,10 @@ public static class UserRegisteredConsumer
                         ["name"] = ResolveName(evt),
                         // Un cliente (CustomerPortal) entra por el portal (/portal); el staff, por la
                         // raíz (CRM). Mandar a todos a la raíz llevaba al cliente al CRM del staff.
-                        ["portal_link"] = evt.ActorType == "CustomerPortal"
-                            ? TenantEmailLinks.ClientBase(tenantHost, portal.Value)
-                            : TenantEmailLinks.StaffBase(tenantHost, portal.Value),
+                        ["portal_link"] =
+                            evt.ActorType == "CustomerPortal"
+                                ? TenantEmailLinks.ClientBase(tenantHost, portal.Value)
+                                : TenantEmailLinks.StaffBase(tenantHost, portal.Value),
                         ["product_name"] = portal.Value.ProductName,
                     },
                     ct
