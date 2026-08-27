@@ -24,11 +24,11 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [RateLimitExempt(
         "Anónimo (paso 2 del login, identificado por LoginTicket, sin JWT todavía) — VerifyMfaChallengeHandler ya limita intentos por challenge (RegisterAttempt); agregar protección HTTP nueva queda fuera de alcance de esta migración."
     )]
-    [ProducesResponseType<AuthTokensResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<MfaVerifyResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Verify(VerifyMfaChallengeCommand command, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<AuthTokensResponse>>(command, ct);
+        var result = await bus.InvokeAsync<Result<MfaVerifyResponse>>(command, ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

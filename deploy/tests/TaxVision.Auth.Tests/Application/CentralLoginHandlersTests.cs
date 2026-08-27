@@ -298,6 +298,8 @@ public sealed class CentralLoginHandlersTests
             world.Tenants,
             world.Roles,
             world.Issuer,
+            new EmptyUserSessionRepository(),
+            new NoopSessionTakeoverTicketStore(),
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),

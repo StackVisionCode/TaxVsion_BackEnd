@@ -17,7 +17,9 @@ const rawEnv = z
 
     COMMUNICATION_DB_CONNECTION: z.string().min(1),
     COMMUNICATION_REDIS_URI: z.string().url(),
-    COMMUNICATION_SESSION_DENYLIST_PREFIX: z.string().default('auth:session-denylist'),
+    // Debe casar EXACTO con la llave que escribe Auth: InstanceName "taxvision:" del IDistributedCache
+    // + prefijo lógico "auth:denylist" → "taxvision:auth:denylist". El sid va sin guiones (formato N).
+    COMMUNICATION_SESSION_DENYLIST_PREFIX: z.string().default('taxvision:auth:denylist'),
     // Fail-closed por defecto: si Redis no responde al chequear el denylist,
     // rechazamos la conexion en vez de asumir "no revocado". Flag de emergencia
     // para operar en fail-open temporalmente si un incidente de Redis tumba

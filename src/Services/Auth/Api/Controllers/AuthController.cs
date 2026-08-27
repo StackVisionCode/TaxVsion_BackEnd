@@ -69,6 +69,30 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>
+    /// Sesión única: confirma el takeover. Canjea el vale que devolvió el login cuando el usuario ya
+    /// tenía una sesión activa, revoca las anteriores y emite los tokens de la nueva. Anónimo — el
+    /// vale (un solo uso, TTL corto) es el portador; el login que lo emitió ya autenticó.
+    /// </summary>
+    public sealed record TakeoverSessionRequest(Guid Ticket, string? DeviceName = null);
+
+    [HttpPost("session/takeover")]
+    [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo — el vale de takeover (Guid unguessable, un solo uso, TTL 2 min en Redis) es el secreto portador; el login que lo emitió ya pasó por ILoginThrottler. Sin JWT propio que particionar, mismo criterio que /auth/refresh."
+    )]
+    [ProducesResponseType<LoginResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> TakeoverSession(TakeoverSessionRequest request, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<LoginResponse>>(
+            new TakeoverSessionCommand(request.Ticket, request.DeviceName),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Fase 18 — ResolvedTenantId no se bindea del body: sale de IResolvedTenantContext
     /// (Host de la request, poblado por TenantHostResolutionMiddleware), igual que en Login.</summary>
     public sealed record RefreshRequest(string RefreshToken);
