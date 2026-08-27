@@ -16,11 +16,35 @@ public sealed record ExchangeHandoffTicketCommand(Guid Ticket, string? DeviceNam
 /// desenlace del login directo.
 /// </summary>
 public sealed record HandoffSessionResponse(
-    string AccessToken,
-    string RefreshToken,
+    string? AccessToken,
+    string? RefreshToken,
     int ExpiresInSeconds,
-    bool MfaSetupRequired
-);
+    bool MfaSetupRequired,
+    bool TakeoverRequired = false,
+    string? TakeoverTicket = null,
+    int? TakeoverTicketExpiresInSeconds = null
+)
+{
+    public static HandoffSessionResponse ForTokens(
+        string accessToken,
+        string refreshToken,
+        int expiresInSeconds,
+        bool mfaSetupRequired
+    ) => new(accessToken, refreshToken, expiresInSeconds, mfaSetupRequired);
+
+    // Sesión única: el usuario ya tenía una sesión activa. No hay tokens todavía — el portal muestra
+    // el interstitial y canjea el vale en POST /auth/session/takeover si confirma.
+    public static HandoffSessionResponse ForTakeover(string takeoverTicket, int ticketSeconds, bool mfaSetupRequired) =>
+        new(
+            null,
+            null,
+            0,
+            mfaSetupRequired,
+            TakeoverRequired: true,
+            TakeoverTicket: takeoverTicket,
+            TakeoverTicketExpiresInSeconds: ticketSeconds
+        );
+}
 
 /// <summary>
 /// Canje del vale de handoff en el host de la oficina: consume el vale (un solo uso), verifica que
@@ -36,6 +60,8 @@ public static class ExchangeHandoffTicketHandler
         ITenantRegistry tenants,
         IRoleRepository roles,
         IAuthSessionIssuer issuer,
+        ISessionRepository sessions,
+        ISessionTakeoverTicketStore takeoverTickets,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -59,15 +85,47 @@ public static class ExchangeHandoffTicketHandler
         if (user is null || user.TenantId != payload.TenantId || !user.IsActive)
             return Result.Failure<HandoffSessionResponse>(invalid);
 
-        var issued = await SessionEstablishment.IssueAsync(
+        // Sesión única: si el usuario ya tiene una sesión activa en la oficina, se exige takeover en
+        // vez de materializar; si no, se emite. El flag de enrolamiento MFA viaja en el vale.
+        var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
             user,
             tenant,
             ["pwd", "handoff"],
             command.DeviceName,
+            mustEnrollMfa: payload.MustEnrollMfa,
             roles,
             issuer,
+            sessions,
+            takeoverTickets,
             ct
         );
+
+        if (outcome.TakeoverRequired)
+        {
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.LoginSucceeded,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: """{"method":"handoff","takeoverRequired":true}"""
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success(
+                HandoffSessionResponse.ForTakeover(
+                    outcome.TakeoverTicket!.Value.ToString(),
+                    (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
+                    payload.MustEnrollMfa
+                )
+            );
+        }
+
+        var issued = outcome.Tokens!;
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -85,7 +143,7 @@ public static class ExchangeHandoffTicketHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(
-            new HandoffSessionResponse(
+            HandoffSessionResponse.ForTokens(
                 issued.AccessToken,
                 issued.RefreshToken,
                 issued.ExpiresInSeconds,

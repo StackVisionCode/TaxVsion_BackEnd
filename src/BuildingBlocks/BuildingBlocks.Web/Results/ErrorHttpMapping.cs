@@ -202,6 +202,8 @@ public static class ErrorHttpMapping
             // El vale de handoff del login central es la credencial portadora del canje; uno
             // inválido/vencido/ya usado es un fallo de autenticación (401), igual que el refresh token.
             or "Auth.HandoffInvalid"
+            // El vale de takeover de sesión única es igual: portador, un solo uso; uno inválido es 401.
+            or "Auth.TakeoverInvalid"
             or "Auth.InvalidClient" => StatusCodes.Status401Unauthorized,
             "Auth.Inactive"
             or "Tenant.Inactive"

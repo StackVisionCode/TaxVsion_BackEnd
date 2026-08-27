@@ -77,7 +77,10 @@ export async function verifyAccessToken(token: string): Promise<AuthenticatedPri
 async function ensureNotDenied(jti: string | undefined, sessionId: string | undefined): Promise<void> {
   const keys: string[] = [];
   if (jti) keys.push(`${config.redis.sessionDenylistPrefix}:jti:${jti}`);
-  if (sessionId) keys.push(`${config.redis.sessionDenylistPrefix}:sid:${sessionId}`);
+  // Auth escribe la llave del sid en formato "N" (GUID sin guiones, minúsculas), no el claim con
+  // guiones del JWT — hay que quitarle los guiones para que la llave case con la que Auth denylista.
+  if (sessionId)
+    keys.push(`${config.redis.sessionDenylistPrefix}:sid:${sessionId.replace(/-/g, '')}`);
   if (keys.length === 0) return;
 
   try {

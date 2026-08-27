@@ -163,6 +163,8 @@ public static class DependencyInjection
         // misma dependencia de Redis crudo.
         services.AddScoped<IHandoffTicketStore, RedisHandoffTicketStore>();
         services.AddScoped<IDiscoverySessionStore, RedisDiscoverySessionStore>();
+        services.AddScoped<ISessionRevocationPublisher, RedisSessionRevocationPublisher>();
+        services.AddScoped<ISessionTakeoverTicketStore, RedisSessionTakeoverTicketStore>();
 
         // Rate Limit Fase 0.1 — contador atómico compartido entre réplicas para LoginThrottler
         // (antes GET+SET no atómico sobre ICacheService, ver doc-comment de LoginThrottler.cs).

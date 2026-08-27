@@ -1722,7 +1722,7 @@ services:
       COMMUNICATION_HTTP_PORT: "5350"
       COMMUNICATION_DB_CONNECTION: ${COMMUNICATION_DB_CONNECTION:?Set COMMUNICATION_DB_CONNECTION in .env}
       COMMUNICATION_REDIS_URI: redis://redis:6379/0
-      COMMUNICATION_SESSION_DENYLIST_PREFIX: auth:session-denylist
+      COMMUNICATION_SESSION_DENYLIST_PREFIX: taxvision:auth:denylist
       # Tenant especial "de plataforma" para el modulo de Support cross-tenant
       # (Fase 5) — existe en .env local pero faltaba en este compose.
       COMMUNICATION_PLATFORM_TENANT_ID: ${COMMUNICATION_PLATFORM_TENANT_ID:?Set COMMUNICATION_PLATFORM_TENANT_ID in .env}

@@ -15,6 +15,7 @@ public static class LogoutHandler
         LogoutCommand command,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocationPublisher,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -43,6 +44,8 @@ public static class LogoutHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // Aviso en tiempo real a los otros dispositivos del usuario (best-effort, post-commit).
+        await revocationPublisher.PublishRevokedAsync(session.TenantId, command.UserId, session.Id, "user_logout", ct);
         return Result.Success();
     }
 }
@@ -65,6 +68,7 @@ public static class RevokeSessionHandler
         RevokeSessionCommand command,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocationPublisher,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -97,6 +101,14 @@ public static class RevokeSessionHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // Aviso en tiempo real al dispositivo dueño de la sesión revocada (best-effort, post-commit).
+        await revocationPublisher.PublishRevokedAsync(
+            session.TenantId,
+            session.UserId,
+            session.Id,
+            isOwner ? "user_logout" : "admin_revoke",
+            ct
+        );
         return Result.Success();
     }
 }
@@ -110,6 +122,7 @@ public static class RevokeAllMySessionsHandler
         RevokeAllMySessionsCommand command,
         ISessionRepository sessions,
         IAccessTokenDenylist denylist,
+        ISessionRevocationPublisher revocationPublisher,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -139,6 +152,19 @@ public static class RevokeAllMySessionsHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // Aviso en tiempo real a cada dispositivo revocado (best-effort, post-commit).
+        foreach (var session in active)
+        {
+            if (session.Id == command.ExceptSessionId)
+                continue;
+            await revocationPublisher.PublishRevokedAsync(
+                command.TenantId,
+                command.UserId,
+                session.Id,
+                "user_logout_all",
+                ct
+            );
+        }
         return Result.Success();
     }
 }

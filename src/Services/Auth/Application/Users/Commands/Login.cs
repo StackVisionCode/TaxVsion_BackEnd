@@ -36,7 +36,10 @@ public sealed record LoginResponse(
     AuthTokensResponse? Tokens,
     string? LoginTicket,
     string[]? MfaMethods,
-    int? TicketExpiresInSeconds
+    int? TicketExpiresInSeconds,
+    bool TakeoverRequired = false,
+    string? TakeoverTicket = null,
+    int? TakeoverTicketExpiresInSeconds = null
 )
 {
     public static LoginResponse ForTokens(AuthTokensResponse tokens, bool mfaSetupRequired = false) =>
@@ -44,6 +47,21 @@ public sealed record LoginResponse(
 
     public static LoginResponse ForMfaChallenge(string loginTicket, string[] methods, int ticketSeconds) =>
         new(true, false, null, loginTicket, methods, ticketSeconds);
+
+    // Sesión única: el usuario ya tiene una sesión activa. No hay tokens todavía — el frontend
+    // muestra el interstitial y canjea el vale en POST /auth/session/takeover si el usuario confirma.
+    public static LoginResponse ForTakeover(string takeoverTicket, int ticketSeconds, bool mfaSetupRequired = false) =>
+        new(
+            false,
+            mfaSetupRequired,
+            null,
+            null,
+            null,
+            null,
+            TakeoverRequired: true,
+            TakeoverTicket: takeoverTicket,
+            TakeoverTicketExpiresInSeconds: ticketSeconds
+        );
 }
 
 public static class LockoutPolicy
@@ -51,6 +69,7 @@ public static class LockoutPolicy
     public const int MaxFailedAttempts = 10;
     public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan MfaTicketValidity = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan TakeoverTicketValidity = TimeSpan.FromMinutes(2);
 }
 
 public static class LoginHandler
@@ -63,6 +82,8 @@ public static class LoginHandler
         IRoleRepository roles,
         IMfaRepository mfa,
         IAuthSessionIssuer issuer,
+        ISessionRepository sessions,
+        ISessionTakeoverTicketStore takeoverTickets,
         ISecureTokenService tokens,
         ILoginThrottler throttler,
         IAuthAuditWriter audit,
@@ -220,17 +241,48 @@ public static class LoginHandler
 
             if (confirmedMethods.Count == 0)
             {
-                // Sin método registrado: se permite el acceso con la bandera de
-                // enrolamiento obligatorio para que el frontend fuerce el setup.
-                var setupTokens = await SessionEstablishment.IssueAsync(
+                // Sin método registrado: se deja entrar con la bandera de enrolamiento obligatorio
+                // para que el frontend fuerce el setup. Sesión única: si ya hay sesión activa, se exige
+                // takeover (el flag mfaSetupRequired viaja en el vale y vuelve al confirmar).
+                var setupOutcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
                     user,
                     tenant,
                     ["pwd"],
                     command.DeviceName,
+                    mustEnrollMfa: true,
                     roles,
                     issuer,
+                    sessions,
+                    takeoverTickets,
                     ct
                 );
+
+                if (setupOutcome.TakeoverRequired)
+                {
+                    await audit.AddAsync(
+                        AuthAuditLog.Record(
+                            user.TenantId,
+                            user.Id,
+                            AuthAuditAction.LoginSucceeded,
+                            true,
+                            request.IpAddress,
+                            request.UserAgent,
+                            correlation.CorrelationId,
+                            detailsJson: """{"takeoverRequired":true,"mfaSetupRequired":true}"""
+                        ),
+                        ct
+                    );
+                    await unitOfWork.SaveChangesAsync(ct);
+                    return Result.Success(
+                        LoginResponse.ForTakeover(
+                            setupOutcome.TakeoverTicket!.Value.ToString(),
+                            (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
+                            mfaSetupRequired: true
+                        )
+                    );
+                }
+
+                var setupTokens = setupOutcome.Tokens!;
                 await audit.AddAsync(
                     AuthAuditLog.Record(
                         user.TenantId,
@@ -263,15 +315,45 @@ public static class LoginHandler
                 var device = await mfa.GetTrustedDeviceByHashAsync(tokens.Hash(command.DeviceToken), ct);
                 if (device is { IsActive: true } && device.UserId == user.Id)
                 {
-                    var trustedTokens = await SessionEstablishment.IssueAsync(
+                    // Dispositivo confiable: omite el 2.º factor. Sesión única: igual pasa por el gate.
+                    var trustedOutcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
                         user,
                         tenant,
                         ["pwd"],
                         command.DeviceName,
+                        mustEnrollMfa: false,
                         roles,
                         issuer,
+                        sessions,
+                        takeoverTickets,
                         ct
                     );
+
+                    if (trustedOutcome.TakeoverRequired)
+                    {
+                        await audit.AddAsync(
+                            AuthAuditLog.Record(
+                                user.TenantId,
+                                user.Id,
+                                AuthAuditAction.LoginSucceeded,
+                                true,
+                                request.IpAddress,
+                                request.UserAgent,
+                                correlation.CorrelationId,
+                                detailsJson: """{"takeoverRequired":true,"trustedDevice":true}"""
+                            ),
+                            ct
+                        );
+                        await unitOfWork.SaveChangesAsync(ct);
+                        return Result.Success(
+                            LoginResponse.ForTakeover(
+                                trustedOutcome.TakeoverTicket!.Value.ToString(),
+                                (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds
+                            )
+                        );
+                    }
+
+                    var trustedTokens = trustedOutcome.Tokens!;
                     await audit.AddAsync(
                         AuthAuditLog.Record(
                             user.TenantId,
@@ -360,17 +442,46 @@ public static class LoginHandler
             );
         }
 
-        // 6. Sin MFA: emitir sesión y tokens directamente.
-        var issued = await SessionEstablishment.IssueAsync(
+        // 6. Sin MFA: sesión única → si el usuario ya tiene una sesión activa, exige takeover en vez
+        //    de emitir; si no, emite directo.
+        var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
             user,
             tenant,
             ["pwd"],
             command.DeviceName,
+            mustEnrollMfa: false,
             roles,
             issuer,
+            sessions,
+            takeoverTickets,
             ct
         );
 
+        if (outcome.TakeoverRequired)
+        {
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.LoginSucceeded,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: """{"takeoverRequired":true}"""
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success(
+                LoginResponse.ForTakeover(
+                    outcome.TakeoverTicket!.Value.ToString(),
+                    (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds
+                )
+            );
+        }
+
+        var issued = outcome.Tokens!;
         await audit.AddAsync(
             AuthAuditLog.Record(
                 user.TenantId,

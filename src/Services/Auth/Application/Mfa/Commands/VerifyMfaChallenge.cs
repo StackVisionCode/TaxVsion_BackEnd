@@ -22,9 +22,33 @@ public sealed record VerifyMfaChallengeCommand(
     string? DeviceName = null
 );
 
+/// <summary>
+/// Respuesta del paso 2: tokens, o —si el usuario ya tenía una sesión activa— un vale de takeover de
+/// sesión única para que el frontend confirme (mismo patrón que <see cref="LoginResponse"/>). Cuando
+/// hace falta takeover se difiere el mint, y con él el "recordar dispositivo": el usuario re-verifica
+/// el 2.º factor la próxima vez en el dispositivo nuevo.
+/// </summary>
+public sealed record MfaVerifyResponse(
+    AuthTokensResponse? Tokens,
+    bool TakeoverRequired = false,
+    string? TakeoverTicket = null,
+    int? TakeoverTicketExpiresInSeconds = null
+)
+{
+    public static MfaVerifyResponse ForTokens(AuthTokensResponse tokens) => new(tokens);
+
+    public static MfaVerifyResponse ForTakeover(string takeoverTicket, int ticketSeconds) =>
+        new(
+            null,
+            TakeoverRequired: true,
+            TakeoverTicket: takeoverTicket,
+            TakeoverTicketExpiresInSeconds: ticketSeconds
+        );
+}
+
 public static class VerifyMfaChallengeHandler
 {
-    public static async Task<Result<AuthTokensResponse>> Handle(
+    public static async Task<Result<MfaVerifyResponse>> Handle(
         VerifyMfaChallengeCommand command,
         IMfaRepository mfa,
         ISecureTokenService tokens,
@@ -34,6 +58,8 @@ public static class VerifyMfaChallengeHandler
         ITotpService totp,
         ISecretProtector protector,
         IAuthSessionIssuer issuer,
+        ISessionRepository sessions,
+        ISessionTakeoverTicketStore takeoverTickets,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -45,19 +71,19 @@ public static class VerifyMfaChallengeHandler
         var now = DateTime.UtcNow;
 
         if (string.IsNullOrWhiteSpace(command.LoginTicket))
-            return Result.Failure<AuthTokensResponse>(invalid);
+            return Result.Failure<MfaVerifyResponse>(invalid);
 
         var challenge = await mfa.GetChallengeByTicketHashAsync(tokens.Hash(command.LoginTicket), ct);
         if (challenge is null || !challenge.IsUsable(now))
-            return Result.Failure<AuthTokensResponse>(invalid);
+            return Result.Failure<MfaVerifyResponse>(invalid);
 
         var user = await users.GetByIdAsync(challenge.UserId, ct);
         if (user is null || !user.IsActive)
-            return Result.Failure<AuthTokensResponse>(invalid);
+            return Result.Failure<MfaVerifyResponse>(invalid);
 
         var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
         if (tenant is null || !tenant.IsActive)
-            return Result.Failure<AuthTokensResponse>(invalid);
+            return Result.Failure<MfaVerifyResponse>(invalid);
 
         var verified = false;
         var usedRecoveryCode = false;
@@ -115,22 +141,51 @@ public static class VerifyMfaChallengeHandler
                 ct
             );
             await unitOfWork.SaveChangesAsync(ct);
-            return Result.Failure<AuthTokensResponse>(invalid);
+            return Result.Failure<MfaVerifyResponse>(invalid);
         }
 
         challenge.Consume();
 
-        var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
-        var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
-
-        var issued = await issuer.StartSessionAsync(
+        // Sesión única: si el usuario ya tiene una sesión activa, se difiere el mint (y con él el
+        // "recordar dispositivo") hasta que confirme el takeover.
+        var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
             user,
-            timeZone,
-            roleNames,
+            tenant,
             ["pwd", methodAmr],
             command.DeviceName,
+            mustEnrollMfa: false,
+            roles,
+            issuer,
+            sessions,
+            takeoverTickets,
             ct
         );
+
+        if (outcome.TakeoverRequired)
+        {
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    user.TenantId,
+                    user.Id,
+                    AuthAuditAction.MfaSucceeded,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    detailsJson: $$"""{"method":"{{methodAmr}}","takeoverRequired":true}"""
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success(
+                MfaVerifyResponse.ForTakeover(
+                    outcome.TakeoverTicket!.Value.ToString(),
+                    (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds
+                )
+            );
+        }
+
+        var issued = outcome.Tokens!;
 
         string? deviceToken = null;
         if (command.RememberDevice && !usedRecoveryCode)
@@ -206,7 +261,9 @@ public static class VerifyMfaChallengeHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(
-            new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds, deviceToken)
+            MfaVerifyResponse.ForTokens(
+                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds, deviceToken)
+            )
         );
     }
 }
