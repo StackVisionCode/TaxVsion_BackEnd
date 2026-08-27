@@ -393,7 +393,31 @@ jobs:
       # con --profile tools para que migrations (y cualquier futuro servicio de ese
       # profile) se compile desde el checkout actual en cada deploy.
       - name: Build images
-        run: docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools build
+        # El runner es self-hosted y corre la flota (~9-10 GB de 23). Construir los ~19
+        # servicios en paralelo (default de compose/BuildKit) agotaba la RAM del host →
+        # OOM global (exit 137). Se construye en tandas de 3 para que el pico quepa en la
+        # RAM libre; la cache de capas se reutiliza igual entre tandas y entre deploys
+        # (misma máquina). Subir a -n 4 si sobra RAM.
+        run: |
+          set -euo pipefail
+          # Solo los servicios con sección build:; los image-only (redis, rabbitmq, minio,
+          # caddy, clamav…) no se construyen y no deben pasarse a `build`.
+          services=$(docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools config --format json \
+            | python3 -c "import sys, json; d = json.load(sys.stdin); print(' '.join(k for k, v in d['services'].items() if 'build' in v))")
+          batch=""
+          count=0
+          for svc in $services; do
+            batch="$batch $svc"
+            count=$((count + 1))
+            if [ "$count" -eq 3 ]; then
+              docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools build $batch
+              batch=""
+              count=0
+            fi
+          done
+          if [ -n "$batch" ]; then
+            docker compose -f "$COMPOSE_FILE" --env-file .env --profile tools build $batch
+          fi
 
       # RABBITMQ_DEFAULT_USER/PASS solo se aplican cuando el volumen de RabbitMQ
       # se crea por primera vez. Si las credenciales cambian en GitHub Secrets,
