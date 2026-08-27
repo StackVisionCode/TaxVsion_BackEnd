@@ -39,18 +39,30 @@ public sealed record LoginResponse(
     int? TicketExpiresInSeconds,
     bool TakeoverRequired = false,
     string? TakeoverTicket = null,
-    int? TakeoverTicketExpiresInSeconds = null
+    int? TakeoverTicketExpiresInSeconds = null,
+    // Actor del propio usuario autenticado (ya viaja en su JWT). Deja que el frontend rechace temprano
+    // un login en la superficie equivocada (cliente en el CRM / staff en el portal) ANTES del takeover,
+    // sin tocarle la sesión existente.
+    string? ActorType = null
 )
 {
-    public static LoginResponse ForTokens(AuthTokensResponse tokens, bool mfaSetupRequired = false) =>
-        new(false, mfaSetupRequired, tokens, null, null, null);
+    public static LoginResponse ForTokens(
+        AuthTokensResponse tokens,
+        bool mfaSetupRequired = false,
+        string? actorType = null
+    ) => new(false, mfaSetupRequired, tokens, null, null, null, ActorType: actorType);
 
     public static LoginResponse ForMfaChallenge(string loginTicket, string[] methods, int ticketSeconds) =>
         new(true, false, null, loginTicket, methods, ticketSeconds);
 
     // Sesión única: el usuario ya tiene una sesión activa. No hay tokens todavía — el frontend
     // muestra el interstitial y canjea el vale en POST /auth/session/takeover si el usuario confirma.
-    public static LoginResponse ForTakeover(string takeoverTicket, int ticketSeconds, bool mfaSetupRequired = false) =>
+    public static LoginResponse ForTakeover(
+        string takeoverTicket,
+        int ticketSeconds,
+        bool mfaSetupRequired = false,
+        string? actorType = null
+    ) =>
         new(
             false,
             mfaSetupRequired,
@@ -60,7 +72,8 @@ public sealed record LoginResponse(
             null,
             TakeoverRequired: true,
             TakeoverTicket: takeoverTicket,
-            TakeoverTicketExpiresInSeconds: ticketSeconds
+            TakeoverTicketExpiresInSeconds: ticketSeconds,
+            ActorType: actorType
         );
 }
 
@@ -277,7 +290,8 @@ public static class LoginHandler
                         LoginResponse.ForTakeover(
                             setupOutcome.TakeoverTicket!.Value.ToString(),
                             (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
-                            mfaSetupRequired: true
+                            mfaSetupRequired: true,
+                            actorType: user.ActorType.ToString()
                         )
                     );
                 }
@@ -304,7 +318,8 @@ public static class LoginHandler
                             setupTokens.RefreshToken,
                             setupTokens.ExpiresInSeconds
                         ),
-                        mfaSetupRequired: true
+                        mfaSetupRequired: true,
+                        actorType: user.ActorType.ToString()
                     )
                 );
             }
@@ -348,7 +363,8 @@ public static class LoginHandler
                         return Result.Success(
                             LoginResponse.ForTakeover(
                                 trustedOutcome.TakeoverTicket!.Value.ToString(),
-                                (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds
+                                (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
+                                actorType: user.ActorType.ToString()
                             )
                         );
                     }
@@ -374,7 +390,8 @@ public static class LoginHandler
                                 trustedTokens.AccessToken,
                                 trustedTokens.RefreshToken,
                                 trustedTokens.ExpiresInSeconds
-                            )
+                            ),
+                            actorType: user.ActorType.ToString()
                         )
                     );
                 }
@@ -476,7 +493,8 @@ public static class LoginHandler
             return Result.Success(
                 LoginResponse.ForTakeover(
                     outcome.TakeoverTicket!.Value.ToString(),
-                    (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds
+                    (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
+                    actorType: user.ActorType.ToString()
                 )
             );
         }
@@ -498,7 +516,8 @@ public static class LoginHandler
 
         return Result.Success(
             LoginResponse.ForTokens(
-                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds)
+                new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds),
+                actorType: user.ActorType.ToString()
             )
         );
     }
