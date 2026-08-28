@@ -60,6 +60,19 @@ public sealed class RateLimitPolicyCatalogTests
         Assert.Throws<KeyNotFoundException>(() => RateLimitPolicyCatalog.GetByName("does.not.exist"));
     }
 
+    [Fact]
+    public void Public_branding_policy_partitions_by_token_with_no_overlay()
+    {
+        // Pre-login no hay tenant ni user; el TieredRateLimitEvaluator solo soporta Token como
+        // partición primaria sin JWT, y overlay únicamente [Tenant]. Este test fija esa restricción:
+        // si alguien le agrega un overlay a esta política, el evaluador lanzaría en runtime.
+        var policy = RateLimitPolicyCatalog.GetByName("tenant.d.branding_public");
+
+        Assert.Equal(RateLimitCategory.D, policy.Category);
+        Assert.Equal(RateLimitPartitionDimension.Token, policy.PrimaryPartition);
+        Assert.Empty(policy.OverlayLayers);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("Auth.A.Login")]

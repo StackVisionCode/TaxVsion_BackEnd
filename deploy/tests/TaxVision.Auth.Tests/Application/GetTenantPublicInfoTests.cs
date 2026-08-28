@@ -44,7 +44,6 @@ public sealed class GetTenantPublicInfoTests
         Assert.Equal(tenantId, result.Value.TenantId);
         Assert.Equal("Oficina 1", result.Value.Name);
         Assert.Equal("Active", result.Value.Status);
-        Assert.Null(result.Value.LogoUrl);
     }
 
     [Fact]

@@ -86,6 +86,10 @@ public sealed class FileContentInspector : IFileContentInspector
             var text = Encoding.UTF8.GetString(header).TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
             if (extension == ".json" && (text.StartsWith('{') || text.StartsWith('[')))
                 return "application/json";
+            // SVG es XML sin magic bytes binarios: empieza con <svg o con <?xml...<svg. Se reconoce
+            // por extensi\u00F3n + presencia del tag <svg en la cabecera (usado para logo/favicon de marca).
+            if (extension == ".svg" && text.Contains("<svg", StringComparison.OrdinalIgnoreCase))
+                return "image/svg+xml";
             if (extension == ".xml" && text.StartsWith('<'))
                 return "application/xml";
             return extension == ".csv" ? "text/csv" : "text/plain";

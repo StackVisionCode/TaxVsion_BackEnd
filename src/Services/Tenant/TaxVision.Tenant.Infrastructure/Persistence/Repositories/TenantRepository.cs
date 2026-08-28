@@ -22,6 +22,16 @@ public sealed class TenantRepository(TenantDbContext db) : ITenantRepository
         return db.Tenants.AnyAsync(t => t.SubDomain == normalized, ct);
     }
 
+    public async Task<Guid?> GetIdBySubDomainAsync(string subdomain, CancellationToken ct = default)
+    {
+        var normalized = subdomain.Trim().ToLowerInvariant();
+        var match = await db
+            .Tenants.Where(t => t.SubDomain == normalized)
+            .Select(t => (Guid?)t.Id)
+            .FirstOrDefaultAsync(ct);
+        return match;
+    }
+
     public Task<DomainTenant?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
         db.Tenants.FirstOrDefaultAsync(t => t.OnboardingId == onboardingId, ct);
 }

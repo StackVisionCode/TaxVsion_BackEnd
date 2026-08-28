@@ -12,7 +12,7 @@ namespace TaxVision.Tenant.Application.Tenants;
 /// pesada tipo ImageSharp para esto). Best-effort a proposito: cualquier byte inesperado, formato
 /// no reconocido o SVG sin width/height/viewBox devuelve (null, null) en vez de lanzar — esto es
 /// metadata derivada opcional, jamas debe bloquear un upload que ya paso la validacion de
-/// contentType/tamaño del aggregate (Tenant.ValidateLogo). Ver UploadTenantLogoHandler.
+/// contentType/tamaño. Ver UploadTenantBrandAssetHandler (modelo TenantBrands).
 /// </summary>
 public static class LogoImageDimensionReader
 {

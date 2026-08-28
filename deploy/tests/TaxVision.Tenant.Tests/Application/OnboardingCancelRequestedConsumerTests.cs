@@ -115,6 +115,9 @@ public sealed class OnboardingCancelRequestedConsumerTests
         public Task<bool> SubDomainExistsAsync(string subdomain, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<Guid?> GetIdBySubDomainAsync(string subdomain, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<TenantEntity?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
             Task.FromResult(Existing is not null && Existing.OnboardingId == onboardingId ? Existing : null);
     }

@@ -63,4 +63,21 @@ public static partial class RateLimitPolicyCatalog
         windowSeconds: 3600,
         RateLimitAlgorithm.FixedWindow
     );
+
+    // Rama pública anónima de branding (pre-login): resolver la marca por slug y servir el asset por
+    // fileId. Categoría D ("público con token"): sin JWT, particiona por el valor de ruta {token} —
+    // el slug o el fileId, hasheado por el evaluador. NO usa overlay: el TieredRateLimitEvaluator
+    // solo soporta OverlayLayers=[Tenant] y aquí no hay tenant. Partición Ip NO está implementada,
+    // así que Token es la única credencial gateable pre-login. La credencial DEBE llegar como
+    // parámetro de ruta llamado "token" (RateLimitAttribute.TokenRouteValue) o el filtro hace
+    // fail-open (sin límite). Quota generosa: una página de login carga marca + assets varias veces.
+    public static readonly RateLimitPolicyDefinition TenantBrandingPublic = Define(
+        "tenant.d.branding_public",
+        RateLimitCategory.D,
+        RateLimitPartitionDimension.Token,
+        [],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow
+    );
 }

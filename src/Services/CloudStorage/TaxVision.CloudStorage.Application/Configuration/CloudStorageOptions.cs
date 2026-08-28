@@ -204,8 +204,23 @@ public sealed class CloudStorageOptions
     /// </summary>
     public EffectiveUploadPolicy ResolveUploadPolicy(string planCode, FolderType folderType)
     {
-        var planPolicy = ResolvePlanPolicy(planCode);
         var folderPolicy = ResolveFolderTypePolicy(folderType);
+
+        // Branding es un upload de SISTEMA (logo/favicon del tenant), no un documento de usuario: su
+        // set de tipos lo define la folder policy (png/jpeg/svg, 500KB) y el Tenant service ya lo
+        // valida. NO se intersecta con la plan policy (que limita las subidas de USUARIO por tier),
+        // porque esa intersección dejaba fuera el SVG — que la folder policy sí permite a propósito.
+        // Se sigue quitando DangerousExtensions por seguridad.
+        if (folderType == FolderType.Branding)
+        {
+            return new EffectiveUploadPolicy(
+                folderPolicy.MaxSizeBytes,
+                folderPolicy.AllowedExtensions.Except(DangerousExtensions, StringComparer.OrdinalIgnoreCase).ToArray(),
+                folderPolicy.AllowedContentTypes.ToArray()
+            );
+        }
+
+        var planPolicy = ResolvePlanPolicy(planCode);
 
         var allowedExtensions = folderPolicy
             .AllowedExtensions.Intersect(planPolicy.AllowedExtensions, StringComparer.OrdinalIgnoreCase)

@@ -12,7 +12,6 @@ public sealed record ProviderCapabilities
 {
     public required PaymentProviderCode Code { get; init; }
     public required string DisplayName { get; init; }
-    public required string BrandLogoAssetKey { get; init; }
 
     public required bool SupportsOneShotCharge { get; init; }
     public required bool SupportsRecurringCharge { get; init; }

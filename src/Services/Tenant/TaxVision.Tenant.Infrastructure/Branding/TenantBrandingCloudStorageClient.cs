@@ -15,13 +15,12 @@ using Wolverine;
 namespace TaxVision.Tenant.Infrastructure.Branding;
 
 /// <summary>
-/// Implementación de <see cref="ITenantBrandingCloudStorageClient"/>. UploadAsync sube directo a
-/// MinIO con credenciales propias (IAM scoped a taxvision-temp/tenant-branding/*) y publica
-/// SaveFileRequestedIntegrationEvent para que CloudStorage lo registre y escanee de forma
+/// Implementación de <see cref="ITenantBrandingCloudStorageClient"/>. StoreAsync sube directo a
+/// MinIO con credenciales propias (IAM scoped a taxvision-temp/tenant-branding/*) y RequestCatalogAsync
+/// publica SaveFileRequestedIntegrationEvent para que CloudStorage lo registre y escanee de forma
 /// asincrona — mismo patrón "Fase D1" ya usado por Signature/Customer, en vez del upload síncrono
-/// directo al aggregate (rechazado explícitamente en Tenant_Service_LogoSupport_Plan.md §5.1 por
-/// romper la política de desacoplamiento de CloudStorage). GetDownloadUrlAsync/DeleteAsync siguen
-/// el flujo HTTP+M2M presignado normal.
+/// directo (rechazado por romper la política de desacoplamiento de CloudStorage). El handler persiste el
+/// asset Pending ENTRE ambos pasos. GetDownloadUrlAsync/DeleteAsync siguen el flujo HTTP+M2M presignado.
 /// </summary>
 internal sealed class TenantBrandingCloudStorageClient(
     HttpClient httpClient,
@@ -43,7 +42,11 @@ internal sealed class TenantBrandingCloudStorageClient(
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public async Task<Result<Guid>> UploadAsync(Guid tenantId, TenantLogoUpload upload, CancellationToken ct = default)
+    public async Task<Result<TenantBrandStoredFile>> StoreAsync(
+        Guid tenantId,
+        TenantLogoUpload upload,
+        CancellationToken ct = default
+    )
     {
         var fileId = Guid.NewGuid();
         var options = minioOptions.Value;
@@ -64,18 +67,29 @@ internal sealed class TenantBrandingCloudStorageClient(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "MinIO PUT failed for tenant {TenantId} logo upload.", tenantId);
-            return Result.Failure<Guid>(new Error("Tenant.Logo.Storage.Upload", "MinIO PUT failed."));
+            logger.LogWarning(ex, "MinIO PUT failed for tenant {TenantId} branding upload.", tenantId);
+            return Result.Failure<TenantBrandStoredFile>(new Error("Tenant.Logo.Storage.Upload", "MinIO PUT failed."));
         }
 
+        return Result.Success(new TenantBrandStoredFile(fileId, sourceObjectKey));
+    }
+
+    public async Task RequestCatalogAsync(
+        Guid tenantId,
+        TenantLogoUpload upload,
+        TenantBrandStoredFile stored,
+        CancellationToken ct = default
+    )
+    {
+        var options = minioOptions.Value;
         await bus.PublishAsync(
             new SaveFileRequestedIntegrationEvent
             {
                 TenantId = tenantId,
-                FileId = fileId,
+                FileId = stored.FileId,
                 RequestingService = "tenant",
                 SourceBucket = options.TempBucket,
-                SourceObjectKey = sourceObjectKey,
+                SourceObjectKey = stored.SourceObjectKey,
                 ActorId = upload.ActorId,
                 OwnerType = OwnerTypeTenant,
                 OwnerId = tenantId,
@@ -87,8 +101,6 @@ internal sealed class TenantBrandingCloudStorageClient(
                 CorrelationId = correlation.CorrelationId,
             }
         );
-
-        return Result.Success(fileId);
     }
 
     public async Task<Result<TenantLogoDownloadUrl>> GetDownloadUrlAsync(

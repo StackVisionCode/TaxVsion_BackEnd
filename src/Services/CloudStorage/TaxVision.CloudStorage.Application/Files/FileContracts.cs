@@ -113,6 +113,7 @@ internal static class FileTypeCompatibility
             ".rtf" => detectedContentType == "application/rtf",
             ".jpg" or ".jpeg" => detectedContentType == "image/jpeg",
             ".png" => detectedContentType == "image/png",
+            ".svg" => detectedContentType == "image/svg+xml",
             ".gif" => detectedContentType == "image/gif",
             ".webp" => detectedContentType == "image/webp",
             ".zip" => detectedContentType == "application/zip",

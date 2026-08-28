@@ -101,6 +101,30 @@ public sealed class PermissionCatalogTests
     }
 
     [Fact]
+    public void Platform_branding_permission_is_platform_only_and_never_in_tenant_admin_defaults()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.PlatformBrandingManage);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.Equal("branding", definition.Module);
+        // Propiedad de seguridad central: solo el PlatformAdmin gestiona la marca del sistema; el
+        // TenantAdmin nunca la recibe por el bundle de su rol.
+        Assert.DoesNotContain(PermissionCatalog.PlatformBrandingManage, tenantAdminDefaults);
+    }
+
+    [Fact]
+    public void Tenant_branding_permission_stays_assignable_to_the_tenant()
+    {
+        // Contraparte: la marca PROPIA del tenant sí es del TenantAdmin (no PlatformOnly).
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.BrandingManage);
+
+        Assert.False(definition.PlatformOnly);
+        Assert.Equal("branding", definition.Module);
+    }
+
+    [Fact]
     public void Growth_permissions_have_unique_codes_and_ids()
     {
         var growth = PermissionCatalog

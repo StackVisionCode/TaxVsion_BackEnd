@@ -6426,215 +6426,144 @@ la única ubicación consistente con las fronteras de 38.6.
   `IDraftRepository.ListAbandonedAsync`/`ICustomerEmailReconciliationService`, que sí
   están testeados.
 
-# 39. Soporte de logo y colores de marca por tenant (Tenant, CloudStorage, Auth)
+# 39. Identidad visual por tenant y superficie — TenantBrands (Tenant, CloudStorage, Auth, ambos frontends)
 
-Implementa `Tenant_Service_LogoSupport_Plan.md`: cada tenant puede subir un logo propio,
-embebido por Postmaster como inline attachment CID en cada correo saliente (Scribe
-`LogoResolver`/`TenantLogoRef`, Scribe Fase 4.5) en vez de caer siempre al logo del sistema
-(`IsFallback: true`). Vive en **Tenant** (no en Scribe ni CloudStorage) porque el logo es un
-atributo del propio tenant, igual que su nombre o subdominio — Scribe solo lo consume via
-proyección (`TenantLogoUpdatedIntegrationEvent`/`TenantLogoRemovedIntegrationEvent`, ya
-existentes desde la Fase 4.5, sin cambios).
+Implementa `TenantBrands/PLAN_TenantBrands.md` (10 fases). Reemplaza el modelo viejo de logo + 4 colores
+planos sobre la tabla `Tenants` (retirado en el cutover de la Fase 9) por un modelo **por superficie**:
+cada tenant configura su **logo**, **favicon** y **2 colores** (Primary/Accent) de forma independiente
+para cada **superficie** — hoy `Crm` (lo que ve el staff) y `Portal` (lo que ven los clientes); el enum
+`BrandSurface` deja lugar a `Mobile`/`Email` sin migración. El logo de email sigue saliendo de la marca
+`Crm` vía el mismo contrato de eventos de Scribe (`TenantLogoUpdatedIntegrationEvent`/`...Removed`), que
+**no cambió** — Scribe no se tocó.
 
-## 39.1 Dominio: `Tenant.SetLogoPending` / `Tenant.ConfirmLogo`
+Vive en **Tenant** (owner del branding, DDD): Auth y los frontends solo lo consumen. Auth NO proyecta
+branding (se quitó el campo muerto `TenantResolutionResponse.LogoUrl` en la Fase 9).
 
-`TenantLogo.cs` extiende `Tenant` (`partial class`) con `LogoFileId`/`LogoContentType`/
-`LogoSizeBytes`/`LogoWidth`/`LogoHeight`/`LogoUpdatedAtUtc` (todos nullable). Dos métodos,
-no uno solo, para representar el estado pendiente-de-escaneo vs confirmado sin una tercera
-tabla ni un enum de status:
+## 39.1 Por qué `FileId` y no una URL
 
-- `SetLogoPending(fileId, contentType, sizeBytes, width, height)` — llamado por
-  `UploadTenantLogoHandler` de forma OPTIMISTA con los metadatos declarados por el cliente,
-  antes de que CloudStorage confirme el escaneo antivirus. Deja `LogoUpdatedAtUtc` en
-  `null` a propósito.
-- `ConfirmLogo(fileId, contentType, sizeBytes, width, height, confirmedAtUtc)` — llamado
-  por `TenantBrandingFileScanResultConsumer` al recibir `FileAvailableIntegrationEvent`, con
-  los metadatos reales devueltos por CloudStorage. Es la única llamada que setea
-  `LogoUpdatedAtUtc` (no nulo == confirmado).
-- `DiscardPendingLogo(fileId)` — descarta un upload rechazado (`FileInfectedDetectedIntegrationEvent`/
-  `FileBlockedByPolicyIntegrationEvent`), pero solo si `LogoFileId == fileId &&
-  LogoUpdatedAtUtc is null`: un rechazo tardío para un fileId ya reemplazado o ya
-  confirmado nunca pisa el logo actual.
+Los assets se referencian por su **`FileId`** de CloudStorage, nunca por una URL guardada. Una URL
+presignada caduca (minutos) y una URL "estable" obligaría a un dominio público servido por la app; el
+`FileId` es **content-addressed** (cambia cuando cambia el archivo), así que la ruta pública
+`/tenants/branding/assets/{fileId}` es su propio cache-busting y nunca queda colgada apuntando a bytes
+viejos. El frontend arma la URL desde el `FileId`; el backend valida que el asset esté `Confirmed` antes
+de servirlo.
 
-**Bug real encontrado y corregido durante la implementación** (no solo documentado — ver
-[[feedback_check_fixability_before_documenting_gap]]): la primera versión tenía un solo
-método `SetLogo(fileId, ..., DateTime updatedAtUtc)` llamado por *ambos* sitios con
-`DateTime.UtcNow`, así que `LogoUpdatedAtUtc` nunca era `null` — `DiscardPendingLogo` quedaba
-muerto (un logo infectado nunca se limpiaba, dejando un `LogoFileId` colgante) y
-`GetTenantLogoQuery` hubiera devuelto un download-url para un archivo todavía en escaneo.
-Se detectó al escribir el test `DiscardPendingLogo_clears_matching_unconfirmed_pending_upload`
-contra el código real (no contra la intención) y se corrigió dividiendo el método en dos,
-no parcheando el test.
+## 39.2 Dominio: aggregate `TenantBrand`
 
-`Tenant.MaxLogoSizeBytes = 500 * 1024` (500KB) — el plan original proponía 200KB; se subió
-porque dejaba muy poco margen para un PNG con transparencia en retina (2x) sin forzar
-compresión agresiva. Sigue muy por debajo del cap de 5MB que Postmaster aplica a la suma de
-inline assets de un mismo email (`SentMessage.MaxTotalInlineAssetsBytes`). El mismo valor se
-repite en `CloudStorageOptions.BrandingPolicy()` (defensa en profundidad — dos validaciones
-independientes del mismo invariante, no una fuente única compartida).
+`Domain/Brands/TenantBrand.cs` (aggregate root : `TenantEntity`, uno por `(TenantId, Surface)`) con dos
+colecciones hijas: `TenantBrandColor` (token `Primary`/`Accent` → `HexColor`) y `TenantBrandAsset`
+(`Logo`/`Favicon` → `FileId` + `Status` `Pending`/`Confirmed`). Los enums se persisten como **texto**
+(`HasConversion<string>`). `MaxAssetSizeBytes = 500KB`; sin fondo/texto en v1 (riesgo de UI ilegible +
+~1.400 clases de gris — decisión de alcance).
 
-## 39.2 Upload desacoplado (patrón Fase D1, no HTTP síncrono a CloudStorage)
+**Guardrail crítico (`ValueGeneratedNever()` en las 3 PK):** agregar un hijo con `Guid.NewGuid()` a un
+aggregate YA cargado hacía que EF lo tratara como `Modified` (UPDATE de todas las columnas → 0 filas →
+`DbUpdateConcurrencyException` + reintentos de Wolverine + 500). Se corrigió con
+`b.Property(x => x.Id).ValueGeneratedNever()` en `TenantBrand`/`Color`/`Asset` (test de regresión
+`TenantBrandPersistenceTests`, SQL real).
 
-`TenantBrandingCloudStorageClient` (Infrastructure) sube el logo **directo a MinIO** con
-credenciales IAM propias (scoped a `taxvision-temp/tenant-branding/*`, nunca las root de
-CloudStorage) y publica `SaveFileRequestedIntegrationEvent` para que CloudStorage lo
-catalogue y escanee (ClamAV + política de contenido) de forma asíncrona — mismo patrón que
-Signature/Customer/Scribe, no el patrón HTTP+3-llamadas más viejo de Notification.
-`GetDownloadUrlAsync`/`DeleteAsync` sí son llamadas HTTP+M2M síncronas a CloudStorage
-(`POST storage/files/{fileId}/download-url`, `DELETE storage/files/{fileId}`) porque no
-existe un evento `DeleteFileRequestedIntegrationEvent` en el catálogo.
+## 39.3 Upload desacoplado (patrón Fase D1) — persistir ANTES de publicar
 
-`TenantBrandingFileScanResultConsumer` correlaciona la respuesta asíncrona por
-`(evt.TenantId, Tenant.LogoFileId)` — a diferencia de Signature (`FileMetadataRef`), no hace
-falta una tabla de tracking separada porque el propio row de `Tenant` es el punto de
-correlación natural.
+`TenantBrandingCloudStorageClient` sube el asset **directo a MinIO** con IAM propia (scoped a
+`taxvision-temp/tenant-branding/*`) y publica `SaveFileRequestedIntegrationEvent` para que CloudStorage
+catalogue + escanee (ClamAV + inspección de content-type) de forma asíncrona. El cliente está partido en
+`StoreAsync` (solo MinIO → `FileId`) + `RequestCatalogAsync` (publica el evento). El handler hace
+`Store → SetAssetPending → SaveChanges → RequestCatalog`: **persiste el asset `Pending` ANTES de disparar
+el escaneo**. Un orden inverso (bug real corregido) dejaba el asset huérfano en `Pending` para siempre si
+el escaneo ganaba la carrera. `TenantBrandAssetScanResultConsumer` correlaciona la respuesta por
+`(TenantId, TenantBrandAsset.FileId)` y, solo para `Crm`+`Logo`, publica el evento que consume Scribe.
 
-## 39.3 Endpoints HTTP (`TenantBrandingController`, bajo `/tenants/{tenantId}/logo`)
+**SVG:** CloudStorage rechazaba el branding SVG en dos gates — la folder policy `Branding` se intersectaba
+con la plan-policy del tenant (que no incluía svg), y el `FileContentInspector` no reconocía SVG (texto sin
+magic bytes) → `image/svg+xml`. Ambos corregidos (la carpeta `Branding` usa su folder policy directa; el
+inspector detecta `<svg` en los primeros 512 bytes).
 
-| Método | Ruta | Permiso | Rate limit | Notas |
-| --- | --- | --- | --- | --- |
-| `PUT` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant.i.logo_upload`: 10/hora por tenant | `multipart/form-data`, campo `file`. 202 Accepted — asíncrono, ver 39.1 |
-| `GET` | `/tenants/{tenantId}/logo` | solo autenticación | `tenant.f.branding_read`: 300/min | 404 (`Tenant.Logo.NotFound`) si no hay logo confirmado |
-| `DELETE` | `/tenants/{tenantId}/logo` | `branding.manage` | `tenant.g.branding_manage`: 60/min | Idempotente, 204 |
+## 39.4 Cascada de resolución (`BrandResolution`)
 
-> Fase 4.2 del plan de rate limiting migró `tenant-logo-upload` (policy nativa de ASP.NET Core)
-> a `tenant.i.logo_upload` del catálogo unificado ([`RateLimitPolicyCatalog`](src/BuildingBlocks/RateLimiting/RateLimitPolicyCatalog.cs))
-> — mismo cupo y misma partición exclusiva por tenant, solo cambia el nombre de la policy. GET y
-> DELETE ganaron rate limit por primera vez en esa fase (antes no tenían ninguno).
+Un color/asset efectivo se resuelve en 3 niveles: **token del tenant → marca del sistema** (tenant de
+plataforma, misma superficie) **→ constante compilada** (`SystemBrandingDefaults`, `#1E466B`/`#67BAF4`).
+El asset propio del tenant se muestra aunque esté `Pending` (para que el admin vea su "processing"); un
+asset de plataforma solo si está `Confirmed`. El default de plataforma sirve de fallback a TODOS los
+portales sin marca propia.
 
-`TryResolveTenantId` (privado, mismo patrón que Postmaster `ProvidersController`): PlatformAdmin
-opera sobre cualquier tenant; el resto solo sobre el propio (`{tenantId}` de la ruta debe
-coincidir con el claim `tenant_id` del JWT, nunca se confía en la ruta sola).
+## 39.5 Endpoints HTTP
 
-## 39.4 Gaps cerrados durante la implementación
+**`TenantBrandsController`** (`/tenants/{tenantId}/brands`, autenticado, ownership tenant-vs-JWT): 7
+endpoints — `GET` lista, `GET/{surface}`, `PUT/DELETE {surface}/colors`, `PUT/DELETE {surface}/assets/{assetKey}`,
+`POST {surface}/reset`. Devuelve **fileIds, no URLs**.
 
-1. **`FolderType.Branding` no existía en CloudStorage** — se agregó al enum
-   (`FileEnums.cs`) + `CloudStorageOptions.BrandingPolicy()` (500KB, `.png/.jpg/.jpeg/.svg`,
-   `image/png|jpeg|svg+xml`).
-2. **Verificación de ownership tenant-ruta-vs-JWT** — implementada desde el día uno en
-   `TryResolveTenantId` (39.3), no un gap post-hoc.
+**`PlatformBrandingController`** (`/platform/branding/{surface}`): `[AllowActorTypes(PlatformAdmin)]` a nivel
+clase + `[HasPermission(TenantBrandingPermissions.Platform)]`. Reusa los comandos con `PlatformTenant.Id`.
+**Solo PlatformAdmin** toca la marca del sistema; un TenantAdmin recibe **403** (test E2E obligatorio).
 
-## 39.5 Configuración nueva
+**`PublicBrandingController`** (`/tenants/branding`, `[AllowAnonymous]`, para pre-login):
+- `GET assets/{token}` (`{token}`=fileId) → valida `Confirmed` → **302 a la presigned de CloudStorage**.
+  El `Cache-Control` del redirect se **acota a la vida real de la presigned** (`BrandingAssetCachePolicy`,
+  `max-age = expiración − 30s`, `no-store` si venció) — **nunca `immutable`/1 año**: un `immutable` sobre un
+  *redirect* efímero deja al navegador reusando una firma caducada (403 → imagen rota). Es el mismo patrón
+  redirect→presigned que el resto del sistema; los frontends añaden un cache-buster `?v=1` de una sola vez
+  para saltar entradas envenenadas por la versión vieja del header.
+- `GET public/{token}` (`{token}`=slug) → `{primary, accent, logoUrl, faviconUrl}`. **Anti-enumeración:
+  slug desconocido → marca del sistema con 200**, nunca 404.
+- `GET system?surface=` → marca de la plataforma (login central del CRM y del portal sin subdominio).
 
-- `Tenant:Minio:{Endpoint,AccessKey,SecretKey,UseTls,TempBucket,SourcePrefix}` — credenciales
-  IAM propias de Tenant (usuario `tenant-worker`, policy
-  `deploy/docker/minio/policies/tenant-source.json`, scoped a
-  `taxvision-temp/tenant-branding/*`).
-- `ServiceAuthClient:{AuthBaseUrl,ClientId,ClientSecret}` / `CloudStorageClient:BaseUrl` —
-  cliente M2M `tenant-worker` (permisos `cloudstorage.file.download` +
-  `cloudstorage.file.delete` únicamente — nunca `cloudstorage.file.upload`, porque el upload
-  va directo a MinIO, no vía CloudStorage HTTP).
-- Permiso `branding.manage` sembrado en `PermissionCatalog` (Auth), migración
-  `AddBrandingManagePermission`.
-- Columnas `Logo*` en `Tenants` (migración `AddTenantLogoFields`, todas nullable — sin
-  `ValueGeneratedNever()` porque `Tenant.Id` nunca se agrega vía navegación (lección de
-  `[[feedback_ef_core_navigation_guid]]` no aplica aquí, `Tenant` siempre se persiste
-  directo).
+El param de las policies con partición `Token` DEBE llamarse `{token}` en la ruta o el rate limit hace
+fail-open.
 
-## 39.6 Pruebas
+## 39.6 RBAC y rate limit
 
-`deploy/tests/TaxVision.Tenant.Tests/Domain/TenantLogoTests.cs` — 21 tests de dominio
-(`SetLogoPending`/`ConfirmLogo`/`RemoveLogo`/`DiscardPendingLogo`, incluyendo el caso del bug
-de 39.1). `dotnet test deploy/tests/TaxVision.Tenant.Tests/` — full monorepo (1612 tests,
-13 proyectos) verificado en verde tras el cambio.
+- Permiso `platform.branding.manage` (`TenantBrandingPermissions.Platform`, GUID `…0179`, **PlatformOnly,
+  no asignable por tenant**) en `PermissionCatalog` **y** migración de Auth (guardrail: un permiso solo en la
+  BD lo borra Auth al arrancar). Al ser PlatformOnly no se asigna a ningún rol → **no se proyecta** a los
+  demás servicios (correcto: nadie más lo evalúa).
+- El mantenimiento por el TenantAdmin usa los permisos de branding existentes del tenant; PlatformAdmin
+  bypassa `[HasPermission]`.
+- Rate limit `tenant.d.branding_public` (categoría D, partición **Token**, 60/60s, sin overlay) para los
+  endpoints anónimos; `system` está `[RateLimitExempt]` (recurso único e igual para todos).
 
-## 39.7 Pendientes documentados
+## 39.7 Frontends (CRM Angular 21 + Portal Angular 19)
 
-- **Sin Idempotency-Key persistida en el upload** — a diferencia de `CustomerImportsController`,
-  una subida duplicada del logo no se deduplica con una tabla propia. Simplificación
-  deliberada: el peor caso es que el escaneo que confirma último gana, y el objeto huérfano
-  en `taxvision-temp` lo recicla la retención ya existente de CloudStorage — el blast radius
-  no es comparable al bug de emails duplicados que motivó la regla de
-  `ValueGeneratedNever()` en otros servicios.
-- **SVG sin sanitización activa contra XSS** — `image/svg+xml` está en la whitelist de
-  content-types (igual que el resto de logos web); un SVG puede contener `<script>`. El
-  download-url es presignado a MinIO/S3, nunca servido desde un dominio de TaxVision, así
-  que el riesgo de XSS persistente contra la propia app es bajo, pero si el frontend llega a
-  renderizar el SVG inline (no solo como `<img src>`) debe sanitizarlo del lado cliente antes.
+Regla de oro: **todo aditivo con fallback total** — sin branding configurado, ambas apps se ven idénticas a
+hoy. `ThemeService` genera la rampa de shades `indigo-*`/`orange-*` desde un solo hex por color (anclas
+`indigo-600`/`orange-500`) y la escribe como variables CSS; `tailwind.config.js` resuelve cada shade con
+`rgb(var(--color-X-N-rgb, <fallback>) / <alpha-value>)` — tematiza cientos de usos sin tocar plantillas
+(`brand-*`/`gray-*` quedan fijos a propósito). `TenantBrandingService`: `applyForSurface` (pre-login por
+slug; sin slug cae a `applyForSystem`), `applyForTenant` (post-login por tenantId, no depende del slug),
+`applyForSystem` (marca de plataforma para los logins sin oficina). El favicon dinámico quita TODOS los
+`link[rel~=icon]` y pone uno con el del tenant.
 
-## 39.8 Colores de marca por tenant (`Tenant_Branding_Colors_Plan.md`)
+**`company-settings` (CRM)** es el mantenimiento del TenantAdmin, con un **toggle CRM / Portal**: cada
+superficie configura su propio logo/favicon/colores. El preview de tema en vivo solo se aplica editando la
+superficie `Crm` (editar el Portal no recolorea el CRM). El login central del CRM y el login del portal
+aplican la marca del **sistema**; el login de oficina (por subdominio) aplica la de esa oficina.
 
-4 campos fijos, no un editor de CSS libre (ver el plan, §3.2, sobre por qué): `primaryColor`,
-`accentColor`, `backgroundColor`, `textColor`. A diferencia del logo, es sincrónico — no hay
-escaneo antivirus de por medio, así que no necesita el patrón `SetXPending`/`ConfirmX` de
-39.1, un único `SetBrandingColors` alcanza.
+## 39.8 Cutover del modelo viejo (Fase 9)
 
-**Value Object `HexColor`** (`Domain/ValueObjects/HexColor.cs`) — a diferencia del logo (campos
-escalares planos, sin VO, ver 39.1), acá sí se introdujo un VO: los 4 campos comparten
-exactamente la misma regla de formato (`^#[0-9A-Fa-f]{6}$`), y repetir esa validación 4 veces
-como `string?` sueltos es el olor de código que motivó la guía de VOs del proyecto (primitivo +
-validación repetida = candidato a VO). Mapeado a `nvarchar(7)` vía `.HasConversion(...)`, mismo
-patrón que `StatementDescriptor`/`EncryptedSecret` en PaymentClient/Postmaster — no un owned
-type de EF.
+Retirado el modelo viejo por completo: `TenantBrandingController`, sus handlers/queries (`UploadTenantLogo`,
+`GetTenantLogo`, `Update/ResetTenantBrandingColors`, `RemoveTenantLogo`), el consumer viejo, los partials
+`TenantLogo.cs`/`TenantBranding.cs`, el VO `BrandingPalette`, el config EF y `client.UploadAsync`. Migración
+`CutoverDropLegacyBrandingColumns` = **DropColumn ×10** en `Tenants` (6 de logo + 4 de color, 100% NULL en
+prod, verificado en `sys.columns`). También en la Fase 9: color de marca del sello de Signature corregido a
+`#1E466B`, `PaymentApp.BrandLogoAssetKey` muerto retirado, evento `ScribeTenantLogoMissingDetectedIntegrationEvent`
+(publicado sin consumidores) retirado dejando la nota interna deduplicada, `theme-color` de marca en ambos
+`index.html`.
 
-`TenantBranding.cs` (partial de `Tenant`, mismo archivo-por-concern que `TenantLogo.cs`):
+## 39.9 Pendientes documentados (deuda explícita)
 
-- `SetBrandingColors(primaryHex, accentHex, backgroundHex, textHex)` — atómico: valida los 4
-  campos no-nulos antes de aplicar ninguno (si uno solo es inválido, no se pisa nada de la
-  paleta anterior). Un campo en `null` = "volver al default de la empresa para ese campo",
-  no "error".
-- `ResetBrandingColors()` — idempotente, mismo criterio que `RemoveLogo`.
-- `ResolveBrandingPalette()` — única forma soportada de leer los 4 colores: siempre devuelve
-  un `BrandingPalette` con los 4 campos completos (`PrimaryColor ?? SystemBrandingDefaults.PrimaryColor`,
-  etc.) más `IsCustomized`. La resolución vive en el dominio (no en el query handler) para que
-  la regla "nunca hay campo vacío" tenga una sola implementación.
+- `Billing.IssuerProfile.LogoFileId` / `IssuerSnapshot.LogoFileId`: siempre null, nunca renderizado, pero
+  `IssuerSnapshot` es JSON en facturas históricas → se **deja** (borrar arriesga la deserialización).
+- SVG sin sanitización activa contra XSS: se sirve por 302 a MinIO (nunca desde un dominio de la app), riesgo
+  bajo; si un front lo renderiza inline (no como `<img src>`) debe sanitizarlo.
+- Deuda no tocada: los ~860 grises y ~29 hex crudos del portal, los ~184 hex de emails, `DocumentBranding`
+  (candidato a converger como superficie `Documents`).
 
-`SystemBrandingDefaults` — clase estática con los 4 valores de fallback de la empresa (Bold
-Blue `#1E466B`, Light Blue `#67BAF4`, Soft White `#FAFAFA`, Jet Black `#0D0D0D`), único lugar
-del backend donde viven — el frontend debe declarar los mismos 4 hex como fallback estático en
-`styles.scss` (ver el plan, §6.1) para evitar el flash de color equivocado antes de que
-responda la API.
+## 39.10 Pruebas
 
-## 39.9 Endpoints HTTP + caché (`TenantBrandingController`, mismo controller que el logo)
-
-| Método | Ruta | Permiso | Notas |
-| --- | --- | --- | --- |
-| `GET` | `/tenants/{tenantId}/branding/colors` | solo autenticación | Mismo `AllowActorTypes` que `GetTenantLogo` (incluye `CustomerPortal`) — el portal del cliente necesita los colores para pintar su pantalla. Cacheado 5 min en Redis (`ICacheService`, key `tenant:branding:colors:{tenantId}`) |
-| `PUT` | `/tenants/{tenantId}/branding/colors` | `branding.manage` | Body JSON `{primaryColor, accentColor, backgroundColor, textColor}`, cualquier campo en `null` vuelve al default. Invalida la caché tras `SaveChanges` |
-| `DELETE` | `/tenants/{tenantId}/branding/colors` | `branding.manage` | Reset total (atajo de PUT con los 4 en `null`), idempotente. Invalida la caché |
-
-Reutiliza el mismo `TryResolveTenantId` privado del controller (39.3) — ningún mecanismo nuevo
-de aislamiento tenant-ruta-vs-JWT. Cada acción declara su propio `[AllowActorTypes(...)]`
-explícito (la clase no tiene uno a nivel de clase), verificado automáticamente por
-`TenantActorTypeArchitectureTests.Controller_actions_should_declare_AllowActorTypes`
-(Capa 4 del mecanismo, ver 41.1) — si faltara, el build de tests falla.
-
-Caché: mismo patrón que `EntitlementCacheKeys`/`GetTenantEntitlementSummaryHandler` en
-Subscription — `ICacheService.GetOrCreateAsync` con TTL de 5 minutos en el query handler,
-`RemoveAsync` explícito en los dos comandos de escritura tras `SaveChangesAsync`. `AddRedisCache`
-ya estaba registrado en `Tenant.Api/Program.cs` (lo usa `GetTenants`/`CreateTenant` para la
-lista paginada) — no hizo falta wiring nuevo.
-
-## 39.10 Configuración nueva
-
-- Columnas `PrimaryColorHex`/`AccentColorHex`/`BackgroundColorHex`/`TextColorHex`
-  (`nvarchar(7)`, todas nullable) en `Tenants` — migración `AddTenantBrandingColors`, con el
-  mismo `UpdateData` sobre la fila sembrada de `PlatformTenant.Id` que `AddTenantLogoFields`
-  necesitó (EF exige explicitar las columnas nuevas en filas ya sembradas por `HasData`).
-- Ningún permiso nuevo — reutiliza `branding.manage` (ya sembrado desde 39.5, su
-  `AllowedActorTypes` inferido ya resuelve a `[TenantEmployee, TenantAdmin, PlatformAdmin]`,
-  exactamente lo que el `PUT`/`DELETE` de colores necesita).
-
-## 39.11 Pruebas y pendientes documentados
-
-`deploy/tests/TaxVision.Tenant.Tests/Domain/{HexColorTests,TenantBrandingTests}.cs` — 29 tests
-de dominio (formato válido/inválido, normalización a mayúsculas, atomicidad del patch,
-resolución mixta custom+default, idempotencia del reset). Verificado en verde junto con el
-resto de `TaxVision.Tenant.Tests` (incluida la fitness function de 39.9) y el monorepo completo
-(1781 tests .NET, 0 fallos).
-
-**Sin tests de aislamiento cross-tenant a nivel HTTP para este endpoint** — a diferencia de
-Auth/Communication, `TaxVision.Tenant.Tests` no tiene infraestructura de integración
-(`WebApplicationFactory`) para ningún endpoint del servicio, ni siquiera para el logo (39.6 solo
-cubre dominio). El aislamiento real lo garantiza `TryResolveTenantId`, ya cubierto por el mismo
-código que usa el logo desde que se implementó — no se inventó infraestructura de test nueva
-para no romper la consistencia con el resto del servicio; si se agrega en el futuro, debería
-cubrir logo y colores a la vez, no solo uno.
-
-**Frontend (Fases 5-6 del plan) fuera de este alcance** — este README documenta el backend
-(Fases 0-4 y 7). El plan también describe `BrandingService`/`tailwind.config.js`/panel admin en
-Angular para dos frontends (staff + portal cliente) que viven en repos separados fuera de este
-monorepo — no tocados en esta iteración.
+`deploy/tests/TaxVision.Tenant.Tests` — dominio (`TenantBrandTests`, `TenantBrandPersistenceTests`),
+resolución (`BrandResolutionTests`), handlers de color/asset, consumer de escaneo, eventos de remove,
+cache del redirect (`BrandingAssetCachePolicyTests`), y E2E anónimo (`PublicBrandingTests`). Ambos
+frontends `ng build` en verde; criterio de cierre verificado en vivo: sin branding las apps se ven idénticas,
+y con marca configurada logo/favicon/colores aplican pre y post login.
 
 # 40. Notificaciones dinámicas por rol/permiso (Auth, Notification, Communication, PaymentApp)
 

@@ -2,7 +2,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TaxVision.Tenant.Domain.Enums;
-using TaxVision.Tenant.Domain.ValueObjects;
 using DomainTenant = TaxVision.Tenant.Domain.Tenant;
 
 namespace TaxVision.Tenant.Infrastructure.Persistence.Configurations;
@@ -26,16 +25,8 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
         b.Property(t => t.OnboardingId);
         b.HasIndex(t => t.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
 
-        // Logo por tenant (Tenant_Service_LogoSupport_Plan.md) — todos nullable, sin backfill:
-        // un tenant sin logo cae a fallback de sistema en Scribe (LogoResolver).
-        b.Property(t => t.LogoContentType).HasMaxLength(100);
-
-        // Branding colors por tenant (Tenant_Branding_Colors_Plan.md) — todos nullable: un campo en
-        // null se resuelve a SystemBrandingDefaults en Tenant.ResolveBrandingPalette, nunca en la DB.
-        ConfigureHexColor(b.Property(t => t.PrimaryColor), "PrimaryColorHex");
-        ConfigureHexColor(b.Property(t => t.AccentColor), "AccentColorHex");
-        ConfigureHexColor(b.Property(t => t.BackgroundColor), "BackgroundColorHex");
-        ConfigureHexColor(b.Property(t => t.TextColor), "TextColorHex");
+        // El logo y los colores por tenant se movieron al modelo TenantBrands (per-surface, Fase 1+).
+        // Las 10 columnas viejas (6 de logo + 4 de color en Tenants) se dropean en el CUTOVER (Fase 9).
 
         b.HasData(
             new
@@ -50,13 +41,4 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<DomainTenant>
             }
         );
     }
-
-    private static void ConfigureHexColor(PropertyBuilder<HexColor?> property, string columnName) =>
-        property
-            .HasConversion(
-                color => color == null ? null : color.Value,
-                value => value == null ? null : HexColor.Create(value).Value
-            )
-            .HasColumnName(columnName)
-            .HasMaxLength(7);
 }
