@@ -26,7 +26,11 @@ public interface ICustomerReadService
         CancellationToken ct = default
     );
 
-    Task<CustomerResponse?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
+    /// <summary>
+    /// Ficha de detalle del cliente: escalares + direcciones, contactos, relaciones y perfil fiscal
+    /// (enmascarado). Proyección de lectura pura — NO carga el agregado del write path.
+    /// </summary>
+    Task<CustomerDetailResponse?> GetDetailByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
 
     Task<CustomerExistsResponse> CheckExistsAsync(
         Guid tenantId,

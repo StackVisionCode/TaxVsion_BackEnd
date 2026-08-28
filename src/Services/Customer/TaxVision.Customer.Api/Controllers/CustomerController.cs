@@ -142,14 +142,14 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
     [HasPermission(CustomersPermissions.View)]
     [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("customer.f.get")]
-    [ProducesResponseType<CustomerResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<CustomerDetailResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<CustomerResponse>>(new GetCustomerByIdQuery(tenantId, id), ct);
+        var result = await bus.InvokeAsync<Result<CustomerDetailResponse>>(new GetCustomerByIdQuery(tenantId, id), ct);
 
         if (result.IsSuccess)
             return Ok(result.Value);
