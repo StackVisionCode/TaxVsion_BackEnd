@@ -6,15 +6,15 @@ namespace TaxVision.Customer.Application.Customers.Queries.GetById;
 
 public static class GetCustomerByIdHandler
 {
-    public static async Task<Result<CustomerResponse>> Handle(
+    public static async Task<Result<CustomerDetailResponse>> Handle(
         GetCustomerByIdQuery query,
         ICustomerReadService reader,
         CancellationToken ct
     )
     {
-        var customer = await reader.GetByIdAsync(query.TenantId, query.CustomerId, ct);
+        var customer = await reader.GetDetailByIdAsync(query.TenantId, query.CustomerId, ct);
         return customer is null
-            ? Result.Failure<CustomerResponse>(new Error("Customer.NotFound", "Customer not found."))
+            ? Result.Failure<CustomerDetailResponse>(new Error("Customer.NotFound", "Customer not found."))
             : Result.Success(customer);
     }
 }

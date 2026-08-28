@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
+using TaxVision.Customer.Application.Customers.FiscalProfiles;
 using TaxVision.Customer.Domain.Customers;
 
 namespace TaxVision.Customer.Infrastructure.Persistence;
@@ -120,8 +121,13 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         return new PagedResult<CustomerReconciliationResponse>(items, page, size, totalCount);
     }
 
-    public async Task<CustomerResponse?> GetByIdAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
+    public async Task<CustomerDetailResponse?> GetDetailByIdAsync(
+        Guid tenantId,
+        Guid customerId,
+        CancellationToken ct = default
+    )
     {
+        // Bloque escalar del cliente (mismo IgnoreQueryFilters + filtro explícito de tenant que SearchAsync).
         var data = await (
             from c in db.Customers.AsNoTracking().IgnoreQueryFilters()
             where c.Id == customerId && c.TenantId == tenantId
@@ -154,7 +160,131 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
         if (data is null)
             return null;
 
-        return new CustomerResponse(
+        // Sub-colecciones por queries de lectura separadas. Se proyecta a anónimos en SQL y se
+        // materializa el DTO en memoria: PersonalName.DisplayName es una propiedad COMPUTADA (no
+        // columna) y no traduce a SQL, y así tampoco dependemos de traducir constructores de records.
+        var addressRows = await db
+            .CustomerAddresses.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(a => a.CustomerId == customerId && a.TenantId == tenantId)
+            .OrderByDescending(a => a.IsPrimary)
+            .Select(a => new
+            {
+                a.Id,
+                a.Kind,
+                a.Address.Line1,
+                a.Address.Line2,
+                a.Address.City,
+                a.Address.Region,
+                a.Address.PostalCode,
+                a.Address.CountryCode,
+                a.IsPrimary,
+            })
+            .ToListAsync(ct);
+
+        var addresses = addressRows
+            .Select(a => new AddressResponse(
+                a.Id,
+                a.Kind,
+                a.Line1,
+                a.Line2,
+                a.City,
+                a.Region,
+                a.PostalCode,
+                a.CountryCode,
+                a.IsPrimary
+            ))
+            .ToList();
+
+        var contactRows = await db
+            .CustomerContactPoints.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(cp => cp.CustomerId == customerId && cp.TenantId == tenantId)
+            .OrderByDescending(cp => cp.IsPrimary)
+            .Select(cp => new
+            {
+                cp.Id,
+                cp.Type,
+                cp.Value,
+                cp.Label,
+                cp.IsPrimary,
+                cp.VerifiedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        var contactPoints = contactRows
+            .Select(cp => new ContactPointResponse(cp.Id, cp.Type, cp.Value, cp.Label, cp.IsPrimary, cp.VerifiedAtUtc))
+            .ToList();
+
+        var relationRows = await db
+            .CustomerRelations.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(r => r.CustomerId == customerId && r.TenantId == tenantId)
+            .Select(r => new
+            {
+                r.Id,
+                r.RelationshipKind,
+                r.Purposes,
+                r.Name.FirstName,
+                r.Name.MiddleName,
+                r.Name.LastName,
+                Email = r.PrimaryEmail != null ? r.PrimaryEmail.Value : null,
+                Phone = r.PrimaryPhone != null ? r.PrimaryPhone.E164Value : null,
+                r.DateOfBirth,
+                r.IsActive,
+            })
+            .ToListAsync(ct);
+
+        var relations = relationRows
+            .Select(r => new RelationResponse(
+                r.Id,
+                r.RelationshipKind,
+                r.Purposes,
+                string.Join(
+                    ' ',
+                    new[] { r.FirstName, r.MiddleName, r.LastName }.Where(s => !string.IsNullOrWhiteSpace(s))
+                ),
+                r.Email,
+                r.Phone,
+                r.DateOfBirth,
+                r.IsActive
+            ))
+            .ToList();
+
+        // Perfil fiscal SIEMPRE enmascarado: last4 + metadata, nunca el identificador completo
+        // (ese sale solo por el endpoint auditado de reveal). HasRefundBankInfo se deriva del cipher.
+        var fiscalRow = await db
+            .CustomerFiscalProfiles.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(f => f.CustomerId == customerId && f.TenantId == tenantId)
+            .Select(f => new
+            {
+                f.SubjectKind,
+                f.TaxIdentifierLast4,
+                f.FilingStatus,
+                f.PriorYearAgi,
+                f.IsReturningCustomer,
+                HasRefundBankInfo = f.RefundBankAccountCipher != null,
+                f.UpdatedAtUtc,
+                f.UpdatedByUserId,
+            })
+            .FirstOrDefaultAsync(ct);
+
+        var fiscalProfile = fiscalRow is null
+            ? null
+            : new CustomerFiscalProfileResponse(
+                customerId,
+                fiscalRow.SubjectKind,
+                fiscalRow.TaxIdentifierLast4,
+                fiscalRow.FilingStatus,
+                fiscalRow.PriorYearAgi,
+                fiscalRow.IsReturningCustomer,
+                fiscalRow.HasRefundBankInfo,
+                fiscalRow.UpdatedAtUtc,
+                fiscalRow.UpdatedByUserId
+            );
+
+        return new CustomerDetailResponse(
             data.Id,
             data.TenantId,
             data.Kind,
@@ -169,7 +299,11 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             data.NaicsId,
             data.NaicsDescription,
             data.CreatedAtUtc,
-            data.AssignedPreparerUserId
+            data.AssignedPreparerUserId,
+            addresses,
+            contactPoints,
+            relations,
+            fiscalProfile
         );
     }
 
