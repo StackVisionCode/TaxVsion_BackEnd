@@ -74,7 +74,10 @@ public sealed class RateLimitIntegrationTests : IClassFixture<TenantApiFactory>
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
                 content.Add(fileContent, "file", "logo.png");
 
-                return await client.PutAsync($"/tenants/{randomTenantId}/logo", content);
+                // El upload de asset del modelo nuevo (TenantBrands) reusa la policy tenant.i.logo_upload.
+                // Ruta con el tenant propio (el controller valida ownership); el [RateLimit] cuenta por
+                // el tenant del JWT y dispara al pasar el cupo aunque el handler falle después.
+                return await client.PutAsync($"/tenants/{tenantId}/brands/Crm/assets/logo", content);
             },
             maxAttempts: 20
         );

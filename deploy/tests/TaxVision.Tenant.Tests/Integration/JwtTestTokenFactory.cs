@@ -17,7 +17,16 @@ namespace TaxVision.Tenant.Tests.Integration;
 /// </summary>
 public static class JwtTestTokenFactory
 {
-    public static string Mint(TenantApiFactory factory, Guid tenantId, Guid userId)
+    public static string Mint(TenantApiFactory factory, Guid tenantId, Guid userId) =>
+        MintActor(factory, tenantId, userId, "PlatformAdmin");
+
+    /// <summary>
+    /// Mintea un JWT con un actor_type/rol arbitrario — para probar el gate <c>[AllowActorTypes]</c>
+    /// (ej. un TenantAdmin que NO debe pasar a los endpoints de plataforma). Un actor distinto de
+    /// PlatformAdmin no bypasea el chequeo de permiso, pero para los endpoints de plataforma el
+    /// <c>[AllowActorTypes(PlatformAdmin)]</c> lo rechaza antes con 403.
+    /// </summary>
+    public static string MintActor(TenantApiFactory factory, Guid tenantId, Guid userId, string actorType)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(factory.JwtSecret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -26,8 +35,8 @@ public static class JwtTestTokenFactory
         {
             new Claim("sub", userId.ToString()),
             new Claim("tenant_id", tenantId.ToString()),
-            new Claim("actor_type", "PlatformAdmin"),
-            new Claim(ClaimTypes.Role, "PlatformAdmin"),
+            new Claim("actor_type", actorType),
+            new Claim(ClaimTypes.Role, actorType),
         };
 
         var token = new JwtSecurityToken(

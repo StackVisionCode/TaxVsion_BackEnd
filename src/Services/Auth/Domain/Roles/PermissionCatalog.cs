@@ -21,7 +21,8 @@ public static class PermissionCatalog
     public const string BillingManage = "billing.manage";
     public const string SubscriptionManage = "subscription.manage";
     public const string TenantDomainsManage = "tenant.domains.manage";
-    public const string BrandingManage = "branding.manage";
+    public const string BrandingManage = TenantBrandingPermissions.Manage;
+    public const string PlatformBrandingManage = TenantBrandingPermissions.Platform;
 
     // Módulos operativos
     public const string CustomersView = CustomersPermissions.View;
@@ -1807,6 +1808,17 @@ public static class PermissionCatalog
             "tasks",
             "El cliente ve sus pedidos y registra lo que sube",
             true
+        ),
+        // Marca del SISTEMA: solo PlatformAdmin. PlatformOnly excluye este permiso del bundle del
+        // rol "Tenant Admin"; IsAssignableByTenant: false impide que un rol custom lo incluya.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000179"),
+            PlatformBrandingManage,
+            "branding",
+            "Gestionar la marca del sistema (colores/logo/favicon por defecto de la plataforma)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
     ];
 

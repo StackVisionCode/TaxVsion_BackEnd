@@ -9,7 +9,6 @@ public static class IntellipayCapabilities
     {
         Code = PaymentProviderCode.Intellipay,
         DisplayName = "Intellipay",
-        BrandLogoAssetKey = "providers/intellipay/logo.svg",
         SupportsOneShotCharge = true,
         SupportsRecurringCharge = true,
         SupportsHostedCheckoutRedirect = true,

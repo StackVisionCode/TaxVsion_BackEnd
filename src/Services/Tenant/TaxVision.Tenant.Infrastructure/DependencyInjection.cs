@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.Tenant.Application.Abstractions;
+using TaxVision.Tenant.Application.Brands.Abstractions;
 using TaxVision.Tenant.Application.RateLimiting.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Infrastructure.Branding;
@@ -26,6 +27,7 @@ public static class InfrastructureRegistration
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<TenantDbContext>());
 
         services.AddScoped<ITenantRepository, TenantRepository>();
+        services.AddScoped<ITenantBrandRepository, TenantBrandRepository>();
         services.AddScoped<ITenantReadService, TenantReadService>();
 
         AddBranding(services, config);

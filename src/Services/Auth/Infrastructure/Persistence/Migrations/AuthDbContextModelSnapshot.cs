@@ -3282,6 +3282,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000179"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "platform.branding.manage",
+                            Description = "Gestionar la marca del sistema (colores/logo/favicon por defecto de la plataforma)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            MinPlanTier = 0,
+                            Module = "branding",
+                            PlatformOnly = true
                         });
                 });
 

@@ -9,7 +9,6 @@ public static class ManualCapabilities
     {
         Code = PaymentProviderCode.Manual,
         DisplayName = "Manual (ACH / Check / Wire)",
-        BrandLogoAssetKey = "providers/manual/logo.svg",
         SupportsOneShotCharge = true,
         SupportsRecurringCharge = false,
         SupportsHostedCheckoutRedirect = false,

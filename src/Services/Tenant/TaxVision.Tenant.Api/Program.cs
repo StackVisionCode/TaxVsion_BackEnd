@@ -62,7 +62,7 @@ builder.Services.AddTenantInfrastructure(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "tenant-service");
 
-// Autorización por permiso ([HasPermission(...)], ver TenantBrandingController) — mismo mecanismo
+// Autorización por permiso ([HasPermission(...)], ver TenantBrandsController) — mismo mecanismo
 // que Postmaster/Signature/Notification/Customer. Coexiste con las policies nombradas de abajo:
 // PermissionPolicyProvider solo intercepta el prefijo "perm:", el resto cae al provider default.
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
@@ -164,7 +164,7 @@ builder.Host.UseWolverine(options =>
 
     // Sin una cola de entrada bindeada al fanout "taxvision-events", Wolverine descubre el
     // handler en el assembly (Discovery.IncludeAssembly de arriba) pero no tiene de donde
-    // recibir el mensaje — TenantBrandingFileScanResultConsumer nunca correría.
+    // recibir el mensaje — TenantBrandAssetScanResultConsumer nunca correría.
     options
         .ListenToRabbitQueue(
             "tenant-events",

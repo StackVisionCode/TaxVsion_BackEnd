@@ -25,8 +25,8 @@ public sealed class PdfSharpCertificateRenderer : ICertificateOfCompletionRender
     private const string SansFamily = "Helvetica";
     private const string MonoFamily = "Courier";
 
-    // Brand palette (deep slate blue + neutrals) — sober, print-safe.
-    private static readonly XColor BrandPrimary = XColor.FromArgb(20, 45, 90);
+    // Brand palette (Bold Blue #1E466B + neutrals) — sober, print-safe. Alineado al hex de marca real.
+    private static readonly XColor BrandPrimary = XColor.FromArgb(30, 70, 107);
     private static readonly XColor BrandAccent = XColor.FromArgb(0, 122, 132);
     private static readonly XColor TextPrimary = XColor.FromArgb(24, 30, 42);
     private static readonly XColor TextMuted = XColor.FromArgb(96, 105, 120);

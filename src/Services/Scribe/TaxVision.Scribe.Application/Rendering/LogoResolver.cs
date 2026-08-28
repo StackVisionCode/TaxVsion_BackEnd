@@ -1,21 +1,18 @@
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.ScribeIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using TaxVision.Scribe.Application.Abstractions;
 using TaxVision.Scribe.Domain;
 using TaxVision.Scribe.Domain.Projections;
-using Wolverine;
 
 namespace TaxVision.Scribe.Application.Rendering;
 
 /// <summary>
 /// Resuelve qué logo embeber en un correo. System consulta SystemAssetRef (sembrado por
 /// ScribeSystemAssetSeeder desde un archivo local al arrancar — ya no config estática). Tenant
-/// consulta TenantLogoRef; si no hay uno activo, cae al logo de plataforma con IsFallback=true y
-/// dispara ScribeTenantLogoMissingDetectedIntegrationEvent (a lo sumo 1 por tenant por día — ver
-/// TenantLogoMissingNotification). Si el logo de plataforma tampoco está sembrado todavía (recién
+/// consulta TenantLogoRef; si no hay uno activo, cae al logo de plataforma con IsFallback=true y deja
+/// una nota interna deduplicada (a lo sumo 1 por tenant por día — ver TenantLogoMissingNotification).
+/// Si el logo de plataforma tampoco está sembrado todavía (recién
 /// arrancó, o el seeder falló), devuelve <see cref="Guid.Empty"/> — el caller (FluidTemplateRenderer)
 /// debe tratar eso como "sin logo" y omitir el inline asset, nunca bloquear el envío por esto.
 /// Cache L1 5min, key "logo:{tenantId?}".
@@ -26,8 +23,6 @@ public sealed class LogoResolver(
     ISystemAssetRefRepository systemAssetRefRepository,
     IMemoryCache l1Cache,
     IUnitOfWork unitOfWork,
-    IMessageBus messageBus,
-    ICorrelationContext correlation,
     ILogger<LogoResolver> logger
 ) : ILogoResolver
 {
@@ -94,15 +89,6 @@ public sealed class LogoResolver(
             notification.Touch(now);
 
         await unitOfWork.SaveChangesAsync(ct);
-
-        await messageBus.PublishAsync(
-            new ScribeTenantLogoMissingDetectedIntegrationEvent
-            {
-                TenantId = tenantId,
-                DetectedAtUtc = now,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
 
         logger.LogInformation("Tenant {TenantId} has no active logo; falling back to the system logo.", tenantId);
     }

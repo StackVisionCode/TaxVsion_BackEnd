@@ -8,6 +8,10 @@ public interface ITenantRepository
 
     Task<bool> SubDomainExistsAsync(string subdomain, CancellationToken ct = default);
 
+    /// <summary>Resuelve un tenant por su subdominio (para el branding anónimo pre-login). Devuelve
+    /// solo el id — el resto del agregado no hace falta y no debe viajar a un caller sin sesión.</summary>
+    Task<Guid?> GetIdBySubDomainAsync(string subdomain, CancellationToken ct = default);
+
     /// <summary>PayFlow (Fase 16) — idempotencia de internal/tenants/from-onboarding.</summary>
     Task<TaxVision.Tenant.Domain.Tenant?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default);
 }

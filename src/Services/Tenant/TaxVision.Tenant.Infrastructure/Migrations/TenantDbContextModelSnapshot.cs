@@ -22,6 +22,121 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Brands.TenantBrand", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Surface")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Surface")
+                        .IsUnique();
+
+                    b.ToTable("TenantBrands", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Brands.TenantBrandAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("TenantBrandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantBrandId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("TenantBrandAssets", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Brands.TenantBrandColor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)")
+                        .HasColumnName("HexValue");
+
+                    b.Property<Guid>("TenantBrandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantBrandId", "Token")
+                        .IsUnique();
+
+                    b.ToTable("TenantBrandColors", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tenant.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -132,16 +247,6 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("AccentColor")
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)")
-                        .HasColumnName("AccentColorHex");
-
-                    b.Property<string>("BackgroundColor")
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)")
-                        .HasColumnName("BackgroundColorHex");
-
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -155,25 +260,6 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<string>("LogoContentType")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid?>("LogoFileId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("LogoHeight")
-                        .HasColumnType("int");
-
-                    b.Property<long?>("LogoSizeBytes")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("LogoUpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("LogoWidth")
-                        .HasColumnType("int");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -181,11 +267,6 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
 
                     b.Property<Guid?>("OnboardingId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("PrimaryColor")
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)")
-                        .HasColumnName("PrimaryColorHex");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -195,11 +276,6 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("TextColor")
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)")
-                        .HasColumnName("TextColorHex");
 
                     b.HasKey("Id");
 
@@ -223,6 +299,31 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                             Status = "Active",
                             SubDomain = "platform-internal"
                         });
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Brands.TenantBrandAsset", b =>
+                {
+                    b.HasOne("TaxVision.Tenant.Domain.Brands.TenantBrand", null)
+                        .WithMany("Assets")
+                        .HasForeignKey("TenantBrandId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Brands.TenantBrandColor", b =>
+                {
+                    b.HasOne("TaxVision.Tenant.Domain.Brands.TenantBrand", null)
+                        .WithMany("Colors")
+                        .HasForeignKey("TenantBrandId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Brands.TenantBrand", b =>
+                {
+                    b.Navigation("Assets");
+
+                    b.Navigation("Colors");
                 });
 #pragma warning restore 612, 618
         }

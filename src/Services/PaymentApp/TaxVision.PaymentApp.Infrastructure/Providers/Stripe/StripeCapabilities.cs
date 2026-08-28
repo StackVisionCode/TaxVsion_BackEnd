@@ -9,7 +9,6 @@ public static class StripeCapabilities
     {
         Code = PaymentProviderCode.Stripe,
         DisplayName = "Stripe",
-        BrandLogoAssetKey = "providers/stripe/logo.svg",
         SupportsOneShotCharge = true,
         SupportsRecurringCharge = true,
         SupportsHostedCheckoutRedirect = true,
