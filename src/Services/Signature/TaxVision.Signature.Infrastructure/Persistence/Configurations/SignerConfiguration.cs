@@ -17,6 +17,7 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
         builder.Property(signer => signer.MappedCustomerId);
         builder.Property(signer => signer.Order).IsRequired();
         builder.Property(signer => signer.Language).HasMaxLength(2).IsRequired();
+        builder.Property(signer => signer.RequiredVerificationMethod).HasConversion<string>().HasMaxLength(20);
         builder.Property(signer => signer.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
 
         builder.OwnsOne(

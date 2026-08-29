@@ -16,15 +16,14 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                 type: "nvarchar(2)",
                 maxLength: 2,
                 nullable: false,
-                defaultValue: "En");
+                defaultValue: "En"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Language",
-                table: "Signers");
+            migrationBuilder.DropColumn(name: "Language", table: "Signers");
         }
     }
 }

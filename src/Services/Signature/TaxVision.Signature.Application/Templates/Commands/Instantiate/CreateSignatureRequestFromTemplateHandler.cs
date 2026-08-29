@@ -73,7 +73,9 @@ public static class CreateSignatureRequestFromTemplateHandler
         SignerEmail Email,
         SignerFullName FullName,
         Guid? MappedCustomerId,
-        string Language
+        string Language,
+        Domain.Requests.SignerVerificationMethod? RequiredVerificationMethod,
+        SignerPhoneNumber? PhoneNumber
     );
 
     // ============== Fase 2: validar bindings ==============
@@ -131,6 +133,15 @@ public static class CreateSignatureRequestFromTemplateHandler
             if (nameResult.IsFailure)
                 return Result.Failure<IReadOnlyList<SignerValueObjects>>(nameResult.Error);
 
+            SignerPhoneNumber? phone = null;
+            if (!string.IsNullOrWhiteSpace(binding.PhoneNumber))
+            {
+                var phoneResult = SignerPhoneNumber.Create(binding.PhoneNumber);
+                if (phoneResult.IsFailure)
+                    return Result.Failure<IReadOnlyList<SignerValueObjects>>(phoneResult.Error);
+                phone = phoneResult.Value;
+            }
+
             var mapped = await FindMappedCustomerAsync(
                 cmd.TenantId,
                 emailResult.Value,
@@ -138,7 +149,15 @@ public static class CreateSignatureRequestFromTemplateHandler
                 ct
             );
             signers.Add(
-                new SignerValueObjects(slot.Order, emailResult.Value, nameResult.Value, mapped, slot.DefaultLanguage)
+                new SignerValueObjects(
+                    slot.Order,
+                    emailResult.Value,
+                    nameResult.Value,
+                    mapped,
+                    slot.DefaultLanguage,
+                    slot.RequiredVerificationMethod,
+                    phone
+                )
             );
         }
         return Result.Success<IReadOnlyList<SignerValueObjects>>(signers);
@@ -189,7 +208,8 @@ public static class CreateSignatureRequestFromTemplateHandler
                 signer.Email,
                 signer.FullName,
                 signer.MappedCustomerId,
-                language: signer.Language
+                language: signer.Language,
+                requiredVerificationMethod: signer.RequiredVerificationMethod
             );
             if (addResult.IsFailure)
                 return Result.Failure(addResult.Error);

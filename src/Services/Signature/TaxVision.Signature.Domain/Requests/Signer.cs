@@ -37,6 +37,14 @@ public sealed class Signer : BaseEntity
     public string Language { get; private set; } = "En";
 
     /// <summary>
+    /// Verificación de identidad que el firmante DEBE completar antes de firmar (OTP por
+    /// SMS/Email/WhatsApp). <c>null</c> = sin verificación adicional. El PIN del preparer es
+    /// un gate aparte a nivel de la solicitud (<c>RequiresPractitionerPin</c>), así que este
+    /// campo nunca es <see cref="SignerVerificationMethod.PractitionerPin"/>.
+    /// </summary>
+    public SignerVerificationMethod? RequiredVerificationMethod { get; private set; }
+
+    /// <summary>
     /// jti del último token de firma emitido para este firmante. Permite revocar el enlace
     /// anterior al reenviar la invitación: el <c>RevocationEpoch</c> vive a nivel de la request y
     /// mataría los tokens de TODOS los firmantes, así que la revocación por-firmante se hace por jti.
@@ -101,7 +109,8 @@ public sealed class Signer : BaseEntity
         Guid? mappedCustomerId,
         int order,
         SignerPhoneNumber? phoneNumber = null,
-        string? language = null
+        string? language = null,
+        SignerVerificationMethod? requiredVerificationMethod = null
     )
     {
         if (requestId == Guid.Empty)
@@ -112,6 +121,14 @@ public sealed class Signer : BaseEntity
 
         if (order < 1)
             return Result.Failure<Signer>(new Error("Signature.Signer.Order", "Signer order must be >= 1."));
+
+        if (requiredVerificationMethod == SignerVerificationMethod.PractitionerPin)
+            return Result.Failure<Signer>(
+                new Error(
+                    "Signature.Signer.VerificationMethod",
+                    "PractitionerPin is a request-level gate, not a per-signer verification method."
+                )
+            );
 
         return Result.Success(
             new Signer
@@ -124,6 +141,7 @@ public sealed class Signer : BaseEntity
                 MappedCustomerId = mappedCustomerId,
                 Order = order,
                 Language = NormalizeLanguage(language),
+                RequiredVerificationMethod = requiredVerificationMethod,
                 Status = SignerStatus.Pending,
             }
         );
@@ -141,6 +159,22 @@ public sealed class Signer : BaseEntity
     {
         EnsurePending();
         PhoneNumber = phoneNumber;
+        return Result.Success();
+    }
+
+    /// <summary>Fija (o quita con <c>null</c>) el método de verificación requerido. Solo en Pending.</summary>
+    internal Result SetRequiredVerificationMethod(SignerVerificationMethod? method)
+    {
+        if (method == SignerVerificationMethod.PractitionerPin)
+            return Result.Failure(
+                new Error(
+                    "Signature.Signer.VerificationMethod",
+                    "PractitionerPin is a request-level gate, not a per-signer verification method."
+                )
+            );
+
+        EnsurePending();
+        RequiredVerificationMethod = method;
         return Result.Success();
     }
 

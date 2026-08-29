@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Signature.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using TaxVision.Signature.Infrastructure.Persistence;
 namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SignatureDbContext))]
-    partial class SignatureDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260829182852_AddSignerRequiredVerificationMethod")]
+    partial class AddSignerRequiredVerificationMethod
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -877,10 +880,6 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Order")
                         .HasColumnType("int");
-
-                    b.Property<string>("RequiredVerificationMethod")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<Guid>("SignatureTemplateId")
                         .HasColumnType("uniqueidentifier");

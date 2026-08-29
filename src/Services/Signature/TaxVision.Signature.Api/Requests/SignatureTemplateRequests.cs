@@ -22,7 +22,17 @@ public sealed record UpdateTemplateDefaultsBody(
     bool GenerateCertificate
 );
 
-public sealed record AddTemplateSlotBody(string Role, string DefaultLanguage);
+public sealed record AddTemplateSlotBody(
+    string Role,
+    string DefaultLanguage,
+    SignerVerificationMethod? RequiredVerificationMethod = null
+);
+
+public sealed record UpdateTemplateSlotBody(
+    string Role,
+    string DefaultLanguage,
+    SignerVerificationMethod? RequiredVerificationMethod = null
+);
 
 public sealed record PlaceTemplateFieldBody(
     int SlotOrder,

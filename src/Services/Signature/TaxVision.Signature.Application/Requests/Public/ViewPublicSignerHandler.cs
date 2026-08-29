@@ -58,6 +58,9 @@ public static class ViewPublicSignerHandler
             RequiresPractitionerPin: request.RequiresPractitionerPin,
             IsPinVerified: signer.IsPinVerified,
             PinLockedUntilUtc: signer.PinLockedUntilUtc,
+            RequiredVerificationMethod: signer.RequiredVerificationMethod,
+            IsVerificationCompleted: signer.RequiredVerificationMethod is { } method
+                && signer.HasCompletedVerification(method),
             Fields: signer.Fields.Select(MapField).ToList()
         );
 

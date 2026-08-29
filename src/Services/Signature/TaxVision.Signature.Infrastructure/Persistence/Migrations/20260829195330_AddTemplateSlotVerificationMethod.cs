@@ -5,16 +5,16 @@
 namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class AddSignerCurrentTokenId : Migration
+    public partial class AddTemplateSlotVerificationMethod : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
-                name: "CurrentTokenId",
-                table: "Signers",
-                type: "nvarchar(64)",
-                maxLength: 64,
+                name: "RequiredVerificationMethod",
+                table: "TemplateSignerSlots",
+                type: "nvarchar(20)",
+                maxLength: 20,
                 nullable: true
             );
         }
@@ -22,7 +22,7 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(name: "CurrentTokenId", table: "Signers");
+            migrationBuilder.DropColumn(name: "RequiredVerificationMethod", table: "TemplateSignerSlots");
         }
     }
 }

@@ -141,6 +141,110 @@ public sealed class SignatureTemplateTests
         Assert.True(second.IsSuccess);
     }
 
+    // -------------------- Verification method por slot (OTP heredado al instanciar) --------------------
+
+    [Fact]
+    public void AddSlot_stores_required_verification_method()
+    {
+        var template = NewDraft().Value;
+
+        var slot = template
+            .AddSlot(TemplateSlotRole.Create("Client").Value, "En", SignerVerificationMethod.EmailOtp)
+            .Value;
+
+        Assert.Equal(SignerVerificationMethod.EmailOtp, slot.RequiredVerificationMethod);
+    }
+
+    [Fact]
+    public void AddSlot_rejects_practitioner_pin_as_verification_method()
+    {
+        var template = NewDraft().Value;
+
+        var result = template.AddSlot(
+            TemplateSlotRole.Create("Client").Value,
+            "En",
+            SignerVerificationMethod.PractitionerPin
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.TemplateSlot.VerificationMethod", result.Error.Code);
+    }
+
+    [Fact]
+    public void UpdateSlot_changes_language_and_method_keeping_order_and_fields()
+    {
+        var template = NewDraft().Value;
+        var slot = template.AddSlot(TemplateSlotRole.Create("Client").Value, "En").Value;
+        var pos = FieldPosition.Create(1, 0.1, 0.1, 0.2, 0.05).Value;
+        template.PlaceField(slot.Order, SignatureFieldKind.Signature, pos, null, false);
+
+        var result = template.UpdateSlot(
+            slot.Order,
+            TemplateSlotRole.Create("Taxpayer").Value,
+            "Es",
+            SignerVerificationMethod.SmsOtp
+        );
+
+        Assert.True(result.IsSuccess);
+        var updated = Assert.Single(template.Slots);
+        Assert.Equal(1, updated.Order);
+        Assert.Equal("Taxpayer", updated.Role.Value);
+        Assert.Equal("Es", updated.DefaultLanguage);
+        Assert.Equal(SignerVerificationMethod.SmsOtp, updated.RequiredVerificationMethod);
+        Assert.Single(template.Fields); // el campo del slot se conserva
+    }
+
+    [Fact]
+    public void UpdateSlot_fails_for_unknown_slot()
+    {
+        var template = NewDraft().Value;
+
+        var result = template.UpdateSlot(99, TemplateSlotRole.Create("Client").Value, "En", null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Template.SlotMissing", result.Error.Code);
+    }
+
+    [Fact]
+    public void UpdateSlot_throws_when_not_draft()
+    {
+        var template = NewPublishedTemplate();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            template.UpdateSlot(1, TemplateSlotRole.Create("Solo").Value, "En", SignerVerificationMethod.EmailOtp)
+        );
+    }
+
+    [Fact]
+    public void RevertToDraft_unlocks_a_published_template_for_editing()
+    {
+        var template = NewPublishedTemplate();
+
+        var reverted = template.RevertToDraft();
+
+        Assert.True(reverted.IsSuccess);
+        Assert.Equal(SignatureTemplateStatus.Draft, template.Status);
+        Assert.Null(template.PublishedAtUtc);
+        // Y ahora sí acepta ediciones (antes lanzaba).
+        Assert.True(
+            template
+                .UpdateSlot(1, TemplateSlotRole.Create("Solo").Value, "Es", SignerVerificationMethod.EmailOtp)
+                .IsSuccess
+        );
+    }
+
+    [Fact]
+    public void RevertToDraft_rejects_archived_template()
+    {
+        var template = NewPublishedTemplate();
+        template.Archive();
+
+        var result = template.RevertToDraft();
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Signature.Template.Archived", result.Error.Code);
+    }
+
     // -------------------- TemplateSlotRole VO --------------------
 
     [Fact]

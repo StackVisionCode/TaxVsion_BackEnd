@@ -171,7 +171,8 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         SignerFullName fullName,
         Guid? mappedCustomerId,
         SignerPhoneNumber? phoneNumber = null,
-        string? language = null
+        string? language = null,
+        SignerVerificationMethod? requiredVerificationMethod = null
     )
     {
         EnsureCanBeEdited();
@@ -187,7 +188,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             );
 
         var order = NextOrder();
-        var signerResult = Signer.Create(Id, email, fullName, mappedCustomerId, order, phoneNumber, language);
+        var signerResult = Signer.Create(
+            Id,
+            email,
+            fullName,
+            mappedCustomerId,
+            order,
+            phoneNumber,
+            language,
+            requiredVerificationMethod
+        );
         if (signerResult.IsFailure)
             return signerResult;
 
@@ -205,6 +215,24 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
 
         var result = signer.SetPhoneNumber(phoneNumber);
+        if (result.IsFailure)
+            return result;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Fija (o quita con <c>null</c>) el método de verificación de identidad que el firmante
+    /// debe completar antes de firmar. Solo permitido en <c>Draft</c>/<c>Ready</c> (antes de Send).
+    /// </summary>
+    public Result SetSignerRequiredVerificationMethod(Guid signerId, SignerVerificationMethod? method)
+    {
+        EnsureCanBeEdited();
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        var result = signer.SetRequiredVerificationMethod(method);
         if (result.IsFailure)
             return result;
         Touch();
@@ -762,6 +790,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                 new Error(
                     "Signature.Request.PinVerificationRequired",
                     "Signer must verify the practitioner PIN before signing."
+                )
+            );
+
+        // OTP por firmante: espejo del gate del PIN, pero a nivel de cada firmante. Si tiene
+        // un método requerido y no completó su challenge, no puede firmar.
+        if (signer.RequiredVerificationMethod is { } requiredMethod && !signer.HasCompletedVerification(requiredMethod))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.VerificationRequired",
+                    "Signer must complete identity verification before signing."
                 )
             );
 

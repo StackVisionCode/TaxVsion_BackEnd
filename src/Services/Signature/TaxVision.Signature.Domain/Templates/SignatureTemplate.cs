@@ -164,7 +164,11 @@ public sealed class SignatureTemplate : TenantEntity
     // Slots — cada operación con SU regla
     // ------------------------------------------------------------------
 
-    public Result<TemplateSignerSlot> AddSlot(TemplateSlotRole role, string defaultLanguage)
+    public Result<TemplateSignerSlot> AddSlot(
+        TemplateSlotRole role,
+        string defaultLanguage,
+        SignerVerificationMethod? requiredVerificationMethod = null
+    )
     {
         EnsureDraft();
 
@@ -174,7 +178,7 @@ public sealed class SignatureTemplate : TenantEntity
             );
 
         var order = NextSlotOrder();
-        var slotResult = TemplateSignerSlot.Create(Id, order, role, defaultLanguage);
+        var slotResult = TemplateSignerSlot.Create(Id, order, role, defaultLanguage, requiredVerificationMethod);
         if (slotResult.IsFailure)
             return slotResult;
 
@@ -194,6 +198,31 @@ public sealed class SignatureTemplate : TenantEntity
         _slots.Remove(slot);
         _fields.RemoveAll(f => f.SlotOrder == slotOrder);
         NormalizeSlotOrder();
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Edita en sitio rol/idioma/método de verificación de un slot existente (conserva su orden
+    /// y sus campos). Solo en <c>Draft</c>.
+    /// </summary>
+    public Result UpdateSlot(
+        int slotOrder,
+        TemplateSlotRole role,
+        string defaultLanguage,
+        SignerVerificationMethod? requiredVerificationMethod
+    )
+    {
+        EnsureDraft();
+
+        var slot = FindSlotByOrderOrNull(slotOrder);
+        if (slot is null)
+            return Result.Failure(new Error("Signature.Template.SlotMissing", "Slot not found in this template."));
+
+        var result = slot.Update(role, defaultLanguage, requiredVerificationMethod);
+        if (result.IsFailure)
+            return result;
+
         Touch();
         return Result.Success();
     }
@@ -313,6 +342,23 @@ public sealed class SignatureTemplate : TenantEntity
 
         Status = SignatureTemplateStatus.Archived;
         ArchivedAtUtc = DateTime.UtcNow;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Devuelve una plantilla <c>Published</c> a <c>Draft</c> para poder editarla (roles, campos,
+    /// settings). No afecta a las solicitudes ya instanciadas. Idempotente si ya está en Draft.
+    /// </summary>
+    public Result RevertToDraft()
+    {
+        if (Status == SignatureTemplateStatus.Draft)
+            return Result.Success();
+        if (Status == SignatureTemplateStatus.Archived)
+            return Result.Failure(new Error("Signature.Template.Archived", "An archived template cannot be edited."));
+
+        Status = SignatureTemplateStatus.Draft;
+        PublishedAtUtc = null;
         Touch();
         return Result.Success();
     }

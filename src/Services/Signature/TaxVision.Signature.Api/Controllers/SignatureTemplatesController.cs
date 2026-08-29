@@ -19,8 +19,10 @@ using TaxVision.Signature.Application.Templates.Commands.PlaceField;
 using TaxVision.Signature.Application.Templates.Commands.PublishTemplate;
 using TaxVision.Signature.Application.Templates.Commands.RemoveField;
 using TaxVision.Signature.Application.Templates.Commands.RemoveSlot;
+using TaxVision.Signature.Application.Templates.Commands.RevertToDraft;
 using TaxVision.Signature.Application.Templates.Commands.UpdateDefaults;
 using TaxVision.Signature.Application.Templates.Commands.UpdateMetadata;
+using TaxVision.Signature.Application.Templates.Commands.UpdateSlot;
 using TaxVision.Signature.Application.Templates.Queries.GetById;
 using TaxVision.Signature.Application.Templates.Queries.List;
 using TaxVision.Signature.Domain.Requests;
@@ -173,12 +175,42 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<TemplateSlotCreatedResponse>>(
-            new AddTemplateSlotCommand(tenantId, id, body.Role, body.DefaultLanguage),
+            new AddTemplateSlotCommand(tenantId, id, body.Role, body.DefaultLanguage, body.RequiredVerificationMethod),
             ct
         );
         return result.IsSuccess
             ? Created($"/signature/templates/{id}/slots/{result.Value.Id}", result.Value)
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- PUT /signature/templates/{id}/slots/{slotOrder} ----------
+    [HttpPut("{id:guid}/slots/{slotOrder:int}")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UpdateSlot(
+        [FromRoute] Guid id,
+        [FromRoute] int slotOrder,
+        [FromBody] UpdateTemplateSlotBody body,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new UpdateTemplateSlotCommand(
+                tenantId,
+                id,
+                slotOrder,
+                body.Role,
+                body.DefaultLanguage,
+                body.RequiredVerificationMethod
+            ),
+            ct
+        );
+        return MapResult(result);
     }
 
     // ---------- DELETE /signature/templates/{id}/slots/{slotOrder} ----------
@@ -257,6 +289,21 @@ public sealed class SignatureTemplatesController(IMessageBus bus) : ControllerBa
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result>(new PublishTemplateCommand(tenantId, id), ct);
+        return MapResult(result);
+    }
+
+    // ---------- POST /signature/templates/{id}/revert-to-draft ----------
+    [HttpPost("{id:guid}/revert-to-draft")]
+    [HasPermission(SignaturePermissions.TemplateUpdate)]
+    [RateLimit("signature.g.template_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> RevertToDraft([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new RevertTemplateToDraftCommand(tenantId, id), ct);
         return MapResult(result);
     }
 

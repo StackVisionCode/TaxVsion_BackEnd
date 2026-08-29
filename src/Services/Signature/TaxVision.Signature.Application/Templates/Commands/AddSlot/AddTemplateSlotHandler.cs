@@ -24,14 +24,20 @@ public static class AddTemplateSlotHandler
                 new Error("Signature.Template.NotFound", "The signature template does not exist for this tenant.")
             );
 
-        var slotResult = template.AddSlot(roleResult.Value, cmd.DefaultLanguage);
+        var slotResult = template.AddSlot(roleResult.Value, cmd.DefaultLanguage, cmd.RequiredVerificationMethod);
         if (slotResult.IsFailure)
             return Result.Failure<TemplateSlotCreatedResponse>(slotResult.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
         var slot = slotResult.Value;
         return Result.Success(
-            new TemplateSlotCreatedResponse(slot.Id, slot.Order, slot.Role.Value, slot.DefaultLanguage)
+            new TemplateSlotCreatedResponse(
+                slot.Id,
+                slot.Order,
+                slot.Role.Value,
+                slot.DefaultLanguage,
+                slot.RequiredVerificationMethod
+            )
         );
     }
 }

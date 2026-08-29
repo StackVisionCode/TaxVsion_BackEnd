@@ -20,19 +20,19 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     LogoFileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     LogoContentType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     LogoSizeBytes = table.Column<long>(type: "bigint", nullable: true),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TenantBrandingRefs", x => x.TenantId);
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "TenantBrandingRefs");
+            migrationBuilder.DropTable(name: "TenantBrandingRefs");
         }
     }
 }
