@@ -181,7 +181,13 @@ public sealed class PublicSignatureController(IMessageBus bus) : ControllerBase
 
     private (string? Ip, string? UserAgent) ExtractClientContext()
     {
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        // La IP real la fija ForwardedHeaders (CF-Connecting-IP). Se normaliza el prefijo IPv4-mapped
+        // (::ffff:) a IPv4 puro para presentación en el certificado y el audit trail.
+        var remote = HttpContext.Connection.RemoteIpAddress;
+        var ip =
+            remote is null ? null
+            : remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4().ToString()
+            : remote.ToString();
         var ua = Request.Headers.UserAgent.ToString();
         return (ip, string.IsNullOrWhiteSpace(ua) ? null : ua);
     }

@@ -3,7 +3,13 @@ using TaxVision.Signature.Domain.Templates;
 
 namespace TaxVision.Signature.Application.Templates;
 
-public sealed record TemplateSlotResponse(Guid Id, int Order, string Role, string DefaultLanguage);
+public sealed record TemplateSlotResponse(
+    Guid Id,
+    int Order,
+    string Role,
+    string DefaultLanguage,
+    SignerVerificationMethod? RequiredVerificationMethod
+);
 
 public sealed record TemplateFieldResponse(
     Guid Id,
@@ -56,7 +62,13 @@ public sealed record SignatureTemplateResponse(
             template.PublishedAtUtc,
             template.ArchivedAtUtc,
             template
-                .Slots.Select(s => new TemplateSlotResponse(s.Id, s.Order, s.Role.Value, s.DefaultLanguage))
+                .Slots.Select(s => new TemplateSlotResponse(
+                    s.Id,
+                    s.Order,
+                    s.Role.Value,
+                    s.DefaultLanguage,
+                    s.RequiredVerificationMethod
+                ))
                 .ToList(),
             template
                 .Fields.Select(f => new TemplateFieldResponse(

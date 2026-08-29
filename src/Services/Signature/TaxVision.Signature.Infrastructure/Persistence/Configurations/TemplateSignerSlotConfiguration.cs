@@ -16,6 +16,7 @@ public sealed class TemplateSignerSlotConfiguration : IEntityTypeConfiguration<T
         builder.Property(s => s.SignatureTemplateId).IsRequired();
         builder.Property(s => s.Order).IsRequired();
         builder.Property(s => s.DefaultLanguage).IsRequired().HasMaxLength(2);
+        builder.Property(s => s.RequiredVerificationMethod).HasConversion<string>().HasMaxLength(20);
 
         builder.OwnsOne(
             s => s.Role,

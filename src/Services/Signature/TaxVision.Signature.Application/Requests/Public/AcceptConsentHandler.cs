@@ -28,6 +28,7 @@ public static class AcceptConsentHandler
         AcceptConsentCommand cmd,
         ISigningTokenService tokenService,
         ISignatureRequestRepository repository,
+        IJtiDenylist denylist,
         IConsentTextProvider consentTextProvider,
         IConsentEventRepository consentEventRepository,
         IUnitOfWork unitOfWork,
@@ -36,7 +37,7 @@ public static class AcceptConsentHandler
         CancellationToken ct
     )
     {
-        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, ct);
+        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, denylist, ct);
         if (resolution.IsFailure)
             return Result.Failure(resolution.Error);
 

@@ -45,10 +45,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 5,
-        windowSeconds: 3600,
+        quota: 20,
+        windowSeconds: 600,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 20
+        overlayQuota: 80
     );
 
     // Compartida por Summary + Timeline + ByCategory (SignatureAnalyticsController) — las 3 leen

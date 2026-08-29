@@ -67,6 +67,10 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     // TenantEntitlementsChangedIntegrationEvent). Consultada por EfTenantPlanCodeReader.
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
 
+    // Fase 3C (certificado) — nombre + logo de la oficina para el Certificate of Completion, mantenida
+    // por TenantBrandingProjectionConsumer (TenantCreated + TenantLogoUpdated).
+    public DbSet<TenantBrandingRef> TenantBrandingRefs => Set<TenantBrandingRef>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());

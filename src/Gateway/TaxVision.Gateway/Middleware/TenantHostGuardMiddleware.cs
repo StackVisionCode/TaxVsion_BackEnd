@@ -20,10 +20,20 @@ public sealed class TenantHostGuardMiddleware(
     ILogger<TenantHostGuardMiddleware> logger
 )
 {
+    /// <summary>
+    /// Header con el tenant resuelto por el Host, propagado a los servicios downstream para que
+    /// puedan validar Host↔token en flujos anónimos (ej. la firma pública). Se sanea siempre para
+    /// que un cliente no pueda inyectarlo: solo lo pone el Gateway cuando resuelve un subdominio.
+    /// </summary>
+    internal const string ResolvedTenantHeader = "X-Resolved-Tenant";
+
     public async Task InvokeAsync(HttpContext context, IHostTenantResolver resolver)
     {
         var opts = options.Value;
         var host = context.Request.Host.Host;
+
+        // Anti-spoofing: descartar cualquier valor entrante; solo el Gateway puede fijarlo.
+        context.Request.Headers.Remove(ResolvedTenantHeader);
 
         // CORS preflight no lleva credenciales ni debe bloquearse acá; el host de sistema tampoco se valida.
         if (!opts.Enabled || HttpMethods.IsOptions(context.Request.Method) || !IsTenantSubdomain(host, opts))
@@ -70,6 +80,10 @@ public sealed class TenantHostGuardMiddleware(
                     );
                     return;
                 }
+
+                // Tenant del Host resuelto y sin conflicto con el JWT: propagarlo downstream para que
+                // los flujos anónimos (firma pública) puedan validar Host↔token.
+                context.Request.Headers[ResolvedTenantHeader] = result.TenantId.ToString();
                 break;
 
             case HostTenantOutcome.Unavailable:

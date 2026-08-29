@@ -27,9 +27,6 @@ public interface ISigningTokenService
     /// <summary>Genera un token firmado (payload URL-safe) que codifica los claims dados.</summary>
     string Issue(SigningTokenPayload payload);
 
-    /// <summary>Construye la URL pública absoluta consumida por el firmante.</summary>
-    string BuildPublicUrl(string token);
-
     /// <summary>
     /// Verifica firma y expiración; devuelve el payload decodificado. Falla si el token
     /// está corrupto, la firma no coincide, o <c>exp</c> ya pasó.

@@ -71,7 +71,7 @@ public sealed class RateLimitIntegrationTests : IClassFixture<NotificationApiFac
     }
 
     [Fact]
-    public async Task ConfigurationTest_trips_with_user_layer_and_limit_5()
+    public async Task ConfigurationTest_trips_with_user_layer_and_limit_15()
     {
         // Id inexistente igual cuenta — el filtro de [RateLimit] corre antes que el handler (mismo
         // criterio que CustomerUpdate_trips_at_61st_request en Customer.Tests).
@@ -86,14 +86,14 @@ public sealed class RateLimitIntegrationTests : IClassFixture<NotificationApiFac
                     $"/notifications/email/configurations/{randomConfigurationId}/test",
                     new { ToEmail = "ratelimit.test@ratelimit-test.local" }
                 ),
-            maxAttempts: 20
+            maxAttempts: 40
         );
 
         await AssertTripped(
             tripped,
             expectedPolicy: "notification.i.configuration_test",
             expectedLayer: "user",
-            expectedLimit: 5
+            expectedLimit: 15
         );
     }
 

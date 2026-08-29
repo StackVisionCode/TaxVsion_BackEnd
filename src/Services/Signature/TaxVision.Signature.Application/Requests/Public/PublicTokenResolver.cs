@@ -23,14 +23,7 @@ internal static class PublicTokenResolver
         string token,
         ISigningTokenService tokenService,
         ISignatureRequestRepository requestRepository,
-        CancellationToken ct
-    ) => await ResolveAsync(token, tokenService, requestRepository, denylist: null, ct);
-
-    public static async Task<Result<ResolvedContext>> ResolveAsync(
-        string token,
-        ISigningTokenService tokenService,
-        ISignatureRequestRepository requestRepository,
-        IJtiDenylist? denylist,
+        IJtiDenylist denylist,
         CancellationToken ct
     )
     {
@@ -39,7 +32,7 @@ internal static class PublicTokenResolver
             return Result.Failure<ResolvedContext>(verification.Error);
 
         var payload = verification.Value;
-        if (denylist is not null && await denylist.IsRevokedAsync(payload.TokenId, ct))
+        if (await denylist.IsRevokedAsync(payload.TokenId, ct))
             return Result.Failure<ResolvedContext>(new Error("Signature.Token.Revoked", "This link has been revoked."));
 
         var request = await requestRepository.GetByIdAsync(payload.TenantId, payload.SignatureRequestId, ct);

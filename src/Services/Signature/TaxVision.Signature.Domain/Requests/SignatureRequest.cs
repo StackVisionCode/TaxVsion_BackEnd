@@ -170,7 +170,9 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         SignerEmail email,
         SignerFullName fullName,
         Guid? mappedCustomerId,
-        SignerPhoneNumber? phoneNumber = null
+        SignerPhoneNumber? phoneNumber = null,
+        string? language = null,
+        SignerVerificationMethod? requiredVerificationMethod = null
     )
     {
         EnsureCanBeEdited();
@@ -186,7 +188,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             );
 
         var order = NextOrder();
-        var signerResult = Signer.Create(Id, email, fullName, mappedCustomerId, order, phoneNumber);
+        var signerResult = Signer.Create(
+            Id,
+            email,
+            fullName,
+            mappedCustomerId,
+            order,
+            phoneNumber,
+            language,
+            requiredVerificationMethod
+        );
         if (signerResult.IsFailure)
             return signerResult;
 
@@ -204,6 +215,24 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
 
         var result = signer.SetPhoneNumber(phoneNumber);
+        if (result.IsFailure)
+            return result;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Fija (o quita con <c>null</c>) el método de verificación de identidad que el firmante
+    /// debe completar antes de firmar. Solo permitido en <c>Draft</c>/<c>Ready</c> (antes de Send).
+    /// </summary>
+    public Result SetSignerRequiredVerificationMethod(Guid signerId, SignerVerificationMethod? method)
+    {
+        EnsureCanBeEdited();
+        var signer = FindSignerOrNull(signerId);
+        if (signer is null)
+            return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+
+        var result = signer.SetRequiredVerificationMethod(method);
         if (result.IsFailure)
             return result;
         Touch();
@@ -764,6 +793,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
                 )
             );
 
+        // OTP por firmante: espejo del gate del PIN, pero a nivel de cada firmante. Si tiene
+        // un método requerido y no completó su challenge, no puede firmar.
+        if (signer.RequiredVerificationMethod is { } requiredMethod && !signer.HasCompletedVerification(requiredMethod))
+            return Result.Failure(
+                new Error(
+                    "Signature.Request.VerificationRequired",
+                    "Signer must complete identity verification before signing."
+                )
+            );
+
         if (RequiresSequentialSigning && !IsSignerNextInSequence(signer))
             return Result.Failure(
                 new Error(
@@ -1061,6 +1100,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     {
         if (Status is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready))
             throw new InvalidOperationException($"SignatureRequest {Id} cannot be edited in status {Status}.");
+    }
+
+    /// <summary>
+    /// Registra el jti del token recién emitido para un firmante y devuelve el jti anterior (o
+    /// <c>null</c>) para revocarlo. Lo usan Send (primer token) y Resend (rota y revoca el viejo).
+    /// </summary>
+    public string? RotateSignerToken(Guid signerId, string tokenId)
+    {
+        var signer = FindSignerOrNull(signerId);
+        return signer?.RotateCurrentToken(tokenId);
     }
 
     private bool EmailAlreadyPresent(SignerEmail email) => _signers.Any(s => s.Email.Value == email.Value);

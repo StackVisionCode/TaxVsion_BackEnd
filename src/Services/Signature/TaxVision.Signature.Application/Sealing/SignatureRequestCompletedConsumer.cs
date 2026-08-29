@@ -35,6 +35,7 @@ public static class SignatureRequestCompletedConsumer
         SignatureRequestCompletedIntegrationEvent evt,
         ISignatureRequestRepository repository,
         ISignatureCloudStorageClient storage,
+        ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
         ICertificateOfCompletionRenderer certificateRenderer,
         IDistributedLock distributedLock,
@@ -71,6 +72,7 @@ public static class SignatureRequestCompletedConsumer
                 request,
                 evt,
                 storage,
+                brandingRepository,
                 sealer,
                 certificateRenderer,
                 unitOfWork,
@@ -143,6 +145,7 @@ public static class SignatureRequestCompletedConsumer
         SignatureRequest request,
         SignatureRequestCompletedIntegrationEvent evt,
         ISignatureCloudStorageClient storage,
+        ITenantBrandingRefRepository brandingRepository,
         IDocumentSealingEngine sealer,
         ICertificateOfCompletionRenderer certificateRenderer,
         IUnitOfWork unitOfWork,
@@ -165,6 +168,7 @@ public static class SignatureRequestCompletedConsumer
             sealResult,
             certificateRenderer,
             storage,
+            brandingRepository,
             logger,
             ct
         );
@@ -248,6 +252,7 @@ public static class SignatureRequestCompletedConsumer
         SealingResult sealResult,
         ICertificateOfCompletionRenderer renderer,
         ISignatureCloudStorageClient storage,
+        ITenantBrandingRefRepository brandingRepository,
         ILogger logger,
         CancellationToken ct
     )
@@ -255,7 +260,14 @@ public static class SignatureRequestCompletedConsumer
         if (!request.GenerateCertificate)
             return Result.Success<Guid?>(null);
 
-        var model = BuildCertificateModel(request, sealResult);
+        var (issuerName, tenantLogo) = await ResolveBrandingAsync(
+            request.TenantId,
+            brandingRepository,
+            storage,
+            logger,
+            ct
+        );
+        var model = BuildCertificateModel(request, sealResult, issuerName, tenantLogo);
         var rendered = renderer.Render(model);
         var upload = new SignaturePdfUpload(
             Content: rendered.CertificatePdfBytes,
@@ -281,12 +293,43 @@ public static class SignatureRequestCompletedConsumer
         return Result.Success<Guid?>(uploadResult.Value);
     }
 
+    private static async Task<(string? IssuerName, byte[]? TenantLogo)> ResolveBrandingAsync(
+        Guid tenantId,
+        ITenantBrandingRefRepository brandingRepository,
+        ISignatureCloudStorageClient storage,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var branding = await brandingRepository.GetByTenantIdAsync(tenantId, ct);
+        if (branding is null)
+            return (null, null);
+
+        var issuerName = string.IsNullOrWhiteSpace(branding.OfficeName) ? null : branding.OfficeName;
+        if (!branding.HasLogo)
+            return (issuerName, null);
+
+        // Best-effort: un logo que no baja no debe frenar la generación del certificado.
+        var logoResult = await storage.DownloadAsync(tenantId, branding.LogoFileId!.Value, ct);
+        if (logoResult.IsFailure)
+        {
+            logger.LogWarning(
+                "Tenant logo download failed for the certificate (tenant {TenantId}); rendering without it.",
+                tenantId
+            );
+            return (issuerName, null);
+        }
+
+        return (issuerName, logoResult.Value);
+    }
+
     private static CertificateOfCompletionModel BuildCertificateModel(
         SignatureRequest request,
-        SealingResult sealResult
+        SealingResult sealResult,
+        string? issuerName,
+        byte[]? tenantLogo
     ) =>
         new(
-            TenantId: request.TenantId,
             SignatureRequestId: request.Id,
             Title: request.Title,
             Category: request.Category,
@@ -300,11 +343,15 @@ public static class SignatureRequestCompletedConsumer
                     s.Email.Value,
                     s.Order,
                     s.Status,
+                    s.FirstViewedAtUtc,
+                    s.ConsentAcceptedAtUtc,
                     s.SignedAtUtc,
                     s.ClientIp,
                     s.UserAgent
                 ))
-                .ToList()
+                .ToList(),
+            IssuerName: issuerName,
+            TenantLogo: tenantLogo
         );
 
     // ============== Fase 5: persistir en el aggregate ==============

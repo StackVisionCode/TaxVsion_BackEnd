@@ -59,8 +59,8 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant,
         [],
-        quota: 10,
-        windowSeconds: 3600,
+        quota: 20,
+        windowSeconds: 600,
         RateLimitAlgorithm.FixedWindow
     );
 

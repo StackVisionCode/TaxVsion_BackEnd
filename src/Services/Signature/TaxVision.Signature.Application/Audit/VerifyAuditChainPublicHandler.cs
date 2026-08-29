@@ -18,12 +18,19 @@ public static class VerifyAuditChainPublicHandler
         VerifyAuditChainPublicQuery query,
         ISigningTokenService tokenService,
         ISignatureRequestRepository requestRepository,
+        IJtiDenylist denylist,
         ISignatureAuditRepository auditRepository,
         IAuditChainVerifier verifier,
         CancellationToken ct
     )
     {
-        var resolution = await PublicTokenResolver.ResolveAsync(query.Token, tokenService, requestRepository, ct);
+        var resolution = await PublicTokenResolver.ResolveAsync(
+            query.Token,
+            tokenService,
+            requestRepository,
+            denylist,
+            ct
+        );
         if (resolution.IsFailure)
             return Result.Failure<AuditChainVerificationResponse>(resolution.Error);
 

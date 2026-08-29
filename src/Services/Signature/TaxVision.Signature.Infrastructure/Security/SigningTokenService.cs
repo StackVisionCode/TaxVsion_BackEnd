@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using BuildingBlocks.Results;
-using Microsoft.Extensions.Configuration;
 using TaxVision.Signature.Application.Abstractions;
 
 namespace TaxVision.Signature.Infrastructure.Security;
@@ -21,15 +20,10 @@ namespace TaxVision.Signature.Infrastructure.Security;
 public sealed class SigningTokenService : ISigningTokenService
 {
     private readonly IRsaKeyProvider _keyProvider;
-    private readonly string _publicBaseUrl;
 
-    public SigningTokenService(IConfiguration configuration, IRsaKeyProvider keyProvider)
+    public SigningTokenService(IRsaKeyProvider keyProvider)
     {
         _keyProvider = keyProvider;
-        var baseUrl = configuration["Signature:PublicBaseUrl"]?.TrimEnd('/');
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            throw new InvalidOperationException("Signature:PublicBaseUrl must be configured.");
-        _publicBaseUrl = baseUrl;
     }
 
     public string Issue(SigningTokenPayload payload)
@@ -45,8 +39,6 @@ public sealed class SigningTokenService : ISigningTokenService
 
         return $"{headerEncoded}.{payloadEncoded}.{signatureEncoded}";
     }
-
-    public string BuildPublicUrl(string token) => $"{_publicBaseUrl}/{token}";
 
     public Result<SigningTokenPayload> Verify(string token)
     {

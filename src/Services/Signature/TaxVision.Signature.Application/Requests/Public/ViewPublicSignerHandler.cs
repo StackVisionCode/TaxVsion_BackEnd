@@ -11,11 +11,12 @@ public static class ViewPublicSignerHandler
         ViewPublicSignerCommand cmd,
         ISigningTokenService tokenService,
         ISignatureRequestRepository repository,
+        IJtiDenylist denylist,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
-        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, ct);
+        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, denylist, ct);
         if (resolution.IsFailure)
             return Result.Failure<PublicSignerView>(resolution.Error);
 
@@ -57,6 +58,9 @@ public static class ViewPublicSignerHandler
             RequiresPractitionerPin: request.RequiresPractitionerPin,
             IsPinVerified: signer.IsPinVerified,
             PinLockedUntilUtc: signer.PinLockedUntilUtc,
+            RequiredVerificationMethod: signer.RequiredVerificationMethod,
+            IsVerificationCompleted: signer.RequiredVerificationMethod is { } method
+                && signer.HasCompletedVerification(method),
             Fields: signer.Fields.Select(MapField).ToList()
         );
 

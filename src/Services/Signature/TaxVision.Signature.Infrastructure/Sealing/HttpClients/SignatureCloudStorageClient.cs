@@ -113,6 +113,49 @@ internal sealed class SignatureCloudStorageClient(
         return Result.Success(fileId);
     }
 
+    public async Task<Result<string>> CreateDownloadShareLinkAsync(
+        Guid tenantId,
+        Guid fileId,
+        IReadOnlyList<string> recipientEmails,
+        DateTime expiresAtUtc,
+        CancellationToken ct = default
+    )
+    {
+        var tokenResult = await AcquireTokenAsync(tenantId, ct);
+        if (tokenResult.IsFailure)
+            return Result.Failure<string>(tokenResult.Error);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{fileId}/shares")
+        {
+            Content = JsonContent.Create(
+                new CreateShareLinkRequestDto(
+                    Visibility: "ExternalRecipients",
+                    Permission: "Download",
+                    Password: null,
+                    ExpiresAtUtc: expiresAtUtc,
+                    MaxAccessCount: null,
+                    RecipientUserIds: null,
+                    RecipientCustomerIds: null,
+                    RecipientEmails: recipientEmails
+                ),
+                options: Json
+            ),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenResult.Value);
+
+        using var response = await httpClient.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("CloudStorage create-share-link call failed ({Status}).", (int)response.StatusCode);
+            return Result.Failure<string>(new Error("Signature.Storage.Share", "create-share-link request failed."));
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<CreatedShareLinkResponseDto>(Json, ct);
+        return payload is null || string.IsNullOrWhiteSpace(payload.PlainToken)
+            ? Result.Failure<string>(new Error("Signature.Storage.Share", "Empty share token from CloudStorage."))
+            : Result.Success(payload.PlainToken);
+    }
+
     // ------------------------------------------------------------------
     // Métodos privados: cada uno con una única responsabilidad
     // ------------------------------------------------------------------
@@ -157,4 +200,18 @@ internal sealed class SignatureCloudStorageClient(
     // ==================== DTOs privados ====================
 
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
+
+    private sealed record CreateShareLinkRequestDto(
+        string Visibility,
+        string Permission,
+        string? Password,
+        DateTime? ExpiresAtUtc,
+        int? MaxAccessCount,
+        IReadOnlyList<Guid>? RecipientUserIds,
+        IReadOnlyList<Guid>? RecipientCustomerIds,
+        IReadOnlyList<string>? RecipientEmails
+    );
+
+    // Solo se lee el token plano (el resto de CreatedShareLinkResponse se ignora).
+    private sealed record CreatedShareLinkResponseDto(string PlainToken);
 }

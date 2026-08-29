@@ -6,6 +6,32 @@
 
 ---
 
+## Estado actual (actualizado 2026-08-29) — LEER PRIMERO
+
+> Este documento es el **registro histórico** de las 9 fases. Lo de abajo es lo que está **vivo hoy** y supersede cualquier afirmación contraria del log de fases (que describe estados intermedios).
+
+- **`EnforceTierQuotas` está en `true`** en los **23 servicios .NET** (sus `appsettings.json`) **y en Node/Communication** (default del env var, `config.ts`). El escalado por plan está **ACTIVO** — no inerte. (El log de fases más abajo dice "flag OFF por default"; eso fue el estado de cierre de Fase 6, ya superado.)
+- **Planes reales:** `starter` / `pro` / `enterprise` (no existen Free/Standard/Plus; ver ADR-017 §3.1).
+- **Multipliers vigentes (`PlanRateLimits`), tras el ajuste de lectura/escritura:**
+
+  | Cat | starter | pro | enterprise |
+  |---|---|---|---|
+  | **F (lectura)** | **2×** *(antes 1×)* | **5×** *(antes 3×)* | 10× |
+  | **G (escritura)** | **2×** *(antes 1×)* | **5×** *(antes 3×)* | 10× |
+  | H | 1× | 3× | 15× |
+  | I | 1× | 5× | 10× |
+  | J | 1× | 5× | 10× |
+  | K | 1× | 3× | 20× |
+  | L | 1× | 3× | 10× |
+  | M, N | 1× | 1× | 1× (no escalan) |
+  | O | 1× | 3× | 10× |
+
+- **Categoría I (bulk/upload) — base aflojada (2026-08-29):** las ventanas de 1h de los endpoints livianos bajaron a **10 min** y se subieron los conteos. Números vigentes por política:
+  `cloudstorage.i.upload` **25/600s ov100** · `signature.i.document_validate` **20/600s ov80** · `correspondence.i.attachment_download` **30/600s ov120** · `tenant.i.logo_upload` **20/600s** · `connectors.i.accounts_manual_connect` **10/1800s ov40** · `customer.i.imports` **12/3600s ov40** · `customer.i.bulk_status_change` **12/3600s ov40** · `notification.i.configuration_test` **15/3600s ov40** · `cloudstorage.i.recycle_bin_empty` **10/3600s ov40**. (Imports/bulk mantienen 1h a propósito: son el camino pesado — acortar la ventana subiría el throughput sostenido sobre el worker.)
+- **N (reveal) y M (money-out) NO se tocaron** — siguen fijos, audit obligatorio.
+
+---
+
 ## 0. Propósito
 
 Sustituir el rate-limiting actual del monorepo (mayormente por IP raw, in-memory por réplica, con capas incompletas) por el **modelo canónico de 4 capas** que usan Stripe, Shopify, Zendesk, Atlassian, Salesforce, Auth0 y HubSpot:
@@ -91,7 +117,7 @@ Todas las cuotas listadas son **plan Standard base**. El multiplicador por tier 
 | **F** | GET lectura ligera | `GET /customers`, `GET /customers/{id}`, `GET /notifications`, `GET /subscriptions/me`, `GET /storage/folders` | (tenant, user) | tenant | — | 300/min user, 3000/min tenant | Token bucket (burst tolerado, sustained rate) | 429 con `Retry-After` estimado por refill |
 | **G** | Write ligero | `POST /customers`, `PATCH /customers/{id}`, `PUT /customers/{id}/fiscal-profile`, `POST /storage/folders`, `POST /notifications/preferences` | (tenant, user) | tenant | — | 60/min user, 600/min tenant | Token bucket | 429 |
 | **H** | Búsqueda / listado pesado | `GET /customers?term=...`, `GET /correspondence/threads?filter=...`, exports, `GET /audit`, `GET /signature/analytics/*` | (tenant, user) | tenant | 100/min endpoint por tenant | 20/min user, 100/min tenant | Sliding window (precisión importa aquí) | 429 |
-| **I** | Bulk / upload grande | `POST /customers/imports`, `POST /storage/files/uploads` (multipart), `POST /storage/files/*/complete`, ZIP download, `POST /tenants/{id}/branding/logo` | (tenant, user) | tenant | 20/hora endpoint por tenant | 5/hora user, 20/hora tenant | Fixed window largo (1h) | 429 + `Retry-After` en horas. Adicionalmente valida cuota de storage/import concurrente (job dominio). |
+| **I** | Bulk / upload grande | `POST /customers/imports`, `POST /storage/files/uploads` (multipart), `POST /storage/files/*/complete`, ZIP download, `POST /tenants/{id}/branding/logo` | (tenant, user) | tenant | 20/hora endpoint por tenant | 5/hora user, 20/hora tenant ⚠️ *(base aflojada 2026-08-29 — ver Estado actual)* | Fixed window largo (1h) | 429 + `Retry-After`. Adicionalmente valida cuota de storage/import concurrente (job dominio). |
 | **J** | Rendering / cómputo caro | `POST /scribe/render`, `POST /signature/*/seal`, transcript worker, generación PDF | tenant | — (usualmente async job, no HTTP directo) | 30/min tenant | Token bucket con burst chico | 429 en el endpoint HTTP, backpressure en la cola para jobs |
 
 ### Bloque III — Comercial y externo (aquí "tenant" se combina con "cuenta/proveedor externo")
@@ -142,6 +168,8 @@ Los multiplicadores se aplican sobre la cuota base **por categoría**. No es mul
 | Plus | **3×** | Categoría J (rendering) 5× (más templates, más docs). Categoría I (bulk) 5× (más volumen). |
 | Enterprise | **10×** | Categoría K (envío) 20× (más volumen de email). Categoría H (búsqueda) 15×. |
 | Enterprise Custom | Negociado contrato | Fila propia en tabla `PlanRateLimits` (Fase 6). Cualquier valor. |
+
+> ⚠️ Esta tabla es el **diseño original** (§5). Los **planes y multipliers reales vigentes** son otros — ver el **Estado actual** arriba (starter/pro/enterprise; F/G en 2×/5×/10×).
 
 **Regla operativa**: si un cliente Enterprise reporta 429 recurrente en producción, no se sube su cuota puntualmente — se abre un ticket para revisar si su volumen amerita subir a Enterprise Custom, o si hay un bug en su integración. Suba puntual sin trazabilidad → prohibido.
 

@@ -46,10 +46,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 5,
-        windowSeconds: 3600,
+        quota: 30,
+        windowSeconds: 600,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 20
+        overlayQuota: 120
     );
 
     // MessagesController.StartReplyDraft — get-or-create de un Draft desde un mensaje.

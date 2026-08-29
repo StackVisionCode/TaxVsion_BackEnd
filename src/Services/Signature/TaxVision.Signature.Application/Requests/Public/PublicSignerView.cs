@@ -34,5 +34,7 @@ public sealed record PublicSignerView(
     bool RequiresPractitionerPin,
     bool IsPinVerified,
     DateTime? PinLockedUntilUtc,
+    SignerVerificationMethod? RequiredVerificationMethod,
+    bool IsVerificationCompleted,
     IReadOnlyList<PublicSignerFieldView> Fields
 );

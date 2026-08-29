@@ -121,14 +121,13 @@ const rawEnv = z
     COMMUNICATION_AUTH_BASE_URL: z.string().url().default('http://localhost:5124'),
     COMMUNICATION_CLOUDSTORAGE_BASE_URL: z.string().url().default('http://localhost:5330'),
 
-    // RateLimit Fase 6 (port a Node) — catalogo de multiplicadores por plan, mismo servicio y
-    // mismo M2M client que ya usa CloudStorage metadata. Flag OFF por default, mismo criterio que
-    // los 17 servicios .NET (RateLimit:EnforceTierQuotas): el mecanismo esta construido pero
-    // inerte hasta que se decida activarlo.
+    // RateLimit tier-aware — catalogo de multiplicadores por plan (mismo M2M que usa CloudStorage
+    // metadata). Activo por default, igual que la flota .NET (RateLimit:EnforceTierQuotas=true en
+    // sus appsettings): los sockets tambien escalan por plan. Se puede apagar por env var.
     COMMUNICATION_SUBSCRIPTION_BASE_URL: z.string().url().default('http://localhost:5360'),
     COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS: z
       .string()
-      .default('false')
+      .default('true')
       .transform((value) => value === 'true'),
 
     // Reconciliacion periodica de la proyeccion CustomerDirectoryEntry contra la fuente

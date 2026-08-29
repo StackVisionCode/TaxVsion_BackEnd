@@ -18,6 +18,26 @@ public static class TenantEmailLinks
             ? portal.ClientBaseUrl.TrimEnd('/')
             : $"https://{tenantHost}{NormalizePrefix(portal.ClientPathPrefix)}";
 
+    /// <summary>
+    /// Enlace público de firma bajo el subdominio de la oficina:
+    /// <c>https://{host}/signature/public/{token}</c>. El firmante es anónimo y la página se
+    /// sirve en la raíz del host de la oficina; sin host resuelto cae al base staff fijo.
+    /// </summary>
+    public static string SigningLink(string? tenantHost, PortalOptions portal, string token) =>
+        $"{StaffBase(tenantHost, portal)}/signature/public/{token}";
+
+    /// <summary>
+    /// Link público de descarga (share-link de CloudStorage) bajo el subdominio de la oficina:
+    /// <c>https://{host}/storage/public/{shareToken}?email={email}</c>. El <c>?email</c> lo verifica
+    /// el endpoint público contra los recipients del link (visibility ExternalRecipients).
+    /// </summary>
+    public static string PublicShareDownloadLink(
+        string? tenantHost,
+        PortalOptions portal,
+        string shareToken,
+        string email
+    ) => $"{StaffBase(tenantHost, portal)}/storage/public/{shareToken}?email={Uri.EscapeDataString(email)}";
+
     private static string NormalizePrefix(string? prefix)
     {
         var p = (prefix ?? string.Empty).Trim().TrimEnd('/');

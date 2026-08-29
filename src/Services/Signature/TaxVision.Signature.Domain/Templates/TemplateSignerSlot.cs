@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Templates.ValueObjects;
 
 namespace TaxVision.Signature.Domain.Templates;
@@ -23,11 +24,19 @@ public sealed class TemplateSignerSlot : BaseEntity
     /// <summary>Idioma sugerido para el correo de invitación al firmante ("Es" | "En").</summary>
     public string DefaultLanguage { get; private set; } = default!;
 
+    /// <summary>
+    /// Verificación de identidad (OTP) que heredará el firmante al instanciar la plantilla.
+    /// <c>null</c> = sin OTP. Nunca <see cref="SignerVerificationMethod.PractitionerPin"/> (ese es
+    /// un gate a nivel de la solicitud, no por firmante).
+    /// </summary>
+    public SignerVerificationMethod? RequiredVerificationMethod { get; private set; }
+
     internal static Result<TemplateSignerSlot> Create(
         Guid templateId,
         int order,
         TemplateSlotRole role,
-        string defaultLanguage
+        string defaultLanguage,
+        SignerVerificationMethod? requiredVerificationMethod = null
     )
     {
         if (templateId == Guid.Empty)
@@ -46,6 +55,14 @@ public sealed class TemplateSignerSlot : BaseEntity
                 new Error("Signature.TemplateSlot.Language", "DefaultLanguage must be 'Es' or 'En'.")
             );
 
+        if (requiredVerificationMethod == SignerVerificationMethod.PractitionerPin)
+            return Result.Failure<TemplateSignerSlot>(
+                new Error(
+                    "Signature.TemplateSlot.VerificationMethod",
+                    "PractitionerPin is a request-level gate, not a per-slot verification method."
+                )
+            );
+
         return Result.Success(
             new TemplateSignerSlot
             {
@@ -54,6 +71,7 @@ public sealed class TemplateSignerSlot : BaseEntity
                 Order = order,
                 Role = role,
                 DefaultLanguage = normalizedLanguage,
+                RequiredVerificationMethod = requiredVerificationMethod,
             }
         );
     }
@@ -63,6 +81,35 @@ public sealed class TemplateSignerSlot : BaseEntity
         if (newOrder < 1)
             return Result.Failure(new Error("Signature.TemplateSlot.Order", "Slot order must be >= 1."));
         Order = newOrder;
+        return Result.Success();
+    }
+
+    /// <summary>Edita rol, idioma y método de verificación del slot en sitio (no cambia el orden).</summary>
+    internal Result Update(
+        TemplateSlotRole role,
+        string defaultLanguage,
+        SignerVerificationMethod? requiredVerificationMethod
+    )
+    {
+        ArgumentNullException.ThrowIfNull(role);
+
+        var normalizedLanguage = NormalizeLanguage(defaultLanguage);
+        if (normalizedLanguage is null)
+            return Result.Failure(
+                new Error("Signature.TemplateSlot.Language", "DefaultLanguage must be 'Es' or 'En'.")
+            );
+
+        if (requiredVerificationMethod == SignerVerificationMethod.PractitionerPin)
+            return Result.Failure(
+                new Error(
+                    "Signature.TemplateSlot.VerificationMethod",
+                    "PractitionerPin is a request-level gate, not a per-slot verification method."
+                )
+            );
+
+        Role = role;
+        DefaultLanguage = normalizedLanguage;
+        RequiredVerificationMethod = requiredVerificationMethod;
         return Result.Success();
     }
 

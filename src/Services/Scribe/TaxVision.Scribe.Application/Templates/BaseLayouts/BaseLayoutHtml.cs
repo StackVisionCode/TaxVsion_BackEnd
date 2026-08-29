@@ -11,8 +11,8 @@ namespace TaxVision.Scribe.Application.Templates.BaseLayouts;
 public static class BaseLayoutHtml
 {
     // Subir esto cuando cambie el HTML del layout: el seeder republica si supera al guardado.
-    public const int SystemBaseVersion = 5;
-    public const int TenantBaseVersion = 3;
+    public const int SystemBaseVersion = 6;
+    public const int TenantBaseVersion = 4;
 
     public const string SystemBaseV1 = """
         <!DOCTYPE html>

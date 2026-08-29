@@ -5,6 +5,10 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// evita que un consumer (p. ej. Notification) tenga que resolver el firmante contra
 /// Signature de forma síncrona solo para poder enviar un correo.
 /// </summary>
+/// <param name="Order">
+/// Orden del firmante en la solicitud (1-based). Lo usa el correo/certificado para
+/// distinguir firmantes cuando importa el orden secuencial.
+/// </param>
 /// <param name="MappedCustomerId">
 /// Fase 6 del plan de notificaciones dinámicas: si el firmante es un cliente registrado
 /// del tenant (no externo), el CustomerId al que está vinculado — permite a un consumer
@@ -15,5 +19,6 @@ public sealed record SignerContactSnapshot(
     string Email,
     string FullName,
     string Language,
+    int Order,
     Guid? MappedCustomerId = null
 );

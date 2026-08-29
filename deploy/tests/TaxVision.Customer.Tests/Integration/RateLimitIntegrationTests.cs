@@ -112,7 +112,7 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
     }
 
     [Fact]
-    public async Task BulkStatusChange_trips_with_user_layer_and_limit_5()
+    public async Task BulkStatusChange_trips_with_user_layer_and_limit_12()
     {
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -124,14 +124,14 @@ public sealed class RateLimitIntegrationTests : IClassFixture<CustomerApiFactory
                     "/customers/bulk/activate",
                     new { CustomerIds = new[] { Guid.NewGuid() }, Reason = (string?)null }
                 ),
-            maxAttempts: 20
+            maxAttempts: 40
         );
 
         await AssertTripped(
             tripped,
             expectedPolicy: "customer.i.bulk_status_change",
             expectedLayer: "user",
-            expectedLimit: 5
+            expectedLimit: 12
         );
     }
 

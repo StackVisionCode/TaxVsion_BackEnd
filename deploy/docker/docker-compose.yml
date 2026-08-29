@@ -392,6 +392,8 @@ services:
       ServiceAuth__Clients__2__Permissions__0: cloudstorage.file.download
       ServiceAuth__Clients__2__Permissions__1: cloudstorage.file.view
       ServiceAuth__Clients__2__Permissions__2: cloudstorage.file.upload
+      # Fase 4 (descarga en el correo): mintea un share-link de descarga del documento sellado.
+      ServiceAuth__Clients__2__Permissions__3: cloudstorage.share.create
       # Cliente de servicio (M2M) para Customer: sube el Excel/CSV de import directo a MinIO
       # con credenciales propias (ver Customer__Minio__* mas abajo) y solo usa este token para
       # descargarlo de vuelta (parseo de filas) y borrarlo al terminar — nunca para subir.

@@ -18,6 +18,16 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
                 .ThenInclude(signer => signer.Challenges)
             .FirstOrDefaultAsync(request => request.Id == requestId && request.TenantId == tenantId, ct);
 
+    public Task<SignatureRequest?> GetBySealedFileIdAsync(
+        Guid tenantId,
+        Guid sealedFileId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .SignatureRequests.IgnoreQueryFilters()
+            .Include(request => request.Signers)
+            .FirstOrDefaultAsync(request => request.TenantId == tenantId && request.SealedFileId == sealedFileId, ct);
+
     public async Task<IReadOnlyList<SignatureRequest>> ListDraftsWaitingForFileAsync(
         Guid tenantId,
         Guid fileId,

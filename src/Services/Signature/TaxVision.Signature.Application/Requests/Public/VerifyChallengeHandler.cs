@@ -19,6 +19,7 @@ public static class VerifyChallengeHandler
         VerifyChallengeCommand cmd,
         ISigningTokenService tokenService,
         ISignatureRequestRepository repository,
+        IJtiDenylist denylist,
         IPinHasher hasher,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -26,7 +27,7 @@ public static class VerifyChallengeHandler
         CancellationToken ct
     )
     {
-        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, ct);
+        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, denylist, ct);
         if (resolution.IsFailure)
             return Result.Failure(resolution.Error);
 

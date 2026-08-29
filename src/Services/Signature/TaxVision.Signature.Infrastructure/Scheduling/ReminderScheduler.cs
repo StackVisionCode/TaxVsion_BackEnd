@@ -122,7 +122,6 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
             TokenId: Guid.NewGuid().ToString("N")
         );
         var token = tokenService.Issue(payload);
-        var publicUrl = tokenService.BuildPublicUrl(token);
 
         return new SignatureRequestReminderDueIntegrationEvent
         {
@@ -132,10 +131,10 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
             SignerId = signer.Id,
             Email = signer.Email.Value,
             FullName = signer.FullName.Value,
-            Language = "En",
+            Language = signer.Language,
             ExpiresAtUtc = request.ExpiresAtUtc,
             RemindersSent = request.RemindersSent,
-            PublicUrl = publicUrl,
+            PublicToken = token,
         };
     }
 }

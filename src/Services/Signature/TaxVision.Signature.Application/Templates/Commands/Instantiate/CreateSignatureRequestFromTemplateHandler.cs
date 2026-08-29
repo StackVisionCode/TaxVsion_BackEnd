@@ -72,7 +72,10 @@ public static class CreateSignatureRequestFromTemplateHandler
         int SlotOrder,
         SignerEmail Email,
         SignerFullName FullName,
-        Guid? MappedCustomerId
+        Guid? MappedCustomerId,
+        string Language,
+        Domain.Requests.SignerVerificationMethod? RequiredVerificationMethod,
+        SignerPhoneNumber? PhoneNumber
     );
 
     // ============== Fase 2: validar bindings ==============
@@ -130,13 +133,32 @@ public static class CreateSignatureRequestFromTemplateHandler
             if (nameResult.IsFailure)
                 return Result.Failure<IReadOnlyList<SignerValueObjects>>(nameResult.Error);
 
+            SignerPhoneNumber? phone = null;
+            if (!string.IsNullOrWhiteSpace(binding.PhoneNumber))
+            {
+                var phoneResult = SignerPhoneNumber.Create(binding.PhoneNumber);
+                if (phoneResult.IsFailure)
+                    return Result.Failure<IReadOnlyList<SignerValueObjects>>(phoneResult.Error);
+                phone = phoneResult.Value;
+            }
+
             var mapped = await FindMappedCustomerAsync(
                 cmd.TenantId,
                 emailResult.Value,
                 customerProjectionRepository,
                 ct
             );
-            signers.Add(new SignerValueObjects(slot.Order, emailResult.Value, nameResult.Value, mapped));
+            signers.Add(
+                new SignerValueObjects(
+                    slot.Order,
+                    emailResult.Value,
+                    nameResult.Value,
+                    mapped,
+                    slot.DefaultLanguage,
+                    slot.RequiredVerificationMethod,
+                    phone
+                )
+            );
         }
         return Result.Success<IReadOnlyList<SignerValueObjects>>(signers);
     }
@@ -182,7 +204,13 @@ public static class CreateSignatureRequestFromTemplateHandler
         var signerIdBySlotOrder = new Dictionary<int, Guid>(signers.Count);
         foreach (var signer in signers)
         {
-            var addResult = request.AddSigner(signer.Email, signer.FullName, signer.MappedCustomerId);
+            var addResult = request.AddSigner(
+                signer.Email,
+                signer.FullName,
+                signer.MappedCustomerId,
+                language: signer.Language,
+                requiredVerificationMethod: signer.RequiredVerificationMethod
+            );
             if (addResult.IsFailure)
                 return Result.Failure(addResult.Error);
             signerIdBySlotOrder[signer.SlotOrder] = addResult.Value.Id;

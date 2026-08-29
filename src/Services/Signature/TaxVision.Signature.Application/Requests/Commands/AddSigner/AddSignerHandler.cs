@@ -40,7 +40,9 @@ public static class AddSignerHandler
             voResult.Value.Email,
             voResult.Value.FullName,
             mappedCustomerId,
-            voResult.Value.PhoneNumber
+            voResult.Value.PhoneNumber,
+            cmd.Language,
+            cmd.VerificationMethod
         );
         if (signerResult.IsFailure)
             return Result.Failure<SignerResponse>(signerResult.Error);

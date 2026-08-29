@@ -104,7 +104,7 @@ public sealed class ScribeRenderFailureTests
             FullName = "Signer One",
             Order = 1,
             Language = "Es",
-            PublicUrl = "https://sign.taxvision.com/abc",
+            PublicToken = "abc",
             ExpiresAtUtc = DateTime.UtcNow.AddDays(3),
             RevocationEpoch = 0,
             RequiresConsent = false,
@@ -116,6 +116,8 @@ public sealed class ScribeRenderFailureTests
                 evt,
                 gateway,
                 scribeClient,
+                Options.Create(new PortalOptions()),
+                new FakeTenantHostResolver(),
                 new NoOpCorrelationContext(),
                 NullLogger<SignerInvitedIntegrationEvent>.Instance,
                 CancellationToken.None
@@ -146,8 +148,8 @@ public sealed class ScribeRenderFailureTests
             PendingSignerIds = [Guid.NewGuid(), Guid.NewGuid()],
             PendingSigners =
             [
-                new SignerContactSnapshot(Guid.NewGuid(), "pending1@test.com", "Pending One", "Es"),
-                new SignerContactSnapshot(Guid.NewGuid(), "pending2@test.com", "Pending Two", "Es"),
+                new SignerContactSnapshot(Guid.NewGuid(), "pending1@test.com", "Pending One", "Es", 1),
+                new SignerContactSnapshot(Guid.NewGuid(), "pending2@test.com", "Pending Two", "Es", 2),
             ],
         };
 

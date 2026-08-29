@@ -1,23 +1,27 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
+using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
 /// <summary>
-/// Consume <see cref="SignatureRequestCompletedIntegrationEvent"/> — envía una confirmación por
-/// email a cada firmante que participó (Fase 8: template previamente "muerto", sin consumer; el
-/// usuario confirmó que se usará). El evento trae un snapshot de contacto por firmante
-/// (<see cref="SignerContactSnapshot"/>) desde Signature, así que no hace falta ningún lookup.
+/// Consume <see cref="SignatureReadyForDownloadIntegrationEvent"/> — el documento sellado ya está
+/// disponible y con share-link emitido, así que manda el correo de firma completada a cada firmante
+/// con el botón "descargar documento firmado". Reemplaza al viejo consumer que salía del evento
+/// <c>Completed</c> (que era demasiado temprano: el archivo aún no existía en CloudStorage).
 /// </summary>
-public static class SignatureRequestCompletedConsumer
+public static class SignatureReadyForDownloadConsumer
 {
     private const string TemplateKey = SignatureTemplateCatalog.CompletedKey;
 
     public static async Task Handle(
-        SignatureRequestCompletedIntegrationEvent evt,
+        SignatureReadyForDownloadIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -25,10 +29,14 @@ public static class SignatureRequestCompletedConsumer
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
-            // Hardening Fase 7: ver el mismo comentario en SignerRejectedConsumer — EnsureRendered
-            // reemplaza el log+continue que dejaba firmantes sin notificar en silencio.
+            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
+
             foreach (var signer in evt.Signers)
             {
+                var downloadLink = string.IsNullOrEmpty(evt.ShareToken)
+                    ? null
+                    : TenantEmailLinks.PublicShareDownloadLink(tenantHost, portal.Value, evt.ShareToken, signer.Email);
+
                 var render = (
                     await scribeClient.RenderAsync(
                         "sig.request_completed.v1",
@@ -37,6 +45,7 @@ public static class SignatureRequestCompletedConsumer
                         {
                             ["full_name"] = signer.FullName,
                             ["completed_at"] = evt.CompletedAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                            ["download_link"] = downloadLink,
                             ["language"] = signer.Language,
                         },
                         ct
@@ -61,6 +70,6 @@ public static class SignatureRequestCompletedConsumer
         }
     }
 
-    private static string ResolveCorrelationId(SignatureRequestCompletedIntegrationEvent evt) =>
+    private static string ResolveCorrelationId(SignatureReadyForDownloadIntegrationEvent evt) =>
         string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
 }

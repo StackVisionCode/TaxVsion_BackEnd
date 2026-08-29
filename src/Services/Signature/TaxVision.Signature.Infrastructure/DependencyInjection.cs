@@ -125,6 +125,7 @@ public static class DependencyInjection
             services.AddDistributedMemoryCache();
         }
         services.AddScoped<ICustomerEmailProjectionRepository, CustomerEmailProjectionRepository>();
+        services.AddScoped<ITenantBrandingRefRepository, TenantBrandingRefRepository>();
         services.AddScoped<IFileMetadataRefRepository, FileMetadataRefRepository>();
         services.AddScoped<ISignerRoleAuditSnapshotRepository, SignerRoleAuditSnapshotRepository>();
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos de AUTORIZACION
@@ -144,7 +145,9 @@ public static class DependencyInjection
         services.AddScoped<IAuditSecretFactory, AuditSecretFactory>();
         services.AddSingleton<IRsaKeyProvider, RsaSigningKeyProvider>();
         services.AddSingleton<ISigningTokenService, SigningTokenService>();
-        services.AddSingleton<IJtiDenylist, InMemoryJtiDenylist>();
+        // Denylist de jti distribuida (Redis vía ICacheService), para que una revocación por-token
+        // valga en toda la flota. Scoped como el resto de lectores que dependen de ICacheService.
+        services.AddScoped<IJtiDenylist, CachedJtiDenylist>();
         services.AddSingleton<IPinHasher, Pbkdf2PinHasher>();
         services.AddSingleton<IOtpCodeGenerator, CryptoOtpCodeGenerator>();
 

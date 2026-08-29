@@ -1,7 +1,9 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -22,6 +24,8 @@ public static class SignerInvitedConsumer
         SignerInvitedIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        IOptions<PortalOptions> portal,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         ILogger<SignerInvitedIntegrationEvent> logger,
         CancellationToken ct
@@ -30,6 +34,10 @@ public static class SignerInvitedConsumer
         var correlationId = ResolveCorrelationId(evt);
         using (correlation.Push(correlationId))
         {
+            // El firmante entra a SU oficina: la URL se arma con el subdominio del tenant, no un base fijo.
+            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
+            var inviteLink = TenantEmailLinks.SigningLink(tenantHost, portal.Value, evt.PublicToken);
+
             // Hardening Fase 7: un render fallido ya no se loguea-y-descarta — EnsureRendered lanza
             // ScribeRenderFailedException para que Wolverine reintente/DLQ en vez de que la
             // invitación de firma se pierda en silencio.
@@ -40,7 +48,7 @@ public static class SignerInvitedConsumer
                     new Dictionary<string, object?>
                     {
                         ["full_name"] = evt.FullName,
-                        ["invite_link"] = evt.PublicUrl,
+                        ["invite_link"] = inviteLink,
                         ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
                         ["requires_consent"] = evt.RequiresConsent,
                         ["language"] = evt.Language,
