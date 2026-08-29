@@ -45,10 +45,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 5,
-        windowSeconds: 3600,
+        quota: 10,
+        windowSeconds: 1800,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 20
+        overlayQuota: 40
     );
 
     public static readonly RateLimitPolicyDefinition ConnectorsSend = Define(

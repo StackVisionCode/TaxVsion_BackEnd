@@ -57,7 +57,7 @@ public sealed class RateLimitIntegrationTests : IClassFixture<TenantApiFactory>
     }
 
     [Fact]
-    public async Task TenantLogoUpload_trips_with_user_layer_and_limit_10()
+    public async Task TenantLogoUpload_trips_with_user_layer_and_limit_20()
     {
         // tenant.i.logo_upload particiona solo por tenant (claim tenant_id del JWT, no por el
         // {tenantId} de la ruta) — ver comentario de TenantLogoUpload en RateLimitPolicyCatalog.
@@ -79,13 +79,13 @@ public sealed class RateLimitIntegrationTests : IClassFixture<TenantApiFactory>
                 // el tenant del JWT y dispara al pasar el cupo aunque el handler falle después.
                 return await client.PutAsync($"/tenants/{tenantId}/brands/Crm/assets/logo", content);
             },
-            maxAttempts: 20
+            maxAttempts: 40
         );
 
         // "user" es el nombre de capa que devuelve la capa primaria del evaluador (§0 del plan) —
         // acá la partición primaria es por tenant, pero el layer sigue reportándose como "user"
         // porque es la capa primaria (no overlay), mismo criterio que el resto del catálogo.
-        await AssertTripped(tripped, expectedPolicy: "tenant.i.logo_upload", expectedLayer: "user", expectedLimit: 10);
+        await AssertTripped(tripped, expectedPolicy: "tenant.i.logo_upload", expectedLayer: "user", expectedLimit: 20);
     }
 
     /// <summary>

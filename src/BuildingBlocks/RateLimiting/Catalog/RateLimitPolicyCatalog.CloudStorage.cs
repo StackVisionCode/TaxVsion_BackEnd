@@ -175,10 +175,10 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 5,
-        windowSeconds: 3600,
+        quota: 25,
+        windowSeconds: 600,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 20
+        overlayQuota: 100
     );
 
     // Reemplaza 1:1 [EnableRateLimiting("zip-download")] — mismo cupo exacto (5/min) que ya
@@ -201,9 +201,9 @@ public static partial class RateLimitPolicyCatalog
         RateLimitCategory.I,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],
-        quota: 5,
+        quota: 10,
         windowSeconds: 3600,
         RateLimitAlgorithm.FixedWindow,
-        overlayQuota: 20
+        overlayQuota: 40
     );
 }

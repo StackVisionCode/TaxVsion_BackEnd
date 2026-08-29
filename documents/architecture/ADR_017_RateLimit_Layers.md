@@ -60,8 +60,8 @@ Dos discrepancias se descubrieron al ejecutar Fase 1 y se resuelven aquí, forma
 
 | §5 (doc de diseño) | Multiplicador | PlanCode real | Excepciones aplicadas |
 |---|---|---|---|
-| Standard | 1.0× | `starter` | ninguna |
-| Plus | 3.0× | `pro` | I (bulk) y J (rendering) a 5.0× |
+| Standard | 1.0× | `starter` | **F (lectura) y G (escritura) a 2.0×** (ajuste 2026-08-29) |
+| Plus | 3.0× | `pro` | I (bulk) y J (rendering) a 5.0×; **F y G a 5.0×** (ajuste 2026-08-29) |
 | Enterprise | 10.0× | `enterprise` | K (envío) a 20.0×, H (búsqueda) a 15.0× |
 | Free/Trial (0.3×) | — | *no existe hoy* | diferido — no se siembra una fila fantasma para un plan que no es seleccionable en producción |
 | Enterprise Custom | negociado | — | *no existe hoy* — cuando exista un `PlanCode` negociado, se le agrega su propia fila usando `HardOverridePerMinute` (campo ya presente en el schema, sin usar en Fase 1) |
