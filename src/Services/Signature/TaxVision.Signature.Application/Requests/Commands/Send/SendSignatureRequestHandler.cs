@@ -35,15 +35,17 @@ public static class SendSignatureRequestHandler
         if (transition.IsFailure)
             return transition;
 
+        // Emitir los tokens ANTES de guardar: cada emisión registra el jti actual del firmante en el
+        // aggregate (para poder revocar ese enlace en un futuro reenvío), y el save lo persiste.
+        var invitations = IssueInvitations(request, tokenService);
         await unitOfWork.SaveChangesAsync(ct);
 
-        var invitations = IssueInvitations(request, tokenService);
         await PublishSentEventAsync(request, sentAt, correlation, bus);
         await PublishInvitationsAsync(request, invitations, correlation, bus);
         return Result.Success();
     }
 
-    private sealed record SignerInvitation(Guid SignerId, string Token, string PublicUrl);
+    private sealed record SignerInvitation(Guid SignerId, string Token);
 
     // ============== Fase A: emitir tokens por firmante ==============
 
@@ -64,7 +66,8 @@ public static class SendSignatureRequestHandler
                 TokenId: Guid.NewGuid().ToString("N")
             );
             var token = tokenService.Issue(payload);
-            invitations.Add(new SignerInvitation(signer.Id, token, tokenService.BuildPublicUrl(token)));
+            request.RotateSignerToken(signer.Id, payload.TokenId);
+            invitations.Add(new SignerInvitation(signer.Id, token));
         }
         return invitations;
     }
@@ -111,8 +114,8 @@ public static class SendSignatureRequestHandler
                 Email = signer.Email.Value,
                 FullName = signer.FullName.Value,
                 Order = signer.Order,
-                Language = "En",
-                PublicUrl = invitation.PublicUrl,
+                Language = signer.Language,
+                PublicToken = invitation.Token,
                 ExpiresAtUtc = request.ExpiresAtUtc,
                 RevocationEpoch = request.RevocationEpoch,
                 RequiresConsent = request.RequiresConsent,

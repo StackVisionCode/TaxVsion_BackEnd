@@ -72,7 +72,8 @@ public static class CreateSignatureRequestFromTemplateHandler
         int SlotOrder,
         SignerEmail Email,
         SignerFullName FullName,
-        Guid? MappedCustomerId
+        Guid? MappedCustomerId,
+        string Language
     );
 
     // ============== Fase 2: validar bindings ==============
@@ -136,7 +137,9 @@ public static class CreateSignatureRequestFromTemplateHandler
                 customerProjectionRepository,
                 ct
             );
-            signers.Add(new SignerValueObjects(slot.Order, emailResult.Value, nameResult.Value, mapped));
+            signers.Add(
+                new SignerValueObjects(slot.Order, emailResult.Value, nameResult.Value, mapped, slot.DefaultLanguage)
+            );
         }
         return Result.Success<IReadOnlyList<SignerValueObjects>>(signers);
     }
@@ -182,7 +185,12 @@ public static class CreateSignatureRequestFromTemplateHandler
         var signerIdBySlotOrder = new Dictionary<int, Guid>(signers.Count);
         foreach (var signer in signers)
         {
-            var addResult = request.AddSigner(signer.Email, signer.FullName, signer.MappedCustomerId);
+            var addResult = request.AddSigner(
+                signer.Email,
+                signer.FullName,
+                signer.MappedCustomerId,
+                language: signer.Language
+            );
             if (addResult.IsFailure)
                 return Result.Failure(addResult.Error);
             signerIdBySlotOrder[signer.SlotOrder] = addResult.Value.Id;

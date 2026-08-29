@@ -14,6 +14,7 @@ public static class ResendSignerInvitationHandler
         ResendSignerInvitationCommand cmd,
         ISignatureRequestRepository repository,
         ISigningTokenService tokenService,
+        IJtiDenylist denylist,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -44,8 +45,23 @@ public static class ResendSignerInvitationHandler
         if (recordResult.IsFailure)
             return recordResult;
 
+        // Emitir el nuevo token, rotar el jti del firmante y revocar el enlace anterior (si había):
+        // el reenvío deja muerto el link viejo sin tocar a los demás firmantes (el epoch es por request).
+        var payload = new SigningTokenPayload(
+            TenantId: request.TenantId,
+            SignatureRequestId: request.Id,
+            SignerId: signer.Id,
+            RevocationEpoch: request.RevocationEpoch,
+            ExpiresAtUtc: request.ExpiresAtUtc,
+            TokenId: Guid.NewGuid().ToString("N")
+        );
+        var token = tokenService.Issue(payload);
+        var previousJti = request.RotateSignerToken(signer.Id, payload.TokenId);
+        if (previousJti is not null)
+            await denylist.RevokeAsync(previousJti, request.ExpiresAtUtc, ct);
+
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishInvitationAsync(request, signer, tokenService, correlation, bus);
+        await PublishInvitationAsync(request, signer, token, correlation, bus);
         return Result.Success();
     }
 
@@ -56,22 +72,11 @@ public static class ResendSignerInvitationHandler
     private static Task PublishInvitationAsync(
         SignatureRequest request,
         Signer signer,
-        ISigningTokenService tokenService,
+        string token,
         ICorrelationContext correlation,
         IMessageBus bus
     )
     {
-        var payload = new SigningTokenPayload(
-            TenantId: request.TenantId,
-            SignatureRequestId: request.Id,
-            SignerId: signer.Id,
-            RevocationEpoch: request.RevocationEpoch,
-            ExpiresAtUtc: request.ExpiresAtUtc,
-            TokenId: Guid.NewGuid().ToString("N")
-        );
-        var token = tokenService.Issue(payload);
-        var publicUrl = tokenService.BuildPublicUrl(token);
-
         var evt = new SignerInvitedIntegrationEvent
         {
             TenantId = request.TenantId,
@@ -81,8 +86,8 @@ public static class ResendSignerInvitationHandler
             Email = signer.Email.Value,
             FullName = signer.FullName.Value,
             Order = signer.Order,
-            Language = "En",
-            PublicUrl = publicUrl,
+            Language = signer.Language,
+            PublicToken = token,
             ExpiresAtUtc = request.ExpiresAtUtc,
             RevocationEpoch = request.RevocationEpoch,
             RequiresConsent = request.RequiresConsent,

@@ -100,7 +100,7 @@ public sealed class BaselineSmokeTests
             FullName = "Ada Lovelace",
             Order = 1,
             Language = "En",
-            PublicUrl = "https://app.test/sign/abc",
+            PublicToken = "abc",
             ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
             RevocationEpoch = 0,
             RequiresConsent = false,
@@ -111,6 +111,8 @@ public sealed class BaselineSmokeTests
             evt,
             gateway,
             scribeClient,
+            Options.Create(new PortalOptions { BaseUrl = "https://app.test", ProductName = "TaxVision" }),
+            new FakeTenantHostResolver(),
             correlation,
             NullLogger<SignerInvitedIntegrationEvent>.Instance,
             CancellationToken.None

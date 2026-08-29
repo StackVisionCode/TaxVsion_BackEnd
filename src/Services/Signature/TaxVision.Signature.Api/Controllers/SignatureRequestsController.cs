@@ -166,7 +166,7 @@ public sealed class SignatureRequestsController(
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var cmd = new AddSignerCommand(tenantId, id, body.Email, body.FullName);
+        var cmd = new AddSignerCommand(tenantId, id, body.Email, body.FullName, Language: body.Language);
         var result = await bus.InvokeAsync<Result<SignerResponse>>(cmd, ct);
         return result.IsSuccess
             ? Created($"/signature/requests/{id}/signers/{result.Value.Id}", result.Value)

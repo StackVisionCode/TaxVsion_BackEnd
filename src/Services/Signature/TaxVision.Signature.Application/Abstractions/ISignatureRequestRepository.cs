@@ -16,6 +16,13 @@ public interface ISignatureRequestRepository
     Task<SignatureRequest?> GetByIdAsync(Guid tenantId, Guid requestId, CancellationToken ct = default);
 
     /// <summary>
+    /// Devuelve la solicitud (con firmantes) cuyo <c>SealedFileId</c> coincide con
+    /// <paramref name="sealedFileId"/>, o <c>null</c>. Se usa al recibir <c>FileAvailable</c> para
+    /// saber que el archivo disponible es el documento sellado y emitir el link de descarga.
+    /// </summary>
+    Task<SignatureRequest?> GetBySealedFileIdAsync(Guid tenantId, Guid sealedFileId, CancellationToken ct = default);
+
+    /// <summary>
     /// Devuelve los borradores del tenant cuyo <c>OriginalFileId</c> coincide con
     /// <paramref name="fileId"/>. Se usa al recibir <c>FileAvailable</c> para promover
     /// automáticamente a <c>Ready</c>.

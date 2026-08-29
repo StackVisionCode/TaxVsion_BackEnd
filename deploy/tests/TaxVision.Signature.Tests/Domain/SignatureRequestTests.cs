@@ -98,6 +98,21 @@ public sealed class SignatureRequestTests
 
     // -------------------- PlaceField --------------------
 
+    [Theory]
+    [InlineData("es", "Es")]
+    [InlineData("ES", "Es")]
+    [InlineData("en", "En")]
+    [InlineData(null, "En")]
+    [InlineData("fr", "En")]
+    public void AddSigner_normalizes_language(string? input, string expected)
+    {
+        var request = NewDraft().Value;
+
+        var signer = request.AddSigner(NewEmail("x@example.com"), NewName("Xy Zz"), null, language: input).Value;
+
+        Assert.Equal(expected, signer.Language);
+    }
+
     [Fact]
     public void PlaceField_defaults_signature_kind_to_required()
     {

@@ -14,13 +14,14 @@ public static class RejectSignatureHandler
         RejectSignatureCommand cmd,
         ISigningTokenService tokenService,
         ISignatureRequestRepository repository,
+        IJtiDenylist denylist,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
-        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, ct);
+        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, denylist, ct);
         if (resolution.IsFailure)
             return Result.Failure(resolution.Error);
 
@@ -62,7 +63,13 @@ public static class RejectSignatureHandler
                     Reason = reason,
                     PendingSignerIds = pendingSigners.Select(s => s.Id).ToList(),
                     PendingSigners = pendingSigners
-                        .Select(s => new SignerContactSnapshot(s.Id, s.Email.Value, s.FullName.Value, "En"))
+                        .Select(s => new SignerContactSnapshot(
+                            s.Id,
+                            s.Email.Value,
+                            s.FullName.Value,
+                            s.Language,
+                            s.Order
+                        ))
                         .ToList(),
                 }
             )

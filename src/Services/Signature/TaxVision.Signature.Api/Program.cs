@@ -1,3 +1,4 @@
+using System.Net;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -21,10 +22,12 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
 using StackExchange.Redis;
+using TaxVision.Signature.Api.Common;
 using TaxVision.Signature.Application.Settings.IntegrationEvents;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Infrastructure;
@@ -198,6 +201,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignerRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SignatureReadyForDownloadIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestSealingFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinVerifiedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -215,6 +219,27 @@ builder.Host.UseWolverine(options =>
     options.ApplyStandardFailurePolicies();
 });
 
+// IP real del firmante detrás del proxy/Cloudflare (para el certificado y el particionado del rate
+// limiter). Vacío por defecto: el deploy fija la red Docker interna / rango de Cloudflare de confianza.
+var reverseProxyTrust =
+    builder.Configuration.GetSection(ReverseProxyTrustOptions.SectionName).Get<ReverseProxyTrustOptions>()
+    ?? new ReverseProxyTrustOptions();
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor,
+    ForwardedForHeaderName = reverseProxyTrust.RealIpHeaderName,
+};
+foreach (var proxy in reverseProxyTrust.KnownProxies)
+{
+    if (IPAddress.TryParse(proxy, out var proxyIp))
+        forwardedHeadersOptions.KnownProxies.Add(proxyIp);
+}
+foreach (var network in reverseProxyTrust.KnownNetworks)
+{
+    if (System.Net.IPNetwork.TryParse(network, out var parsedNetwork))
+        forwardedHeadersOptions.KnownIPNetworks.Add(parsedNetwork);
+}
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -229,6 +254,10 @@ app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+
+// Reescribe RemoteIpAddress con la IP real del cliente (CF-Connecting-IP) antes de rate limiter,
+// host-guard y controllers. Sin red de confianza configurada, ASP.NET ignora el header (no-op).
+app.UseForwardedHeaders(forwardedHeadersOptions);
 app.UseAuthentication();
 
 // Middleware compartido de tenant: sella IMessageBus.TenantId para que un handler invocado vía
@@ -240,6 +269,9 @@ app.UseMiddleware<BuildingBlocks.Web.Tenancy.JwtTenantContextMiddleware>();
 app.UseMiddleware<BuildingBlocks.Web.Session.SessionDenylistMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
+
+// Anti-phishing: rechaza la firma pública si el subdominio no es el dueño del token (Host↔token).
+app.UseMiddleware<TaxVision.Signature.Api.Middleware.PublicSignatureHostGuardMiddleware>();
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

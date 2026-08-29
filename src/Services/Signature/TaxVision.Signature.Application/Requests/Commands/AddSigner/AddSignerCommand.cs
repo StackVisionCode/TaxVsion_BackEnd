@@ -5,5 +5,6 @@ public sealed record AddSignerCommand(
     Guid SignatureRequestId,
     string Email,
     string FullName,
-    string? PhoneNumber = null
+    string? PhoneNumber = null,
+    string? Language = null
 );

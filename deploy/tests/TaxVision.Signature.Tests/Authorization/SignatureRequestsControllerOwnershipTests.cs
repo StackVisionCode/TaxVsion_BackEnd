@@ -37,6 +37,12 @@ public sealed class SignatureRequestsControllerOwnershipTests
                 _byId.TryGetValue(requestId, out var request) && request.TenantId == tenantId ? request : null
             );
 
+        public Task<SignatureRequest?> GetBySealedFileIdAsync(
+            Guid tenantId,
+            Guid sealedFileId,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
+
         public Task AddAsync(SignatureRequest request, CancellationToken ct = default) =>
             throw new NotImplementedException();
 

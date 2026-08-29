@@ -170,7 +170,8 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
         SignerEmail email,
         SignerFullName fullName,
         Guid? mappedCustomerId,
-        SignerPhoneNumber? phoneNumber = null
+        SignerPhoneNumber? phoneNumber = null,
+        string? language = null
     )
     {
         EnsureCanBeEdited();
@@ -186,7 +187,7 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
             );
 
         var order = NextOrder();
-        var signerResult = Signer.Create(Id, email, fullName, mappedCustomerId, order, phoneNumber);
+        var signerResult = Signer.Create(Id, email, fullName, mappedCustomerId, order, phoneNumber, language);
         if (signerResult.IsFailure)
             return signerResult;
 
@@ -1061,6 +1062,16 @@ public sealed class SignatureRequest : TenantEntity, IHasOwner
     {
         if (Status is not (SignatureRequestStatus.Draft or SignatureRequestStatus.Ready))
             throw new InvalidOperationException($"SignatureRequest {Id} cannot be edited in status {Status}.");
+    }
+
+    /// <summary>
+    /// Registra el jti del token recién emitido para un firmante y devuelve el jti anterior (o
+    /// <c>null</c>) para revocarlo. Lo usan Send (primer token) y Resend (rota y revoca el viejo).
+    /// </summary>
+    public string? RotateSignerToken(Guid signerId, string tokenId)
+    {
+        var signer = FindSignerOrNull(signerId);
+        return signer?.RotateCurrentToken(tokenId);
     }
 
     private bool EmailAlreadyPresent(SignerEmail email) => _signers.Any(s => s.Email.Value == email.Value);

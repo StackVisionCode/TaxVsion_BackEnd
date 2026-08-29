@@ -16,6 +16,7 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
         builder.Property(signer => signer.SignatureRequestId).IsRequired();
         builder.Property(signer => signer.MappedCustomerId);
         builder.Property(signer => signer.Order).IsRequired();
+        builder.Property(signer => signer.Language).HasMaxLength(2).IsRequired();
         builder.Property(signer => signer.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
 
         builder.OwnsOne(
@@ -47,6 +48,7 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
             }
         );
 
+        builder.Property(signer => signer.CurrentTokenId).HasMaxLength(64);
         builder.Property(signer => signer.SignedAtUtc);
         builder.Property(signer => signer.RejectedAtUtc);
         builder.Property(signer => signer.RejectReason).HasMaxLength(2000);

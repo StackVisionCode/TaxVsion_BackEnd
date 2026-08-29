@@ -13,7 +13,7 @@ public sealed record CreateSignatureRequestBody(
     bool GenerateCertificate
 );
 
-public sealed record AddSignerBody(string Email, string FullName);
+public sealed record AddSignerBody(string Email, string FullName, string? Language = null);
 
 public sealed record ReorderSignersBody(IReadOnlyList<Guid> OrderedSignerIds);
 

@@ -4,7 +4,7 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// Un firmante pendiente merece un recordatorio (vence pronto y no ha firmado). El
 /// scheduler emite un evento por firmante; Notification lo consume para dispatch de
 /// email/SMS según canal preferido del firmante. Signature no re-emite tokens — el
-/// mismo enlace público sigue vigente.
+/// mismo token público sigue vigente; Notification arma la URL con el subdominio de la oficina.
 /// </summary>
 public sealed record SignatureRequestReminderDueIntegrationEvent : IntegrationEvent
 {
@@ -15,5 +15,5 @@ public sealed record SignatureRequestReminderDueIntegrationEvent : IntegrationEv
     public required string Language { get; init; }
     public required DateTime ExpiresAtUtc { get; init; }
     public required int RemindersSent { get; init; }
-    public required string PublicUrl { get; init; }
+    public required string PublicToken { get; init; }
 }

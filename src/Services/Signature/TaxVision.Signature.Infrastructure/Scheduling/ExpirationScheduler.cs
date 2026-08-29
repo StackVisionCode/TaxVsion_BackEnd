@@ -99,7 +99,13 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
                     RevocationEpoch = request.RevocationEpoch,
                     PendingSignerIds = pending.Select(s => s.Id).ToList(),
                     PendingSigners = pending
-                        .Select(s => new SignerContactSnapshot(s.Id, s.Email.Value, s.FullName.Value, "En"))
+                        .Select(s => new SignerContactSnapshot(
+                            s.Id,
+                            s.Email.Value,
+                            s.FullName.Value,
+                            s.Language,
+                            s.Order
+                        ))
                         .ToList(),
                 }
             );

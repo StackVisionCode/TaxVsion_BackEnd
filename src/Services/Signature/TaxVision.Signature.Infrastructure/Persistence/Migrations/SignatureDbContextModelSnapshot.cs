@@ -376,6 +376,34 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.ToTable("SignerRoleAuditSnapshots", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Signature.Domain.Projections.TenantBrandingRef", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LogoContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("LogoFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("LogoSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OfficeName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantBrandingRefs", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Signature.Domain.RateLimiting.TenantPlanCodeProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -589,6 +617,10 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ConsentAcceptedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CurrentTokenId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<DateTime?>("FirstViewedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -597,6 +629,11 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsPinVerified")
                         .HasColumnType("bit");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
 
                     b.Property<Guid?>("MappedCustomerId")
                         .HasColumnType("uniqueidentifier");

@@ -35,4 +35,17 @@ public interface ISignatureCloudStorageClient
 
     /// <summary>Sube un PDF a CloudStorage y devuelve el nuevo <c>FileId</c>.</summary>
     Task<Result<Guid>> UploadAsync(Guid tenantId, SignaturePdfUpload upload, CancellationToken ct = default);
+
+    /// <summary>
+    /// Crea un share-link público de DESCARGA (visibility ExternalRecipients + permission Download)
+    /// para el documento sellado, con los emails de los firmantes como recipients. Devuelve el token
+    /// plano (se emite una sola vez) que se pone en el correo. Best-effort desde el sellado.
+    /// </summary>
+    Task<Result<string>> CreateDownloadShareLinkAsync(
+        Guid tenantId,
+        Guid fileId,
+        IReadOnlyList<string> recipientEmails,
+        DateTime expiresAtUtc,
+        CancellationToken ct = default
+    );
 }

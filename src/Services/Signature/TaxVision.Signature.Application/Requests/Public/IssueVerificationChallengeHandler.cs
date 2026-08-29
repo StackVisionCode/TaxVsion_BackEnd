@@ -22,6 +22,7 @@ public static class IssueVerificationChallengeHandler
         IssueVerificationChallengeCommand cmd,
         ISigningTokenService tokenService,
         ISignatureRequestRepository repository,
+        IJtiDenylist denylist,
         IPinHasher hasher,
         IOtpCodeGenerator codeGenerator,
         IUnitOfWork unitOfWork,
@@ -30,7 +31,7 @@ public static class IssueVerificationChallengeHandler
         CancellationToken ct
     )
     {
-        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, ct);
+        var resolution = await PublicTokenResolver.ResolveAsync(cmd.Token, tokenService, repository, denylist, ct);
         if (resolution.IsFailure)
             return Result.Failure(resolution.Error);
 
@@ -101,7 +102,7 @@ public static class IssueVerificationChallengeHandler
                     DeliveryAddress = deliveryAddress,
                     PlaintextAnswer = plaintext,
                     SignerFullName = signer.FullName.Value,
-                    SignerLanguage = "En",
+                    SignerLanguage = signer.Language,
                     ExpiresAtUtc = expiresAtUtc,
                 }
             )

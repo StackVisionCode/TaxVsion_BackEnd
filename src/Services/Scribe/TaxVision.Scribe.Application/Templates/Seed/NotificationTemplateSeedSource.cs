@@ -23,7 +23,7 @@ public sealed record NotificationTemplateSeed(
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
-    int ContentVersion = 2
+    int ContentVersion = 3
 );
 
 /// <summary>
@@ -431,7 +431,19 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el proceso de firma se completó exitosamente el {{ completed_at }} UTC. No necesitas hacer nada más.</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Signature completed</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the signature process was completed successfully on {{ completed_at }} UTC. No further action is needed.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the signature process was completed successfully on {{ completed_at }} UTC. You can download the signed document below.</td></tr>
+              {% endif %}
+              {% if download_link %}
+              <tr>
+                <td align="left" style="padding:22px 0 4px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ download_link }}" style="height:46px;v-text-anchor:middle;width:280px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">{% if language == 'Es' %}Descargar documento firmado{% else %}Download signed document{% endif %}</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ download_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{% if language == 'Es' %}Descargar documento firmado{% else %}Download signed document{% endif %}</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
               {% endif %}
             </table>
             """,
@@ -439,6 +451,13 @@ public static class NotificationTemplateSeedSource
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("completed_at", VariableType.String, true, null, "Fecha de finalización ya formateada (UTC)."),
+                (
+                    "download_link",
+                    VariableType.Url,
+                    false,
+                    null,
+                    "URL pública de descarga del documento firmado (opcional)."
+                ),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ]
         );

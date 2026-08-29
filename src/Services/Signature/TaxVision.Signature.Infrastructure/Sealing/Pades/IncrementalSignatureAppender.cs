@@ -32,7 +32,9 @@ public readonly record struct IncrementalSignatureLayout(
 /// </summary>
 public sealed class IncrementalSignatureAppender(PadesOptions options)
 {
-    private const int ObjectsAdded = 4;
+    // Objetos NUEVOS que agrega el incremental update: Sig + Field + AcroForm. El Catalog NO es nuevo:
+    // se REDEFINE el original (su mismo número de objeto), conservando /Pages y demás claves.
+    private const int NewObjectsAdded = 3;
 
     public IncrementalSignatureLayout Append(byte[] originalPdfBytes, PdfTrailerInfo trailer)
     {
@@ -45,23 +47,25 @@ public sealed class IncrementalSignatureAppender(PadesOptions options)
         var sigObj = baseObjectNumber;
         var fieldObj = baseObjectNumber + 1;
         var acroFormObj = baseObjectNumber + 2;
-        var catalogObj = baseObjectNumber + 3;
+        var catalogObj = trailer.RootObjectNumber; // REDEFINE el Catalog original, no acuña uno nuevo.
 
         var writer = new IncrementalWriter(originalPdfBytes, truncatedLength);
 
         var sigLayout = writer.WriteSignatureObject(sigObj, options, contentsReserved);
         var fieldOffset = writer.WriteFieldObject(fieldObj, sigObj);
         var acroFormOffset = writer.WriteAcroFormObject(acroFormObj, fieldObj);
-        var catalogOffset = writer.WriteCatalogObject(catalogObj, acroFormObj);
+        var catalogOffset = writer.WriteCatalogObject(catalogObj, acroFormObj, trailer.RootCatalogKeys);
 
         var xrefOffset = writer.Position;
-        writer.WriteXref(
-            baseObjectNumber,
-            [sigLayout.ObjectOffset, fieldOffset, acroFormOffset, catalogOffset],
-            trailer,
-            catalogObj
-        );
-        writer.WriteTrailerAndEof(baseObjectNumber + ObjectsAdded, trailer, xrefOffset);
+        // Dos subsecciones: los 3 objetos nuevos (contiguos desde base) y el Catalog redefinido (su nº
+        // original, más bajo). Se ordenan ascendente por número de objeto.
+        var newObjs = (Start: baseObjectNumber, Offsets: new[] { sigLayout.ObjectOffset, fieldOffset, acroFormOffset });
+        var catalog = (Start: catalogObj, Offsets: new[] { catalogOffset });
+        var subsections = catalogObj < baseObjectNumber ? new[] { catalog, newObjs } : new[] { newObjs, catalog };
+        writer.WriteXref(subsections);
+
+        var newSize = Math.Max(baseObjectNumber + NewObjectsAdded, (int)trailer.PrevSize);
+        writer.WriteTrailerAndEof(newSize, catalogObj, trailer, xrefOffset);
 
         var finalBytes = writer.ToArray();
         return new IncrementalSignatureLayout(
@@ -137,27 +141,33 @@ public sealed class IncrementalSignatureAppender(PadesOptions options)
             return offset;
         }
 
-        public int WriteCatalogObject(int objectNumber, int acroFormObj)
+        /// <summary>
+        /// REDEFINE el Catalog original: conserva sus claves (<c>/Pages</c> — obligatorio — <c>/Metadata</c>,
+        /// etc.) y le agrega <c>/AcroForm</c>. Acuñar un Catalog nuevo sin <c>/Pages</c> corrompe el PDF.
+        /// </summary>
+        public int WriteCatalogObject(int objectNumber, int acroFormObj, string originalCatalogKeys)
         {
             var offset = Position;
-            WriteAscii($"{objectNumber} 0 obj\n<<\n/Type /Catalog\n/AcroForm {acroFormObj} 0 R\n>>\nendobj\n");
+            WriteAscii($"{objectNumber} 0 obj\n<<\n{originalCatalogKeys}\n/AcroForm {acroFormObj} 0 R\n>>\nendobj\n");
             return offset;
         }
 
-        public void WriteXref(int firstObject, int[] offsets, PdfTrailerInfo trailer, int catalogObject)
+        public void WriteXref((int Start, int[] Offsets)[] subsections)
         {
-            _ = trailer;
-            _ = catalogObject;
-            WriteAscii($"xref\n{firstObject} {offsets.Length}\n");
-            foreach (var offset in offsets)
-                WriteAscii($"{offset.ToString("D10", CultureInfo.InvariantCulture)} 00000 n \n");
+            WriteAscii("xref\n");
+            foreach (var (start, offsets) in subsections)
+            {
+                WriteAscii($"{start} {offsets.Length}\n");
+                foreach (var offset in offsets)
+                    WriteAscii($"{offset.ToString("D10", CultureInfo.InvariantCulture)} 00000 n \n");
+            }
         }
 
-        public void WriteTrailerAndEof(int newSize, PdfTrailerInfo trailer, int xrefOffset)
+        public void WriteTrailerAndEof(int newSize, int rootObjectNumber, PdfTrailerInfo trailer, int xrefOffset)
         {
-            var prevSize = Math.Max(newSize, trailer.PrevSize);
+            var size = Math.Max(newSize, (int)trailer.PrevSize);
             WriteAscii(
-                $"trailer\n<<\n/Size {prevSize}\n/Prev {trailer.StartXref}\n/Root {newSize - 1} 0 R\n>>\nstartxref\n{xrefOffset}\n%%EOF\n"
+                $"trailer\n<<\n/Size {size}\n/Prev {trailer.StartXref}\n/Root {rootObjectNumber} 0 R\n>>\nstartxref\n{xrefOffset}\n%%EOF\n"
             );
         }
 

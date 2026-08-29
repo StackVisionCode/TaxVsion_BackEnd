@@ -20,6 +20,11 @@
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.9" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Logo de plataforma embebido para el Certificate of Completion. -->
+    <EmbeddedResource Include="Sealing\Assets\platform-logo.png" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
