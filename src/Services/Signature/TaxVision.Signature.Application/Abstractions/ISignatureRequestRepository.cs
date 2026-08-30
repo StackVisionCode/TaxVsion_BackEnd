@@ -34,6 +34,18 @@ public interface ISignatureRequestRepository
     );
 
     /// <summary>
+    /// Borradores creados antes de <paramref name="createdBeforeUtc"/> que siguen en
+    /// <c>Draft</c> — candidatos a rescate por el <c>ReadyReconciliationScheduler</c> cuando el
+    /// archivo ya está disponible pero la promoción se perdió por una carrera entre el
+    /// <c>FileAvailable</c> y la creación de la solicitud. El corte por antigüedad evita pisar
+    /// creaciones en vuelo. Scan cross-tenant (filtro global desactivado).
+    /// </summary>
+    Task<IReadOnlyList<SignatureRequest>> ListStrandedDraftsAsync(
+        DateTime createdBeforeUtc,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// Solicitudes cuyo <c>ExpiresAtUtc</c> ya pasó y aún no están en estado terminal.
     /// Consumida por el <c>ExpirationScheduler</c> — filtro global tenant desactivado
     /// para permitir escaneo cross-tenant desde el background job.

@@ -103,6 +103,9 @@ public static class DependencyInjection
         // Background schedulers (Fases 5 y 9). Se registran siempre; el purge además tiene
         // un feature flag propio (default OFF) para evitar borrar por accidente en dev.
         services.AddHostedService<ExpirationScheduler>();
+        // Red de seguridad para la carrera FileAvailable-vs-create: promueve Draft → Ready los
+        // borradores cuyo archivo ya está disponible pero se quedaron sin promover.
+        services.AddHostedService<ReadyReconciliationScheduler>();
         services.AddHostedService<ReminderScheduler>();
         services.AddOptions<PurgeSchedulerOptions>().Bind(configuration.GetSection(PurgeSchedulerOptions.SectionName));
         services.AddHostedService<PurgeScheduler>();

@@ -40,6 +40,15 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             )
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<SignatureRequest>> ListStrandedDraftsAsync(
+        DateTime createdBeforeUtc,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .SignatureRequests.IgnoreQueryFilters()
+            .Where(r => r.Status == SignatureRequestStatus.Draft && r.CreatedAtUtc < createdBeforeUtc)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<SignatureRequest>> ListExpiredCandidatesAsync(
         DateTime nowUtc,
         CancellationToken ct = default

@@ -65,6 +65,18 @@
 		reverse_proxy minio:9000
 	}
 
+	# Descarga publica de un documento firmado (link del correo): es un endpoint de la API
+	# (CloudStorage PublicShareController, [AllowAnonymous]) que responde un 302 a la URL
+	# presignada de MinIO — NO es una pagina de la SPA. Sin esta regla, al ser una navegacion
+	# del navegador (Accept: text/html) caeria en @spa_nav -> SPA y nunca llegaria al Gateway
+	# (se quedaba en loop). Va ANTES de @spa_nav para ganar precedencia. OJO: solo
+	# /storage/public/* (el resto de /storage/* que usa el CRM son XHR y ya van al Gateway por
+	# el handle final). /signature/public/* SI es una pagina SPA (la de firmar), no se toca.
+	@public_download path /storage/public/*
+	handle @public_download {
+		reverse_proxy gateway:8080
+	}
+
 	@spa_assets path *.js *.css *.map *.ico *.png *.jpg *.jpeg *.gif *.svg *.webp *.woff *.woff2 *.ttf *.eot /assets/*
 	handle @spa_assets {
 		reverse_proxy https://app.taxproffice.com {
