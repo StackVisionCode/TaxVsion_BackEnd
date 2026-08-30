@@ -54,6 +54,11 @@ public sealed class SignatureRequestsControllerOwnershipTests
             CancellationToken ct = default
         ) => throw new NotImplementedException();
 
+        public Task<IReadOnlyList<SignatureRequest>> ListStrandedDraftsAsync(
+            DateTime createdBeforeUtc,
+            CancellationToken ct = default
+        ) => throw new NotImplementedException();
+
         public Task<IReadOnlyList<SignatureRequest>> ListExpiredCandidatesAsync(
             DateTime nowUtc,
             CancellationToken ct = default

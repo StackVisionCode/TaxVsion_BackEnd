@@ -97,6 +97,15 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.HasIndex(request => new { request.TenantId, request.CreatedAtUtc });
         builder.HasIndex(request => new { request.TenantId, request.ExpiresAtUtc });
 
+        // Índice FILTRADO para el ReadyReconciliationScheduler: su barrido es cross-tenant
+        // (WHERE Status='Draft' AND CreatedAtUtc < cutoff), así que los índices tenant-leading de
+        // arriba no le sirven. Este solo contiene las filas Draft (poquísimas y transitorias), así
+        // que el barrido es un seek diminuto y no un scan, incluso con la tabla enorme.
+        builder
+            .HasIndex(request => request.CreatedAtUtc)
+            .HasFilter("[Status] = 'Draft'")
+            .HasDatabaseName("IX_SignatureRequests_Draft_CreatedAtUtc");
+
         builder
             .HasMany(request => request.Signers)
             .WithOne()
