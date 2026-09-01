@@ -12,7 +12,15 @@ public static class InitiateAdminConsentHandler
         CancellationToken ct
     )
     {
-        var state = await stateStore.CreateAsync(cmd.TenantId, ProviderCode.Graph, cmd.InitiatedByUserId, ct);
+        // Admin-consent no conecta un buzón (solo confirma el consentimiento org-wide), así que no
+        // hay email de buzón que validar en su callback → initiatorEmail null.
+        var state = await stateStore.CreateAsync(
+            cmd.TenantId,
+            ProviderCode.Graph,
+            cmd.InitiatedByUserId,
+            initiatorEmail: null,
+            ct
+        );
         return new InitiateAdminConsentResult(adminConsentClient.BuildAdminConsentUrl(state));
     }
 }

@@ -40,6 +40,11 @@ public static class ConnectManualAccountHandler
         CancellationToken ct
     )
     {
+        // El buzón debe ser el propio email del usuario (bloquea sincronizar un correo ajeno).
+        var identityCheck = ConnectedEmailIdentityGuard.Ensure(cmd.EmailAddress, cmd.InitiatorEmail);
+        if (identityCheck.IsFailure)
+            return Result.Failure<ConnectManualAccountResult>(identityCheck.Error);
+
         var duplicateCheck = await EnsureEmailNotAlreadyConnectedAsync(cmd, accountRepository, ct);
         if (duplicateCheck.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(duplicateCheck.Error);
@@ -87,23 +92,18 @@ public static class ConnectManualAccountHandler
         CancellationToken ct
     )
     {
-        var existingResult = await accountRepository.GetByEmailAddressAsync(cmd.EmailAddress, ct);
+        // Scoped al tenant (uniqueness (TenantId, EmailAddress), igual que Auth): el mismo buzón en
+        // OTRO tenant NO es un duplicado — la misma persona puede conectarlo en cada oficina suya.
+        var existingResult = await accountRepository.GetByTenantAndEmailAsync(cmd.TenantId, cmd.EmailAddress, ct);
         if (existingResult.IsFailure)
             return Result.Success();
 
-        return existingResult.Value.TenantId != cmd.TenantId
-            ? Result.Failure(
-                new Error(
-                    "ConnectManualAccountHandler.EmailBelongsToAnotherTenant",
-                    $"'{cmd.EmailAddress}' is already connected under a different tenant."
-                )
+        return Result.Failure(
+            new Error(
+                "ConnectManualAccountHandler.AlreadyConnected",
+                $"'{cmd.EmailAddress}' is already connected. Disconnect it first before reconnecting."
             )
-            : Result.Failure(
-                new Error(
-                    "ConnectManualAccountHandler.AlreadyConnected",
-                    $"'{cmd.EmailAddress}' is already connected. Disconnect it first before reconnecting."
-                )
-            );
+        );
     }
 
     /// <summary>

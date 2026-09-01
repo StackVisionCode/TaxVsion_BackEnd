@@ -49,3 +49,42 @@ foreach ($s in $fleet) {
     -WindowStyle Hidden
   Write-Host "UP $($s.n) :$($s.p)"
 }
+
+# --- Servicios Node.js -------------------------------------------------------
+# Communication (WebRTC/chat, HTTP :5350) y su TranscriptWorker (background, sin HTTP).
+# Corren con `npm run dev` (tsx watch, sin build) y leen su PROPIO `.env` (dotenv), NO las
+# variables ASPNETCORE de arriba. Requieren node_modules (se instala si falta) y, en el caso
+# de Communication, el cliente de Prisma generado.
+$nodeFleet = @(
+  @{ n = "Communication";                 d = "src\Services\Communication";                 p = 5350 },
+  @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null }
+)
+
+$npm = (Get-Command npm -ErrorAction SilentlyContinue)
+if (-not $npm) {
+  Write-Host "SKIP Node services: npm no está en el PATH."
+} else {
+  foreach ($s in $nodeFleet) {
+    $wd = Join-Path $root $s.d
+    if (-not (Test-Path (Join-Path $wd "package.json"))) { Write-Host "SKIP $($s.n): no package.json en $wd"; continue }
+
+    # node_modules bajo demanda (primera vez): npm ci si hay lockfile, si no npm install.
+    if (-not (Test-Path (Join-Path $wd "node_modules"))) {
+      Write-Host "… $($s.n): instalando dependencias (npm)…"
+      $installArgs = if (Test-Path (Join-Path $wd "package-lock.json")) { "ci" } else { "install" }
+      & $npm.Source $installArgs --prefix $wd | Out-Null
+    }
+    # Cliente de Prisma (solo Communication lo usa). Idempotente y barato.
+    if (Test-Path (Join-Path $wd "prisma\schema.prisma")) {
+      & $npm.Source "run" "prisma:generate" --prefix $wd 2>$null | Out-Null
+    }
+
+    # `npm.cmd run dev` desde su carpeta. Redirigir stdout/stderr de un .cmd es más fiable via
+    # el propio npm.cmd que via "npm" a secas.
+    Start-Process -FilePath $npm.Source -ArgumentList "run", "dev" -WorkingDirectory $wd `
+      -RedirectStandardOutput (Join-Path $logs "$($s.n).log") `
+      -RedirectStandardError (Join-Path $logs "$($s.n).err.log") `
+      -WindowStyle Hidden
+    Write-Host "UP $($s.n)$(if ($s.p) { " :$($s.p)" } else { " (worker)" })"
+  }
+}

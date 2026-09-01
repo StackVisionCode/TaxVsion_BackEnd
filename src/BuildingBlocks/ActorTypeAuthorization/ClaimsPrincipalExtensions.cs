@@ -30,6 +30,17 @@ public static class ClaimsPrincipalExtensions
     public static bool TryGetTenantId(this ClaimsPrincipal principal, out Guid tenantId) =>
         Guid.TryParse(principal.FindFirst(ClaimNames.TenantId)?.Value, out tenantId);
 
+    /// <summary>
+    /// Email del usuario tal como lo emite Auth (claim JWT estándar <c>"email"</c>). JwtBearer puede
+    /// mapearlo a <see cref="ClaimTypes.Email"/> según el inbound claim map. Se lee el literal para no
+    /// traer System.IdentityModel.Tokens.Jwt a este proyecto base.
+    /// </summary>
+    public static bool TryGetEmail(this ClaimsPrincipal principal, out string email)
+    {
+        email = principal.FindFirst("email")?.Value ?? principal.FindFirst(ClaimTypes.Email)?.Value ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(email);
+    }
+
     /// <summary>Solo presente para <c>CustomerPortal</c> — ver <see cref="ActorType.CustomerPortal"/>.</summary>
     public static bool TryGetCustomerId(this ClaimsPrincipal principal, out Guid customerId) =>
         Guid.TryParse(principal.FindFirst(ClaimNames.CustomerId)?.Value, out customerId);

@@ -3,7 +3,14 @@ using TaxVision.Connectors.Domain.Shared;
 namespace TaxVision.Connectors.Application.OAuth;
 
 /// <summary>Datos del intento de conectar cuenta que originó un <c>state</c> — recuperados en el callback via <see cref="IOAuthConnectStateStore.ConsumeAsync"/>.</summary>
-public sealed record OAuthConnectState(Guid TenantId, ProviderCode ProviderCode, Guid InitiatedByUserId);
+public sealed record OAuthConnectState(
+    Guid TenantId,
+    ProviderCode ProviderCode,
+    Guid InitiatedByUserId,
+    // Email del usuario en el sistema al iniciar el flujo — se compara en el callback contra el
+    // email que devuelve el proveedor (política estricta: el buzón debe ser el del propio usuario).
+    string? InitiatorEmail = null
+);
 
 /// <summary>
 /// CSRF + single-use para el flujo de conectar cuenta (D3 §12.3): el <c>state</c> es un token opaco
@@ -16,6 +23,7 @@ public interface IOAuthConnectStateStore
         Guid tenantId,
         ProviderCode providerCode,
         Guid initiatedByUserId,
+        string? initiatorEmail = null,
         CancellationToken ct = default
     );
 

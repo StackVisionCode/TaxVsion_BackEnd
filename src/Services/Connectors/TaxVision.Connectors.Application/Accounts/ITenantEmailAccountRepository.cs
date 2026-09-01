@@ -21,6 +21,18 @@ public interface ITenantEmailAccountRepository
     /// </summary>
     Task<Result<TenantEmailAccount>> GetByEmailAddressAsync(string emailAddress, CancellationToken ct = default);
 
+    /// <summary>
+    /// Cuenta de ESE tenant con ese email. Se usa para el chequeo "¿ya conectada?" scoped al tenant
+    /// (uniqueness por <c>(TenantId, EmailAddress)</c>, igual que Auth): el mismo buzón puede estar
+    /// conectado en tenants distintos por la misma persona, así que NO se puede usar la versión
+    /// cross-tenant de <see cref="GetByEmailAddressAsync"/> para decidir un duplicado.
+    /// </summary>
+    Task<Result<TenantEmailAccount>> GetByTenantAndEmailAsync(
+        Guid tenantId,
+        string emailAddress,
+        CancellationToken ct = default
+    );
+
     /// <summary>Cuentas del tenant llamante — <c>GET /connectors/accounts</c> (D3 §12.4), a diferencia de GetByIdAsync/GetByEmailAddressAsync sí filtra por tenant porque el caller es un usuario autenticado del frontend.</summary>
     Task<IReadOnlyList<TenantEmailAccount>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default);
 

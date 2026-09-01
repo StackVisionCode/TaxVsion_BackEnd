@@ -73,8 +73,16 @@ public static class CompleteOAuthConnectHandler
                 )
             );
 
+        // Política estricta: aunque OAuth pruebe la propiedad del buzón, debe ser el email del propio
+        // usuario en el sistema (bloquea conectar el buzón de otro). El email vino en el state.
+        var identityCheck = ConnectedEmailIdentityGuard.Ensure(emailAddress, cmd.InitiatorEmail);
+        if (identityCheck.IsFailure)
+            return Result.Failure<CompleteOAuthConnectResult>(identityCheck.Error);
+
         var now = DateTime.UtcNow;
-        var existingAccountResult = await accountRepository.GetByEmailAddressAsync(emailAddress, ct);
+        // Scoped al tenant (uniqueness (TenantId, EmailAddress), igual que Auth): el mismo buzón en
+        // otro tenant NO bloquea — se crea una cuenta propia de ESTE tenant.
+        var existingAccountResult = await accountRepository.GetByTenantAndEmailAsync(cmd.TenantId, emailAddress, ct);
         var isNewAccount = existingAccountResult.IsFailure;
 
         TenantEmailAccount account;
@@ -95,14 +103,10 @@ public static class CompleteOAuthConnectHandler
         }
         else
         {
+            // El lookup es tenant-scoped, así que la cuenta ya es de ESTE tenant (no hace falta
+            // re-chequear TenantId — antes había un guard global que bloqueaba el mismo buzón en
+            // otro tenant; se quitó a propósito para alinear con el modelo (TenantId, Email)).
             account = existingAccountResult.Value;
-            if (account.TenantId != cmd.TenantId)
-                return Result.Failure<CompleteOAuthConnectResult>(
-                    new Error(
-                        "CompleteOAuthConnectHandler.EmailBelongsToAnotherTenant",
-                        $"'{emailAddress}' is already connected under a different tenant."
-                    )
-                );
 
             var existingConnectionResult = await connectionRepository.GetByAccountIdAsync(account.Id, ct);
             if (existingConnectionResult.IsSuccess)

@@ -174,6 +174,21 @@ internal sealed class FakeTenantEmailAccountRepository : ITenantEmailAccountRepo
         );
     }
 
+    public Task<Result<TenantEmailAccount>> GetByTenantAndEmailAsync(
+        Guid tenantId,
+        string emailAddress,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = emailAddress.Trim().ToLowerInvariant();
+        var account = Accounts.Find(a => a.TenantId == tenantId && a.EmailAddress == normalized);
+        return Task.FromResult(
+            account is null
+                ? Result.Failure<TenantEmailAccount>(new Error("TenantEmailAccount.NotFound", "Not found."))
+                : Result.Success(account)
+        );
+    }
+
     public Task<IReadOnlyList<TenantEmailAccount>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
     {
         IReadOnlyList<TenantEmailAccount> accounts = Accounts.FindAll(a => a.TenantId == tenantId);

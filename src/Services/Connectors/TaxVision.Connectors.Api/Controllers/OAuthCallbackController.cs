@@ -89,7 +89,13 @@ public sealed class OAuthCallbackController(
             return Redirect(BuildRedirect("connectors_error", "invalid_state"));
 
         var result = await bus.InvokeAsync<Result<CompleteOAuthConnectResult>>(
-            new CompleteOAuthConnectCommand(connectState.TenantId, providerCode, connectState.InitiatedByUserId, code),
+            new CompleteOAuthConnectCommand(
+                connectState.TenantId,
+                providerCode,
+                connectState.InitiatedByUserId,
+                code,
+                connectState.InitiatorEmail
+            ),
             ct
         );
 

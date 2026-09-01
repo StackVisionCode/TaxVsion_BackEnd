@@ -71,7 +71,7 @@ public class CompleteOAuthConnectHandlerTests
 
         var result = await HandleAsync(
             fixture,
-            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, userId, "auth-code")
+            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, userId, "auth-code", "newoffice@gmail.com")
         );
 
         Assert.True(result.IsSuccess);
@@ -101,7 +101,13 @@ public class CompleteOAuthConnectHandlerTests
 
         var result = await HandleAsync(
             fixture,
-            new CompleteOAuthConnectCommand(Guid.NewGuid(), ProviderCode.Gmail, Guid.NewGuid(), "auth-code")
+            new CompleteOAuthConnectCommand(
+                Guid.NewGuid(),
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "office@gmail.com"
+            )
         );
 
         Assert.True(result.IsFailure);
@@ -144,7 +150,13 @@ public class CompleteOAuthConnectHandlerTests
 
         var result = await HandleAsync(
             fixture,
-            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, Guid.NewGuid(), "auth-code")
+            new CompleteOAuthConnectCommand(
+                tenantId,
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "office@gmail.com"
+            )
         );
 
         Assert.True(result.IsFailure);
@@ -153,9 +165,12 @@ public class CompleteOAuthConnectHandlerTests
     }
 
     [Fact]
-    public async Task Handle_EmailBelongsToAnotherTenant_FailsClean()
+    public async Task Handle_SameEmailInAnotherTenant_CreatesSeparateAccountForThisTenant()
     {
+        // Modelo (TenantId, Email) igual que Auth: la MISMA persona (mismo buzón) puede conectarlo en
+        // cada oficina/tenant suyo. El bloqueo global anterior (EmailBelongsToAnotherTenant) se quitó.
         var fixture = CreateFixture();
+        var thisTenant = Guid.NewGuid();
         fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "shared@gmail.com";
 
         var otherTenantAccount = TenantEmailAccount
@@ -165,11 +180,57 @@ public class CompleteOAuthConnectHandlerTests
 
         var result = await HandleAsync(
             fixture,
+            new CompleteOAuthConnectCommand(
+                thisTenant,
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "shared@gmail.com"
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, fixture.AccountRepository.Accounts.Count); // el de otro tenant + el nuevo de este
+        Assert.Contains(fixture.AccountRepository.Accounts, a => a.TenantId == thisTenant);
+    }
+
+    [Fact]
+    public async Task Handle_MailboxDoesNotMatchUserEmail_FailsWithIdentityMismatch()
+    {
+        // Política estricta: el buzón autorizado (del proveedor) debe ser el email de login del usuario.
+        var fixture = CreateFixture();
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "someoneelse@gmail.com";
+
+        var result = await HandleAsync(
+            fixture,
+            new CompleteOAuthConnectCommand(
+                Guid.NewGuid(),
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "me@myoffice.com"
+            )
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Connectors.EmailIdentity.Mismatch", result.Error.Code);
+        Assert.Empty(fixture.AccountRepository.Accounts);
+    }
+
+    [Fact]
+    public async Task Handle_MissingInitiatorEmail_FailsWithMissingInitiator()
+    {
+        // Si por lo que sea no vino el email del usuario en el state, no se conecta nada.
+        var fixture = CreateFixture();
+        fixture.ProviderClient.OnGetAuthorizedEmailAddress = _ => "office@gmail.com";
+
+        var result = await HandleAsync(
+            fixture,
             new CompleteOAuthConnectCommand(Guid.NewGuid(), ProviderCode.Gmail, Guid.NewGuid(), "auth-code")
         );
 
         Assert.True(result.IsFailure);
-        Assert.Equal("CompleteOAuthConnectHandler.EmailBelongsToAnotherTenant", result.Error.Code);
+        Assert.Equal("Connectors.EmailIdentity.MissingInitiator", result.Error.Code);
     }
 
     [Fact]
@@ -205,7 +266,13 @@ public class CompleteOAuthConnectHandlerTests
 
         var result = await HandleAsync(
             fixture,
-            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, Guid.NewGuid(), "auth-code")
+            new CompleteOAuthConnectCommand(
+                tenantId,
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "office@gmail.com"
+            )
         );
 
         Assert.True(result.IsSuccess);
@@ -249,7 +316,13 @@ public class CompleteOAuthConnectHandlerTests
 
         var result = await HandleAsync(
             fixture,
-            new CompleteOAuthConnectCommand(tenantId, ProviderCode.Gmail, Guid.NewGuid(), "auth-code")
+            new CompleteOAuthConnectCommand(
+                tenantId,
+                ProviderCode.Gmail,
+                Guid.NewGuid(),
+                "auth-code",
+                "office@gmail.com"
+            )
         );
 
         Assert.True(result.IsSuccess);
