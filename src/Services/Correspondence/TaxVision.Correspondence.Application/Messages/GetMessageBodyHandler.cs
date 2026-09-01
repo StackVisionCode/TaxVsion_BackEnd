@@ -35,7 +35,7 @@ public static class GetMessageBodyHandler
         if (bodyResult.IsFailure)
             return Result.Failure<MessageBodyResult>(bodyResult.Error);
 
-        await MarkFetchedAsync(email, unitOfWork, ct);
+        await MarkFetchedAndReadAsync(email, unitOfWork, ct);
 
         var body = bodyResult.Value;
         return Result.Success(new MessageBodyResult(body.HtmlBody, body.TextBody, body.Headers));
@@ -55,9 +55,12 @@ public static class GetMessageBodyHandler
             : Result.Success(email);
     }
 
-    private static async Task MarkFetchedAsync(IncomingEmail email, IUnitOfWork unitOfWork, CancellationToken ct)
+    // Abrir el cuerpo ES leerlo: se marca leído acá (estado compartido por el tenant) además de
+    // registrar el body-fetch. Ambos son idempotentes, así que reabrir un correo ya leído no reescribe.
+    private static async Task MarkFetchedAndReadAsync(IncomingEmail email, IUnitOfWork unitOfWork, CancellationToken ct)
     {
         email.MarkBodyFetched();
+        email.MarkRead(DateTime.UtcNow);
         await unitOfWork.SaveChangesAsync(ct);
     }
 }

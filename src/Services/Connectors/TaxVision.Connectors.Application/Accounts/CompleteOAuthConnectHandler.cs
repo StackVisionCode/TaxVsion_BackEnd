@@ -169,6 +169,8 @@ public static class CompleteOAuthConnectHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
+        // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar (punto único
+        // compartido con el reauth), así que acá ya no se publica — se evita el doble evento.
         var watchResult = await WatchActivationService.ActivateAsync(
             cmd.TenantId,
             account.Id,
@@ -176,22 +178,12 @@ public static class CompleteOAuthConnectHandler
             watchSubscriptionRepository,
             watchClientFactory,
             unitOfWork,
+            bus,
+            correlation,
             ct
         );
         if (watchResult.IsFailure)
             return Result.Failure<CompleteOAuthConnectResult>(watchResult.Error);
-
-        await bus.PublishAsync(
-            new ConnectorsTenantEmailAccountConnectedIntegrationEvent
-            {
-                CorrelationId = correlation.CorrelationId,
-                TenantId = cmd.TenantId,
-                AccountId = account.Id,
-                EmailAddress = account.EmailAddress,
-                ProviderCode = cmd.ProviderCode.ToString(),
-                ConnectedAtUtc = now,
-            }
-        );
 
         var auditResult = ProviderConnectionAuditLog.Create(
             account.Id,

@@ -79,6 +79,39 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .OrderBy(x => x.ReceivedAtUtc)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyDictionary<Guid, int>> GetUnreadCountsByThreadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    )
+    {
+        if (emailThreadIds.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        // GROUP BY sobre el índice filtrado IX_..._Unread: solo cuenta las filas no leídas.
+        var counts = await db
+            .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && !x.IsRead && emailThreadIds.Contains(x.EmailThreadId))
+            .GroupBy(x => x.EmailThreadId)
+            .Select(g => new { EmailThreadId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(x => x.EmailThreadId, x => x.Count);
+    }
+
+    // TRACKED a propósito (sin AsNoTracking): el caller muta IsRead y persiste. Sin Include de
+    // adjuntos — marcar leído no los toca. Acotado por hilo, mismo criterio que ListAllByThreadAsync.
+    public async Task<IReadOnlyList<IncomingEmail>> ListByThreadForUpdateAsync(
+        Guid tenantId,
+        Guid emailThreadId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .IncomingEmails.IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId)
+            .ToListAsync(ct);
+
     private static int ClampPageSize(int requested) =>
         requested switch
         {

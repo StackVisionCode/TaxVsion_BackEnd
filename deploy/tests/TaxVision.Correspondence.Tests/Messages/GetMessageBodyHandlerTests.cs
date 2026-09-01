@@ -59,6 +59,9 @@ public sealed class GetMessageBodyHandlerTests
         Assert.Equal("Hello", result.Value.Headers["Subject"]);
         Assert.Equal(BodyStatus.BodyReady, email.BodyStatus);
         Assert.NotNull(email.BodyFetchedAtUtc);
+        // Abrir el cuerpo marca el correo como leído (estado compartido por el tenant).
+        Assert.True(email.IsRead);
+        Assert.NotNull(email.ReadAtUtc);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
 
         var call = Assert.Single(connectorsClient.Calls);
@@ -131,6 +134,7 @@ public sealed class GetMessageBodyHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("ConnectorsClient.Unavailable", result.Error.Code);
         Assert.Equal(BodyStatus.BodyPending, email.BodyStatus);
+        Assert.False(email.IsRead);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 }

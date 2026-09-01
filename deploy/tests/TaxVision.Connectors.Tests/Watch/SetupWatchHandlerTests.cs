@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using TaxVision.Connectors.Application.Watch;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
@@ -31,6 +32,8 @@ public class SetupWatchHandlerTests
             subscriptionRepository,
             factory,
             unitOfWork,
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -38,6 +41,69 @@ public class SetupWatchHandlerTests
         Assert.Equal(TenantEmailAccountStatus.Active, account.Status);
         Assert.Single(subscriptionRepository.Subscriptions);
         Assert.Equal(account.Id, subscriptionRepository.Subscriptions[0].AccountId);
+    }
+
+    [Fact]
+    public async Task Handle_WhenActivationSucceeds_PublishesAccountConnectedEvent()
+    {
+        // Regresión del 403 al responder: el reauth activaba la cuenta en Connectors pero NO publicaba
+        // ConnectorsTenantEmailAccountConnected, así que Postmaster nunca proyectaba la cuenta y rechazaba
+        // el envío. La publicación vive ahora en WatchActivationService (punto único: connect + reauth).
+        var account = CreateDraftAccount(ProviderCode.Gmail);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var subscriptionRepository = new FakeProviderWatchSubscriptionRepository();
+        var factory = new FakeWatchProviderClientFactory(new FakeWatchProviderClient(ProviderCode.Gmail));
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        var result = await SetupWatchHandler.Handle(
+            new SetupWatchCommand(TenantId, account.Id),
+            accountRepository,
+            subscriptionRepository,
+            factory,
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var published = Assert.Single(bus.Published.OfType<ConnectorsTenantEmailAccountConnectedIntegrationEvent>());
+        Assert.Equal(account.Id, published.AccountId);
+        Assert.Equal(TenantId, published.TenantId);
+        Assert.Equal(account.EmailAddress, published.EmailAddress);
+    }
+
+    [Fact]
+    public async Task Handle_WhenProviderThrows_DoesNotPublishAccountConnectedEvent()
+    {
+        // Si el watch falla la cuenta queda Connected (no Active) y NO debe anunciarse como enviable.
+        var account = CreateDraftAccount(ProviderCode.Gmail);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var subscriptionRepository = new FakeProviderWatchSubscriptionRepository();
+        var watchClient = new FakeWatchProviderClient(ProviderCode.Gmail)
+        {
+            ThrowOnSetup = new WatchProviderException("Gmail watch request returned HTTP 500."),
+        };
+        var factory = new FakeWatchProviderClientFactory(watchClient);
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        var result = await SetupWatchHandler.Handle(
+            new SetupWatchCommand(TenantId, account.Id),
+            accountRepository,
+            subscriptionRepository,
+            factory,
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(bus.Published.OfType<ConnectorsTenantEmailAccountConnectedIntegrationEvent>());
     }
 
     [Fact]
@@ -56,6 +122,8 @@ public class SetupWatchHandlerTests
             subscriptionRepository,
             factory,
             unitOfWork,
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -80,6 +148,8 @@ public class SetupWatchHandlerTests
             subscriptionRepository,
             factory,
             unitOfWork,
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -101,6 +171,8 @@ public class SetupWatchHandlerTests
             subscriptionRepository,
             factory,
             unitOfWork,
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -128,6 +200,8 @@ public class SetupWatchHandlerTests
             subscriptionRepository,
             factory,
             unitOfWork,
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -154,6 +228,8 @@ public class SetupWatchHandlerTests
             subscriptionRepository,
             factory,
             unitOfWork,
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -197,6 +273,8 @@ public class SetupWatchHandlerTests
             subscriptionRepository,
             factory,
             unitOfWork,
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 

@@ -33,5 +33,8 @@ public sealed record MessageSummary(
     DateTime OccurredAtUtc,
     bool HasAttachments,
     int AttachmentCount,
-    string? BodyStatus
+    string? BodyStatus,
+    // Estado leído/no-leído compartido por el tenant. Solo significativo para inbound; en outbound
+    // (un Draft enviado) siempre va true — no hay nada que "leer", nunca debe pintarse como no-leído.
+    bool IsRead
 );

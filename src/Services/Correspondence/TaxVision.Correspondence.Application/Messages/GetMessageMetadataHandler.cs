@@ -40,6 +40,7 @@ public static class GetMessageMetadataHandler
             email.ReceivedAtUtc,
             email.HasAttachments,
             email.AttachmentCount,
-            email.BodyStatus.ToString()
+            email.BodyStatus.ToString(),
+            email.IsRead
         );
 }

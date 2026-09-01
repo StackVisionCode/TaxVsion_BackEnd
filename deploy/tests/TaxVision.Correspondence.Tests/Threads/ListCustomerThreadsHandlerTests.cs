@@ -1,5 +1,6 @@
 using TaxVision.Correspondence.Application.Threads;
 using TaxVision.Correspondence.Domain.Inbox;
+using TaxVision.Correspondence.Domain.ValueObjects;
 using TaxVision.Correspondence.Tests.Ingest;
 
 namespace TaxVision.Correspondence.Tests.Threads;
@@ -8,6 +9,25 @@ public sealed class ListCustomerThreadsHandlerTests
 {
     private static EmailThread NewThread(Guid tenantId, Guid customerId, DateTime lastMessageAtUtc) =>
         EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, lastMessageAtUtc).Value;
+
+    private static IncomingEmail NewIncomingEmail(Guid tenantId, Guid customerId, Guid threadId, string providerMessageId) =>
+        IncomingEmail
+            .Create(
+                tenantId,
+                customerId,
+                threadId,
+                Guid.NewGuid(),
+                "gmail",
+                providerMessageId,
+                EmailAddress.Create("customer@example.com").Value,
+                "The Customer",
+                "Subject",
+                "Snippet",
+                DateTime.UtcNow,
+                hasAttachments: false,
+                attachmentCount: 0
+            )
+            .Value;
 
     [Fact]
     public async Task Handle_WithThreeThreads_ReturnsAllOrderedByLastMessageAtUtcDescending()
@@ -26,6 +46,7 @@ public sealed class ListCustomerThreadsHandlerTests
         var result = await ListCustomerThreadsHandler.Handle(
             new ListCustomerThreadsQuery(tenantId, customerId, 1, 20),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             CancellationToken.None
         );
 
@@ -51,6 +72,7 @@ public sealed class ListCustomerThreadsHandlerTests
         var result = await ListCustomerThreadsHandler.Handle(
             new ListCustomerThreadsQuery(tenantId, customerId, 2, 1),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             CancellationToken.None
         );
 
@@ -75,6 +97,7 @@ public sealed class ListCustomerThreadsHandlerTests
         var result = await ListCustomerThreadsHandler.Handle(
             new ListCustomerThreadsQuery(tenantId, customerId, 1, 20),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             CancellationToken.None
         );
 
@@ -95,6 +118,7 @@ public sealed class ListCustomerThreadsHandlerTests
         var result = await ListCustomerThreadsHandler.Handle(
             new ListCustomerThreadsQuery(tenantId, customerId, 1, 20),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             CancellationToken.None
         );
 
@@ -103,5 +127,54 @@ public sealed class ListCustomerThreadsHandlerTests
         Assert.Equal(2, summary.MessageCount);
         Assert.Equal(thread.FirstMessageAtUtc, summary.FirstMessageAtUtc);
         Assert.Equal(thread.LastMessageAtUtc, summary.LastMessageAtUtc);
+    }
+
+    [Fact]
+    public async Task Handle_CountsOnlyUnreadInboundPerThread()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var thread = NewThread(tenantId, customerId, DateTime.UtcNow);
+        var emailThreads = new FakeEmailThreadRepository();
+        await emailThreads.AddAsync(thread);
+
+        var unreadA = NewIncomingEmail(tenantId, customerId, thread.Id, "msg-a");
+        var unreadB = NewIncomingEmail(tenantId, customerId, thread.Id, "msg-b");
+        var alreadyRead = NewIncomingEmail(tenantId, customerId, thread.Id, "msg-c");
+        alreadyRead.MarkRead(DateTime.UtcNow);
+        var incomingEmails = new FakeIncomingEmailRepository();
+        await incomingEmails.AddAsync(unreadA);
+        await incomingEmails.AddAsync(unreadB);
+        await incomingEmails.AddAsync(alreadyRead);
+
+        var result = await ListCustomerThreadsHandler.Handle(
+            new ListCustomerThreadsQuery(tenantId, customerId, 1, 20),
+            emailThreads,
+            incomingEmails,
+            CancellationToken.None
+        );
+
+        var summary = Assert.Single(result.Items);
+        Assert.Equal(2, summary.UnreadCount);
+    }
+
+    [Fact]
+    public async Task Handle_WithNoIncomingEmails_ReportsZeroUnread()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var thread = NewThread(tenantId, customerId, DateTime.UtcNow);
+        var emailThreads = new FakeEmailThreadRepository();
+        await emailThreads.AddAsync(thread);
+
+        var result = await ListCustomerThreadsHandler.Handle(
+            new ListCustomerThreadsQuery(tenantId, customerId, 1, 20),
+            emailThreads,
+            new FakeIncomingEmailRepository(),
+            CancellationToken.None
+        );
+
+        var summary = Assert.Single(result.Items);
+        Assert.Equal(0, summary.UnreadCount);
     }
 }

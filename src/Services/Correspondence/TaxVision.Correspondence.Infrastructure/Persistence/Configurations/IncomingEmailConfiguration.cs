@@ -33,6 +33,8 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
         builder.Property(x => x.BodyFetchedAtUtc);
         builder.Property(x => x.HasAttachments).IsRequired();
         builder.Property(x => x.AttachmentCount).IsRequired();
+        builder.Property(x => x.IsRead).IsRequired();
+        builder.Property(x => x.ReadAtUtc);
 
         // Dedup de Fase 4: un mismo InternetMessageId no puede persistirse dos veces para el
         // mismo tenant. Filtrado porque el campo es nullable (no todos los proveedores lo mandan).
@@ -65,6 +67,14 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
                 x.ReceivedAtUtc,
             })
             .HasDatabaseName("IX_IncomingEmails_TenantId_EmailThreadId_ReceivedAtUtc");
+
+        // Conteo de no-leídos por hilo (badge del inbox) — índice filtrado a IsRead=0: solo indexa
+        // los correos aún sin leer, que son la minoría en un buzón trabajado, así el COUNT por hilo
+        // no barre toda la tabla.
+        builder
+            .HasIndex(x => new { x.TenantId, x.EmailThreadId })
+            .HasFilter("[IsRead] = 0")
+            .HasDatabaseName("IX_IncomingEmails_TenantId_EmailThreadId_Unread");
 
         builder
             .HasMany(x => x.Recipients)

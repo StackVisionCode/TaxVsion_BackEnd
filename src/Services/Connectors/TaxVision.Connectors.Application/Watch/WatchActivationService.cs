@@ -1,9 +1,12 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
+using Wolverine;
 
 namespace TaxVision.Connectors.Application.Watch;
 
@@ -26,6 +29,8 @@ public static class WatchActivationService
         IProviderWatchSubscriptionRepository subscriptionRepository,
         IWatchProviderClientFactory watchClientFactory,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -64,6 +69,7 @@ public static class WatchActivationService
             if (activateImapResult.IsFailure)
                 return activateImapResult;
 
+            await PublishConnectedAsync(account, now, bus, correlation);
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Success();
         }
@@ -109,7 +115,33 @@ public static class WatchActivationService
         if (activateResult.IsFailure)
             return activateResult;
 
+        await PublishConnectedAsync(account, now, bus, correlation);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
+
+    /// <summary>
+    /// Avisa a los demás servicios (Postmaster/Correspondence proyectan la cuenta como enviable) que la
+    /// cuenta quedó activa. Se publica acá — el punto único de activación — para que TAMBIÉN el reauth
+    /// (SetupWatchHandler) lo emita, no solo el connect OAuth inicial; antes, una cuenta recuperada por
+    /// reauth quedaba activa en Connectors pero invisible para Postmaster → 403 al enviar. El consumer
+    /// es idempotente (reconciliación por AccountId), así que re-emitirlo no duplica.
+    /// </summary>
+    private static ValueTask PublishConnectedAsync(
+        TenantEmailAccount account,
+        DateTime now,
+        IMessageBus bus,
+        ICorrelationContext correlation
+    ) =>
+        bus.PublishAsync(
+            new ConnectorsTenantEmailAccountConnectedIntegrationEvent
+            {
+                CorrelationId = correlation.CorrelationId,
+                TenantId = account.TenantId,
+                AccountId = account.Id,
+                EmailAddress = account.EmailAddress,
+                ProviderCode = account.ProviderCode.ToString(),
+                ConnectedAtUtc = now,
+            }
+        );
 }
