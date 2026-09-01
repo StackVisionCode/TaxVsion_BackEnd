@@ -9,7 +9,11 @@ public sealed record OAuthConnectState(
     Guid InitiatedByUserId,
     // Email del usuario en el sistema al iniciar el flujo — se compara en el callback contra el
     // email que devuelve el proveedor (política estricta: el buzón debe ser el del propio usuario).
-    string? InitiatorEmail = null
+    string? InitiatorEmail = null,
+    // Origen (scheme+host) del frontend que inició el flujo — el callback redirige el navegador de
+    // vuelta AHÍ (el subdominio del tenant donde el usuario está logueado), no a un BaseUrl fijo.
+    // Se valida contra el dominio permitido antes de usarse (nunca open redirect).
+    string? ReturnOrigin = null
 );
 
 /// <summary>
@@ -24,6 +28,7 @@ public interface IOAuthConnectStateStore
         ProviderCode providerCode,
         Guid initiatedByUserId,
         string? initiatorEmail = null,
+        string? returnOrigin = null,
         CancellationToken ct = default
     );
 

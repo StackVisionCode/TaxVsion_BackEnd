@@ -88,6 +88,10 @@ public sealed class OAuthCallbackController(
         if (connectState.ProviderCode != providerCode)
             return Redirect(BuildRedirect("connectors_error", "invalid_state"));
 
+        // El navegador vuelve al subdominio del tenant donde el usuario inició (y sigue logueado), no
+        // a un BaseUrl fijo — validado contra el dominio permitido para no ser un open redirect.
+        var redirectBase = OAuthReturnRedirectPolicy.Resolve(connectState.ReturnOrigin, portalOptions.Value.BaseUrl);
+
         var result = await bus.InvokeAsync<Result<CompleteOAuthConnectResult>>(
             new CompleteOAuthConnectCommand(
                 connectState.TenantId,
@@ -107,10 +111,14 @@ public sealed class OAuthCallbackController(
                 result.Error.Code,
                 result.Error.Message
             );
-            return Redirect(BuildRedirect("connectors_error", "exchange_failed"));
+            // Código específico (no "exchange_failed" genérico) para que el frontend explique qué pasó
+            // — sobre todo el guard de identidad (conectaste un buzón que no es tu email de login).
+            return Redirect(BuildRedirect("connectors_error", MapErrorCode(result.Error.Code), redirectBase));
         }
 
-        return Redirect($"{BuildRedirect("connectors_connected", "true")}&accountId={result.Value.AccountId}");
+        return Redirect(
+            $"{BuildRedirect("connectors_connected", "true", redirectBase)}&accountId={result.Value.AccountId}"
+        );
     }
 
     /// <summary>
@@ -142,6 +150,17 @@ public sealed class OAuthCallbackController(
         return Redirect(BuildRedirect("connectors_admin_consent", granted ? "true" : "false"));
     }
 
-    private string BuildRedirect(string key, string value) =>
-        $"{portalOptions.Value.BaseUrl}?{key}={Uri.EscapeDataString(value)}";
+    private string BuildRedirect(string key, string value, string? baseUrl = null) =>
+        $"{(baseUrl ?? portalOptions.Value.BaseUrl).TrimEnd('/')}?{key}={Uri.EscapeDataString(value)}";
+
+    /// <summary>Traduce el código de error del dominio a un slug estable que el frontend mapea a un mensaje en inglés.</summary>
+    private static string MapErrorCode(string code) =>
+        code switch
+        {
+            "Connectors.EmailIdentity.Mismatch" => "identity_mismatch",
+            "Connectors.EmailIdentity.MissingInitiator" => "identity_unknown",
+            "CompleteOAuthConnectHandler.AlreadyConnected" => "already_connected",
+            "CompleteOAuthConnectHandler.MissingRefreshToken" => "consent_incomplete",
+            _ => "exchange_failed",
+        };
 }

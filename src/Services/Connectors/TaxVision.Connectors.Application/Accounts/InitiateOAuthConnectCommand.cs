@@ -11,7 +11,9 @@ public sealed record InitiateOAuthConnectCommand(
     Guid TenantId,
     ProviderCode ProviderCode,
     Guid InitiatedByUserId,
-    string? InitiatorEmail = null
+    string? InitiatorEmail = null,
+    // Origen del frontend (subdominio del tenant) al que el callback debe devolver el navegador.
+    string? ReturnOrigin = null
 );
 
 public sealed record InitiateOAuthConnectResult(string AuthorizationUrl);

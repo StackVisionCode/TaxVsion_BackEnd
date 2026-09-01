@@ -20,5 +20,10 @@ public sealed class GoogleOAuthOptions
     /// <summary>Debe matchear byte a byte el redirect_uri configurado en el app registration de Google y el usado en ExchangeAuthorizationCodeAsync.</summary>
     public string RedirectUri { get; set; } = string.Empty;
 
-    public string UserInfoEndpoint { get; set; } = "https://www.googleapis.com/oauth2/v2/userinfo";
+    /// <summary>
+    /// Buzón autorizado (para el guard de identidad). Se usa Gmail <c>users.getProfile</c> — cubierto
+    /// por <c>gmail.readonly</c> — en vez del userinfo de OpenID, que exigiría el scope email/openid y
+    /// devolvía HTTP 401 con nuestro token (solo gmail.*). Devuelve el buzón en <c>emailAddress</c>.
+    /// </summary>
+    public string UserInfoEndpoint { get; set; } = "https://gmail.googleapis.com/gmail/v1/users/me/profile";
 }

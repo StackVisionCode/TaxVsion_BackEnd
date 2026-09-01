@@ -30,8 +30,15 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
             return Forbid();
         User.TryGetEmail(out var initiatorEmail);
 
+        // A dónde devolver el navegador tras el consentimiento: el origen que mandó el frontend, o el
+        // header Origin como respaldo (el callback lo valida contra el dominio permitido antes de usarlo).
+        var returnOrigin =
+            !string.IsNullOrWhiteSpace(body.ReturnUrl) ? body.ReturnUrl
+            : Request.Headers.Origin.ToString() is { Length: > 0 } origin ? origin
+            : null;
+
         var result = await bus.InvokeAsync<Result<InitiateOAuthConnectResult>>(
-            new InitiateOAuthConnectCommand(tenantId, body.ProviderCode, userId, initiatorEmail),
+            new InitiateOAuthConnectCommand(tenantId, body.ProviderCode, userId, initiatorEmail, returnOrigin),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

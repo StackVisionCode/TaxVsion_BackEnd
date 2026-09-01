@@ -22,6 +22,27 @@ public class OAuthConnectStateStoreTests
     }
 
     [Fact]
+    public async Task CreateAndConsume_RoundTripsInitiatorEmailAndReturnOrigin()
+    {
+        var store = new InMemoryOAuthConnectStateStore();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        var state = await store.CreateAsync(
+            tenantId,
+            ProviderCode.Gmail,
+            userId,
+            initiatorEmail: "carlos@manfer.com",
+            returnOrigin: "https://manfer.taxproffice.com"
+        );
+        var consumed = await store.ConsumeAsync(state);
+
+        Assert.NotNull(consumed);
+        Assert.Equal("carlos@manfer.com", consumed!.InitiatorEmail);
+        Assert.Equal("https://manfer.taxproffice.com", consumed.ReturnOrigin);
+    }
+
+    [Fact]
     public async Task Consume_CanOnlyBeCalledOnce()
     {
         var store = new InMemoryOAuthConnectStateStore();

@@ -21,6 +21,7 @@ public static class InitiateOAuthConnectHandler
             cmd.ProviderCode,
             cmd.InitiatedByUserId,
             cmd.InitiatorEmail,
+            cmd.ReturnOrigin,
             ct
         );
         var authorizationUrl = clientResult.Value.BuildAuthorizationUrl(state);
