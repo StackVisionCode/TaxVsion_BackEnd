@@ -4,6 +4,8 @@ namespace TaxVision.Connectors.Application.Accounts;
 public sealed record ConnectManualAccountCommand(
     Guid TenantId,
     Guid InitiatedByUserId,
+    // Email del usuario en el sistema (claim JWT): el buzón conectado debe coincidir con él.
+    string? InitiatorEmail,
     string EmailAddress,
     string? DisplayName,
     string ImapHost,

@@ -28,9 +28,10 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
+        User.TryGetEmail(out var initiatorEmail);
 
         var result = await bus.InvokeAsync<Result<InitiateOAuthConnectResult>>(
-            new InitiateOAuthConnectCommand(tenantId, body.ProviderCode, userId),
+            new InitiateOAuthConnectCommand(tenantId, body.ProviderCode, userId, initiatorEmail),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -49,11 +50,13 @@ public sealed class AccountsController(IMessageBus bus) : ControllerBase
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Forbid();
+        User.TryGetEmail(out var initiatorEmail);
 
         var result = await bus.InvokeAsync<Result<ConnectManualAccountResult>>(
             new ConnectManualAccountCommand(
                 tenantId,
                 userId,
+                initiatorEmail,
                 body.EmailAddress,
                 body.DisplayName,
                 body.ImapHost,

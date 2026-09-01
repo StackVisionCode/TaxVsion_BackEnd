@@ -16,7 +16,13 @@ public static class InitiateOAuthConnectHandler
         if (clientResult.IsFailure)
             return Result.Failure<InitiateOAuthConnectResult>(clientResult.Error);
 
-        var state = await stateStore.CreateAsync(cmd.TenantId, cmd.ProviderCode, cmd.InitiatedByUserId, ct);
+        var state = await stateStore.CreateAsync(
+            cmd.TenantId,
+            cmd.ProviderCode,
+            cmd.InitiatedByUserId,
+            cmd.InitiatorEmail,
+            ct
+        );
         var authorizationUrl = clientResult.Value.BuildAuthorizationUrl(state);
 
         return Result.Success(new InitiateOAuthConnectResult(authorizationUrl));

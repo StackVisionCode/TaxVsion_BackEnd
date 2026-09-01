@@ -12,7 +12,9 @@ public sealed record CompleteOAuthConnectCommand(
     Guid TenantId,
     ProviderCode ProviderCode,
     Guid InitiatedByUserId,
-    string AuthorizationCode
+    string AuthorizationCode,
+    // Email del usuario en el sistema (del state) — el buzón autorizado debe coincidir.
+    string? InitiatorEmail = null
 );
 
 public sealed record CompleteOAuthConnectResult(Guid AccountId, string EmailAddress);

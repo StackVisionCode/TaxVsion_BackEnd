@@ -42,6 +42,23 @@ public sealed class TenantEmailAccountRepository(ConnectorsDbContext dbContext) 
             : Result.Success(account);
     }
 
+    public async Task<Result<TenantEmailAccount>> GetByTenantAndEmailAsync(
+        Guid tenantId,
+        string emailAddress,
+        CancellationToken ct = default
+    )
+    {
+        var normalized = emailAddress.Trim().ToLowerInvariant();
+        var account = await dbContext
+            .TenantEmailAccounts.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.EmailAddress == normalized, ct);
+        return account is null
+            ? Result.Failure<TenantEmailAccount>(
+                new Error("TenantEmailAccount.NotFound", $"No account with email '{emailAddress}' in this tenant.")
+            )
+            : Result.Success(account);
+    }
+
     public async Task<IReadOnlyList<TenantEmailAccount>> ListByTenantAsync(
         Guid tenantId,
         CancellationToken ct = default

@@ -7,6 +7,11 @@ namespace TaxVision.Connectors.Application.Accounts;
 /// redirige el navegador del usuario a <c>AuthorizationUrl</c>; no es un fetch normal, es una
 /// navegación de página completa (el consentimiento vive en el dominio de Google/Microsoft).
 /// </summary>
-public sealed record InitiateOAuthConnectCommand(Guid TenantId, ProviderCode ProviderCode, Guid InitiatedByUserId);
+public sealed record InitiateOAuthConnectCommand(
+    Guid TenantId,
+    ProviderCode ProviderCode,
+    Guid InitiatedByUserId,
+    string? InitiatorEmail = null
+);
 
 public sealed record InitiateOAuthConnectResult(string AuthorizationUrl);

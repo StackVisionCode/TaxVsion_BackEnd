@@ -932,6 +932,9 @@ services:
       # configurado en el app registration de cada proveedor.
       Connectors__OAuth__Google__RedirectUri: ${CONNECTORS_GOOGLE_REDIRECT_URI:-http://localhost:5047/connectors/oauth/callback/gmail}
       Connectors__OAuth__Microsoft__RedirectUri: ${CONNECTORS_MICROSOFT_REDIRECT_URI:-http://localhost:5047/connectors/oauth/callback/graph}
+      # Fallback de admin-consent (D3 §12.6) — solo se usa cuando el connect normal de Graph falla con
+      # AADSTS90094 (conditional access org-wide). Debe matchear byte a byte el redirect_uri registrado.
+      Connectors__OAuth__Microsoft__AdminConsentRedirectUri: ${CONNECTORS_MICROSOFT_ADMIN_CONSENT_REDIRECT_URI:-http://localhost:5047/connectors/oauth/admin-consent-callback}
       # A dónde redirige el navegador tras el callback de OAuth (D3 §12.4/12.5) — mismo frontend que Notification.
       Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:4200}
       # Watch/subscription renewal (Fase 6) — topic de Pub/Sub (Gmail) y notificationUrl+clientState

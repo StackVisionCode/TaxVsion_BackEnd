@@ -46,6 +46,7 @@ public class ConnectManualAccountHandlerTests
         new(
             tenantId,
             userId,
+            "office@example.com", // InitiatorEmail — igual al buzón, así el guard de identidad pasa
             "office@example.com",
             "Front Office",
             "imap.example.com",
@@ -166,17 +167,34 @@ public class ConnectManualAccountHandlerTests
     }
 
     [Fact]
-    public async Task Handle_EmailBelongsToAnotherTenant_FailsClean()
+    public async Task Handle_SameEmailInAnotherTenant_CreatesSeparateAccount()
     {
+        // Per-tenant (igual que Auth): el mismo buzón en OTRO tenant no bloquea — se crea uno propio.
         var fixture = CreateFixture();
+        var thisTenant = Guid.NewGuid();
         var otherTenantAccount = TenantEmailAccount
             .Create(Guid.NewGuid(), "office@example.com", ProviderCode.Imap, Guid.NewGuid(), Now)
             .Value;
         fixture.AccountRepository.Accounts.Add(otherTenantAccount);
 
-        var result = await HandleAsync(fixture, ValidCommand(Guid.NewGuid(), Guid.NewGuid()));
+        var result = await HandleAsync(fixture, ValidCommand(thisTenant, Guid.NewGuid()));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, fixture.AccountRepository.Accounts.Count);
+        Assert.Contains(fixture.AccountRepository.Accounts, a => a.TenantId == thisTenant);
+    }
+
+    [Fact]
+    public async Task Handle_MailboxDoesNotMatchUserEmail_FailsWithIdentityMismatch()
+    {
+        // El buzón tecleado debe ser el email de login del usuario (bloquea conectar el de otro).
+        var fixture = CreateFixture();
+        var cmd = ValidCommand(Guid.NewGuid(), Guid.NewGuid()) with { InitiatorEmail = "someoneelse@office.com" };
+
+        var result = await HandleAsync(fixture, cmd);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("ConnectManualAccountHandler.EmailBelongsToAnotherTenant", result.Error.Code);
+        Assert.Equal("Connectors.EmailIdentity.Mismatch", result.Error.Code);
+        Assert.Empty(fixture.AccountRepository.Accounts);
     }
 }

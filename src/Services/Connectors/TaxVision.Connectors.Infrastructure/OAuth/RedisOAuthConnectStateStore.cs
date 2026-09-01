@@ -19,11 +19,13 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
         Guid tenantId,
         ProviderCode providerCode,
         Guid initiatedByUserId,
+        string? initiatorEmail = null,
         CancellationToken ct = default
     )
     {
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        var value = $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}";
+        // 4º campo = email del usuario (nunca contiene '|'); vacío si no vino.
+        var value = $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}|{initiatorEmail}";
         await redis.GetDatabase().StringSetAsync(Key(state), value, Ttl);
         return state;
     }
@@ -34,16 +36,18 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
         if (value.IsNullOrEmpty)
             return null;
 
-        var parts = ((string)value!).Split('|', 3);
+        // Split sin límite: los states viejos (deploy en curso) traen 3 campos; los nuevos, 4.
+        var parts = ((string)value!).Split('|');
         if (
-            parts.Length != 3
+            parts.Length < 3
             || !Guid.TryParse(parts[0], out var tenantId)
             || !Enum.TryParse<ProviderCode>(parts[1], out var providerCode)
             || !Guid.TryParse(parts[2], out var initiatedByUserId)
         )
             return null;
 
-        return new OAuthConnectState(tenantId, providerCode, initiatedByUserId);
+        var initiatorEmail = parts.Length >= 4 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3] : null;
+        return new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail);
     }
 
     private static string Key(string state) => $"connectors:oauth-connect-state:{state}";
