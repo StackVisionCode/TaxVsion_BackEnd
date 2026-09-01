@@ -17,12 +17,13 @@ public sealed class InMemoryOAuthConnectStateStore : IOAuthConnectStateStore
         ProviderCode providerCode,
         Guid initiatedByUserId,
         string? initiatorEmail = null,
+        string? returnOrigin = null,
         CancellationToken ct = default
     )
     {
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         _states[state] = (
-            new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail),
+            new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail, returnOrigin),
             DateTime.UtcNow.Add(Ttl)
         );
         return Task.FromResult(state);

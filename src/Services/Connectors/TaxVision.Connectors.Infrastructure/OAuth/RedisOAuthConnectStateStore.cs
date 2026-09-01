@@ -20,12 +20,14 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
         ProviderCode providerCode,
         Guid initiatedByUserId,
         string? initiatorEmail = null,
+        string? returnOrigin = null,
         CancellationToken ct = default
     )
     {
         var state = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-        // 4º campo = email del usuario (nunca contiene '|'); vacío si no vino.
-        var value = $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}|{initiatorEmail}";
+        // 4º campo = email del usuario, 5º = origen de retorno (ni email ni una URL de origen
+        // contienen '|'); vacíos si no vinieron.
+        var value = $"{tenantId:N}|{providerCode}|{initiatedByUserId:N}|{initiatorEmail}|{returnOrigin}";
         await redis.GetDatabase().StringSetAsync(Key(state), value, Ttl);
         return state;
     }
@@ -36,7 +38,7 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
         if (value.IsNullOrEmpty)
             return null;
 
-        // Split sin límite: los states viejos (deploy en curso) traen 3 campos; los nuevos, 4.
+        // Split sin límite: los states viejos (deploy en curso) traen 3-4 campos; los nuevos, 5.
         var parts = ((string)value!).Split('|');
         if (
             parts.Length < 3
@@ -47,7 +49,8 @@ public sealed class RedisOAuthConnectStateStore(IConnectionMultiplexer redis) : 
             return null;
 
         var initiatorEmail = parts.Length >= 4 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3] : null;
-        return new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail);
+        var returnOrigin = parts.Length >= 5 && !string.IsNullOrWhiteSpace(parts[4]) ? parts[4] : null;
+        return new OAuthConnectState(tenantId, providerCode, initiatedByUserId, initiatorEmail, returnOrigin);
     }
 
     private static string Key(string state) => $"connectors:oauth-connect-state:{state}";

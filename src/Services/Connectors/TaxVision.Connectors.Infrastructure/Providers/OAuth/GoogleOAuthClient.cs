@@ -70,7 +70,7 @@ public sealed class GoogleOAuthClient(
         }
 
         if (!response.IsSuccessStatusCode)
-            throw new OAuthProviderException($"Google userinfo request returned HTTP {(int)response.StatusCode}.");
+            throw new OAuthProviderException($"Google profile request returned HTTP {(int)response.StatusCode}.");
 
         GoogleUserInfoResponse? payload;
         try
@@ -79,11 +79,11 @@ public sealed class GoogleOAuthClient(
         }
         catch (System.Text.Json.JsonException ex)
         {
-            throw new OAuthProviderException("Google userinfo response was unparseable.", ex);
+            throw new OAuthProviderException("Google profile response was unparseable.", ex);
         }
 
         if (payload is null || string.IsNullOrWhiteSpace(payload.Email))
-            throw new OAuthProviderException("Google userinfo response was missing email.");
+            throw new OAuthProviderException("Google profile response was missing email.");
 
         return payload.Email;
     }
@@ -179,7 +179,10 @@ public sealed class GoogleOAuthClient(
 
     private sealed record GoogleUserInfoResponse
     {
-        [JsonPropertyName("email")]
+        // Gmail users.getProfile devuelve el buzón en "emailAddress". Se usa este endpoint (y no el
+        // userinfo de OpenID, que devolvía "email") porque userinfo exige el scope email/openid que NO
+        // pedimos — gmail.readonly, que sí pedimos, ya autoriza users/me/profile. Evita re-consentir.
+        [JsonPropertyName("emailAddress")]
         public string? Email { get; init; }
     }
 }
