@@ -132,7 +132,7 @@ public sealed class GmailApiClient(
             Header("Message-ID"),
             Header("In-Reply-To"),
             references,
-            Header("From") ?? string.Empty,
+            ParseAddress(Header("From")),
             SplitAddresses(Header("To")),
             SplitAddresses(Header("Cc")),
             SplitAddresses(Header("Bcc")),
@@ -530,6 +530,17 @@ public sealed class GmailApiClient(
             return date - DateTimeOffset.UtcNow;
         return null;
     }
+
+    /// <summary>
+    /// El header From de Gmail viene como <c>"Nombre &lt;a@b.com&gt;"</c> — se extrae la dirección pelada
+    /// (igual que Graph, que ya usa <c>EmailAddress.Address</c>) para que Correspondence pueda matchear
+    /// al customer por su email; sin esto el From con nombre nunca matcheaba y el correo entrante se
+    /// descartaba como "sin customer". Si el header no parsea, se devuelve tal cual.
+    /// </summary>
+    private static string ParseAddress(string? headerValue) =>
+        !string.IsNullOrWhiteSpace(headerValue) && MailboxAddress.TryParse(headerValue, out var mailbox)
+            ? mailbox.Address
+            : headerValue ?? string.Empty;
 
     private static IReadOnlyList<string> SplitAddresses(string? headerValue) =>
         string.IsNullOrWhiteSpace(headerValue)

@@ -16,6 +16,20 @@ public sealed class EmailAddressTests
     }
 
     [Theory]
+    // Un From con display name (así lo manda Gmail) debe normalizar a la dirección pelada — si no,
+    // nunca matchea el email del customer en CustomerEmailAddresses y el correo entrante se pierde.
+    [InlineData("Manuel Mena <moquetez671@gmail.com>", "moquetez671@gmail.com")]
+    [InlineData("\"Mena, Manuel\" <MOQUETEZ671@gmail.com>", "moquetez671@gmail.com")]
+    [InlineData("<bare@example.com>", "bare@example.com")]
+    public void Create_extracts_address_from_display_name_header(string raw, string expectedNormalized)
+    {
+        var result = EmailAddress.Create(raw);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedNormalized, result.Value.NormalizedValue);
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("not-an-email")]
