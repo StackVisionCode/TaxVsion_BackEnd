@@ -24,11 +24,22 @@ public sealed record EmailAddress
         if (string.IsNullOrWhiteSpace(raw))
             return Result.Failure<EmailAddress>(new Error("EmailAddress.Required", "Email is required."));
 
-        var trimmed = raw.Trim();
-        if (trimmed.Length > MaxLength || !trimmed.Contains('@') || trimmed.StartsWith('@') || trimmed.EndsWith('@'))
+        // Un remitente puede llegar como header "Nombre <a@b.com>" (así lo manda Gmail); se extrae la
+        // dirección para que el matcheo determinístico contra CustomerEmailAddresses (email pelado)
+        // funcione. Una dirección ya pelada pasa intacta.
+        var address = ExtractAddress(raw.Trim());
+        if (address.Length > MaxLength || !address.Contains('@') || address.StartsWith('@') || address.EndsWith('@'))
             return Result.Failure<EmailAddress>(new Error("EmailAddress.Invalid", "Email is invalid."));
 
-        return Result.Success(new EmailAddress(trimmed, trimmed.ToLowerInvariant()));
+        return Result.Success(new EmailAddress(address, address.ToLowerInvariant()));
+    }
+
+    /// <summary>"Nombre &lt;a@b.com&gt;" → "a@b.com"; una dirección sin ángulos se devuelve tal cual.</summary>
+    private static string ExtractAddress(string raw)
+    {
+        var open = raw.LastIndexOf('<');
+        var close = raw.LastIndexOf('>');
+        return open >= 0 && close > open ? raw[(open + 1)..close].Trim() : raw;
     }
 
     public override string ToString() => Value;
