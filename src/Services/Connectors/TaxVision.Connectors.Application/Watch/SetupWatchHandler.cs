@@ -1,6 +1,8 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Connectors.Application.Accounts;
+using Wolverine;
 
 namespace TaxVision.Connectors.Application.Watch;
 
@@ -19,6 +21,8 @@ public static class SetupWatchHandler
         IProviderWatchSubscriptionRepository subscriptionRepository,
         IWatchProviderClientFactory watchClientFactory,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     ) =>
         WatchActivationService.ActivateAsync(
@@ -28,6 +32,8 @@ public static class SetupWatchHandler
             subscriptionRepository,
             watchClientFactory,
             unitOfWork,
+            bus,
+            correlation,
             ct
         );
 }

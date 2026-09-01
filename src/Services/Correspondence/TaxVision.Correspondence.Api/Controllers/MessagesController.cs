@@ -21,6 +21,30 @@ namespace TaxVision.Correspondence.Api.Controllers;
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class MessagesController(IMessageBus bus) : ControllerBase
 {
+    /// <summary>
+    /// Marca este correo inbound como leído (estado compartido por el tenant). Idempotente — abrir el
+    /// cuerpo ya lo marca leído solo, esto es la acción explícita del menú del mensaje.
+    /// </summary>
+    [HttpPost("{id:guid}/read")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.message_read")]
+    public Task<IActionResult> MarkRead(Guid id, CancellationToken ct) => SetReadState(id, isRead: true, ct);
+
+    /// <summary>Marca este correo inbound como NO leído (estado compartido por el tenant). Idempotente.</summary>
+    [HttpPost("{id:guid}/unread")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.message_read")]
+    public Task<IActionResult> MarkUnread(Guid id, CancellationToken ct) => SetReadState(id, isRead: false, ct);
+
+    private async Task<IActionResult> SetReadState(Guid id, bool isRead, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new SetMessageReadStateCommand(tenantId, id, isRead), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Fase 9 — metadata de UN mensaje, mismo DTO que el listado paginado del hilo. Nunca llama a Connectors (a diferencia de <see cref="GetBody"/>).</summary>
     [HttpGet("{id:guid}")]
     [HasPermission(CorrespondencePermissions.Read)]

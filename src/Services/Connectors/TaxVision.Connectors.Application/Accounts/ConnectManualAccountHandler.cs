@@ -69,6 +69,8 @@ public static class ConnectManualAccountHandler
             ct
         );
 
+        // WatchActivationService publica ConnectorsTenantEmailAccountConnected al activar; acá solo se
+        // audita (antes se publicaba también acá — se quitó para no duplicar el evento).
         var activateResult = await WatchActivationService.ActivateAsync(
             cmd.TenantId,
             account.Id,
@@ -76,12 +78,14 @@ public static class ConnectManualAccountHandler
             watchSubscriptionRepository,
             watchClientFactory,
             unitOfWork,
+            bus,
+            correlation,
             ct
         );
         if (activateResult.IsFailure)
             return Result.Failure<ConnectManualAccountResult>(activateResult.Error);
 
-        await PublishConnectedEventAndAuditAsync(cmd, account, bus, correlation, auditLogRepository, unitOfWork, ct);
+        await RecordConnectionAuditAsync(account, auditLogRepository, unitOfWork, ct);
 
         return Result.Success(new ConnectManualAccountResult(account.Id, account.EmailAddress));
     }
@@ -205,35 +209,19 @@ public static class ConnectManualAccountHandler
         await unitOfWork.SaveChangesAsync(ct);
     }
 
-    private static async Task PublishConnectedEventAndAuditAsync(
-        ConnectManualAccountCommand cmd,
+    private static async Task RecordConnectionAuditAsync(
         TenantEmailAccount account,
-        IMessageBus bus,
-        ICorrelationContext correlation,
         IProviderConnectionAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
-        var now = DateTime.UtcNow;
-        await bus.PublishAsync(
-            new ConnectorsTenantEmailAccountConnectedIntegrationEvent
-            {
-                CorrelationId = correlation.CorrelationId,
-                TenantId = cmd.TenantId,
-                AccountId = account.Id,
-                EmailAddress = account.EmailAddress,
-                ProviderCode = ProviderCode.Imap.ToString(),
-                ConnectedAtUtc = now,
-            }
-        );
-
         var auditResult = ProviderConnectionAuditLog.Create(
             account.Id,
             ProviderConnectionAuditAction.Connect,
             $"Connected {account.EmailAddress} via manual IMAP+SMTP.",
             "Success",
-            now
+            DateTime.UtcNow
         );
         if (auditResult.IsSuccess)
         {

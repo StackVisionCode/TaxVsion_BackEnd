@@ -57,4 +57,26 @@ public interface IIncomingEmailRepository
         Guid emailThreadId,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Cantidad de correos NO leídos por hilo, para los <c>threadIds</c> pedidos (los de una página
+    /// del inbox). Devuelve solo las entradas con conteo &gt; 0 — un hilo ausente del diccionario
+    /// tiene 0 no-leídos. Usa <c>IX_IncomingEmails_TenantId_EmailThreadId_Unread</c> (filtrado).
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, int>> GetUnreadCountsByThreadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// TODOS los correos de un hilo, TRACKED (sin <c>AsNoTracking</c>) — para mutar su estado
+    /// leído/no-leído en bloque (<c>MarkThreadRead/Unread</c>) y persistir. Seguro por lo acotado
+    /// del hilo, mismo criterio que <see cref="ListAllByThreadAsync"/> (que es read-only/no-tracking).
+    /// </summary>
+    Task<IReadOnlyList<IncomingEmail>> ListByThreadForUpdateAsync(
+        Guid tenantId,
+        Guid emailThreadId,
+        CancellationToken ct = default
+    );
 }

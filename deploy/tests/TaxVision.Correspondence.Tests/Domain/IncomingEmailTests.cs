@@ -150,4 +150,72 @@ public sealed class IncomingEmailTests
 
         Assert.Equal(firstFetchedAt, email.BodyFetchedAtUtc);
     }
+
+    private static IncomingEmail NewEmail()
+    {
+        var (tenantId, customerId, emailThreadId, accountId) = ValidIds();
+        return IncomingEmail
+            .Create(
+                tenantId,
+                customerId,
+                emailThreadId,
+                accountId,
+                "gmail",
+                "provider-msg-1",
+                Address("customer@example.com"),
+                null,
+                "Subject",
+                "Snippet",
+                DateTime.UtcNow,
+                hasAttachments: false,
+                attachmentCount: 0
+            )
+            .Value;
+    }
+
+    [Fact]
+    public void New_email_starts_unread()
+    {
+        var email = NewEmail();
+
+        Assert.False(email.IsRead);
+        Assert.Null(email.ReadAtUtc);
+    }
+
+    [Fact]
+    public void MarkRead_sets_read_and_is_idempotent()
+    {
+        var email = NewEmail();
+        var readAt = new DateTime(2026, 9, 1, 12, 0, 0, DateTimeKind.Utc);
+
+        var changed = email.MarkRead(readAt);
+
+        Assert.True(changed);
+        Assert.True(email.IsRead);
+        Assert.Equal(readAt, email.ReadAtUtc);
+
+        // Segundo MarkRead: no-op, no pisa el ReadAtUtc original ni reporta cambio.
+        var changedAgain = email.MarkRead(readAt.AddHours(1));
+
+        Assert.False(changedAgain);
+        Assert.Equal(readAt, email.ReadAtUtc);
+    }
+
+    [Fact]
+    public void MarkUnread_clears_read_and_is_idempotent()
+    {
+        var email = NewEmail();
+        email.MarkRead(DateTime.UtcNow);
+
+        var changed = email.MarkUnread();
+
+        Assert.True(changed);
+        Assert.False(email.IsRead);
+        Assert.Null(email.ReadAtUtc);
+
+        // Segundo MarkUnread sobre un correo ya no-leído: no-op.
+        var changedAgain = email.MarkUnread();
+
+        Assert.False(changedAgain);
+    }
 }

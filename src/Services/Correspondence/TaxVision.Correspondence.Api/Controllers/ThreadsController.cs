@@ -78,6 +78,29 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Marca TODOS los correos inbound del hilo como leídos ("mark all as read"). Idempotente.</summary>
+    [HttpPost("correspondence/threads/{threadId:guid}/read")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.thread_manage")]
+    public Task<IActionResult> MarkAllRead(Guid threadId, CancellationToken ct) =>
+        SetThreadReadState(threadId, isRead: true, ct);
+
+    /// <summary>Marca TODOS los correos inbound del hilo como NO leídos ("all as unread"). Idempotente.</summary>
+    [HttpPost("correspondence/threads/{threadId:guid}/unread")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.thread_manage")]
+    public Task<IActionResult> MarkAllUnread(Guid threadId, CancellationToken ct) =>
+        SetThreadReadState(threadId, isRead: false, ct);
+
+    private async Task<IActionResult> SetThreadReadState(Guid threadId, bool isRead, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new SetThreadReadStateCommand(tenantId, threadId, isRead), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     // Defaults/clamping finales viven en el repositorio (EmailThreadRepository/IncomingEmailRepository,
     // mismo criterio que SignatureRequestReadService); acá solo se evita mandar un page/size
     // negativo o cero explícito desde un query string ausente ([FromQuery] int deja 0 por default).

@@ -68,6 +68,15 @@ public sealed class IncomingEmail : ITenantOwned
     public bool HasAttachments { get; private set; }
     public int AttachmentCount { get; private set; }
 
+    /// <summary>
+    /// Estado leído/no-leído COMPARTIDO por el tenant (no por usuario): si un preparador lo abre,
+    /// queda leído para toda la oficina. Un correo nace no-leído; se marca leído al abrir el cuerpo
+    /// (ver <see cref="MarkRead"/>) o explícitamente desde la UI. Solo aplica a inbound — un draft
+    /// enviado no tiene estado de lectura.
+    /// </summary>
+    public bool IsRead { get; private set; }
+    public DateTime? ReadAtUtc { get; private set; }
+
     public IReadOnlyCollection<IncomingEmailRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<IncomingEmailAttachment> Attachments => _attachments.AsReadOnly();
 
@@ -169,6 +178,28 @@ public sealed class IncomingEmail : ITenantOwned
 
         BodyStatus = BodyStatus.BodyReady;
         BodyFetchedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>Idempotente. Devuelve <c>true</c> solo si cambió el estado (para no recontar/guardar de más).</summary>
+    public bool MarkRead(DateTime nowUtc)
+    {
+        if (IsRead)
+            return false;
+
+        IsRead = true;
+        ReadAtUtc = nowUtc;
+        return true;
+    }
+
+    /// <summary>Idempotente. Devuelve <c>true</c> solo si cambió el estado.</summary>
+    public bool MarkUnread()
+    {
+        if (!IsRead)
+            return false;
+
+        IsRead = false;
+        ReadAtUtc = null;
+        return true;
     }
 
     private static Error? Validate(

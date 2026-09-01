@@ -59,4 +59,25 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
                 .OrderBy(x => x.ReceivedAtUtc)
                 .ToList()
         );
+
+    public Task<IReadOnlyDictionary<Guid, int>> GetUnreadCountsByThreadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> emailThreadIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, int>>(
+            _store
+                .Where(x => x.TenantId == tenantId && !x.IsRead && emailThreadIds.Contains(x.EmailThreadId))
+                .GroupBy(x => x.EmailThreadId)
+                .ToDictionary(g => g.Key, g => g.Count())
+        );
+
+    public Task<IReadOnlyList<IncomingEmail>> ListByThreadForUpdateAsync(
+        Guid tenantId,
+        Guid emailThreadId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<IncomingEmail>>(
+            _store.Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId).ToList()
+        );
 }

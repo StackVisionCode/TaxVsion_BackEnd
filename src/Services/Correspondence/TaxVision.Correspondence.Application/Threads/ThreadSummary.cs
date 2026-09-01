@@ -11,5 +11,7 @@ public sealed record ThreadSummary(
     string Status,
     int MessageCount,
     DateTime FirstMessageAtUtc,
-    DateTime LastMessageAtUtc
+    DateTime LastMessageAtUtc,
+    // Correos inbound no leídos del hilo (estado compartido por el tenant). 0 = todo leído.
+    int UnreadCount
 );

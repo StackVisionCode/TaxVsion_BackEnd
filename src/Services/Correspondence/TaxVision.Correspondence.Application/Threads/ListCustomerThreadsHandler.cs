@@ -17,22 +17,30 @@ public static class ListCustomerThreadsHandler
     public static async Task<PagedResult<ThreadSummary>> Handle(
         ListCustomerThreadsQuery query,
         IEmailThreadRepository emailThreads,
+        IIncomingEmailRepository incomingEmails,
         CancellationToken ct
     )
     {
         var page = await emailThreads.ListByCustomerAsync(query.TenantId, query.CustomerId, query.Page, query.Size, ct);
 
-        var items = page.Items.Select(ToSummary).ToList();
+        // Conteo de no-leídos solo para los hilos de ESTA página (una consulta agregada, no N).
+        var threadIds = page.Items.Select(thread => thread.Id).ToList();
+        var unreadCounts = await incomingEmails.GetUnreadCountsByThreadAsync(query.TenantId, threadIds, ct);
+
+        var items = page
+            .Items.Select(thread => ToSummary(thread, unreadCounts.GetValueOrDefault(thread.Id, 0)))
+            .ToList();
         return new PagedResult<ThreadSummary>(items, page.Page, page.Size, page.TotalCount);
     }
 
-    private static ThreadSummary ToSummary(EmailThread thread) =>
+    private static ThreadSummary ToSummary(EmailThread thread, int unreadCount) =>
         new(
             thread.Id,
             thread.Subject,
             thread.Status.ToString(),
             thread.MessageCount,
             thread.FirstMessageAtUtc,
-            thread.LastMessageAtUtc
+            thread.LastMessageAtUtc,
+            unreadCount
         );
 }
