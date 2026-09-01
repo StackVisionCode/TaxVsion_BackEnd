@@ -83,16 +83,27 @@ public sealed class GmailPushWebhookController(
         if (string.IsNullOrEmpty(envelope.Message?.Data))
             return null;
 
+        string json;
         try
         {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(envelope.Message.Data));
-            return JsonSerializer.Deserialize<GmailPushMessage>(json);
+            json = Encoding.UTF8.GetString(Convert.FromBase64String(envelope.Message.Data));
         }
-        catch (Exception ex) when (ex is FormatException or JsonException)
+        catch (FormatException ex)
         {
-            logger.LogWarning(ex, "Gmail push webhook received an unparseable message payload.");
+            logger.LogWarning(ex, "Gmail push webhook received a non-base64 message payload.");
             return null;
         }
+
+        // Gmail manda historyId como NÚMERO JSON — se parsea vía GmailPushPayloadParser (JsonNode)
+        // para no reventar deserializando un número en un string (antes daba 400 en cada push).
+        var payload = GmailPushPayloadParser.Parse(json);
+        if (payload is null)
+        {
+            logger.LogWarning("Gmail push webhook received an unparseable message payload.");
+            return null;
+        }
+
+        return new GmailPushMessage { EmailAddress = payload.Value.EmailAddress, HistoryId = payload.Value.HistoryId };
     }
 
     public sealed record PubSubPushEnvelope
