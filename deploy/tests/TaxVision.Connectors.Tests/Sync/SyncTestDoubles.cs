@@ -69,6 +69,7 @@ internal sealed class FakeEmailProviderClient(ProviderCode providerCode) : IEmai
                     null,
                     [],
                     "customer@example.com",
+                    null,
                     ["office@gmail.com"],
                     [],
                     [],

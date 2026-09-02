@@ -112,6 +112,7 @@ public sealed class GraphApiClient(
             Header("In-Reply-To"),
             references,
             message.From?.EmailAddress?.Address ?? string.Empty,
+            NullIfBlank(message.From?.EmailAddress?.Name),
             ExtractAddresses(message.ToRecipients),
             ExtractAddresses(message.CcRecipients),
             ExtractAddresses(message.BccRecipients),
@@ -445,6 +446,8 @@ public sealed class GraphApiClient(
         return await httpClient.SendAsync(request, ct);
     }
 
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
     private static IReadOnlyList<string> ExtractAddresses(List<GraphRecipient>? recipients) =>
         (recipients ?? []).Select(r => r.EmailAddress?.Address ?? string.Empty).Where(a => a.Length > 0).ToList();
 
@@ -515,6 +518,9 @@ public sealed class GraphApiClient(
     {
         [JsonPropertyName("address")]
         public string? Address { get; init; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; init; }
     }
 
     private sealed record GraphInternetMessageHeader

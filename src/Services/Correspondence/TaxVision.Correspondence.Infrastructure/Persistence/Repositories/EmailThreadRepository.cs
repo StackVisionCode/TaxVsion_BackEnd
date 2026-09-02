@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 
 namespace TaxVision.Correspondence.Infrastructure.Persistence.Repositories;
@@ -57,10 +58,20 @@ public sealed class EmailThreadRepository(CorrespondenceDbContext db) : IEmailTh
 
         // AsNoTracking: listado de solo lectura para el cliente final, mismo criterio que
         // CustomerReadService.SearchAsync. Usa IX_EmailThreads_TenantId_CustomerId_LastMessageAtUtc.
+        // Se oculta solo el hilo SIN contenido visible: 0 entrantes (todos en papelera) Y 0 enviados vivos.
         var query = db
             .EmailThreads.AsNoTracking()
             .IgnoreQueryFilters()
-            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId);
+            .Where(x =>
+                x.TenantId == tenantId
+                && x.CustomerId == customerId
+                && (
+                    x.MessageCount > 0
+                    || db.Drafts.Any(d =>
+                        d.EmailThreadId == x.Id && d.Status == DraftStatus.Sent && d.DeletedAtUtc == null
+                    )
+                )
+            );
 
         var totalCount = await query.CountAsync(ct);
 

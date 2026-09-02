@@ -19,6 +19,7 @@ public sealed class ArchiveThreadHandlerTests
         var result = await ArchiveThreadHandler.Handle(
             new ArchiveThreadCommand(tenantId, thread.Id),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             unitOfWork,
             CancellationToken.None
         );
@@ -46,6 +47,7 @@ public sealed class ArchiveThreadHandlerTests
         var firstResult = await ArchiveThreadHandler.Handle(
             new ArchiveThreadCommand(tenantId, thread.Id),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             unitOfWork,
             CancellationToken.None
         );
@@ -56,6 +58,7 @@ public sealed class ArchiveThreadHandlerTests
         var secondResult = await ArchiveThreadHandler.Handle(
             new ArchiveThreadCommand(tenantId, thread.Id),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             unitOfWork,
             CancellationToken.None
         );
@@ -76,6 +79,7 @@ public sealed class ArchiveThreadHandlerTests
         var result = await ArchiveThreadHandler.Handle(
             new ArchiveThreadCommand(Guid.NewGuid(), Guid.NewGuid()),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             unitOfWork,
             CancellationToken.None
         );
@@ -96,6 +100,7 @@ public sealed class ArchiveThreadHandlerTests
         var result = await ArchiveThreadHandler.Handle(
             new ArchiveThreadCommand(Guid.NewGuid(), thread.Id),
             emailThreads,
+            new FakeIncomingEmailRepository(),
             unitOfWork,
             CancellationToken.None
         );

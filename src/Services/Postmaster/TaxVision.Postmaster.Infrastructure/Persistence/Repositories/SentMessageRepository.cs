@@ -10,6 +10,8 @@ public sealed class SentMessageRepository(PostmasterDbContext dbContext) : ISent
     public async Task AddAsync(SentMessage message, CancellationToken ct = default) =>
         await dbContext.SentMessages.AddAsync(message, ct);
 
+    public void Remove(SentMessage message) => dbContext.SentMessages.Remove(message);
+
     public async Task<Result<SentMessage>> GetByIdWithEventsAsync(
         Guid tenantId,
         Guid id,

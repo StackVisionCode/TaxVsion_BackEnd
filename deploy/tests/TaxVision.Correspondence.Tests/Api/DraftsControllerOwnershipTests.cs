@@ -169,7 +169,8 @@ public sealed class DraftsControllerOwnershipTests
             bus,
             repo,
             authorizationService,
-            new FakeOwnershipOptionsMonitor(flagEnabled)
+            new FakeOwnershipOptionsMonitor(flagEnabled),
+            new Projections.FakeCorrelationContext()
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },

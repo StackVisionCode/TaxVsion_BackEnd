@@ -60,6 +60,11 @@ public static class GetAttachmentDownloadUrlHandler
                 new Error("IncomingEmailAttachment.NotFound", "The attachment was not found on this message.")
             );
 
+        if (attachment.DownloadStatus == AttachmentDownloadStatus.Blocked)
+            return Result.Failure<IncomingEmailAttachment>(
+                new Error("IncomingEmailAttachment.Blocked", "This attachment was blocked by the security scan.")
+            );
+
         return attachment.DownloadStatus != AttachmentDownloadStatus.Downloaded
             ? Result.Failure<IncomingEmailAttachment>(
                 new Error(

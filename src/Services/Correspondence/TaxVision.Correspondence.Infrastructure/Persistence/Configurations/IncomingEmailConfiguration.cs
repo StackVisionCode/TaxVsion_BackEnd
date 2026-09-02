@@ -36,6 +36,20 @@ internal sealed class IncomingEmailConfiguration : IEntityTypeConfiguration<Inco
         builder.Property(x => x.IsRead).IsRequired();
         builder.Property(x => x.ReadAtUtc);
 
+        // Veredicto derivado, no se persiste.
+        builder.Ignore(x => x.SenderTrust);
+
+        // SPF/DKIM/DMARC en 3 columnas (owned value object).
+        builder.OwnsOne(
+            x => x.Authentication,
+            auth =>
+            {
+                auth.Property(a => a.Spf).HasConversion<string>().HasMaxLength(16).HasColumnName("AuthSpf");
+                auth.Property(a => a.Dkim).HasConversion<string>().HasMaxLength(16).HasColumnName("AuthDkim");
+                auth.Property(a => a.Dmarc).HasConversion<string>().HasMaxLength(16).HasColumnName("AuthDmarc");
+            }
+        );
+
         // Dedup de Fase 4: un mismo InternetMessageId no puede persistirse dos veces para el
         // mismo tenant. Filtrado porque el campo es nullable (no todos los proveedores lo mandan).
         builder

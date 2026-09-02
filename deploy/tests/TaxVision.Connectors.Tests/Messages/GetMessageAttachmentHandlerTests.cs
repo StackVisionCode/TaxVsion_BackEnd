@@ -31,6 +31,7 @@ public class GetMessageAttachmentHandlerTests
             null,
             [],
             "customer@example.com",
+            null,
             ["office@gmail.com"],
             [],
             [],
@@ -58,7 +59,7 @@ public class GetMessageAttachmentHandlerTests
         var rateLimiter = new FakeAttachmentRateLimiter();
 
         var result = await GetMessageAttachmentHandler.Handle(
-            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att1"),
+            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att1", "doc.pdf", 2048, null),
             accountRepository,
             new FakeEmailProviderClientFactory(client),
             rateLimiter,
@@ -85,6 +86,78 @@ public class GetMessageAttachmentHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WhenGmailRotatedTheAttachmentId_MatchesByFilenameAndFetchesWithFreshId()
+    {
+        var account = CreateActiveAccount();
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+
+        // El mensaje fresco trae el attachmentId ROTADO (Gmail lo cambió desde la ingesta); el caller
+        // aún manda el viejo ("att-STALE"). El match debe salir por (filename, size).
+        var fresh = new RawMessageAttachment("att-FRESH-rotated", "doc.pdf", "application/pdf", 2048);
+        string? fetchedWithId = null;
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            OnGetMessage = (_, msgId) => MessageWithAttachment(msgId, fresh),
+            OnGetAttachment = (_, _, attachmentId) =>
+            {
+                fetchedWithId = attachmentId;
+                return [9, 9, 9];
+            },
+        };
+
+        var result = await GetMessageAttachmentHandler.Handle(
+            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att-STALE", "doc.pdf", 2048, null),
+            accountRepository,
+            new FakeEmailProviderClientFactory(client),
+            new FakeAttachmentRateLimiter(),
+            new FakeProviderConnectionAuditLogRepository(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        // Los bytes se piden con el id FRESCO del fetch, no con el viejo del caller (que daría 404).
+        Assert.Equal("att-FRESH-rotated", fetchedWithId);
+    }
+
+    [Fact]
+    public async Task Handle_MatchesByPartId_EvenWhenFilenameAndSizeDoNotMatch()
+    {
+        var account = CreateActiveAccount();
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+
+        // partId es el selector PRIMARIO: aunque filename/size del caller no coincidan (attachmentId
+        // rotado + parte re-descrita), el partId estable ubica la parte correcta y baja con su id fresco.
+        var fresh = new RawMessageAttachment("att-FRESH", "real.pdf", "application/pdf", 2048, "1.2");
+        string? fetchedWithId = null;
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            OnGetMessage = (_, msgId) => MessageWithAttachment(msgId, fresh),
+            OnGetAttachment = (_, _, attachmentId) =>
+            {
+                fetchedWithId = attachmentId;
+                return [7, 7];
+            },
+        };
+
+        var result = await GetMessageAttachmentHandler.Handle(
+            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att-STALE", "stale-name.pdf", 999, "1.2"),
+            accountRepository,
+            new FakeEmailProviderClientFactory(client),
+            new FakeAttachmentRateLimiter(),
+            new FakeProviderConnectionAuditLogRepository(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("att-FRESH", fetchedWithId);
+        Assert.Equal("real.pdf", result.Value.Filename);
+    }
+
+    [Fact]
     public async Task Handle_WithUnknownAttachmentId_ReturnsAttachmentNotFound()
     {
         var account = CreateActiveAccount();
@@ -99,7 +172,7 @@ public class GetMessageAttachmentHandlerTests
         var auditRepository = new FakeProviderConnectionAuditLogRepository();
 
         var result = await GetMessageAttachmentHandler.Handle(
-            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att-does-not-exist"),
+            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att-does-not-exist", "ghost.pdf", 999, null),
             accountRepository,
             new FakeEmailProviderClientFactory(client),
             new FakeAttachmentRateLimiter(),
@@ -122,7 +195,7 @@ public class GetMessageAttachmentHandlerTests
         accountRepository.Accounts.Add(account);
 
         var result = await GetMessageAttachmentHandler.Handle(
-            new GetMessageAttachmentQuery(Guid.NewGuid(), account.Id, "msg1", "att1"),
+            new GetMessageAttachmentQuery(Guid.NewGuid(), account.Id, "msg1", "att1", "doc.pdf", 2048, null),
             accountRepository,
             new FakeEmailProviderClientFactory(new FakeEmailProviderClient(ProviderCode.Gmail)),
             new FakeAttachmentRateLimiter(),
@@ -145,7 +218,7 @@ public class GetMessageAttachmentHandlerTests
         var rateLimiter = new FakeAttachmentRateLimiter { AllowNext = false };
 
         var result = await GetMessageAttachmentHandler.Handle(
-            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att1"),
+            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att1", "doc.pdf", 2048, null),
             accountRepository,
             new FakeEmailProviderClientFactory(client),
             rateLimiter,
@@ -169,7 +242,7 @@ public class GetMessageAttachmentHandlerTests
         var auditRepository = new FakeProviderConnectionAuditLogRepository();
 
         var result = await GetMessageAttachmentHandler.Handle(
-            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att1"),
+            new GetMessageAttachmentQuery(TenantId, account.Id, "msg1", "att1", "doc.pdf", 2048, null),
             accountRepository,
             new FakeEmailProviderClientFactory(client),
             new FakeAttachmentRateLimiter(),

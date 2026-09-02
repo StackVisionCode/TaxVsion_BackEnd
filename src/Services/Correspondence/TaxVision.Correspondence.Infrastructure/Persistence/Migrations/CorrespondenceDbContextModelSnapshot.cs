@@ -99,6 +99,9 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("EmailThreadId")
                         .HasColumnType("uniqueidentifier");
 
@@ -264,6 +267,9 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("EmailThreadId")
                         .HasColumnType("uniqueidentifier");
 
@@ -380,10 +386,13 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsInline")
                         .HasColumnType("bit");
 
+                    b.Property<string>("PartId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("ProviderAttachmentId")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
@@ -640,6 +649,43 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .WithMany("Recipients")
                         .HasForeignKey("DraftId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Correspondence.Domain.Inbox.IncomingEmail", b =>
+                {
+                    b.OwnsOne("TaxVision.Correspondence.Domain.Inbox.SenderAuthentication", "Authentication", b1 =>
+                        {
+                            b1.Property<Guid>("IncomingEmailId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Dkim")
+                                .IsRequired()
+                                .HasMaxLength(16)
+                                .HasColumnType("nvarchar(16)")
+                                .HasColumnName("AuthDkim");
+
+                            b1.Property<string>("Dmarc")
+                                .IsRequired()
+                                .HasMaxLength(16)
+                                .HasColumnType("nvarchar(16)")
+                                .HasColumnName("AuthDmarc");
+
+                            b1.Property<string>("Spf")
+                                .IsRequired()
+                                .HasMaxLength(16)
+                                .HasColumnType("nvarchar(16)")
+                                .HasColumnName("AuthSpf");
+
+                            b1.HasKey("IncomingEmailId");
+
+                            b1.ToTable("IncomingEmails");
+
+                            b1.WithOwner()
+                                .HasForeignKey("IncomingEmailId");
+                        });
+
+                    b.Navigation("Authentication")
                         .IsRequired();
                 });
 

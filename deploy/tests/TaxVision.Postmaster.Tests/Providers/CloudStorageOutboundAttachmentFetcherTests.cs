@@ -106,6 +106,66 @@ public sealed class CloudStorageOutboundAttachmentFetcherTests
         Assert.Equal(fileBytes, fetched.Content);
     }
 
+    /// <summary>
+    /// El adjunto se sube justo antes de enviar y CloudStorage lo escanea async: download-url responde
+    /// 403 (NotAvailable) hasta que el scan lo marca Available. El fetcher reintenta acotadamente en vez
+    /// de fallar el envío por esa carrera — antes, el 403 tumbaba el envío con 502.
+    /// </summary>
+    [Fact]
+    public async Task FetchAllAsync_WhenScanStillPending_RetriesThe403ThenSucceeds()
+    {
+        var handler = new QueuedHandler();
+        var fileId = Guid.NewGuid();
+        // download-url #1: aún escaneando.
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.Forbidden));
+        // download-url #2: ya Available.
+        handler.Enqueue(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"fileId":"{{fileId}}","downloadUrl":"http://localhost:5210/presigned","expiresAtUtc":"2026-07-18T00:00:00Z"}"""
+                ),
+            }
+        );
+        var fileBytes = Encoding.UTF8.GetBytes("%PDF-1.4 fake");
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(fileBytes) });
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5210/") };
+        var fetcher = new CloudStorageOutboundAttachmentFetcher(
+            httpClient,
+            new FakeTokenAcquirer(),
+            NullLogger<CloudStorageOutboundAttachmentFetcher>.Instance,
+            scanRetryDelay: TimeSpan.Zero
+        );
+        var attachment = OutboundAttachmentRef.Create(fileId, "invoice.pdf", "application/pdf", fileBytes.Length).Value;
+
+        var result = await fetcher.FetchAllAsync(Guid.NewGuid(), [attachment], CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(fileBytes, Assert.Single(result.Value).Content);
+    }
+
+    /// <summary>Si el archivo nunca pasa a Available (403 persistente), el envío falla limpio tras agotar el presupuesto — no cuelga ni sube un 500.</summary>
+    [Fact]
+    public async Task FetchAllAsync_WhenScanNeverCompletes_FailsCleanAfterBudget()
+    {
+        var handler = new QueuedHandler();
+        for (var i = 0; i < 10; i++)
+            handler.Enqueue(new HttpResponseMessage(HttpStatusCode.Forbidden));
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5210/") };
+        var fetcher = new CloudStorageOutboundAttachmentFetcher(
+            httpClient,
+            new FakeTokenAcquirer(),
+            NullLogger<CloudStorageOutboundAttachmentFetcher>.Instance,
+            scanRetryDelay: TimeSpan.Zero
+        );
+        var attachment = OutboundAttachmentRef.Create(Guid.NewGuid(), "invoice.pdf", "application/pdf", 2048).Value;
+
+        var result = await fetcher.FetchAllAsync(Guid.NewGuid(), [attachment], CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("OutboundAttachmentFetcher.Download", result.Error.Code);
+    }
+
     [Fact]
     public async Task FetchAllAsync_AcceptsAnAttachmentLargerThan5MB_NoDomainLevelCapLikeInlineAssets()
     {

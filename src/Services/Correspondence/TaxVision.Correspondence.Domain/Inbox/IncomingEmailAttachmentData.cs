@@ -12,5 +12,8 @@ public sealed record IncomingEmailAttachmentData(
     string ContentType,
     long SizeBytes,
     string ProviderAttachmentId,
-    bool IsInline
+    bool IsInline,
+    // Id de la parte MIME (Gmail: "1", "1.2"), estable entre fetches — selector preferido para
+    // descargar. Null en proveedores que no lo exponen.
+    string? PartId = null
 );

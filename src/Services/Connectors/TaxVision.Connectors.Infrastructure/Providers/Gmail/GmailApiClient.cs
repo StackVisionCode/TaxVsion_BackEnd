@@ -39,19 +39,6 @@ public sealed class GmailApiClient(
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private static readonly string[] MetadataHeaders =
-    [
-        "From",
-        "To",
-        "Cc",
-        "Bcc",
-        "Subject",
-        "Message-ID",
-        "In-Reply-To",
-        "References",
-        "Authentication-Results",
-    ];
-
     public ProviderCode ProviderCode => ProviderCode.Gmail;
 
     public async Task<HistoryPage> GetHistoryAsync(
@@ -104,23 +91,21 @@ public sealed class GmailApiClient(
         CancellationToken ct = default
     )
     {
-        var headerQuery = string.Join("&", MetadataHeaders.Select(h => $"metadataHeaders={Uri.EscapeDataString(h)}"));
-        var url = $"{BaseUrl}/messages/{providerMessageId}?format=metadata&{headerQuery}";
-        var payload = await SendAsync<GmailMessageResponse>(accountId, tenantId, url, ct);
+        // format=full (no metadata): con metadata las partes NO traen attachmentId, así que los
+        // adjuntos no se detectaban (HasAttachments quedaba false y el correo entraba sin adjunto).
+        // Con full sí vienen las partes con attachmentId — los BYTES siguen sin descargarse (van
+        // aparte por GetAttachmentAsync), respetando la regla dura de "nunca bytes proactivos".
+        var url = $"{BaseUrl}/messages/{providerMessageId}?format=full";
+        var payload = await SendAsync<GmailFullMessageResponse>(accountId, tenantId, url, ct);
 
         var headers = payload.Payload?.Headers ?? [];
         string? Header(string name) =>
             headers.FirstOrDefault(h => string.Equals(h.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
 
-        var attachments = (payload.Payload?.Parts ?? [])
-            .Where(p => !string.IsNullOrEmpty(p.Filename) && p.Body?.AttachmentId is not null)
-            .Select(p => new RawMessageAttachment(
-                p.Body!.AttachmentId!,
-                p.Filename!,
-                p.MimeType ?? "application/octet-stream",
-                p.Body.Size
-            ))
-            .ToList();
+        // Recursivo: un adjunto suele venir anidado (multipart/mixed → multipart/alternative + parte-adjunto).
+        var attachments = new List<RawMessageAttachment>();
+        if (payload.Payload is not null)
+            CollectAttachments(payload.Payload, attachments);
 
         var references = (Header("References") ?? string.Empty)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -133,6 +118,7 @@ public sealed class GmailApiClient(
             Header("In-Reply-To"),
             references,
             ParseAddress(Header("From")),
+            ParseDisplayName(Header("From")),
             SplitAddresses(Header("To")),
             SplitAddresses(Header("Cc")),
             SplitAddresses(Header("Bcc")),
@@ -170,6 +156,24 @@ public sealed class GmailApiClient(
             headers,
             accumulator.Attachments
         );
+    }
+
+    /// <summary>Camina el árbol MIME juntando SOLO metadata de adjuntos (nombre/id/tipo/tamaño), nunca bytes.</summary>
+    private static void CollectAttachments(GmailFullMessagePayload part, List<RawMessageAttachment> attachments)
+    {
+        if (!string.IsNullOrEmpty(part.Filename) && part.Body?.AttachmentId is not null)
+            attachments.Add(
+                new RawMessageAttachment(
+                    part.Body!.AttachmentId!,
+                    part.Filename!,
+                    part.MimeType ?? "application/octet-stream",
+                    part.Body.Size,
+                    part.PartId
+                )
+            );
+
+        foreach (var child in part.Parts ?? [])
+            CollectAttachments(child, attachments);
     }
 
     private static void WalkParts(GmailFullMessagePayload part, BodyAccumulator accumulator)
@@ -542,6 +546,14 @@ public sealed class GmailApiClient(
             ? mailbox.Address
             : headerValue ?? string.Empty;
 
+    /// <summary>Nombre para mostrar del header (ej. "Manuel Mena" en `Manuel Mena &lt;a@b.com&gt;`). Null si viene pelado.</summary>
+    private static string? ParseDisplayName(string? headerValue) =>
+        !string.IsNullOrWhiteSpace(headerValue)
+        && MailboxAddress.TryParse(headerValue, out var mailbox)
+        && !string.IsNullOrWhiteSpace(mailbox.Name)
+            ? mailbox.Name
+            : null;
+
     private static IReadOnlyList<string> SplitAddresses(string? headerValue) =>
         string.IsNullOrWhiteSpace(headerValue)
             ? []
@@ -591,33 +603,6 @@ public sealed class GmailApiClient(
         public List<string>? LabelIds { get; init; }
     }
 
-    private sealed record GmailMessageResponse
-    {
-        [JsonPropertyName("id")]
-        public string Id { get; init; } = string.Empty;
-
-        [JsonPropertyName("threadId")]
-        public string? ThreadId { get; init; }
-
-        [JsonPropertyName("snippet")]
-        public string? Snippet { get; init; }
-
-        [JsonPropertyName("internalDate")]
-        public string? InternalDate { get; init; }
-
-        [JsonPropertyName("payload")]
-        public GmailMessagePayload? Payload { get; init; }
-    }
-
-    private sealed record GmailMessagePayload
-    {
-        [JsonPropertyName("headers")]
-        public List<GmailHeader>? Headers { get; init; }
-
-        [JsonPropertyName("parts")]
-        public List<GmailMessagePart>? Parts { get; init; }
-    }
-
     private sealed record GmailHeader
     {
         [JsonPropertyName("name")]
@@ -625,27 +610,6 @@ public sealed class GmailApiClient(
 
         [JsonPropertyName("value")]
         public string Value { get; init; } = string.Empty;
-    }
-
-    private sealed record GmailMessagePart
-    {
-        [JsonPropertyName("filename")]
-        public string? Filename { get; init; }
-
-        [JsonPropertyName("mimeType")]
-        public string? MimeType { get; init; }
-
-        [JsonPropertyName("body")]
-        public GmailMessagePartBody? Body { get; init; }
-    }
-
-    private sealed record GmailMessagePartBody
-    {
-        [JsonPropertyName("attachmentId")]
-        public string? AttachmentId { get; init; }
-
-        [JsonPropertyName("size")]
-        public long Size { get; init; }
     }
 
     private sealed record GmailAttachmentResponse
@@ -659,6 +623,18 @@ public sealed class GmailApiClient(
 
     private sealed record GmailFullMessageResponse
     {
+        [JsonPropertyName("id")]
+        public string Id { get; init; } = string.Empty;
+
+        [JsonPropertyName("threadId")]
+        public string? ThreadId { get; init; }
+
+        [JsonPropertyName("snippet")]
+        public string? Snippet { get; init; }
+
+        [JsonPropertyName("internalDate")]
+        public string? InternalDate { get; init; }
+
         [JsonPropertyName("sizeEstimate")]
         public long SizeEstimate { get; init; }
 
@@ -669,6 +645,9 @@ public sealed class GmailApiClient(
     /// <summary>Auto-referenciado: <c>Parts</c> puede anidar multipart/alternative dentro de multipart/mixed arbitrariamente.</summary>
     private sealed record GmailFullMessagePayload
     {
+        [JsonPropertyName("partId")]
+        public string? PartId { get; init; }
+
         [JsonPropertyName("mimeType")]
         public string? MimeType { get; init; }
 

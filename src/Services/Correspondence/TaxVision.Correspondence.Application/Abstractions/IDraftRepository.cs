@@ -55,6 +55,20 @@ public interface IDraftRepository
     Task<IReadOnlyList<Draft>> ListSentByThreadAsync(Guid tenantId, Guid emailThreadId, CancellationToken ct = default);
 
     /// <summary>
+    /// Carpeta "Sent" del cliente final: drafts <see cref="DraftStatus.Sent"/> de un customer,
+    /// más reciente primero (<c>UpdatedAtUtc DESC</c> = instante de envío, ver <c>Draft.MarkSent</c>).
+    /// Incluye <c>Recipients</c> para mostrar el "Para". Mismo criterio que
+    /// <see cref="ListOpenByCustomerAsync"/> pero filtrando por Sent en vez de Draft.
+    /// </summary>
+    Task<PagedResult<Draft>> ListSentByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// Fase 16 — candidatos a <c>DraftCleanupJob</c> (plan §30): drafts <see cref="DraftStatus.Draft"/>
     /// (nunca enviados ni descartados) cuyo <c>UpdatedAtUtc</c> es anterior a
     /// <paramref name="updatedBeforeUtc"/>, más viejo primero, acotado a <paramref name="limit"/>
@@ -65,4 +79,16 @@ public interface IDraftRepository
     /// <see cref="Draft.Discard"/> sobre cada una. Usa <c>IX_Drafts_Status_UpdatedAtUtc</c>.
     /// </summary>
     Task<IReadOnlyList<Draft>> ListAbandonedAsync(DateTime updatedBeforeUtc, int limit, CancellationToken ct = default);
+
+    // Papelera: enviados borrados de un customer, más reciente primero.
+    Task<PagedResult<Draft>> ListTrashedSentByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    );
+
+    // Borrado permanente (solo desde la papelera).
+    void Remove(Draft entity);
 }

@@ -223,6 +223,7 @@ public sealed class ImapClient(
                     summary.Envelope?.InReplyTo,
                     (summary.References ?? []).ToList(),
                     ExtractMailbox(summary.Envelope?.From),
+                    ExtractMailboxName(summary.Envelope?.From),
                     ExtractAddresses(summary.Envelope?.To),
                     ExtractAddresses(summary.Envelope?.Cc),
                     ExtractAddresses(summary.Envelope?.Bcc),
@@ -432,6 +433,12 @@ public sealed class ImapClient(
 
     private static string ExtractMailbox(MimeKit.InternetAddressList? addresses) =>
         addresses?.Mailboxes.FirstOrDefault()?.Address ?? string.Empty;
+
+    private static string? ExtractMailboxName(MimeKit.InternetAddressList? addresses)
+    {
+        var name = addresses?.Mailboxes.FirstOrDefault()?.Name;
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
 
     private static IReadOnlyList<string> ExtractAddresses(MimeKit.InternetAddressList? addresses) =>
         (addresses?.Mailboxes ?? []).Select(m => m.Address).ToList();

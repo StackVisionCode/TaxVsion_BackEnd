@@ -36,6 +36,11 @@ public static class DownloadAttachmentHandler
             return Result.Failure<DownloadAttachmentResult>(loadResult.Error);
         var (email, attachment) = loadResult.Value;
 
+        if (attachment.DownloadStatus == AttachmentDownloadStatus.Blocked)
+            return Result.Failure<DownloadAttachmentResult>(
+                new Error("IncomingEmailAttachment.Blocked", "This attachment was blocked by the security scan.")
+            );
+
         if (attachment.DownloadStatus == AttachmentDownloadStatus.Downloaded)
             return Result.Success(ToResult(attachment));
 
@@ -119,6 +124,9 @@ public static class DownloadAttachmentHandler
             email.AccountId,
             email.ProviderMessageId,
             attachment.ProviderAttachmentId,
+            attachment.Filename,
+            attachment.SizeBytes,
+            attachment.PartId,
             ct
         );
 

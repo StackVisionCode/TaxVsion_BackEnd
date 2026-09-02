@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -53,6 +54,18 @@ internal sealed class CloudStorageClient(
             using var response = await httpClient.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode)
             {
+                // El archivo recién copiado a CloudStorage puede seguir escaneándose: responde 403
+                // File.NotAvailable hasta pasar a Available. Eso NO es terminal — se traduce a NotReady
+                // (409) para que el front reintente su polling, igual que cuando el attachment aún no
+                // está Downloaded. Un 403 con otro código (ej. Forbidden real) sí se propaga como fallo.
+                if (response.StatusCode == HttpStatusCode.Forbidden && await IsScanPendingAsync(response, ct))
+                    return Result.Failure<CloudStorageDownloadUrl>(
+                        new Error(
+                            "IncomingEmailAttachment.NotReady",
+                            "The attachment is still being scanned by CloudStorage."
+                        )
+                    );
+
                 logger.LogWarning("CloudStorage download-url call failed ({Status}).", (int)response.StatusCode);
                 return Result.Failure<CloudStorageDownloadUrl>(
                     new Error(
@@ -130,7 +143,23 @@ internal sealed class CloudStorageClient(
         }
     }
 
+    /// <summary>Un 403 de CloudStorage es "aún escaneando" (retryable) solo si el body trae File.NotAvailable.</summary>
+    private static async Task<bool> IsScanPendingAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var error = await response.Content.ReadFromJsonAsync<ErrorResponseDto>(Json, ct);
+            return string.Equals(error?.Code, "File.NotAvailable", StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 
     private sealed record FileMetadataResponseDto(Guid Id, string DeclaredContentType, long SizeBytes);
+
+    private sealed record ErrorResponseDto(string? Code, string? Message);
 }

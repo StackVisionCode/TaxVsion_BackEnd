@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -18,7 +19,8 @@ namespace TaxVision.Postmaster.Infrastructure.Providers.Assets;
 public sealed class CloudStorageOutboundAttachmentFetcher(
     HttpClient httpClient,
     IPostmasterServiceTokenAcquirer tokenAcquirer,
-    ILogger<CloudStorageOutboundAttachmentFetcher> logger
+    ILogger<CloudStorageOutboundAttachmentFetcher> logger,
+    TimeSpan? scanRetryDelay = null
 ) : IOutboundAttachmentFetcher
 {
     private static readonly JsonSerializerOptions Json = new()
@@ -27,6 +29,12 @@ public sealed class CloudStorageOutboundAttachmentFetcher(
         PropertyNameCaseInsensitive = true,
         Converters = { new JsonStringEnumConverter() },
     };
+
+    // El adjunto se sube justo antes de enviar y CloudStorage lo escanea async: hasta que el scan lo
+    // marca Available, download-url responde 403 (NotAvailable). El adjunto NO debe salir sin escanear,
+    // así que se espera con reintentos acotados la carrera upload→scan en vez de fallar el envío.
+    private const int DownloadUrlMaxAttempts = 6;
+    private readonly TimeSpan _scanRetryDelay = scanRetryDelay ?? TimeSpan.FromMilliseconds(500);
 
     public async Task<Result<IReadOnlyList<OutboundAttachmentBytes>>> FetchAllAsync(
         Guid tenantId,
@@ -91,32 +99,59 @@ public sealed class CloudStorageOutboundAttachmentFetcher(
     /// </summary>
     private async Task<Result<Uri>> FetchDownloadUrlAsync(Guid fileId, string token, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{fileId}/download-url");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        try
+        for (var attempt = 1; attempt <= DownloadUrlMaxAttempts; attempt++)
         {
-            using var response = await httpClient.SendAsync(request, ct);
-            if (!response.IsSuccessStatusCode)
+            try
             {
-                logger.LogWarning("CloudStorage download-url call failed ({Status}).", (int)response.StatusCode);
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{fileId}/download-url");
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                using var response = await httpClient.SendAsync(request, ct);
+
+                // 403 = archivo aún no Available (escaneo en curso justo tras subirlo): esperar y reintentar.
+                if (response.StatusCode == HttpStatusCode.Forbidden && attempt < DownloadUrlMaxAttempts)
+                {
+                    await Task.Delay(_scanRetryDelay, ct);
+                    continue;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    logger.LogWarning(
+                        "CloudStorage download-url call failed ({Status}) for file {FileId} after {Attempts} attempt(s).",
+                        (int)response.StatusCode,
+                        fileId,
+                        attempt
+                    );
+                    return Result.Failure<Uri>(
+                        new Error("OutboundAttachmentFetcher.Download", "download-url request failed.")
+                    );
+                }
+
+                var payload = await response.Content.ReadFromJsonAsync<DownloadUrlResponseDto>(Json, ct);
+                return payload is null
+                    ? Result.Failure<Uri>(
+                        new Error("OutboundAttachmentFetcher.Download", "Empty response from download-url.")
+                    )
+                    : Result.Success(payload.DownloadUrl);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                logger.LogWarning(ex, "CloudStorage download-url call errored for file {FileId}.", fileId);
                 return Result.Failure<Uri>(
                     new Error("OutboundAttachmentFetcher.Download", "download-url request failed.")
                 );
             }
+        }
 
-            var payload = await response.Content.ReadFromJsonAsync<DownloadUrlResponseDto>(Json, ct);
-            return payload is null
-                ? Result.Failure<Uri>(
-                    new Error("OutboundAttachmentFetcher.Download", "Empty response from download-url.")
-                )
-                : Result.Success(payload.DownloadUrl);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            logger.LogWarning(ex, "CloudStorage download-url call errored for file {FileId}.", fileId);
-            return Result.Failure<Uri>(new Error("OutboundAttachmentFetcher.Download", "download-url request failed."));
-        }
+        // Presupuesto agotado: el archivo sigue sin pasar el escaneo.
+        logger.LogWarning(
+            "CloudStorage download-url still NotAvailable for file {FileId} after {Attempts} attempts.",
+            fileId,
+            DownloadUrlMaxAttempts
+        );
+        return Result.Failure<Uri>(
+            new Error("OutboundAttachmentFetcher.Download", "Attachment is still being scanned; try again in a moment.")
+        );
     }
 
     private async Task<Result<byte[]>> FetchBytesAsync(Uri url, CancellationToken ct)

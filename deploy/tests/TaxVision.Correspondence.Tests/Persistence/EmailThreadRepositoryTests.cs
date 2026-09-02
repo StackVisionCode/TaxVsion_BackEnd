@@ -1,7 +1,9 @@
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
+using TaxVision.Correspondence.Domain.ValueObjects;
 using TaxVision.Correspondence.Infrastructure.Persistence;
 using TaxVision.Correspondence.Infrastructure.Persistence.Repositories;
 
@@ -63,6 +65,62 @@ public sealed class EmailThreadRepositoryTests
         Assert.Equal([threads[4].Id, threads[3].Id], page1.Items.Select(x => x.Id));
         Assert.Equal([threads[2].Id, threads[1].Id], page2.Items.Select(x => x.Id));
         Assert.Equal([threads[0].Id], page3.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task ListByCustomerAsync_ExcludesThreadsWithNoVisibleMessages()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new EmailThreadRepository(db);
+        var customerId = Guid.NewGuid();
+
+        var visible = EmailThread.NewFromMessage(tenantId, customerId, "Visible", null, DateTime.UtcNow).Value;
+        var empty = EmailThread.NewFromMessage(tenantId, customerId, "Empty", null, DateTime.UtcNow).Value;
+        empty.DecrementMessageCount(); // todos sus entrantes a la papelera → MessageCount 0
+        await repository.AddAsync(visible);
+        await repository.AddAsync(empty);
+        await db.SaveChangesAsync();
+
+        var result = await repository.ListByCustomerAsync(tenantId, customerId, 1, 20);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(visible.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task ListByCustomerAsync_KeepsAThreadThatHasSentButNoIncoming()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        await using var db = CreateContext(tenantContext);
+        var repository = new EmailThreadRepository(db);
+        var customerId = Guid.NewGuid();
+
+        var thread = EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, DateTime.UtcNow).Value;
+        thread.DecrementMessageCount(); // entrante a la papelera → MessageCount 0
+        await repository.AddAsync(thread);
+
+        // Un enviado vivo en ese hilo lo mantiene visible.
+        var reply = ReplyContext.Create(Guid.NewGuid(), thread.Id, null, null, null).Value;
+        var draft = Draft.CreateReply(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid(), reply, "Original").Value;
+        draft.AutoSave(
+            "Re",
+            "<p>x</p>",
+            "x",
+            [new DraftRecipientData(EmailAddress.Create("a@b.com").Value, EmailRecipientType.To, null)]
+        );
+        draft.MarkSending();
+        draft.MarkSent(Guid.NewGuid());
+        db.Drafts.Add(draft);
+        await db.SaveChangesAsync();
+
+        var result = await repository.ListByCustomerAsync(tenantId, customerId, 1, 20);
+
+        Assert.Equal(thread.Id, Assert.Single(result.Items).Id);
     }
 
     [Fact]

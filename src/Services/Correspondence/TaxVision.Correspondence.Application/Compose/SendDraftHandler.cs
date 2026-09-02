@@ -263,7 +263,9 @@ public static class SendDraftHandler
             "Draft",
             command.DraftId,
             command.ActorId,
-            correlation.CorrelationId,
+            // La correlación viaja en el command (la puso el controller): el ICorrelationContext del
+            // scope de Wolverine viene vacío, y sin ella el audit se descartaba por validación.
+            command.CorrelationId,
             detail
         );
         if (auditResult.IsFailure)

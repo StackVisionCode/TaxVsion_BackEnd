@@ -18,10 +18,13 @@ internal sealed class IncomingEmailAttachmentConfiguration : IEntityTypeConfigur
         builder.Property(x => x.Filename).IsRequired().HasMaxLength(IncomingEmailAttachment.FilenameMaxLength);
         builder.Property(x => x.ContentType).IsRequired().HasMaxLength(IncomingEmailAttachment.ContentTypeMaxLength);
         builder.Property(x => x.SizeBytes).IsRequired();
-        builder
-            .Property(x => x.ProviderAttachmentId)
-            .IsRequired()
-            .HasMaxLength(IncomingEmailAttachment.ProviderAttachmentIdMaxLength);
+        // nvarchar(max), sin tope: el attachmentId de Gmail es un token opaco largo (>200 chars) y
+        // sin límite documentado. No se indexa ni se filtra por rango, así que un cap fijo solo
+        // arriesga truncar y perder el correo entero (String or binary data would be truncated).
+        builder.Property(x => x.ProviderAttachmentId).IsRequired();
+
+        // partId MIME (Gmail: "1", "1.2") — corto y estable; nullable (proveedores sin partId).
+        builder.Property(x => x.PartId).HasMaxLength(IncomingEmailAttachment.PartIdMaxLength);
         builder.Property(x => x.IsInline).IsRequired();
         builder.Property(x => x.DownloadStatus).IsRequired().HasConversion<string>().HasMaxLength(16);
         builder.Property(x => x.CloudStorageFileId);

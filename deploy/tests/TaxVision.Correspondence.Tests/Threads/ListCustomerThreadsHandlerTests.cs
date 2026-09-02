@@ -10,7 +10,12 @@ public sealed class ListCustomerThreadsHandlerTests
     private static EmailThread NewThread(Guid tenantId, Guid customerId, DateTime lastMessageAtUtc) =>
         EmailThread.NewFromMessage(tenantId, customerId, "Subject", null, lastMessageAtUtc).Value;
 
-    private static IncomingEmail NewIncomingEmail(Guid tenantId, Guid customerId, Guid threadId, string providerMessageId) =>
+    private static IncomingEmail NewIncomingEmail(
+        Guid tenantId,
+        Guid customerId,
+        Guid threadId,
+        string providerMessageId
+    ) =>
         IncomingEmail
             .Create(
                 tenantId,

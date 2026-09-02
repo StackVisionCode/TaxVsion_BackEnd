@@ -11,4 +11,7 @@ public enum AttachmentDownloadStatus
     InProgress = 1,
     Downloaded = 2,
     Failed = 3,
+
+    // El escaneo de CloudStorage lo marcó peligroso (virus o contenido bloqueado). No se descarga.
+    Blocked = 4,
 }

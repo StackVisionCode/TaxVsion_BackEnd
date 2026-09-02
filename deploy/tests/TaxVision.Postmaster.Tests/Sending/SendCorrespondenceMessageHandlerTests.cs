@@ -205,7 +205,7 @@ public sealed class SendCorrespondenceMessageHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WithAttachmentFetchFailure_MarksMessageFailedWithoutCallingSender()
+    public async Task Handle_WithAttachmentFetchFailure_RollsBackAttemptSoTheSameDraftCanRetry()
     {
         var fixture = CreateFixture();
         fixture.AttachmentFetcher.FetchReturnValue = Result.Failure<IReadOnlyList<OutboundAttachmentBytes>>(
@@ -217,8 +217,13 @@ public sealed class SendCorrespondenceMessageHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("SendCorrespondenceMessageHandler.AttachmentFetchFailed", result.Error.Code);
-        var message = Assert.Single(fixture.SentMessages.Added);
-        Assert.Equal(SentMessageStatus.Failed, message.Status);
         Assert.Null(fixture.EmailSender.LastMessage);
+        // Rollback: nada salió al proveedor, así que el intento se deshace por completo — se libera la
+        // reserva (NO se completa: completarla replicaba el fallo como falso éxito) y se borra el
+        // SentMessage encolado (el índice único por draft lo bloquearía en el reintento).
+        Assert.Single(fixture.IdempotencyGuard.Released);
+        Assert.Empty(fixture.IdempotencyGuard.Completed);
+        Assert.Single(fixture.SentMessages.Removed);
+        Assert.Empty(fixture.SentMessages.Added);
     }
 }

@@ -57,12 +57,13 @@ public sealed class SendDraftHandlerTests
             Response = Result.Success(new SendDraftPostmasterResult(sentMessageId, "provider-abc")),
         };
         var auditLogs = new FakeCorrespondenceAuditLogRepository();
+        // Vacío a propósito: al correr vía bus.InvokeAsync, el ICorrelationContext del scope de Wolverine
+        // viene vacío. La correlación real llega por el command (la puso el controller).
         var correlation = new FakeCorrelationContext();
-        correlation.Set("corr-1");
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await InvokeAsync(
-            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid()),
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,
@@ -76,7 +77,9 @@ public sealed class SendDraftHandlerTests
         Assert.Equal(DraftStatus.Sent, draft.Status);
         Assert.Equal(sentMessageId, draft.SentMessageId);
         Assert.Equal(1, postmaster.CallCount);
-        Assert.Single(auditLogs.All);
+        // El audit se graba con la correlación del COMMAND aunque el contexto inyectado esté vacío
+        // (antes se descartaba por validación → la tabla CorrespondenceAuditLogs quedaba vacía).
+        Assert.Equal("corr-1", Assert.Single(auditLogs.All).CorrelationId);
         Assert.Equal(2, unitOfWork.SaveChangesCallCount); // MarkSending persist + MarkSent persist.
     }
 
@@ -106,7 +109,7 @@ public sealed class SendDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         await InvokeAsync(
-            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid()),
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,
@@ -146,7 +149,7 @@ public sealed class SendDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await InvokeAsync(
-            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid()),
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,
@@ -182,7 +185,7 @@ public sealed class SendDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await InvokeAsync(
-            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid()),
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,
@@ -211,7 +214,7 @@ public sealed class SendDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await InvokeAsync(
-            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid()),
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,
@@ -247,7 +250,7 @@ public sealed class SendDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await InvokeAsync(
-            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid()),
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,
@@ -275,7 +278,7 @@ public sealed class SendDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await InvokeAsync(
-            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid()),
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,
@@ -298,7 +301,7 @@ public sealed class SendDraftHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await InvokeAsync(
-            new SendDraftCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()),
+            new SendDraftCommand(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "corr-1"),
             drafts,
             postmaster,
             auditLogs,

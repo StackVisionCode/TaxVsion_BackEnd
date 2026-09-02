@@ -36,5 +36,7 @@ public sealed record MessageSummary(
     string? BodyStatus,
     // Estado leído/no-leído compartido por el tenant. Solo significativo para inbound; en outbound
     // (un Draft enviado) siempre va true — no hay nada que "leer", nunca debe pintarse como no-leído.
-    bool IsRead
+    bool IsRead,
+    // Veredicto de autenticación del remitente (Verified/Unverified/Unknown). Solo inbound; null en outbound.
+    string? SenderTrust
 );

@@ -78,6 +78,18 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    [HttpPost("correspondence/threads/{threadId:guid}/unarchive")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.thread_manage")]
+    public async Task<IActionResult> Unarchive(Guid threadId, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new UnarchiveThreadCommand(tenantId, threadId), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Marca TODOS los correos inbound del hilo como leídos ("mark all as read"). Idempotente.</summary>
     [HttpPost("correspondence/threads/{threadId:guid}/read")]
     [HasPermission(CorrespondencePermissions.Read)]

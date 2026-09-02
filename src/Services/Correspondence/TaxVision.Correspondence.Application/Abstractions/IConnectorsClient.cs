@@ -24,12 +24,20 @@ public interface IConnectorsClient
     /// Trae los bytes crudos de un attachment. El nombre/tipo de archivo NO viaja en la respuesta:
     /// Correspondence ya los tiene guardados en <c>IncomingEmailAttachment</c> desde la Fase 3
     /// (metadata que llegó con el mensaje) — pedirlos de nuevo acá sería redundante.
+    /// <para>
+    /// <c>filename</c>/<c>sizeBytes</c> viajan como selector estable: Gmail rota el
+    /// <c>providerAttachmentId</c> entre fetches, así que Connectors ya no puede matchear por él y
+    /// necesita (filename, size) para ubicar el adjunto en el mensaje re-consultado.
+    /// </para>
     /// </summary>
     Task<Result<ConnectorsAttachmentBytes>> FetchAttachmentAsync(
         Guid tenantId,
         Guid accountId,
         string providerMessageId,
         string providerAttachmentId,
+        string filename,
+        long sizeBytes,
+        string? partId,
         CancellationToken ct = default
     );
 }

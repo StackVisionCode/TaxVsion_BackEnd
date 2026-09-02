@@ -12,8 +12,10 @@ public sealed class IncomingEmailAttachment
 {
     public const int FilenameMaxLength = 500;
     public const int ContentTypeMaxLength = 100;
-    public const int ProviderAttachmentIdMaxLength = 200;
     public const int FailureReasonMaxLength = 500;
+
+    /// <summary>partId MIME (ej. "1.2.3") — siempre corto; 100 sobra de sobra.</summary>
+    public const int PartIdMaxLength = 100;
 
     private IncomingEmailAttachment() { }
 
@@ -26,6 +28,13 @@ public sealed class IncomingEmailAttachment
 
     /// <summary>Id opaco que Connectors usa para identificar el binario — Correspondence lo pasa tal cual.</summary>
     public string ProviderAttachmentId { get; private set; } = default!;
+
+    /// <summary>
+    /// Id de la parte MIME (Gmail: "1", "1.2") — ESTABLE entre fetches, a diferencia de
+    /// <see cref="ProviderAttachmentId"/> que Gmail rota. Es el selector preferido al descargar.
+    /// Null en correos ingeridos antes de esta fase o en proveedores que no lo exponen (IMAP/Graph).
+    /// </summary>
+    public string? PartId { get; private set; }
     public bool IsInline { get; private set; }
     public AttachmentDownloadStatus DownloadStatus { get; private set; }
     public Guid? CloudStorageFileId { get; private set; }
@@ -43,7 +52,8 @@ public sealed class IncomingEmailAttachment
         string contentType,
         long sizeBytes,
         string providerAttachmentId,
-        bool isInline
+        bool isInline,
+        string? partId
     )
     {
         return new IncomingEmailAttachment
@@ -55,6 +65,7 @@ public sealed class IncomingEmailAttachment
             ContentType = contentType,
             SizeBytes = sizeBytes,
             ProviderAttachmentId = providerAttachmentId,
+            PartId = partId,
             IsInline = isInline,
             DownloadStatus = AttachmentDownloadStatus.NotRequested,
             CloudStorageFileId = null,
@@ -116,5 +127,13 @@ public sealed class IncomingEmailAttachment
         DownloadStatus = AttachmentDownloadStatus.Failed;
         FailureReason = reason.Length > FailureReasonMaxLength ? reason[..FailureReasonMaxLength] : reason;
         return Result.Success();
+    }
+
+    // El escaneo lo marcó peligroso. Terminal e idempotente — desde cualquier estado.
+    public void MarkBlocked(string reason)
+    {
+        DownloadStatus = AttachmentDownloadStatus.Blocked;
+        CloudStorageFileId = null;
+        FailureReason = reason.Length > FailureReasonMaxLength ? reason[..FailureReasonMaxLength] : reason;
     }
 }
