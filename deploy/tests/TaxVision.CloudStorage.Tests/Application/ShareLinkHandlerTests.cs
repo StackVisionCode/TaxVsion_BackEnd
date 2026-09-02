@@ -96,6 +96,102 @@ public sealed class ShareLinkHandlerTests
     }
 
     [Fact]
+    public async Task Create_external_recipient_publishes_an_invite_event_per_email_with_token_and_language()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var bus = new FakeMessageBus();
+
+        var result = await CreateShareLinkHandler.Handle(
+            new CreateShareLinkCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                false,
+                file.Id,
+                ShareVisibility.ExternalRecipients,
+                SharePermission.Download,
+                null,
+                null,
+                null,
+                [],
+                [],
+                ["a@example.com", "b@example.com"],
+                Audit,
+                "Es"
+            ),
+            files,
+            new FakeShareLinkRepository(),
+            new FakeStorageLimitRepository(),
+            new FakeShareLinkPasswordHasher(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            bus,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        var invites = bus.Published.OfType<ShareLinkExternalRecipientInvitedIntegrationEvent>().ToList();
+        Assert.Equal(2, invites.Count);
+        Assert.Contains(invites, e => e.Email == "a@example.com");
+        Assert.Contains(invites, e => e.Email == "b@example.com");
+        Assert.All(
+            invites,
+            e =>
+            {
+                Assert.Equal("Es", e.Language);
+                Assert.Equal(file.OriginalName, e.FileName);
+                Assert.Equal(result.Value.PlainToken, e.PlainToken);
+                Assert.False(string.IsNullOrEmpty(e.PlainToken));
+            }
+        );
+    }
+
+    [Fact]
+    public async Task Create_non_external_visibility_does_not_publish_an_invite_event()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var bus = new FakeMessageBus();
+
+        var result = await CreateShareLinkHandler.Handle(
+            new CreateShareLinkCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                false,
+                file.Id,
+                ShareVisibility.TenantOnly,
+                SharePermission.Download,
+                null,
+                null,
+                null,
+                [],
+                [],
+                [],
+                Audit
+            ),
+            files,
+            new FakeShareLinkRepository(),
+            new FakeStorageLimitRepository(),
+            new FakeShareLinkPasswordHasher(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            bus,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(bus.Published.OfType<ShareLinkExternalRecipientInvitedIntegrationEvent>());
+    }
+
+    [Fact]
     public async Task Create_allows_Public_visibility_by_default_without_enabling_it()
     {
         var tenantId = Guid.NewGuid();

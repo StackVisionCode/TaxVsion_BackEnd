@@ -76,7 +76,9 @@ public sealed class ShareLinksController(
         int? MaxAccessCount,
         IReadOnlyList<Guid>? RecipientUserIds,
         IReadOnlyList<Guid>? RecipientCustomerIds,
-        IReadOnlyList<string>? RecipientEmails
+        IReadOnlyList<string>? RecipientEmails,
+        // "Es"/"En" — idioma del email al destinatario externo (solo visibility ExternalRecipients).
+        string? RecipientLanguage = null
     );
 
     [HttpPost("files/{fileId:guid}/shares")]
@@ -106,7 +108,8 @@ public sealed class ShareLinksController(
                 request.RecipientUserIds ?? [],
                 request.RecipientCustomerIds ?? [],
                 request.RecipientEmails ?? [],
-                AuditContext()
+                AuditContext(),
+                request.RecipientLanguage
             ),
             ct
         );

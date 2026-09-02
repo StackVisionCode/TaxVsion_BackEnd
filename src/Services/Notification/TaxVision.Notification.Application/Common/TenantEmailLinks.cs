@@ -38,6 +38,19 @@ public static class TenantEmailLinks
         string email
     ) => $"{StaffBase(tenantHost, portal)}/storage/public/{shareToken}?email={Uri.EscapeDataString(email)}";
 
+    /// <summary>
+    /// Página pública branded de un share-link bajo el subdominio de la oficina:
+    /// <c>https://{host}/s/{token}?email={email}</c>. A diferencia de <see cref="PublicShareDownloadLink"/>
+    /// (302 directo a la descarga), esta lleva al destinatario a la página con marca donde ve el
+    /// archivo y descarga desde ahí. El <c>?email</c> lo verifica el backend (visibility ExternalRecipients).
+    /// </summary>
+    public static string PublicSharePageLink(
+        string? tenantHost,
+        PortalOptions portal,
+        string shareToken,
+        string email
+    ) => $"{StaffBase(tenantHost, portal)}/s/{shareToken}?email={Uri.EscapeDataString(email)}";
+
     private static string NormalizePrefix(string? prefix)
     {
         var p = (prefix ?? string.Empty).Trim().TrimEnd('/');
