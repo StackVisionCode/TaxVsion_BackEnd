@@ -96,14 +96,59 @@ public sealed class ShareLinkHandlerTests
     }
 
     [Fact]
-    public async Task Create_rejects_Public_visibility_when_the_tenant_has_not_enabled_it()
+    public async Task Create_allows_Public_visibility_by_default_without_enabling_it()
     {
         var tenantId = Guid.NewGuid();
         var file = AvailableFile(tenantId);
         var files = new FakeFileObjectRepository();
         files.Seed(file);
         var limits = new FakeStorageLimitRepository();
-        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", 1000, 1000)); // AllowPublicShareLinks=false por defecto
+        // Límite recién creado: público activado por defecto, sin ninguna acción del tenant.
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", 1000, 1000));
+
+        var result = await CreateShareLinkHandler.Handle(
+            new CreateShareLinkCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                false,
+                file.Id,
+                ShareVisibility.Public,
+                SharePermission.View,
+                null,
+                null,
+                null,
+                [],
+                [],
+                [],
+                Audit
+            ),
+            files,
+            new FakeShareLinkRepository(),
+            limits,
+            new FakeShareLinkPasswordHasher(),
+            new FakeStorageAuditRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeMessageBus(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Create_rejects_Public_visibility_when_the_tenant_has_disabled_it()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+        var limits = new FakeStorageLimitRepository();
+        // Público está activado por defecto; para probar el rechazo hay que desactivarlo explícitamente.
+        var limit = TenantStorageLimit.Create(tenantId, "starter", 1000, 1000);
+        limit.DisablePublicSharing();
+        limits.Seed(limit);
 
         var result = await CreateShareLinkHandler.Handle(
             new CreateShareLinkCommand(
@@ -1151,5 +1196,116 @@ public sealed class ShareLinkHandlerTests
         Assert.Equal(2, result.Count);
         Assert.Contains(result, r => r.Id == tenantOnly.Id);
         Assert.Contains(result, r => r.Id == specificToMe.Id);
+    }
+
+    // ---------- ResolvePublicShareMetaHandler (landing pública) ----------
+
+    private static async Task<ShareMetaResult> ResolveMeta(
+        string token,
+        FakeShareLinkRepository shares,
+        FakeFileObjectRepository files,
+        string? email = null
+    ) =>
+        await ResolvePublicShareMetaHandler.Handle(
+            new ResolvePublicShareMetaQuery(token, email, null),
+            shares,
+            files,
+            new FakeFolderRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            CancellationToken.None
+        );
+
+    [Fact]
+    public async Task ResolveMeta_returns_metadata_for_a_public_link_without_password()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var (link, token) = ShareLink
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                file.Id,
+                ShareResourceType.File,
+                ShareVisibility.Public,
+                SharePermission.Download,
+                null,
+                null,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var result = await ResolveMeta(token, shares, files);
+
+        Assert.Equal(ShareMetaOutcome.Available, result.Outcome);
+        Assert.Equal(file.OriginalName, result.FileName);
+        Assert.Equal(file.SizeBytes, result.SizeBytes);
+        Assert.Equal("Download", result.Permission);
+    }
+
+    [Fact]
+    public async Task ResolveMeta_hides_the_filename_when_the_link_is_password_protected()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var (link, token) = ShareLink
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                file.Id,
+                ShareResourceType.File,
+                ShareVisibility.Public,
+                SharePermission.View,
+                new FakeShareLinkPasswordHasher().Hash("s3cret"),
+                null,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var result = await ResolveMeta(token, shares, files);
+
+        Assert.Equal(ShareMetaOutcome.PasswordRequired, result.Outcome);
+        Assert.Null(result.FileName);
+    }
+
+    [Fact]
+    public async Task ResolveMeta_returns_NotFound_for_a_private_link()
+    {
+        var tenantId = Guid.NewGuid();
+        var file = AvailableFile(tenantId);
+        var (link, token) = ShareLink
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                file.Id,
+                ShareResourceType.File,
+                ShareVisibility.TenantOnly,
+                SharePermission.Download,
+                null,
+                null,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow
+            )
+            .Value;
+        var shares = new FakeShareLinkRepository();
+        shares.Seed(link);
+        var files = new FakeFileObjectRepository();
+        files.Seed(file);
+
+        var result = await ResolveMeta(token, shares, files);
+
+        Assert.Equal(ShareMetaOutcome.NotFound, result.Outcome);
     }
 }

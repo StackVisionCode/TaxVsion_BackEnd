@@ -7,19 +7,63 @@ using TaxVision.CloudStorage.Domain.Sharing;
 
 namespace TaxVision.CloudStorage.Application.Abstractions;
 
+/// <summary>Un grupo de archivos sin carpeta del backfill: mismo dueno + tipo, con su conteo.</summary>
+public sealed record UnfiledFileGroup(OwnerType OwnerType, Guid? OwnerId, FolderType FolderType, int Count);
+
 public interface IFileObjectRepository
 {
     void Add(FileObject file);
     void Remove(FileObject file);
     Task<FileObject?> GetAsync(Guid tenantId, Guid fileId, CancellationToken ct);
+
+    /// <summary>
+    /// Listado plano del tenant (sin la papelera). <paramref name="restrictedCustomerId"/> es el
+    /// limite de seguridad del portal de cliente (siempre aplicado si viene, nunca opcional);
+    /// ownerType/ownerId son un filtro adicional solo para staff interno — cuando el caller es
+    /// portal de cliente estos se ignoran, ya que restrictedCustomerId ya fuerza el alcance real.
+    /// </summary>
     Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         int skip,
         int take,
         CancellationToken ct
     );
     Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(DateTime nowUtc, int take, CancellationToken ct);
+
+    /// <summary>
+    /// Backfill (barrido de plataforma): tenants distintos que TIENEN al menos un archivo sin
+    /// carpeta de tipo navegable — la lista exacta a migrar (ni mas ni menos). Cross-tenant.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
+        IReadOnlyCollection<FolderType> navigableTypes,
+        CancellationToken ct
+    );
+
+    /// <summary>
+    /// Backfill (dry-run): agrupa los archivos SIN carpeta (FolderId null, no borrados) de un
+    /// tenant por (OwnerType, OwnerId, FolderType), restringido a los FolderType navegables — la
+    /// foto de lo que el backfill archivaria, sin mutar nada.
+    /// </summary>
+    Task<IReadOnlyList<UnfiledFileGroup>> SummarizeUnfiledFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<FolderType> navigableTypes,
+        CancellationToken ct
+    );
+
+    /// <summary>
+    /// Backfill (aplicar): siguiente lote de archivos SIN carpeta (FolderId null, no borrados) de
+    /// un tenant de tipo navegable, TRACKED (no AsNoTracking) para que el MoveToFolder persista en
+    /// el SaveChanges del handler. Se llama en bucle hasta que devuelve vacio.
+    /// </summary>
+    Task<IReadOnlyList<FileObject>> NextUnfiledFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<FolderType> navigableTypes,
+        int take,
+        CancellationToken ct
+    );
 
     /// <summary>Papelera de un tenant (Fase C1) — todo lo que esta en FileStatus.SoftDeleted, sin filtrar por vencimiento.</summary>
     Task<IReadOnlyList<FileObject>> ListSoftDeletedAsync(Guid tenantId, int skip, int take, CancellationToken ct);

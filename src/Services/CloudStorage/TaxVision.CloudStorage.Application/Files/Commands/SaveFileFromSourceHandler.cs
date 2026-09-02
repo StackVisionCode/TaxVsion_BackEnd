@@ -29,6 +29,7 @@ public static class SaveFileFromSourceHandler
         IStorageAuditRepository audit,
         IObjectKeyBuilder keyBuilder,
         IObjectStorage storage,
+        Folders.ISystemFolderProvisioner systemFolders,
         IOptions<CloudStorageOptions> options,
         ISystemClock clock,
         IUnitOfWork unitOfWork,
@@ -180,6 +181,25 @@ public static class SaveFileFromSourceHandler
             }
 
             file.MarkPendingScan();
+
+            // Coloca el archivo en su carpeta de sistema segun FolderType (get-or-create por
+            // category, idempotente). Tipos internos devuelven null y se quedan en raiz. Cierra
+            // el hueco historico: los guardados M2M nunca aterrizaban en una carpeta navegable.
+            if (options.Value.AutoSystemFolders)
+            {
+                var systemFolderId = await systemFolders.ResolveFolderIdAsync(
+                    evt.TenantId,
+                    ownerType,
+                    evt.OwnerId,
+                    folderType,
+                    evt.ActorId,
+                    clock.UtcNow,
+                    ct
+                );
+                if (systemFolderId is { } folderId)
+                    file.MoveToFolder(folderId, clock.UtcNow);
+            }
+
             files.Add(file);
             audit.Add(
                 StorageAccessLog.Create(

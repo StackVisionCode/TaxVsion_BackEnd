@@ -89,6 +89,7 @@ public sealed class TenantStorageLimitConfiguration : IEntityTypeConfiguration<T
         builder.HasKey(limit => limit.Id);
         builder.Property(limit => limit.TenantId).IsRequired();
         builder.Property(limit => limit.PlanCode).HasMaxLength(64).IsRequired();
+        builder.Property(limit => limit.AllowPublicShareLinks).HasDefaultValue(true);
         builder.Property(limit => limit.RowVersion).IsRowVersion();
         builder.HasIndex(limit => limit.TenantId).IsUnique();
     }

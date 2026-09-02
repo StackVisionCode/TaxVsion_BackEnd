@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using StackExchange.Redis;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Invitations.Commands;
 using TaxVision.Auth.Application.Onboarding;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
@@ -60,6 +61,7 @@ public static class DependencyInjection
         services.Configure<CloudflareOptions>(configuration.GetSection(CloudflareOptions.SectionName));
         services.Configure<TermsOptions>(configuration.GetSection(TermsOptions.SectionName));
         services.Configure<OnboardingOptions>(configuration.GetSection(OnboardingOptions.SectionName));
+        services.Configure<MfaOptions>(configuration.GetSection(MfaOptions.SectionName));
         services
             .AddOptions<PaymentAppClientOptions>()
             .Bind(configuration.GetSection(PaymentAppClientOptions.SectionName));

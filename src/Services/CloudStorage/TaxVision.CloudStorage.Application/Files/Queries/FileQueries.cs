@@ -27,7 +27,14 @@ public static class GetFileHandler
     }
 }
 
-public sealed record ListFilesQuery(Guid TenantId, StorageActorScope Scope, int Skip, int Take);
+public sealed record ListFilesQuery(
+    Guid TenantId,
+    StorageActorScope Scope,
+    OwnerType? OwnerType,
+    Guid? OwnerId,
+    int Skip,
+    int Take
+);
 
 public static class ListFilesHandler
 {
@@ -40,6 +47,8 @@ public static class ListFilesHandler
             await files.ListAsync(
                 query.TenantId,
                 query.Scope.IsCustomerPortal ? query.Scope.CustomerId ?? Guid.Empty : null,
+                query.OwnerType,
+                query.OwnerId,
                 Math.Max(0, query.Skip),
                 Math.Clamp(query.Take, 1, 100),
                 ct

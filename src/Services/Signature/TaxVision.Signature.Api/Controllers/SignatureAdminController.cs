@@ -7,6 +7,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Signature.Api.Requests;
+using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.Commands.ApplyPlanConstraints;
 using TaxVision.Signature.Domain.Settings;
 using Wolverine;
@@ -80,5 +81,31 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
 
         var result = await bus.InvokeAsync<Result>(cmd, ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Migración (una sola vez): re-asigna en CloudStorage los documentos firmados existentes del
+    /// tenant al cliente firmante (antes se guardaban como OwnerType=Signature y no aparecían bajo el
+    /// cliente en Documents). <c>dryRun=true</c> (default) solo cuenta; <c>dryRun=false</c> publica.
+    /// Idempotente. Los sellados NUEVOS ya salen bien del flujo de firma.
+    /// </summary>
+    // Ruta ABSOLUTA (fuera del prefijo admin/tenants/{tenantId} de la clase) para que sea
+    // alcanzable por el gateway, que solo enruta /signature/**. tenantId va por query.
+    [HttpPost("/signature/admin/reassign-sealed-owners")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.g.admin_constraints_manage")]
+    [ProducesResponseType<ReassignedSealedOwnersReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ReassignSealedOwners(
+        [FromQuery] Guid tenantId,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default
+    )
+    {
+        var result = await bus.InvokeAsync<Result<ReassignedSealedOwnersReport>>(
+            new ReassignSealedDocumentOwnersCommand(tenantId, dryRun),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

@@ -265,6 +265,7 @@ public sealed class CentralLoginHandlersTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            Microsoft.Extensions.Options.Options.Create(new TaxVision.Auth.Application.Common.MfaOptions()),
             CancellationToken.None
         );
 

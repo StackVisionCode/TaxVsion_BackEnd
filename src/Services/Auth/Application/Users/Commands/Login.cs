@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
@@ -104,6 +105,7 @@ public static class LoginHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        IOptions<MfaOptions> mfaOptions,
         CancellationToken ct
     )
     {
@@ -244,7 +246,7 @@ public static class LoginHandler
         user.RegisterSuccessfulLogin();
 
         // 5. Evaluación MFA (política del tenant + preferencia del usuario).
-        var mfaRequired = await MfaRequirement.EvaluateAsync(user, mfa, ct);
+        var mfaRequired = await MfaRequirement.EvaluateAsync(user, mfa, ct, mfaOptions.Value.Enforced);
 
         if (mfaRequired)
         {

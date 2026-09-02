@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
 using TaxVision.CloudStorage.Infrastructure.Permissions;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
@@ -39,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
         services.AddScoped<IStorageAuditRepository, StorageAuditRepository>();
         services.AddScoped<IFolderRepository, FolderRepository>();
+        services.AddScoped<ISystemFolderProvisioner, SystemFolderProvisioner>();
         services.AddScoped<IShareLinkRepository, ShareLinkRepository>();
         services.AddScoped<IDmcaNoticeRepository, DmcaNoticeRepository>();
 

@@ -284,6 +284,62 @@
 					]
 				},
 				{
+					"name": "ListFilesByOwner",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files?ownerType=Customer&ownerId={{customerId}}&skip=0&take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files"
+							],
+							"query": [
+								{
+									"key": "ownerType",
+									"value": "Customer"
+								},
+								{
+									"key": "ownerId",
+									"value": "{{customerId}}"
+								},
+								{
+									"key": "skip",
+									"value": "0"
+								},
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Listado plano de archivos de UN dueno (ej. todos los de un customer, cross-carpeta) para staff. ownerType/ownerId son filtro opcional solo para staff; un CustomerPortal los ignora (su alcance ya queda forzado a su propio customerId). Requiere storage.file.view."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"respuesta es un arreglo\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));",
+									"pm.test(\"todos pertenecen al owner pedido\", () => { const owner = pm.environment.get(\"customerId\"); pm.response.json().forEach(f => pm.expect(f.ownerId).to.eql(owner)); });"
+								]
+							}
+						}
+					]
+				},
+				{
 					"name": "IssueDownloadUrl",
 					"event": [
 						{
@@ -1190,6 +1246,39 @@
 							]
 						},
 						"description": "Publico (AllowAnonymous). 302 a la URL presignada si es valido, 401 { requiresPassword: true } si falta password, 404 en cualquier otro caso (revocado/expirado/agotado/inexistente — anti-enumeracion). Rate-limited por la politica \"share-public\"."
+					},
+					"response": []
+				},
+				{
+					"name": "ResolvePublicShareMeta (landing publica)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/storage/public/{{shareToken}}/meta?email=&fileId={{fileId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"public",
+								"{{shareToken}}",
+								"meta"
+							],
+							"query": [
+								{
+									"key": "email",
+									"value": "",
+									"description": "Requerido si visibility=ExternalRecipients"
+								},
+								{
+									"key": "fileId",
+									"value": "{{fileId}}",
+									"description": "Obligatorio si el token es de un link de tipo Folder"
+								}
+							]
+						},
+						"description": "Publico (AllowAnonymous). Descriptor NO sensible para pintar la landing con marca, sin servir el archivo. 200 { ready:true, fileName, sizeBytes, contentType, permission, expiresAt } si es publico y sin password; 200 { ready:false, requiresPassword:true } (SIN nombre de archivo) si el link tiene password; 404 en cualquier otro caso (anti-enumeracion). No valida el password: el check real vive en ResolvePublicShare, al descargar. Mismo rate-limit \"share-public\"."
 					},
 					"response": []
 				},

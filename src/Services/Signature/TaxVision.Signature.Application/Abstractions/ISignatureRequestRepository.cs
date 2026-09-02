@@ -76,6 +76,16 @@ public interface ISignatureRequestRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Migracion: solicitudes completadas con documento sellado (SealedFileId != null) de un tenant,
+    /// con sus firmantes cargados (para resolver el cliente dueno). Se usa para re-asignar en
+    /// CloudStorage los sellados existentes al cliente firmante.
+    /// </summary>
+    Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(SignatureRequest request, CancellationToken ct = default);
 
     void Remove(SignatureRequest request);

@@ -356,6 +356,80 @@ public static class ResolvePrivateShareHandler
 }
 
 /// <summary>
+/// Página pública de compartir — descriptor NO sensible de un token público, para
+/// pintar la landing con marca (nombre/tamaño/permiso) sin servir el archivo. No
+/// valida contraseña: si el link la tiene, devuelve solo requiresPassword y OMITE
+/// el nombre del archivo (el check real vive en ResolvePublicShareHandler, al
+/// descargar). Mismo colapso anti-enumeración: cualquier fallo → NotFound.
+/// </summary>
+public sealed record ResolvePublicShareMetaQuery(string Token, string? RecipientEmail, Guid? FileId);
+
+public enum ShareMetaOutcome
+{
+    Available,
+    PasswordRequired,
+    NotFound,
+}
+
+public sealed record ShareMetaResult(
+    ShareMetaOutcome Outcome,
+    string? FileName,
+    long? SizeBytes,
+    string? ContentType,
+    string? Permission,
+    DateTime? ExpiresAtUtc
+)
+{
+    public static ShareMetaResult NotFound() => new(ShareMetaOutcome.NotFound, null, null, null, null, null);
+
+    public static ShareMetaResult PasswordRequired() =>
+        new(ShareMetaOutcome.PasswordRequired, null, null, null, null, null);
+}
+
+public static class ResolvePublicShareMetaHandler
+{
+    public static async Task<ShareMetaResult> Handle(
+        ResolvePublicShareMetaQuery query,
+        IShareLinkRepository shares,
+        IFileObjectRepository files,
+        IFolderRepository folders,
+        ISystemClock clock,
+        CancellationToken ct
+    )
+    {
+        var now = clock.UtcNow;
+        var link = await shares.GetByTokenHashAsync(ShareToken.HashOf(query.Token), ct);
+        if (link is null || !link.IsUsable(now) || !IsServedByPublicEndpoint(link, query.RecipientEmail))
+            return ShareMetaResult.NotFound();
+
+        if (link.PasswordHash is not null)
+            return ShareMetaResult.PasswordRequired();
+
+        var file = await ShareLinkResourceResolver.ResolveFileAsync(link, query.FileId, files, folders, ct);
+        if (file is null || file.Status != FileStatus.Available)
+            return ShareMetaResult.NotFound();
+
+        return new ShareMetaResult(
+            ShareMetaOutcome.Available,
+            file.OriginalName,
+            file.SizeBytes,
+            file.DetectedContentType ?? file.DeclaredContentType,
+            link.Permission.ToString(),
+            link.ExpiresAtUtc
+        );
+    }
+
+    private static bool IsServedByPublicEndpoint(ShareLink link, string? recipientEmail) =>
+        link.Visibility switch
+        {
+            ShareVisibility.Public => true,
+            ShareVisibility.ExternalRecipients => !string.IsNullOrWhiteSpace(recipientEmail)
+                && link.HasEmailRecipient(recipientEmail),
+            _ => false,
+        };
+}
+
+/// <summary>
 /// Fase C4 — resuelve QUE file servir para un link ya autorizado: si el link es
 /// de File, es el propio ResourceId; si es de Folder, el llamador debe indicar
 /// cual FileId dentro del arbol quiere, validado por FolderShareCoverage.
