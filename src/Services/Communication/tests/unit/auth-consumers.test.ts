@@ -43,6 +43,7 @@ function setup() {
     upsert: vi.fn(),
     markInactiveByUserId: vi.fn(),
     findActiveByCustomerId: vi.fn(),
+    findActiveByCustomerIds: vi.fn().mockResolvedValue([]),
     findActiveByUserId: vi.fn(),
   };
 

@@ -20,6 +20,14 @@ export interface CustomerPortalAccountRepository {
   findActiveByCustomerId(customerId: string): Promise<CustomerPortalAccountSnapshot | null>;
 
   /**
+   * Batch del anterior: resuelve las cuentas de portal activas de varios customers
+   * en una sola query. Usado por el autocomplete de customers del CRM para saber
+   * a que UserId iniciar el chat directo, sin N+1. Solo devuelve los que tienen
+   * cuenta activa (los customers sin portal simplemente no aparecen en el resultado).
+   */
+  findActiveByCustomerIds(customerIds: readonly string[]): Promise<CustomerPortalAccountSnapshot[]>;
+
+  /**
    * Fase B4 (chat tipado) — lookup inverso: dado el UserId de un actor
    * 'CustomerPortal' (ya conocido, viene del JWT o de UserDirectoryEntry),
    * resolver a que CustomerId pertenece. Necesario para calcular
