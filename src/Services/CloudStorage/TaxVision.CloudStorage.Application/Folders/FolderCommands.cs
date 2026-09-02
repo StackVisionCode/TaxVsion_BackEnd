@@ -100,6 +100,11 @@ public static class CreateFolderHandler
         if (category is null)
             return Result.Success<FolderCategory?>(null);
 
+        // Un usuario no puede crear una carpeta con una category de sistema (sys.*): esas solo las
+        // materializa el provisioner, y protegerlas de crear/renombrar/borrar depende de esa reserva.
+        if (SystemFolderCatalog.IsSystemCategory(category.Trim()))
+            return Result.Failure<FolderCategory?>(FolderErrors.SystemFolderProtected);
+
         var result = FolderCategory.Create(category);
         return result.IsFailure
             ? Result.Failure<FolderCategory?>(result.Error)
@@ -197,6 +202,8 @@ public static class RenameFolderHandler
         var loaded = await LoadOwnedFolder(command.TenantId, command.Scope, command.FolderId, folders, ct);
         if (loaded.IsFailure)
             return Result.Failure<FolderResponse>(loaded.Error);
+        if (SystemFolderCatalog.IsSystemCategory(loaded.Value.Category))
+            return Result.Failure<FolderResponse>(FolderErrors.SystemFolderProtected);
 
         var nameResult = FolderName.Create(command.NewName);
         if (nameResult.IsFailure)
@@ -283,6 +290,8 @@ public static class MoveFolderHandler
         );
         if (loaded.IsFailure)
             return Result.Failure<FolderResponse>(loaded.Error);
+        if (SystemFolderCatalog.IsSystemCategory(loaded.Value.Category))
+            return Result.Failure<FolderResponse>(FolderErrors.SystemFolderProtected);
 
         var folder = loaded.Value;
         var newParentResult = await ResolveNewParent(command, folder, folders, ct);
@@ -524,6 +533,8 @@ public static class DeleteFolderHandler
         );
         if (loaded.IsFailure)
             return Result.Failure(loaded.Error);
+        if (SystemFolderCatalog.IsSystemCategory(loaded.Value.Category))
+            return Result.Failure(FolderErrors.SystemFolderProtected);
 
         var emptyCheck = await EnsureEmpty(command.TenantId, command.FolderId, folders, files, ct);
         if (emptyCheck.IsFailure)

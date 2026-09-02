@@ -674,4 +674,127 @@ public sealed class FolderHandlerTests
             )
             .Value;
     }
+
+    // ---------- Proteccion de carpetas de sistema (sys.*) ----------
+
+    private static Folder SystemFolder(Guid tenantId, string category = "sys.documents", string name = "Documents") =>
+        Folder
+            .Create(
+                Guid.NewGuid(),
+                tenantId,
+                OwnerType.Tenant,
+                null,
+                null,
+                FolderName.Create(name).Value,
+                null,
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                FolderCategory.Create(category).Value
+            )
+            .Value;
+
+    [Fact]
+    public async Task Rename_rejects_a_system_folder()
+    {
+        var tenantId = Guid.NewGuid();
+        var folder = SystemFolder(tenantId, "sys.signatures", "Signed Documents");
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+
+        var result = await RenameFolderHandler.Handle(
+            new RenameFolderCommand(tenantId, Guid.NewGuid(), TenantScope, folder.Id, "Mis firmas"),
+            folders,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.SystemFolderProtected, result.Error);
+    }
+
+    [Fact]
+    public async Task Delete_rejects_a_system_folder()
+    {
+        var tenantId = Guid.NewGuid();
+        var folder = SystemFolder(tenantId, "sys.email", "Email");
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+
+        var result = await DeleteFolderHandler.Handle(
+            new DeleteFolderCommand(tenantId, Guid.NewGuid(), TenantScope, folder.Id),
+            folders,
+            new FakeFileObjectRepository(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.SystemFolderProtected, result.Error);
+    }
+
+    [Fact]
+    public async Task Move_rejects_a_system_folder()
+    {
+        var tenantId = Guid.NewGuid();
+        var system = SystemFolder(tenantId, "sys.documents", "Documents");
+        var target = RootFolder(tenantId, "Destino");
+        var folders = new FakeFolderRepository();
+        folders.Seed(system);
+        folders.Seed(target);
+
+        var result = await MoveFolderHandler.Handle(
+            new MoveFolderCommand(tenantId, Guid.NewGuid(), TenantScope, system.Id, target.Id),
+            folders,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.SystemFolderProtected, result.Error);
+    }
+
+    [Fact]
+    public async Task Rename_allows_a_user_folder()
+    {
+        var tenantId = Guid.NewGuid();
+        var folder = RootFolder(tenantId, "Clientes");
+        var folders = new FakeFolderRepository();
+        folders.Seed(folder);
+
+        var result = await RenameFolderHandler.Handle(
+            new RenameFolderCommand(tenantId, Guid.NewGuid(), TenantScope, folder.Id, "Prospectos"),
+            folders,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Create_rejects_a_system_category()
+    {
+        var tenantId = Guid.NewGuid();
+
+        var result = await CreateFolderHandler.Handle(
+            new CreateFolderCommand(
+                tenantId,
+                Guid.NewGuid(),
+                TenantScope,
+                null,
+                "Email",
+                OwnerType.Tenant,
+                null,
+                "sys.email"
+            ),
+            new FakeFolderRepository(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            NoOpLogger,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(FolderErrors.SystemFolderProtected, result.Error);
+    }
 }

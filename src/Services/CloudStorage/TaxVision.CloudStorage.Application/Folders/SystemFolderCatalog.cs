@@ -42,4 +42,14 @@ public static class SystemFolderCatalog
 
     /// <summary>Todos los FolderType de cara al usuario (los que generan carpeta navegable). Usado por el backfill.</summary>
     public static IReadOnlyCollection<FolderType> NavigableTypes { get; } = Map.Keys.ToArray();
+
+    private static readonly HashSet<string> SystemCategories = Map.Values.Select(spec => spec.Category).ToHashSet();
+
+    /// <summary>
+    /// true si la category es la de una carpeta de sistema (prefijo <c>sys.</c> del catalogo). Las
+    /// carpetas de sistema no se pueden renombrar/mover/borrar ni un usuario puede crear una con
+    /// esa category — solo el provisioner las materializa.
+    /// </summary>
+    public static bool IsSystemCategory(string? category) =>
+        !string.IsNullOrEmpty(category) && SystemCategories.Contains(category);
 }
