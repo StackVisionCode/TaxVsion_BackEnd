@@ -17,7 +17,8 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                 nullable: false,
                 defaultValue: true,
                 oldClrType: typeof(bool),
-                oldType: "bit");
+                oldType: "bit"
+            );
 
             // Los tenants existentes tenian el flag en 0 solo porque ese era el default anterior:
             // nunca hubo UI para desactivarlo, asi que cada 0 es un default, no una decision. Se
@@ -36,7 +37,8 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                 nullable: false,
                 oldClrType: typeof(bool),
                 oldType: "bit",
-                oldDefaultValue: true);
+                oldDefaultValue: true
+            );
         }
     }
 }

@@ -30,7 +30,9 @@ public sealed record CreateShareLinkCommand(
     IReadOnlyList<Guid> RecipientUserIds,
     IReadOnlyList<Guid> RecipientCustomerIds,
     IReadOnlyList<string> RecipientEmails,
-    RequestAuditContext Audit
+    RequestAuditContext Audit,
+    // Idioma del email al destinatario externo ("Es"/"En"). Solo aplica a visibility ExternalRecipients.
+    string? RecipientLanguage = null
 );
 
 public static class CreateShareLinkHandler
@@ -68,6 +70,8 @@ public static class CreateShareLinkHandler
             command.RecipientUserIds,
             command.RecipientCustomerIds,
             command.RecipientEmails,
+            fileResult.Value.OriginalName,
+            command.RecipientLanguage ?? "En",
             command.Audit,
             shares,
             limits,
@@ -155,6 +159,8 @@ public static class CreateFolderShareLinkHandler
             command.RecipientUserIds,
             command.RecipientCustomerIds,
             command.RecipientEmails,
+            folder.Name,
+            "En",
             command.Audit,
             shares,
             limits,
@@ -187,6 +193,8 @@ internal static class ShareLinkCreationCore
         IReadOnlyList<Guid> recipientUserIds,
         IReadOnlyList<Guid> recipientCustomerIds,
         IReadOnlyList<string> recipientEmails,
+        string resourceName,
+        string recipientLanguage,
         RequestAuditContext auditContext,
         IShareLinkRepository shares,
         IStorageLimitRepository limits,
@@ -265,6 +273,30 @@ internal static class ShareLinkCreationCore
                 CorrelationId = auditContext.CorrelationId,
             }
         );
+
+        // Magic-link por destinatario externo: un evento por email para que Notification emaile la
+        // página pública `/s/{token}?email=`. Solo para archivos con visibility ExternalRecipients.
+        if (resourceType == ShareResourceType.File && visibility == ShareVisibility.ExternalRecipients)
+        {
+            var language = string.IsNullOrWhiteSpace(recipientLanguage) ? "En" : recipientLanguage;
+            foreach (var email in recipientEmails)
+                await bus.PublishAsync(
+                    new ShareLinkExternalRecipientInvitedIntegrationEvent
+                    {
+                        TenantId = tenantId,
+                        ShareLinkId = link.Id,
+                        FileId = resourceId,
+                        Email = email,
+                        PlainToken = plainToken,
+                        FileName = resourceName,
+                        Permission = permission.ToString(),
+                        ExpiresAtUtc = link.ExpiresAtUtc,
+                        Language = language,
+                        CorrelationId = auditContext.CorrelationId,
+                    }
+                );
+        }
+
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success(

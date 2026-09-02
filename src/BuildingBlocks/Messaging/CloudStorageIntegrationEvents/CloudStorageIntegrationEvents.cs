@@ -97,6 +97,29 @@ public sealed record ShareLinkCreatedIntegrationEvent : IntegrationEvent
     public required Guid CreatedByUserId { get; init; }
 }
 
+/// <summary>
+/// Publicado UNA VEZ POR DESTINATARIO cuando se crea un link con visibility ExternalRecipients.
+/// Notification lo consume para emailar la página pública `/s/{token}?email=` al destinatario.
+/// Mismo patrón que SignerInvitedIntegrationEvent: el <see cref="PlainToken"/> es PII de bajo
+/// riesgo que viaja solo por el bus interno (outbox durable) — no se persiste en claro ni se
+/// loggea por encima de Debug.
+/// </summary>
+public sealed record ShareLinkExternalRecipientInvitedIntegrationEvent : IntegrationEvent
+{
+    public required Guid ShareLinkId { get; init; }
+    public required Guid FileId { get; init; }
+    public required string Email { get; init; }
+    public required string PlainToken { get; init; }
+    public required string FileName { get; init; }
+
+    /// <summary>"View" o "Download".</summary>
+    public required string Permission { get; init; }
+    public required DateTime ExpiresAtUtc { get; init; }
+
+    /// <summary>Idioma elegido por quien comparte, "Es" o "En".</summary>
+    public required string Language { get; init; }
+}
+
 public sealed record ShareLinkRevokedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }

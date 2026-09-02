@@ -183,6 +183,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<StorageLimitExceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileAccessAuditedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ShareLinkExternalRecipientInvitedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkRevokedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkFolderItemAddedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ShareLinkAccessedIntegrationEvent>().ToRabbitExchange("taxvision-events");

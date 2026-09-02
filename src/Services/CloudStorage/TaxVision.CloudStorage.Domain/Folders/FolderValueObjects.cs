@@ -56,4 +56,8 @@ public static class FolderErrors
         "Folder.NotEmpty",
         "The folder still contains subfolders or files. Empty it before deleting."
     );
+    public static readonly Error SystemFolderProtected = new(
+        "Folder.SystemProtected",
+        "This is a system folder and cannot be renamed, moved or deleted."
+    );
 }

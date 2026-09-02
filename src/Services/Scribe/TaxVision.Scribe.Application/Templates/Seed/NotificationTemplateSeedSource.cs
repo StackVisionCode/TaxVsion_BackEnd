@@ -23,7 +23,7 @@ public sealed record NotificationTemplateSeed(
     // Subir esto cuando cambie el HTML/subject del seed: el seeder republica una versión nueva
     // si supera al SeedContentVersion guardado (política "código manda" para System).
     // v2: se agregó la variable 'preheader' por template (línea de vista previa en el div oculto).
-    int ContentVersion = 3
+    int ContentVersion = 4
 );
 
 /// <summary>
@@ -62,6 +62,7 @@ public static class NotificationTemplateSeedSource
             AppointmentCancelled,
             ClientRequestCreated,
             ClientRequestDocumentRejected,
+            SharedFileInvited,
         ];
 
     // Preheader (línea de vista previa que muestran el inbox y la notificación) por template, en inglés
@@ -96,6 +97,7 @@ public static class NotificationTemplateSeedSource
         ["calendar.appointment_cancelled.v1"] = "Your appointment was cancelled. Here's what happened.",
         ["task.client_request_created.v1"] = "Your preparer requested a few items from you. Here's what's needed.",
         ["task.client_request_document_rejected.v1"] = "We couldn't process a file you uploaded. Please try again.",
+        ["storage.share_invited.v1"] = "A document was shared with you — open it securely with the link inside.",
     };
 
     /// <summary>
@@ -373,6 +375,46 @@ public static class NotificationTemplateSeedSource
                 ("invite_link", VariableType.Url, true, null, "URL pública de firma."),
                 ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
                 ("requires_consent", VariableType.Bool, true, "false", "true si requiere aceptar consent antes."),
+                ("language", VariableType.String, true, "En", "'Es' o 'En'."),
+            ]
+        );
+
+    private static NotificationTemplateSeed SharedFileInvited { get; } =
+        new(
+            EventKey: "storage.share_invited.v1",
+            TemplateKey: "storage.share_invited.v1",
+            Name: "Documents — Documento compartido con externo",
+            Subject: "{% if language == 'Es' %}TaxProffice — Te compartieron un documento{% else %}TaxProffice — A document was shared with you{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Documento{% else %}Document{% endif %}</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              {% if language == 'Es' %}
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Te compartieron un documento</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Se compartió el documento <strong style="color:#23384B;">{{ file_name }}</strong> contigo. Ábrelo de forma segura con el botón de abajo.</td></tr>
+              {% else %}
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">A document was shared with you</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">The document <strong style="color:#23384B;">{{ file_name }}</strong> was shared with you. Open it securely with the button below.</td></tr>
+              {% endif %}
+              <tr>
+                <td align="left" style="padding:26px 0 22px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ open_link }}" style="height:46px;v-text-anchor:middle;width:220px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">{% if language == 'Es' %}Abrir documento{% else %}Open document{% endif %}</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ open_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">{% if language == 'Es' %}Abrir documento{% else %}Open document{% endif %}</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}El enlace vence el {{ expires_at }} UTC y es solo para ti.{% else %}The link expires on {{ expires_at }} UTC and is meant only for you.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("file_name", VariableType.String, true, null, "Nombre del archivo compartido."),
+                ("open_link", VariableType.Url, true, null, "URL de la página pública branded (/s/{token}?email=)."),
+                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                ("permission", VariableType.String, true, "Download", "'View' o 'Download'."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ]
         );
