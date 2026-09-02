@@ -98,6 +98,9 @@ function fakePortalAccounts(byUserId: Record<string, CustomerPortalAccountSnapsh
     async findActiveByCustomerId(): Promise<CustomerPortalAccountSnapshot | null> {
       return null;
     },
+    async findActiveByCustomerIds(): Promise<CustomerPortalAccountSnapshot[]> {
+      return [];
+    },
     async findActiveByUserId(userId: string): Promise<CustomerPortalAccountSnapshot | null> {
       return byUserId[userId] ?? null;
     },

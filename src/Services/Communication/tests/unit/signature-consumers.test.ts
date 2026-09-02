@@ -44,6 +44,7 @@ function setup() {
     upsert: vi.fn(),
     markInactiveByUserId: vi.fn(),
     findActiveByCustomerId: vi.fn().mockResolvedValue(null),
+    findActiveByCustomerIds: vi.fn().mockResolvedValue([]),
     findActiveByUserId: vi.fn().mockResolvedValue(null),
   };
   const actionMappings: NotificationActionMappingRepository = {

@@ -44,6 +44,19 @@ export class PrismaCustomerPortalAccountRepository implements CustomerPortalAcco
     };
   }
 
+  async findActiveByCustomerIds(customerIds: readonly string[]): Promise<CustomerPortalAccountSnapshot[]> {
+    if (customerIds.length === 0) return [];
+    const rows = await this.prisma.customerPortalAccount.findMany({
+      where: { CustomerId: { in: [...customerIds] }, IsActive: true },
+    });
+    return rows.map((row) => ({
+      customerId: row.CustomerId,
+      tenantId: row.TenantId,
+      userId: row.UserId,
+      isActive: row.IsActive,
+    }));
+  }
+
   async findActiveByUserId(userId: string): Promise<CustomerPortalAccountSnapshot | null> {
     const row = await this.prisma.customerPortalAccount.findFirst({
       where: { UserId: userId, IsActive: true },
