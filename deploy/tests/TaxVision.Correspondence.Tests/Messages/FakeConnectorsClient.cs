@@ -17,7 +17,10 @@ internal sealed class FakeConnectorsClient : IConnectorsClient
         Guid TenantId,
         Guid AccountId,
         string ProviderMessageId,
-        string ProviderAttachmentId
+        string ProviderAttachmentId,
+        string Filename,
+        long SizeBytes,
+        string? PartId
     )> AttachmentCalls { get; } = [];
 
     public Task<Result<MessageBodyResponse>> FetchMessageBodyAsync(
@@ -36,10 +39,15 @@ internal sealed class FakeConnectorsClient : IConnectorsClient
         Guid accountId,
         string providerMessageId,
         string providerAttachmentId,
+        string filename,
+        long sizeBytes,
+        string? partId,
         CancellationToken ct = default
     )
     {
-        AttachmentCalls.Add((tenantId, accountId, providerMessageId, providerAttachmentId));
+        AttachmentCalls.Add(
+            (tenantId, accountId, providerMessageId, providerAttachmentId, filename, sizeBytes, partId)
+        );
         return Task.FromResult(AttachmentResponse);
     }
 }

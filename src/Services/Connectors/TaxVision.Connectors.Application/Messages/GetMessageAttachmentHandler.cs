@@ -60,12 +60,21 @@ public static class GetMessageAttachmentHandler
                 query.ProviderMessageId,
                 ct
             );
-            var metadata = message.Attachments.FirstOrDefault(a => a.ProviderAttachmentId == query.AttachmentId);
+            // Gmail rota el attachmentId entre fetches, así que el id guardado por el caller no matchea
+            // el fetch fresco. Preferencia de selector: partId (parte MIME, estable) → (filename, size)
+            // → attachmentId (fallback histórico). La metadata del RESULTADO igual sale del proveedor
+            // (este fetch), no del caller (§36 Fase 9 item 2).
+            var metadata =
+                (query.PartId is not null ? message.Attachments.FirstOrDefault(a => a.PartId == query.PartId) : null)
+                ?? message.Attachments.FirstOrDefault(a =>
+                    a.Filename == query.Filename && a.SizeBytes == query.SizeBytes
+                )
+                ?? message.Attachments.FirstOrDefault(a => a.ProviderAttachmentId == query.AttachmentId);
             if (metadata is null)
             {
                 await RecordAuditAsync(
                     account.Id,
-                    $"Attachment {query.AttachmentId} not found on message {query.ProviderMessageId}.",
+                    $"Attachment '{query.Filename}' ({query.SizeBytes} bytes) not found on message {query.ProviderMessageId}.",
                     "AttachmentNotFound",
                     auditLogRepository,
                     unitOfWork,
@@ -77,11 +86,12 @@ public static class GetMessageAttachmentHandler
                 );
             }
 
+            // El attachmentId FRESCO de este fetch — NO el guardado por el caller (ya rotado → 404).
             var content = await clientResult.Value.GetAttachmentAsync(
                 account.Id,
                 account.TenantId,
                 query.ProviderMessageId,
-                query.AttachmentId,
+                metadata.ProviderAttachmentId,
                 ct
             );
 

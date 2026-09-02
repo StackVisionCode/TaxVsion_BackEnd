@@ -165,6 +165,9 @@ internal sealed class ConnectorsClient(
         Guid accountId,
         string providerMessageId,
         string providerAttachmentId,
+        string filename,
+        long sizeBytes,
+        string? partId,
         CancellationToken ct = default
     )
     {
@@ -183,6 +186,9 @@ internal sealed class ConnectorsClient(
             accountId,
             providerMessageId,
             providerAttachmentId,
+            filename,
+            sizeBytes,
+            partId,
             ct
         );
         if (!first.IsTransient)
@@ -200,6 +206,9 @@ internal sealed class ConnectorsClient(
             accountId,
             providerMessageId,
             providerAttachmentId,
+            filename,
+            sizeBytes,
+            partId,
             ct
         );
         return second.IsTransient
@@ -215,6 +224,9 @@ internal sealed class ConnectorsClient(
         Guid accountId,
         string providerMessageId,
         string providerAttachmentId,
+        string filename,
+        long sizeBytes,
+        string? partId,
         CancellationToken ct
     )
     {
@@ -225,7 +237,19 @@ internal sealed class ConnectorsClient(
                 $"connectors/messages/{Uri.EscapeDataString(providerMessageId)}/attachments/{Uri.EscapeDataString(providerAttachmentId)}"
             )
             {
-                Content = JsonContent.Create(new { tenantId, accountId }, options: Json),
+                // Selector estable del adjunto (el attachmentId del route es efímero en Gmail):
+                // partId preferido → (filename, sizeBytes) como fallback.
+                Content = JsonContent.Create(
+                    new
+                    {
+                        tenantId,
+                        accountId,
+                        filename,
+                        sizeBytes,
+                        partId,
+                    },
+                    options: Json
+                ),
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 

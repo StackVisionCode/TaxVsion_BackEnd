@@ -36,6 +36,45 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     [RateLimit("correspondence.f.message_read")]
     public Task<IActionResult> MarkUnread(Guid id, CancellationToken ct) => SetReadState(id, isRead: false, ct);
 
+    // A la papelera (soft-delete).
+    [HttpPost("{id:guid}/trash")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.thread_manage")]
+    public async Task<IActionResult> Trash(Guid id, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new TrashIncomingMessageCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // Restaurar desde la papelera.
+    [HttpPost("{id:guid}/restore")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.thread_manage")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new RestoreIncomingMessageCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // Borrado permanente (solo desde la papelera).
+    [HttpDelete("{id:guid}")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.thread_manage")]
+    public async Task<IActionResult> Purge(Guid id, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new PurgeIncomingMessageCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     private async Task<IActionResult> SetReadState(Guid id, bool isRead, CancellationToken ct)
     {
         if (!User.TryGetTenantId(out var tenantId))

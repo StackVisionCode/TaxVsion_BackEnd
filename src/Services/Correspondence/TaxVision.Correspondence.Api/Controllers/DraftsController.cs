@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Correspondence.Api.Requests;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Application.Compose;
+using TaxVision.Correspondence.Application.Trash;
 using TaxVision.Correspondence.Domain.Compose;
 using Wolverine;
 
@@ -34,7 +35,8 @@ public sealed class DraftsController(
     IMessageBus bus,
     IDraftRepository drafts,
     IAuthorizationService authorizationService,
-    IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions
+    IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions,
+    ICorrelationContext correlation
 ) : ControllerBase
 {
     private const int DefaultSize = 20;
@@ -94,6 +96,89 @@ public sealed class DraftsController(
             ct
         );
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Carpeta "Sent" del cliente final: mensajes ya enviados de un customer, más reciente primero.
+    /// Ruta propia (<c>/correspondence/sent</c>) porque semánticamente NO es un draft abierto, aunque
+    /// comparta el aggregate <c>Draft</c>. Lean — el body se pide con <see cref="GetById"/> al abrir.
+    /// </summary>
+    [HttpGet("/correspondence/sent")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.draft_read")]
+    public async Task<IActionResult> ListSent(
+        [FromQuery] Guid customerId,
+        [FromQuery] int page,
+        [FromQuery] int size,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<PagedResult<SentMessageListItem>>(
+            new ListSentMessagesQuery(tenantId, customerId, NormalizePage(page), NormalizeSize(size)),
+            ct
+        );
+        return Ok(result);
+    }
+
+    // Papelera unificada (entrantes + enviados borrados) de un customer.
+    [HttpGet("/correspondence/trash")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.f.draft_read")]
+    public async Task<IActionResult> ListTrash(
+        [FromQuery] Guid customerId,
+        [FromQuery] int page,
+        [FromQuery] int size,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<PagedResult<TrashItem>>(
+            new ListTrashQuery(tenantId, customerId, NormalizePage(page), NormalizeSize(size)),
+            ct
+        );
+        return Ok(result);
+    }
+
+    // Enviado a la papelera / restaurar / borrar permanente.
+    [HttpPost("/correspondence/sent/{id:guid}/trash")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.draft_manage")]
+    public async Task<IActionResult> TrashSent(Guid id, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new TrashSentMessageCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpPost("/correspondence/sent/{id:guid}/restore")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.draft_manage")]
+    public async Task<IActionResult> RestoreSent(Guid id, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new RestoreSentMessageCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpDelete("/correspondence/sent/{id:guid}")]
+    [HasPermission(CorrespondencePermissions.Read)]
+    [RateLimit("correspondence.g.draft_manage")]
+    public async Task<IActionResult> PurgeSent(Guid id, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result>(new PurgeSentMessageCommand(tenantId, id), ct);
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpPost]
@@ -217,7 +302,10 @@ public sealed class DraftsController(
         if (forbidden is not null)
             return forbidden;
 
-        var result = await bus.InvokeAsync<Result<SendDraftResult>>(new SendDraftCommand(tenantId, id, userId), ct);
+        var result = await bus.InvokeAsync<Result<SendDraftResult>>(
+            new SendDraftCommand(tenantId, id, userId, correlation.CorrelationId),
+            ct
+        );
         return result.IsSuccess
             ? Ok(new { sentMessageId = result.Value.SentMessageId, providerMessageId = result.Value.ProviderMessageId })
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

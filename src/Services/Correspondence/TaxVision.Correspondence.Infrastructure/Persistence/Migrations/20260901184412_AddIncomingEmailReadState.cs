@@ -16,19 +16,22 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                 table: "IncomingEmails",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: false
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "ReadAtUtc",
                 table: "IncomingEmails",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_IncomingEmails_TenantId_EmailThreadId_Unread",
                 table: "IncomingEmails",
                 columns: new[] { "TenantId", "EmailThreadId" },
-                filter: "[IsRead] = 0");
+                filter: "[IsRead] = 0"
+            );
         }
 
         /// <inheritdoc />
@@ -36,15 +39,12 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropIndex(
                 name: "IX_IncomingEmails_TenantId_EmailThreadId_Unread",
-                table: "IncomingEmails");
+                table: "IncomingEmails"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "IsRead",
-                table: "IncomingEmails");
+            migrationBuilder.DropColumn(name: "IsRead", table: "IncomingEmails");
 
-            migrationBuilder.DropColumn(
-                name: "ReadAtUtc",
-                table: "IncomingEmails");
+            migrationBuilder.DropColumn(name: "ReadAtUtc", table: "IncomingEmails");
         }
     }
 }

@@ -73,6 +73,18 @@ public sealed class EmailThread : ITenantOwned
         return Result.Success();
     }
 
+    // Un entrante fue/volvió de la papelera. MessageCount cuenta solo entrantes.
+    public void DecrementMessageCount()
+    {
+        if (MessageCount > 0)
+            MessageCount--;
+    }
+
+    public void IncrementMessageCount()
+    {
+        MessageCount++;
+    }
+
     /// <summary>
     /// Idempotente: archivar un hilo ya archivado no pisa el <see cref="ArchivedAtUtc"/> original.
     /// El reloj lo posee el aggregate (no un parámetro del caller) — mismo patrón que
@@ -86,6 +98,16 @@ public sealed class EmailThread : ITenantOwned
 
         Status = EmailThreadStatus.Archived;
         ArchivedAtUtc = DateTime.UtcNow;
+    }
+
+    // Archived → Active. Idempotente.
+    public void Unarchive()
+    {
+        if (Status != EmailThreadStatus.Archived)
+            return;
+
+        Status = EmailThreadStatus.Active;
+        ArchivedAtUtc = null;
     }
 
     private static Error? Validate(Guid tenantId, Guid customerId, string subject, string? providerThreadId)

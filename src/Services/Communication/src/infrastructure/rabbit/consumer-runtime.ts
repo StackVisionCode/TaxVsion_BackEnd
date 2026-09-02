@@ -236,12 +236,6 @@ export class ConsumerRuntime {
       // the module docblock above for why this fallback exists.
       const amqpTypeHeader = typeof msg.properties.type === 'string' ? msg.properties.type : undefined;
       envelope = this.normalizeEnvelope(parsed, amqpTypeHeader);
-      if (amqpTypeHeader && !envelope.eventType) {
-        // A .NET-originated message we don't have a CLR_TYPE_TO_EVENT_TYPE
-        // mapping for — surfaces new event types immediately instead of
-        // silently ack-skipping forever (the bug this fallback fixed).
-        logger.warn({ amqpTypeHeader }, 'consumer: unmapped CLR type in AMQP type header; ack to skip');
-      }
     } catch (err) {
       logger.warn({ err: (err as Error).message }, 'consumer: unparseable payload; ack to skip');
       rabbit.channel.ack(msg);
@@ -322,8 +316,13 @@ export class ConsumerRuntime {
     const eventId = typeof raw['eventId'] === 'string' ? (raw['eventId'] as string) : (raw['EventId'] as string);
     const bodyEventType =
       typeof raw['eventType'] === 'string' ? (raw['eventType'] as string) : (raw['EventType'] as string | undefined);
+    // Wolverine puede publicar el header AMQP `type` como nombre CLR (Auth/CloudStorage/…) o ya como
+    // alias del evento (`correspondence.customer_email_received.v1`, Connectors/Correspondence/…). Los
+    // handlers se registran por alias, así que: primero el eventType del body, luego el mapa CLR→alias,
+    // y si el header ya ES un alias (no está en el mapa) se usa tal cual. Sin este último fallback, todo
+    // header alias caía en "unmapped; ack to skip" y el handler nunca corría.
     const eventType = (bodyEventType ??
-      (amqpTypeHeader ? CLR_TYPE_TO_EVENT_TYPE[amqpTypeHeader] : undefined)) as string;
+      (amqpTypeHeader ? (CLR_TYPE_TO_EVENT_TYPE[amqpTypeHeader] ?? amqpTypeHeader) : undefined)) as string;
     const tenantId = typeof raw['tenantId'] === 'string' ? (raw['tenantId'] as string) : (raw['TenantId'] as string);
     const occurredOnUtc =
       typeof raw['occurredOnUtc'] === 'string'

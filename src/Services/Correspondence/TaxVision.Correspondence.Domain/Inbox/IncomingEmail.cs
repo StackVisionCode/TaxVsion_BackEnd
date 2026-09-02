@@ -77,6 +77,14 @@ public sealed class IncomingEmail : ITenantOwned
     public bool IsRead { get; private set; }
     public DateTime? ReadAtUtc { get; private set; }
 
+    // Soft-delete: null = visible; set = en la papelera.
+    public DateTime? DeletedAtUtc { get; private set; }
+    public bool IsDeleted => DeletedAtUtc is not null;
+
+    // SPF/DKIM/DMARC del proveedor. El veredicto (Verified/Unverified/Unknown) se deriva.
+    public SenderAuthentication Authentication { get; private set; } = SenderAuthentication.Unknown;
+    public SenderTrust SenderTrust => Authentication.Trust;
+
     public IReadOnlyCollection<IncomingEmailRecipient> Recipients => _recipients.AsReadOnly();
     public IReadOnlyCollection<IncomingEmailAttachment> Attachments => _attachments.AsReadOnly();
 
@@ -98,7 +106,8 @@ public sealed class IncomingEmail : ITenantOwned
         string? inReplyTo = null,
         string? references = null,
         IReadOnlyCollection<IncomingEmailRecipientData>? recipients = null,
-        IReadOnlyCollection<IncomingEmailAttachmentData>? attachments = null
+        IReadOnlyCollection<IncomingEmailAttachmentData>? attachments = null,
+        SenderAuthentication? authentication = null
     )
     {
         ArgumentNullException.ThrowIfNull(from);
@@ -141,6 +150,7 @@ public sealed class IncomingEmail : ITenantOwned
             BodyFetchedAtUtc = null,
             HasAttachments = hasAttachments,
             AttachmentCount = attachmentCount,
+            Authentication = authentication ?? SenderAuthentication.Unknown,
         };
 
         foreach (var recipient in recipients ?? [])
@@ -163,7 +173,8 @@ public sealed class IncomingEmail : ITenantOwned
                     attachment.ContentType,
                     attachment.SizeBytes,
                     attachment.ProviderAttachmentId,
-                    attachment.IsInline
+                    attachment.IsInline,
+                    attachment.PartId
                 )
             );
 
@@ -188,6 +199,26 @@ public sealed class IncomingEmail : ITenantOwned
 
         IsRead = true;
         ReadAtUtc = nowUtc;
+        return true;
+    }
+
+    // A la papelera. Devuelve true si cambió (para ajustar MessageCount una sola vez).
+    public bool SoftDelete(DateTime nowUtc)
+    {
+        if (IsDeleted)
+            return false;
+
+        DeletedAtUtc = nowUtc;
+        return true;
+    }
+
+    // Restaurar. Devuelve true si cambió.
+    public bool Restore()
+    {
+        if (!IsDeleted)
+            return false;
+
+        DeletedAtUtc = null;
         return true;
     }
 

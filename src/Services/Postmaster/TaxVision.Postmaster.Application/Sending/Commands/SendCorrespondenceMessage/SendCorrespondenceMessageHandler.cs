@@ -72,6 +72,7 @@ public static class SendCorrespondenceMessageHandler
             oauthEmailSender,
             idempotencyKey,
             idempotencyGuard,
+            sentMessages,
             unitOfWork,
             ct
         );
@@ -257,6 +258,7 @@ public static class SendCorrespondenceMessageHandler
         IOAuthEmailSender oauthEmailSender,
         string idempotencyKey,
         IIdempotencyGuard idempotencyGuard,
+        ISentMessageRepository sentMessages,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -264,9 +266,12 @@ public static class SendCorrespondenceMessageHandler
         var fetchResult = await attachmentFetcher.FetchAllAsync(command.TenantId, command.Attachments, ct);
         if (fetchResult.IsFailure)
         {
-            var now = DateTime.UtcNow;
-            message.MarkAsFailed($"AttachmentFetchFailed: {fetchResult.Error.Message}", now);
-            await idempotencyGuard.CompleteAsync(command.TenantId, idempotencyKey, message.Id, ct);
+            // Falla ANTES de salir al proveedor: nada se envió. Se hace rollback del intento (borra el
+            // SentMessage recién encolado y libera la reserva) para que un reintento del mismo draft
+            // arranque limpio. Completar la idempotencia acá dejaba el fallo como "completado" → el
+            // reintento lo replicaba como falso éxito y el índice único de SentMessages lo bloqueaba.
+            sentMessages.Remove(message);
+            await idempotencyGuard.ReleaseAsync(command.TenantId, idempotencyKey, ct);
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<SendResult>(
                 new Error("SendCorrespondenceMessageHandler.AttachmentFetchFailed", fetchResult.Error.Message)

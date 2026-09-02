@@ -7,7 +7,10 @@ public sealed record ConnectorsRawMessageAttachmentMetadata(
     string Filename,
     string ContentType,
     long SizeBytes,
-    string ProviderAttachmentId
+    string ProviderAttachmentId,
+    // Id de la parte MIME (Gmail: "1", "1.2") — estable entre fetches, a diferencia de
+    // ProviderAttachmentId. Selector preferido para descargar. Null en IMAP/Graph.
+    string? PartId = null
 );
 
 /// <summary>
@@ -29,6 +32,9 @@ public sealed record ConnectorsRawMessageReceivedIntegrationEvent : IntegrationE
     public string? InReplyTo { get; init; }
     public IReadOnlyList<string>? References { get; init; }
     public required string From { get; init; }
+
+    /// <summary>Nombre para mostrar del remitente (ej. "Manuel Mena"), si el header From lo trae. Null si viene pelado.</summary>
+    public string? FromDisplayName { get; init; }
     public required IReadOnlyList<string> To { get; init; }
     public IReadOnlyList<string> Cc { get; init; } = [];
     public IReadOnlyList<string> Bcc { get; init; } = [];

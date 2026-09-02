@@ -56,6 +56,17 @@ public sealed class SqlIdempotencyGuard(PostmasterDbContext dbContext, ILogger<S
             throw new InvalidOperationException(completeResult.Error.Message);
     }
 
+    public async Task ReleaseAsync(Guid tenantId, string idempotencyKey, CancellationToken ct)
+    {
+        var existing = await FindAsync(tenantId, idempotencyKey, ct);
+        if (existing is null)
+            return;
+
+        dbContext.EmailIdempotencies.Remove(existing);
+        // Sin SaveChanges propio: se libera dentro de la misma transacción del handler que también
+        // borra el SentMessage del intento — ambos son el rollback de un envío que nunca salió.
+    }
+
     private Task<EmailIdempotency?> FindAsync(Guid tenantId, string idempotencyKey, CancellationToken ct) =>
         dbContext.EmailIdempotencies.FirstOrDefaultAsync(
             e => e.TenantId == tenantId && e.IdempotencyKey == idempotencyKey,

@@ -54,6 +54,10 @@ public sealed class Draft : IHasOwner, ITenantOwned
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? LastAutoSavedAtUtc { get; private set; }
 
+    // Soft-delete del enviado (Sent): null = visible; set = en la papelera.
+    public DateTime? DeletedAtUtc { get; private set; }
+    public bool IsDeleted => DeletedAtUtc is not null;
+
     /// <summary>Null para correspondencia nueva, congelado una sola vez para un reply (ver <see cref="ReplyContext"/>).</summary>
     public ReplyContext? ReplyContext { get; private set; }
 
@@ -271,6 +275,21 @@ public sealed class Draft : IHasOwner, ITenantOwned
         FailureReason = null;
         UpdatedAtUtc = DateTime.UtcNow;
         return Result.Success();
+    }
+
+    // Papelera del enviado. Solo un Sent es un "mensaje" borrable. Idempotente.
+    public Result SoftDelete(DateTime nowUtc)
+    {
+        if (Status != DraftStatus.Sent)
+            return Result.Failure(InvalidTransition(nameof(SoftDelete)));
+
+        DeletedAtUtc ??= nowUtc;
+        return Result.Success();
+    }
+
+    public void Restore()
+    {
+        DeletedAtUtc = null;
     }
 
     /// <summary>Sending → Failed. El usuario puede reintentar creando un nuevo intento de envío sobre el mismo Draft en Fase 14 — este aggregate solo registra el motivo.</summary>

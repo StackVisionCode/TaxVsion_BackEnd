@@ -75,6 +75,41 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
         return new PagedResult<Draft>(items, normalizedPage, normalizedSize, totalCount);
     }
 
+    // Carpeta "Sent" del cliente: Include(Recipients) para el "Para". Mismo shape que
+    // ListOpenByCustomerAsync pero Status=Sent, más reciente primero (UpdatedAtUtc = envío).
+    public async Task<PagedResult<Draft>> ListSentByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedSize = ClampPageSize(size);
+
+        var query = db
+            .Drafts.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(d =>
+                d.TenantId == tenantId
+                && d.CustomerId == customerId
+                && d.Status == DraftStatus.Sent
+                && d.DeletedAtUtc == null
+            );
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .Include(d => d.Recipients)
+            .OrderByDescending(d => d.UpdatedAtUtc)
+            .Skip((normalizedPage - 1) * normalizedSize)
+            .Take(normalizedSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<Draft>(items, normalizedPage, normalizedSize, totalCount);
+    }
+
     // Include(Recipients): ListThreadMessagesHandler necesita ToAddresses para el DTO de thread
     // unificado. Sin paginar — ver el comentario de la interfaz. Usa
     // IX_Drafts_TenantId_EmailThreadId_Status.
@@ -87,8 +122,49 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
             .Drafts.AsNoTracking()
             .IgnoreQueryFilters()
             .Include(d => d.Recipients)
-            .Where(d => d.TenantId == tenantId && d.EmailThreadId == emailThreadId && d.Status == DraftStatus.Sent)
+            .Where(d =>
+                d.TenantId == tenantId
+                && d.EmailThreadId == emailThreadId
+                && d.Status == DraftStatus.Sent
+                && d.DeletedAtUtc == null
+            )
             .ToListAsync(ct);
+
+    // Papelera: enviados borrados de un customer, más reciente primero.
+    public async Task<PagedResult<Draft>> ListTrashedSentByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedSize = ClampPageSize(size);
+
+        var query = db
+            .Drafts.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(d =>
+                d.TenantId == tenantId
+                && d.CustomerId == customerId
+                && d.Status == DraftStatus.Sent
+                && d.DeletedAtUtc != null
+            );
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .Include(d => d.Recipients)
+            .OrderByDescending(d => d.DeletedAtUtc)
+            .Skip((normalizedPage - 1) * normalizedSize)
+            .Take(normalizedSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<Draft>(items, normalizedPage, normalizedSize, totalCount);
+    }
+
+    public void Remove(Draft entity) => db.Drafts.Remove(entity);
 
     // Tracked (sin AsNoTracking): DraftCleanupJob muta cada fila (Draft.Discard()) y guarda por el
     // mismo UnitOfWork/DbContext del scope — a diferencia de los listados de solo lectura de arriba.

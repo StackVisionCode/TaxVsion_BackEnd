@@ -51,7 +51,7 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
         var query = db
             .IncomingEmails.AsNoTracking()
             .IgnoreQueryFilters()
-            .Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId);
+            .Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId && x.DeletedAtUtc == null);
 
         var totalCount = await query.CountAsync(ct);
 
@@ -92,7 +92,12 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
         var counts = await db
             .IncomingEmails.AsNoTracking()
             .IgnoreQueryFilters()
-            .Where(x => x.TenantId == tenantId && !x.IsRead && emailThreadIds.Contains(x.EmailThreadId))
+            .Where(x =>
+                x.TenantId == tenantId
+                && !x.IsRead
+                && x.DeletedAtUtc == null
+                && emailThreadIds.Contains(x.EmailThreadId)
+            )
             .GroupBy(x => x.EmailThreadId)
             .Select(g => new { EmailThreadId = g.Key, Count = g.Count() })
             .ToListAsync(ct);
@@ -111,6 +116,50 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
             .IncomingEmails.IgnoreQueryFilters()
             .Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId)
             .ToListAsync(ct);
+
+    // Papelera del customer (solo entrantes borrados), más reciente primero.
+    public async Task<PagedResult<IncomingEmail>> ListTrashedByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedSize = ClampPageSize(size);
+
+        var query = db
+            .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.DeletedAtUtc != null);
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderByDescending(x => x.DeletedAtUtc)
+            .Skip((normalizedPage - 1) * normalizedSize)
+            .Take(normalizedSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<IncomingEmail>(items, normalizedPage, normalizedSize, totalCount);
+    }
+
+    public void Remove(IncomingEmail entity) => db.IncomingEmails.Remove(entity);
+
+    // Tracked (sin AsNoTracking): el caller marca el attachment Blocked y persiste.
+    public Task<IncomingEmail?> FindByAttachmentCloudStorageFileIdAsync(
+        Guid tenantId,
+        Guid cloudStorageFileId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .IncomingEmails.IgnoreQueryFilters()
+            .Include(x => x.Attachments)
+            .FirstOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId),
+                ct
+            );
 
     private static int ClampPageSize(int requested) =>
         requested switch

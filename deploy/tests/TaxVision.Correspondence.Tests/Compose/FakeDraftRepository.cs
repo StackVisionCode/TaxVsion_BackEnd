@@ -57,6 +57,28 @@ internal sealed class FakeDraftRepository : IDraftRepository
         );
     }
 
+    public Task<PagedResult<Draft>> ListSentByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedSize = size < 1 ? 20 : size;
+
+        var filtered = _store
+            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent)
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .ToList();
+
+        var items = filtered.Skip((normalizedPage - 1) * normalizedSize).Take(normalizedSize).ToList();
+        return Task.FromResult<PagedResult<Draft>>(
+            new PagedResult<Draft>(items, normalizedPage, normalizedSize, filtered.Count)
+        );
+    }
+
     public Task<IReadOnlyList<Draft>> ListSentByThreadAsync(
         Guid tenantId,
         Guid emailThreadId,
@@ -80,4 +102,30 @@ internal sealed class FakeDraftRepository : IDraftRepository
                 .Take(limit)
                 .ToList()
         );
+
+    public Task<PagedResult<Draft>> ListTrashedSentByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedSize = size < 1 ? 20 : size;
+
+        var filtered = _store
+            .Where(x =>
+                x.TenantId == tenantId && x.CustomerId == customerId && x.Status == DraftStatus.Sent && x.IsDeleted
+            )
+            .OrderByDescending(x => x.DeletedAtUtc)
+            .ToList();
+
+        var items = filtered.Skip((normalizedPage - 1) * normalizedSize).Take(normalizedSize).ToList();
+        return Task.FromResult<PagedResult<Draft>>(
+            new PagedResult<Draft>(items, normalizedPage, normalizedSize, filtered.Count)
+        );
+    }
+
+    public void Remove(Draft entity) => _store.Remove(entity);
 }

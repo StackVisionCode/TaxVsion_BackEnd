@@ -80,4 +80,35 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
         Task.FromResult<IReadOnlyList<IncomingEmail>>(
             _store.Where(x => x.TenantId == tenantId && x.EmailThreadId == emailThreadId).ToList()
         );
+
+    public Task<PagedResult<IncomingEmail>> ListTrashedByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        var filtered = _store
+            .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.IsDeleted)
+            .OrderByDescending(x => x.DeletedAtUtc)
+            .ToList();
+        var items = filtered.Skip((page < 1 ? 0 : (page - 1) * size)).Take(size < 1 ? 20 : size).ToList();
+        return Task.FromResult<PagedResult<IncomingEmail>>(
+            new PagedResult<IncomingEmail>(items, page < 1 ? 1 : page, size < 1 ? 20 : size, filtered.Count)
+        );
+    }
+
+    public void Remove(IncomingEmail entity) => _store.Remove(entity);
+
+    public Task<IncomingEmail?> FindByAttachmentCloudStorageFileIdAsync(
+        Guid tenantId,
+        Guid cloudStorageFileId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _store.FirstOrDefault(x =>
+                x.TenantId == tenantId && x.Attachments.Any(a => a.CloudStorageFileId == cloudStorageFileId)
+            )
+        );
 }

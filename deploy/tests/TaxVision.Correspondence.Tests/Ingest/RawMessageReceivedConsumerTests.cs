@@ -24,7 +24,8 @@ public sealed class RawMessageReceivedConsumerTests
         string dkim = "Pass",
         string dmarc = "Pass",
         string subject = "Subject",
-        DateTime? receivedAtUtc = null
+        DateTime? receivedAtUtc = null,
+        string? fromDisplayName = null
     ) =>
         new()
         {
@@ -38,6 +39,7 @@ public sealed class RawMessageReceivedConsumerTests
             InReplyTo = inReplyTo,
             References = references,
             From = from,
+            FromDisplayName = fromDisplayName,
             To = ["tenant-user@example.com"],
             Subject = subject,
             Snippet = "Snippet",
@@ -117,6 +119,7 @@ public sealed class RawMessageReceivedConsumerTests
 
         var email = Assert.Single(incomingEmails.All);
         Assert.Equal(customerId, email.CustomerId);
+        Assert.Equal(SenderTrust.Verified, email.SenderTrust);
         var thread = Assert.Single(threads.All);
         Assert.Equal(thread.Id, email.EmailThreadId);
         Assert.Empty(unmatched.All);
@@ -124,6 +127,50 @@ public sealed class RawMessageReceivedConsumerTests
         var published = Assert.Single(bus.Published);
         var integrationEvent = Assert.IsType<CorrespondenceCustomerEmailReceivedIntegrationEvent>(published);
         Assert.Equal(email.Id, integrationEvent.IncomingEmailId);
+    }
+
+    [Fact]
+    public async Task Handle_propagates_the_sender_display_name_onto_the_IncomingEmail()
+    {
+        var tenantId = Guid.NewGuid();
+        var incomingEmails = new FakeIncomingEmailRepository();
+        var threads = new FakeEmailThreadRepository();
+        var customerEmails = new FakeCustomerEmailAddressRepository();
+        var unmatched = new FakeUnmatchedIncomingEmailRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+        await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
+
+        var evt = NewEvent(
+            tenantId,
+            "customer@example.com",
+            internetMessageId: "<msg-1@example.com>",
+            fromDisplayName: "  Manuel Mena  "
+        );
+
+        await HandleAsync(evt, incomingEmails, threads, customerEmails, unmatched, unitOfWork, bus);
+
+        var email = Assert.Single(incomingEmails.All);
+        Assert.Equal("Manuel Mena", email.FromDisplayName);
+    }
+
+    [Fact]
+    public async Task Handle_leaves_FromDisplayName_null_when_the_event_has_none()
+    {
+        var tenantId = Guid.NewGuid();
+        var incomingEmails = new FakeIncomingEmailRepository();
+        var threads = new FakeEmailThreadRepository();
+        var customerEmails = new FakeCustomerEmailAddressRepository();
+        var unmatched = new FakeUnmatchedIncomingEmailRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+        await SeedCustomerAsync(customerEmails, tenantId, "customer@example.com");
+
+        var evt = NewEvent(tenantId, "customer@example.com", internetMessageId: "<msg-2@example.com>");
+
+        await HandleAsync(evt, incomingEmails, threads, customerEmails, unmatched, unitOfWork, bus);
+
+        Assert.Null(Assert.Single(incomingEmails.All).FromDisplayName);
     }
 
     [Fact]
@@ -192,7 +239,7 @@ public sealed class RawMessageReceivedConsumerTests
     [InlineData("Fail", "Pass", "Pass")] // DMARC fail alone is enough
     [InlineData("Pass", "Fail", "Fail")] // SPF+DKIM both fail
     [InlineData("None", "Fail", "Fail")]
-    public async Task Handle_quarantines_a_matched_sender_when_authentication_signals_fail_regardless_of_debug_flag(
+    public async Task Handle_ingests_a_failed_authentication_email_marked_Unverified_never_quarantined(
         string dmarc,
         string spf,
         string dkim
@@ -209,23 +256,13 @@ public sealed class RawMessageReceivedConsumerTests
 
         var evt = NewEvent(tenantId, "customer@example.com", spf: spf, dkim: dkim, dmarc: dmarc);
 
-        // enableUnmatchedDebug=false — must still quarantine, this is a security path, not debug noise.
-        await HandleAsync(
-            evt,
-            incomingEmails,
-            threads,
-            customerEmails,
-            unmatched,
-            unitOfWork,
-            bus,
-            enableUnmatchedDebug: false
-        );
+        await HandleAsync(evt, incomingEmails, threads, customerEmails, unmatched, unitOfWork, bus);
 
-        Assert.Empty(incomingEmails.All);
-        Assert.Empty(threads.All);
-        var record = Assert.Single(unmatched.All);
-        Assert.Equal(UnmatchedReason.AuthenticationFailed, record.Reason);
-        Assert.Empty(bus.Published);
+        // Transparencia: entra al inbox marcado Unverified, NO a cuarentena oculta.
+        var email = Assert.Single(incomingEmails.All);
+        Assert.Equal(SenderTrust.Unverified, email.SenderTrust);
+        Assert.Empty(unmatched.All);
+        Assert.Single(bus.Published);
     }
 
     [Fact]

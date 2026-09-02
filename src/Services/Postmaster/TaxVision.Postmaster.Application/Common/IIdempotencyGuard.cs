@@ -20,4 +20,12 @@ public interface IIdempotencyGuard
 
     /// <summary>Cierra la reserva con el <c>SentMessageId</c> ya persistido, tras un envío exitoso.</summary>
     Task CompleteAsync(Guid tenantId, string idempotencyKey, Guid sentMessageId, CancellationToken ct);
+
+    /// <summary>
+    /// Libera la reserva ante un fallo PREVIO al envío al proveedor (ej. no se pudo bajar el adjunto):
+    /// nada salió, así que se borra la reserva para que un reintento del mismo draft arranque limpio.
+    /// A diferencia de <see cref="CompleteAsync"/>, NO deja la clave como completada — completarla en un
+    /// fallo replicaba el error como falso éxito y bloqueaba el reintento.
+    /// </summary>
+    Task ReleaseAsync(Guid tenantId, string idempotencyKey, CancellationToken ct);
 }

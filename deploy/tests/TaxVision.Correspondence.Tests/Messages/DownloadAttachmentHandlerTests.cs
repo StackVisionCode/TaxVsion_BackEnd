@@ -34,7 +34,14 @@ public sealed class DownloadAttachmentHandlerTests
                 attachmentCount: 1,
                 attachments:
                 [
-                    new IncomingEmailAttachmentData("invoice.pdf", "application/pdf", 1024, "provider-att-1", false),
+                    new IncomingEmailAttachmentData(
+                        "invoice.pdf",
+                        "application/pdf",
+                        1024,
+                        "provider-att-1",
+                        false,
+                        "1"
+                    ),
                 ]
             )
             .Value;
@@ -97,7 +104,8 @@ public sealed class DownloadAttachmentHandlerTests
         Assert.NotNull(attachment.CloudStorageFileId);
 
         var call = Assert.Single(connectors.AttachmentCalls);
-        Assert.Equal((tenantId, accountId, "provider-msg-1", "provider-att-1"), call);
+        // partId + filename/size viajan como selector estable (el providerAttachmentId de Gmail es efímero).
+        Assert.Equal((tenantId, accountId, "provider-msg-1", "provider-att-1", "invoice.pdf", 1024L, "1"), call);
 
         var uploadCall = Assert.Single(uploader.Calls);
         Assert.Equal("invoice.pdf", uploadCall.Filename);

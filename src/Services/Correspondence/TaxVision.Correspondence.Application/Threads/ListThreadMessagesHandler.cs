@@ -100,6 +100,7 @@ public static class ListThreadMessagesHandler
             AttachmentCount: draft.Attachments.Count,
             BodyStatus: null,
             // Un draft enviado no tiene estado de lectura — siempre "leído" para que nunca cuente como no-leído.
-            IsRead: true
+            IsRead: true,
+            SenderTrust: null
         );
 }

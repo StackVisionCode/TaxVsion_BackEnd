@@ -79,4 +79,23 @@ public interface IIncomingEmailRepository
         Guid emailThreadId,
         CancellationToken ct = default
     );
+
+    // Papelera: entrantes borrados de un customer, más reciente primero.
+    Task<PagedResult<IncomingEmail>> ListTrashedByCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    );
+
+    // Borrado permanente (solo desde la papelera).
+    void Remove(IncomingEmail entity);
+
+    // Email dueño del adjunto con ese fileId de CloudStorage (tracked, para marcarlo Blocked al escanear).
+    Task<IncomingEmail?> FindByAttachmentCloudStorageFileIdAsync(
+        Guid tenantId,
+        Guid cloudStorageFileId,
+        CancellationToken ct = default
+    );
 }

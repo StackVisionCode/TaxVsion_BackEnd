@@ -49,12 +49,20 @@ public sealed class MessagesController(IMessageBus bus) : ControllerBase
     public async Task<IActionResult> GetAttachment(
         string providerMessageId,
         string attachmentId,
-        [FromBody] GetMessageBodyRequest body,
+        [FromBody] GetMessageAttachmentRequest body,
         CancellationToken ct
     )
     {
         var result = await bus.InvokeAsync<Result<MessageAttachmentDownload>>(
-            new GetMessageAttachmentQuery(body.TenantId, body.AccountId, providerMessageId, attachmentId),
+            new GetMessageAttachmentQuery(
+                body.TenantId,
+                body.AccountId,
+                providerMessageId,
+                attachmentId,
+                body.Filename,
+                body.SizeBytes,
+                body.PartId
+            ),
             ct
         );
         if (result.IsFailure)

@@ -92,7 +92,126 @@ public class GmailApiClientTests
         Assert.Equal(AuthenticationResult.Pass, message.AuthenticationSignals.SpfResult);
         Assert.Equal(AuthenticationResult.Pass, message.AuthenticationSignals.DkimResult);
         Assert.Equal(AuthenticationResult.Fail, message.AuthenticationSignals.DmarcResult);
-        Assert.Contains("metadataHeaders=Authentication-Results", handler.Requests[0].RequestUri!.ToString());
+        // format=full: metadata NO trae attachmentId, así que los adjuntos se perdían al ingerir.
+        Assert.Contains("format=full", handler.Requests[0].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetMessageAsync_ExtractsSenderDisplayNameAndBareAddress()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """
+            {
+              "id": "msg1", "threadId": "thread1", "internalDate": "1700000000000",
+              "payload": { "headers": [
+                {"name":"From","value":"Manuel Mena <moquetez671@gmail.com>"},
+                {"name":"Subject","value":"Hola"}
+              ] }
+            }
+            """
+        );
+
+        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
+
+        Assert.Equal("moquetez671@gmail.com", message.From);
+        Assert.Equal("Manuel Mena", message.FromDisplayName);
+    }
+
+    [Fact]
+    public async Task GetMessageAsync_LeavesDisplayNameNullWhenFromIsBare()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """
+            { "id": "msg1", "threadId": "thread1", "internalDate": "1700000000000",
+              "payload": { "headers": [ {"name":"From","value":"moquetez671@gmail.com"} ] } }
+            """
+        );
+
+        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
+
+        Assert.Equal("moquetez671@gmail.com", message.From);
+        Assert.Null(message.FromDisplayName);
+    }
+
+    [Fact]
+    public async Task GetMessageAsync_DetectsAttachmentNestedInMultipartMixed()
+    {
+        // El caso real: cuerpo + adjunto llegan como multipart/mixed con el adjunto anidado.
+        // El parse viejo (solo nivel superior, format=metadata) no lo veía → HasAttachments=false.
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """
+            {
+              "id": "msg1",
+              "threadId": "thread1",
+              "snippet": "Veamos los adjuntos",
+              "internalDate": "1700000000000",
+              "payload": {
+                "mimeType": "multipart/mixed",
+                "headers": [
+                  {"name":"From","value":"customer@example.com"},
+                  {"name":"Subject","value":"Adjuntos de Pruebas"}
+                ],
+                "parts": [
+                  {
+                    "mimeType": "multipart/alternative",
+                    "parts": [
+                      {"mimeType":"text/plain","body":{"data":"SGVsbG8="}},
+                      {"mimeType":"text/html","body":{"data":"SGkh"}}
+                    ]
+                  },
+                  {"filename":"factura.pdf","mimeType":"application/pdf","body":{"attachmentId":"att-nested","size":4096}}
+                ]
+              }
+            }
+            """
+        );
+
+        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
+
+        Assert.True(message.HasAttachments);
+        var attachment = Assert.Single(message.Attachments);
+        Assert.Equal("att-nested", attachment.ProviderAttachmentId);
+        Assert.Equal("factura.pdf", attachment.Filename);
+        Assert.Equal(4096, attachment.SizeBytes);
+    }
+
+    [Fact]
+    public async Task GetMessageAsync_CollectsEveryAttachmentWhenThereAreSeveral()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(
+            HttpStatusCode.OK,
+            """
+            {
+              "id": "msg1",
+              "threadId": "thread1",
+              "snippet": "Varios adjuntos",
+              "internalDate": "1700000000000",
+              "payload": {
+                "mimeType": "multipart/mixed",
+                "headers": [ {"name":"From","value":"customer@example.com"}, {"name":"Subject","value":"Multi"} ],
+                "parts": [
+                  { "mimeType": "multipart/alternative", "parts": [ {"mimeType":"text/plain","body":{"data":"SGk="}} ] },
+                  {"filename":"a.pdf","mimeType":"application/pdf","body":{"attachmentId":"att-a","size":10}},
+                  {"filename":"b.png","mimeType":"image/png","body":{"attachmentId":"att-b","size":20}},
+                  {"filename":"c.xlsx","mimeType":"application/vnd.ms-excel","body":{"attachmentId":"att-c","size":30}}
+                ]
+              }
+            }
+            """
+        );
+
+        var message = await CreateClient(handler).GetMessageAsync(Guid.NewGuid(), Guid.NewGuid(), "msg1");
+
+        Assert.True(message.HasAttachments);
+        Assert.Equal(3, message.Attachments.Count);
+        Assert.Equal(["att-a", "att-b", "att-c"], message.Attachments.Select(a => a.ProviderAttachmentId));
     }
 
     [Fact]

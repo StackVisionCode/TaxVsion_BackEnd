@@ -16,6 +16,7 @@ public static class ArchiveThreadHandler
     public static async Task<Result> Handle(
         ArchiveThreadCommand command,
         IEmailThreadRepository emailThreads,
+        IIncomingEmailRepository incomingEmails,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -25,6 +26,13 @@ public static class ArchiveThreadHandler
             return Result.Failure(new Error("EmailThread.NotFound", "The thread was not found for this tenant."));
 
         thread.Archive();
+
+        // Archivar marca el hilo leído (quita la burbuja de no-leído).
+        var now = DateTime.UtcNow;
+        var emails = await incomingEmails.ListByThreadForUpdateAsync(command.TenantId, command.ThreadId, ct);
+        foreach (var email in emails)
+            email.MarkRead(now);
+
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

@@ -41,6 +41,7 @@ public static class GetMessageMetadataHandler
             email.HasAttachments,
             email.AttachmentCount,
             email.BodyStatus.ToString(),
-            email.IsRead
+            email.IsRead,
+            email.SenderTrust.ToString()
         );
 }

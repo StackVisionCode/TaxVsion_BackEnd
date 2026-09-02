@@ -89,6 +89,7 @@ internal static class RawMessageSyncOrchestrator
             InReplyTo = message.InReplyTo,
             References = message.References,
             From = message.From,
+            FromDisplayName = message.FromDisplayName,
             To = message.To,
             Cc = message.Cc,
             Bcc = message.Bcc,
@@ -104,7 +105,8 @@ internal static class RawMessageSyncOrchestrator
                             a.Filename,
                             a.ContentType,
                             a.SizeBytes,
-                            a.ProviderAttachmentId
+                            a.ProviderAttachmentId,
+                            a.PartId
                         ))
                         .ToList()
                     : null,

@@ -142,6 +142,7 @@ internal sealed class FakeIdempotencyGuard : IIdempotencyGuard
 {
     public IdempotencyReservationResult ReserveReturnValue { get; set; } = IdempotencyReservationResult.Reserved();
     public List<(Guid TenantId, string Key, Guid SentMessageId)> Completed { get; } = [];
+    public List<(Guid TenantId, string Key)> Released { get; } = [];
 
     public Task<IdempotencyReservationResult> TryReserveAsync(
         Guid tenantId,
@@ -152,6 +153,12 @@ internal sealed class FakeIdempotencyGuard : IIdempotencyGuard
     public Task CompleteAsync(Guid tenantId, string idempotencyKey, Guid sentMessageId, CancellationToken ct)
     {
         Completed.Add((tenantId, idempotencyKey, sentMessageId));
+        return Task.CompletedTask;
+    }
+
+    public Task ReleaseAsync(Guid tenantId, string idempotencyKey, CancellationToken ct)
+    {
+        Released.Add((tenantId, idempotencyKey));
         return Task.CompletedTask;
     }
 }
@@ -195,11 +202,18 @@ internal sealed class FakeEmailSender : IEmailSender
 internal sealed class FakeSentMessageRepository : ISentMessageRepository
 {
     public List<SentMessage> Added { get; } = [];
+    public List<SentMessage> Removed { get; } = [];
 
     public Task AddAsync(SentMessage message, CancellationToken ct = default)
     {
         Added.Add(message);
         return Task.CompletedTask;
+    }
+
+    public void Remove(SentMessage message)
+    {
+        Removed.Add(message);
+        Added.Remove(message);
     }
 
     public Task<Result<SentMessage>> GetByIdWithEventsAsync(Guid tenantId, Guid id, CancellationToken ct = default)

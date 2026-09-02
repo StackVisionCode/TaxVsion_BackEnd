@@ -60,9 +60,11 @@ $nodeFleet = @(
   @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null }
 )
 
-$npm = (Get-Command npm -ErrorAction SilentlyContinue)
+# npm.cmd (no el 'npm' sin extensión): Start-Process solo lanza ejecutables Win32, y el shim
+# extensionless revienta con "%1 is not a valid Win32 application".
+$npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
 if (-not $npm) {
-  Write-Host "SKIP Node services: npm no está en el PATH."
+  Write-Host "SKIP Node services: npm.cmd no está en el PATH."
 } else {
   foreach ($s in $nodeFleet) {
     $wd = Join-Path $root $s.d

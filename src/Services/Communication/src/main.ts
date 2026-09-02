@@ -26,6 +26,7 @@ import { bindAuthConsumers } from './application/event-handlers/auth-consumers.j
 import { bindCloudStorageConsumers } from './application/event-handlers/cloudstorage-consumers.js';
 import { bindCloudStorageNotificationConsumers } from './application/event-handlers/cloudstorage-notification-consumers.js';
 import { bindConnectorsConsumers } from './application/event-handlers/connectors-consumers.js';
+import { bindCorrespondenceConsumers } from './application/event-handlers/correspondence-consumers.js';
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
 import { bindAnalyticsConsumers } from './application/event-handlers/analytics-consumers.js';
@@ -141,6 +142,7 @@ async function main(): Promise<void> {
     notifications: container.notifications,
     emitter,
   });
+  bindCorrespondenceConsumers(consumers.register.bind(consumers), { emitter });
   bindCalendarConsumers(consumers.register.bind(consumers), {
     meetings: container.meetings,
     publisher: container.publisher,

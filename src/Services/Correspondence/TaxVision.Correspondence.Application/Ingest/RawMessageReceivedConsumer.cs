@@ -66,21 +66,8 @@ public static class RawMessageReceivedConsumer
                 return;
             }
 
-            if (HasFailedAuthentication(evt))
-            {
-                await RecordUnmatchedAsync(evt, from, UnmatchedReason.AuthenticationFailed, unmatched, logger, ct);
-                await unitOfWork.SaveChangesAsync(ct);
-                logger.LogWarning(
-                    "raw_message_received event {EventId} for customer {CustomerId} failed authentication (spf={Spf} dkim={Dkim} dmarc={Dmarc}); quarantined.",
-                    evt.EventId,
-                    customer.CustomerId,
-                    evt.SpfResult,
-                    evt.DkimResult,
-                    evt.DmarcResult
-                );
-                return;
-            }
-
+            // Transparencia: un correo que falla autenticación NO se pone en cuarentena oculta. Entra al
+            // inbox marcado (SenderAuthentication → veredicto Unverified) para que el usuario lo vea y decida.
             await IngestMatchedMessageAsync(
                 evt,
                 customer.CustomerId,
@@ -126,11 +113,12 @@ public static class RawMessageReceivedConsumer
         await unitOfWork.SaveChangesAsync(ct);
     }
 
-    private static bool HasFailedAuthentication(ConnectorsRawMessageReceivedIntegrationEvent evt) =>
-        IsResult(evt.DmarcResult, "Fail") || (IsResult(evt.SpfResult, "Fail") && IsResult(evt.DkimResult, "Fail"));
-
-    private static bool IsResult(string value, string expected) =>
-        string.Equals(value, expected, StringComparison.OrdinalIgnoreCase);
+    private static SenderAuthentication BuildAuthentication(ConnectorsRawMessageReceivedIntegrationEvent evt) =>
+        new(
+            SenderAuthentication.Parse(evt.SpfResult),
+            SenderAuthentication.Parse(evt.DkimResult),
+            SenderAuthentication.Parse(evt.DmarcResult)
+        );
 
     private static async Task RecordUnmatchedAsync(
         ConnectorsRawMessageReceivedIntegrationEvent evt,
@@ -195,7 +183,7 @@ public static class RawMessageReceivedConsumer
             evt.ProviderCode,
             evt.ProviderMessageId,
             from,
-            fromDisplayName: null,
+            fromDisplayName: NormalizeDisplayName(evt.FromDisplayName),
             evt.Subject,
             evt.Snippet,
             evt.ReceivedAtUtc,
@@ -205,7 +193,8 @@ public static class RawMessageReceivedConsumer
             evt.InReplyTo,
             JoinReferences(evt.References),
             BuildRecipients(evt),
-            BuildAttachments(evt)
+            BuildAttachments(evt),
+            BuildAuthentication(evt)
         );
         if (emailResult.IsFailure)
         {
@@ -282,6 +271,18 @@ public static class RawMessageReceivedConsumer
     private static string? JoinReferences(IReadOnlyList<string>? references) =>
         references is null || references.Count == 0 ? null : string.Join(",", references);
 
+    // Trim + null si viene vacío + tope a FromDisplayNameMaxLength (200) para no romper la validación
+    // del aggregate con un nombre exótico demasiado largo.
+    private static string? NormalizeDisplayName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        var trimmed = raw.Trim();
+        return trimmed.Length > IncomingEmail.FromDisplayNameMaxLength
+            ? trimmed[..IncomingEmail.FromDisplayNameMaxLength]
+            : trimmed;
+    }
+
     private static List<IncomingEmailRecipientData> BuildRecipients(ConnectorsRawMessageReceivedIntegrationEvent evt)
     {
         var recipients = new List<IncomingEmailRecipientData>();
@@ -315,7 +316,8 @@ public static class RawMessageReceivedConsumer
                     meta.ContentType,
                     meta.SizeBytes,
                     meta.ProviderAttachmentId,
-                    false
+                    false,
+                    meta.PartId
                 )
             );
 
