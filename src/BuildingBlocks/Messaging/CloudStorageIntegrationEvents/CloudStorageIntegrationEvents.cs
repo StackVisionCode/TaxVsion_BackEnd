@@ -266,3 +266,20 @@ public sealed record SaveFileRequestedIntegrationEvent : IntegrationEvent
     public required string ContentType { get; init; }
     public required long SizeBytes { get; init; }
 }
+
+/// <summary>
+/// Migración: pide a CloudStorage re-asignar el dueño lógico de un archivo ya catalogado
+/// (OwnerType/OwnerId), sin mover el objeto físico. Lo publica Signature para que los
+/// documentos firmados existentes (guardados como OwnerType=Signature antes del fix)
+/// pasen a pertenecer al cliente y aparezcan bajo su carpeta en Documents. El consumer
+/// re-resuelve además la carpeta de sistema del nuevo dueño.
+/// </summary>
+public sealed record ReassignFileOwnerRequestedIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+
+    /// <summary>Debe matchear el enum OwnerType de CloudStorage.Domain.</summary>
+    public required string NewOwnerType { get; init; }
+    public Guid? NewOwnerId { get; init; }
+    public required Guid ActorId { get; init; }
+}

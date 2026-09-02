@@ -17,6 +17,7 @@ using TaxVision.CloudStorage.Application.Files.Commands;
 using TaxVision.CloudStorage.Application.Files.LegalHold;
 using TaxVision.CloudStorage.Application.Files.Queries;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Domain.Files;
 using Wolverine;
 
 namespace TaxVision.CloudStorage.Api.Controllers;
@@ -165,9 +166,14 @@ public sealed class FilesController(
     )]
     [RateLimit("cloudstorage.f.file_list")]
     [ProducesResponseType<IReadOnlyList<FileResponse>>(StatusCodes.Status200OK)]
+    // ownerType/ownerId son un filtro OPCIONAL solo para staff (ej. todos los archivos de un
+    // customer, cross-carpeta). Un actor CustomerPortal los ignora: su alcance ya queda forzado
+    // a su propio customerId en el handler/repo (nunca puede ver otro dueno).
     public async Task<IActionResult> List(
         [FromQuery] int skip = 0,
         [FromQuery] int take = 50,
+        [FromQuery] OwnerType? ownerType = null,
+        [FromQuery] Guid? ownerId = null,
         CancellationToken ct = default
     )
     {
@@ -175,7 +181,7 @@ public sealed class FilesController(
             return Unauthorized();
 
         var result = await bus.InvokeAsync<IReadOnlyList<FileResponse>>(
-            new ListFilesQuery(tenantId, scope, skip, take),
+            new ListFilesQuery(tenantId, scope, ownerType, ownerId, skip, take),
             ct
         );
         return Ok(result);

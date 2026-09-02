@@ -18,6 +18,8 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
 
     public void Seed(FileObject file) => _byId[file.Id] = file;
 
+    public IReadOnlyCollection<FileObject> All() => _byId.Values.ToList();
+
     public bool Removed(Guid fileId) => !_byId.ContainsKey(fileId);
 
     public void Add(FileObject file) => _byId[file.Id] = file;
@@ -30,13 +32,83 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
     public Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         int skip,
         int take,
         CancellationToken ct
-    ) => Task.FromResult<IReadOnlyList<FileObject>>([]);
+    ) =>
+        Task.FromResult<IReadOnlyList<FileObject>>(
+            _byId
+                .Values.Where(file =>
+                    file.TenantId == tenantId
+                    && file.Status != FileStatus.SoftDeleted
+                    && (
+                        restrictedCustomerId == null
+                        || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
+                    )
+                    && (restrictedCustomerId != null || ownerType == null || file.OwnerType == ownerType)
+                    && (restrictedCustomerId != null || ownerId == null || file.OwnerId == ownerId)
+                )
+                .OrderByDescending(file => file.CreatedAtUtc)
+                .Skip(skip)
+                .Take(take)
+                .ToList()
+        );
 
     public Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(DateTime nowUtc, int take, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<FileObject>>([]);
+
+    public Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
+        IReadOnlyCollection<FolderType> navigableTypes,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<Guid>>(
+            _byId
+                .Values.Where(f =>
+                    f.FolderId == null && f.Status != FileStatus.SoftDeleted && navigableTypes.Contains(f.FolderType)
+                )
+                .Select(f => f.TenantId)
+                .Distinct()
+                .ToList()
+        );
+
+    public Task<IReadOnlyList<UnfiledFileGroup>> SummarizeUnfiledFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<FolderType> navigableTypes,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<UnfiledFileGroup>>(
+            _byId
+                .Values.Where(f =>
+                    f.TenantId == tenantId
+                    && f.FolderId == null
+                    && f.Status != FileStatus.SoftDeleted
+                    && navigableTypes.Contains(f.FolderType)
+                )
+                .GroupBy(f => (f.OwnerType, f.OwnerId, f.FolderType))
+                .Select(g => new UnfiledFileGroup(g.Key.OwnerType, g.Key.OwnerId, g.Key.FolderType, g.Count()))
+                .ToList()
+        );
+
+    public Task<IReadOnlyList<FileObject>> NextUnfiledFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<FolderType> navigableTypes,
+        int take,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<FileObject>>(
+            _byId
+                .Values.Where(f =>
+                    f.TenantId == tenantId
+                    && f.FolderId == null
+                    && f.Status != FileStatus.SoftDeleted
+                    && navigableTypes.Contains(f.FolderType)
+                )
+                .OrderBy(f => f.CreatedAtUtc)
+                .Take(take)
+                .ToList()
+        );
 
     public Task<IReadOnlyList<FileObject>> ListSoftDeletedAsync(
         Guid tenantId,

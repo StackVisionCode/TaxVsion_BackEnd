@@ -12,6 +12,13 @@ public sealed class CloudStorageOptions
     public int PresignedUrlMinutes { get; set; } = 5;
     public int UploadReservationHours { get; set; } = 24;
 
+    /// <summary>
+    /// Cuando true, un archivo guardado por un servicio (M2M, SaveFileRequested) se coloca
+    /// automaticamente en su carpeta de sistema segun FolderType (ver SystemFolderCatalog).
+    /// Los tipos internos se quedan en raiz. Flag para poder apagarlo en rollout.
+    /// </summary>
+    public bool AutoSystemFolders { get; set; } = true;
+
     /// <summary>Fase C1 — dias que un archivo permanece en la papelera antes de que el job diario lo purgue definitivamente.</summary>
     public int RecycleBinRetentionDays { get; set; } = 30;
     public long DefaultStorageQuotaBytes { get; set; } = 10L * 1024 * 1024 * 1024;

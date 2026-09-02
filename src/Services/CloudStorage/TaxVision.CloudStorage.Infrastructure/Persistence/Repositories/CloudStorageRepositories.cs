@@ -29,6 +29,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
     public async Task<IReadOnlyList<FileObject>> ListAsync(
         Guid tenantId,
         Guid? restrictedCustomerId,
+        OwnerType? ownerType,
+        Guid? ownerId,
         int skip,
         int take,
         CancellationToken ct
@@ -43,6 +45,10 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                     restrictedCustomerId == null
                     || (file.OwnerType == OwnerType.Customer && file.OwnerId == restrictedCustomerId)
                 )
+                // ownerType/ownerId: filtro de staff. El portal ya quedo acotado por
+                // restrictedCustomerId, asi que ahi estos se ignoran (mismo criterio que ListInFolderAsync).
+                && (restrictedCustomerId != null || ownerType == null || file.OwnerType == ownerType)
+                && (restrictedCustomerId != null || ownerId == null || file.OwnerId == ownerId)
             )
             .OrderByDescending(file => file.CreatedAtUtc)
             .Skip(skip)
@@ -60,6 +66,67 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .Files.IgnoreQueryFilters()
             .Where(file => file.Status == FileStatus.PendingUpload && file.UploadExpiresAtUtc <= nowUtc)
             .OrderBy(file => file.UploadExpiresAtUtc)
+            .Take(take)
+            .ToListAsync(ct);
+
+    // Backfill (barrido de plataforma): tenants con archivos sin carpeta navegable. Cross-tenant intencional.
+    public async Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
+        IReadOnlyCollection<FolderType> navigableTypes,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file =>
+                file.FolderId == null
+                && file.Status != FileStatus.SoftDeleted
+                && navigableTypes.Contains(file.FolderType)
+            )
+            .Select(file => file.TenantId)
+            .Distinct()
+            .ToListAsync(ct);
+
+    // Backfill (dry-run): tenantId explicito ES el limite, IgnoreQueryFilters() intencional. AsNoTracking: solo lee.
+    public async Task<IReadOnlyList<UnfiledFileGroup>> SummarizeUnfiledFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<FolderType> navigableTypes,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file =>
+                file.TenantId == tenantId
+                && file.FolderId == null
+                && file.Status != FileStatus.SoftDeleted
+                && navigableTypes.Contains(file.FolderType)
+            )
+            .GroupBy(file => new
+            {
+                file.OwnerType,
+                file.OwnerId,
+                file.FolderType,
+            })
+            .Select(g => new UnfiledFileGroup(g.Key.OwnerType, g.Key.OwnerId, g.Key.FolderType, g.Count()))
+            .ToListAsync(ct);
+
+    // Backfill (aplicar): TRACKED a proposito — el handler muta FolderId (MoveToFolder) y lo persiste.
+    // tenantId explicito ES el limite, IgnoreQueryFilters() intencional.
+    public async Task<IReadOnlyList<FileObject>> NextUnfiledFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<FolderType> navigableTypes,
+        int take,
+        CancellationToken ct
+    ) =>
+        await db
+            .Files.IgnoreQueryFilters()
+            .Where(file =>
+                file.TenantId == tenantId
+                && file.FolderId == null
+                && file.Status != FileStatus.SoftDeleted
+                && navigableTypes.Contains(file.FolderType)
+            )
+            .OrderBy(file => file.CreatedAtUtc)
             .Take(take)
             .ToListAsync(ct);
 

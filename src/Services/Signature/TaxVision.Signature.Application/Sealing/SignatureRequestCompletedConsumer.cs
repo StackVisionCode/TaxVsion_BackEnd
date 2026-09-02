@@ -231,19 +231,25 @@ public static class SignatureRequestCompletedConsumer
         return renders;
     }
 
-    private static SignaturePdfUpload BuildSealedUpload(SignatureRequest request, SealingResult sealResult) =>
-        new(
+    private static SignaturePdfUpload BuildSealedUpload(SignatureRequest request, SealingResult sealResult)
+    {
+        var (ownerType, ownerId) = ResolveSealedOwner(request);
+        return new(
             Content: sealResult.SealedPdfBytes,
             FileName: $"signed-{request.Id:D}.pdf",
             ContentType: "application/pdf",
-            // Values must match CloudStorage's OwnerType / FolderType enums; "SignatureRequest"
-            // and "SignatureSealed" don't exist and produce a 400 from initiate-upload.
-            OwnerType: "Signature",
-            OwnerId: request.Id,
+            // Values must match CloudStorage's OwnerType / FolderType enums.
+            OwnerType: ownerType,
+            OwnerId: ownerId,
             FolderType: "Signatures",
             TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
             ActorId: request.CreatedByUserId
         );
+    }
+
+    /// <summary>Dueno del documento firmado — ver <see cref="SealedDocumentOwner"/> (politica testeable).</summary>
+    private static (string OwnerType, Guid OwnerId) ResolveSealedOwner(SignatureRequest request) =>
+        SealedDocumentOwner.Resolve(request.Signers.Select(signer => signer.MappedCustomerId).ToList(), request.Id);
 
     // ============== Fase 3b: certificate opcional ==============
 
@@ -269,12 +275,13 @@ public static class SignatureRequestCompletedConsumer
         );
         var model = BuildCertificateModel(request, sealResult, issuerName, tenantLogo);
         var rendered = renderer.Render(model);
+        var (ownerType, ownerId) = ResolveSealedOwner(request);
         var upload = new SignaturePdfUpload(
             Content: rendered.CertificatePdfBytes,
             FileName: $"certificate-{request.Id:D}.pdf",
             ContentType: "application/pdf",
-            OwnerType: "Signature",
-            OwnerId: request.Id,
+            OwnerType: ownerType,
+            OwnerId: ownerId,
             FolderType: "Signatures",
             TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
             ActorId: request.CreatedByUserId

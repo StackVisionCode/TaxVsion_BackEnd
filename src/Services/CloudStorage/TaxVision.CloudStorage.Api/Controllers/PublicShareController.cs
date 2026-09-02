@@ -48,6 +48,43 @@ public sealed class PublicShareController(IMessageBus bus) : ControllerBase
         };
     }
 
+    /// <summary>
+    /// Descriptor no sensible para la landing pública (nombre/tamaño/permiso), sin servir el archivo.
+    /// Si el link tiene contraseña, devuelve solo <c>requiresPassword</c> y omite el nombre. Token
+    /// inválido/expirado/revocado → 404 uniforme (mismo anti-enumeración que ResolvePublic).
+    /// </summary>
+    [HttpGet("public/{token}/meta")]
+    [RateLimitExempt(
+        "Endpoint anonimo (sin JWT) — mismo criterio que ResolvePublic: lo protege el limiter nativo "
+            + "[EnableRateLimiting(\"share-public\")] (IP+ruta), no [RateLimit] (que particiona por Tenant/User)."
+    )]
+    public async Task<IActionResult> ResolvePublicMeta(
+        string token,
+        [FromQuery] string? email,
+        [FromQuery] Guid? fileId,
+        CancellationToken ct
+    )
+    {
+        var result = await bus.InvokeAsync<ShareMetaResult>(new ResolvePublicShareMetaQuery(token, email, fileId), ct);
+        return result.Outcome switch
+        {
+            ShareMetaOutcome.Available => Ok(
+                new
+                {
+                    ready = true,
+                    requiresPassword = false,
+                    fileName = result.FileName,
+                    sizeBytes = result.SizeBytes,
+                    contentType = result.ContentType,
+                    permission = result.Permission,
+                    expiresAt = result.ExpiresAtUtc,
+                }
+            ),
+            ShareMetaOutcome.PasswordRequired => Ok(new { ready = false, requiresPassword = true }),
+            _ => NotFound(),
+        };
+    }
+
     private string? RemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString();
 
     private string? UserAgent() => Request.Headers.UserAgent.ToString();

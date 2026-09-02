@@ -257,6 +257,25 @@ public sealed class FileObject : TenantEntity
     }
 
     /// <summary>
+    /// Migracion: re-asigna el dueno logico (OwnerType/OwnerId) sin tocar el objeto fisico en MinIO
+    /// (la ObjectKey ya apunta al binario y la descarga la usa tal cual). Reset del FolderId para que
+    /// el archivo se re-archive en la carpeta de sistema del NUEVO dueno. No aplica a la papelera.
+    /// </summary>
+    public Result ReassignOwner(OwnerType ownerType, Guid? ownerId, DateTime nowUtc)
+    {
+        if (Status == FileStatus.SoftDeleted)
+            return Result.Failure(FileErrors.InvalidTransition);
+        if (ownerType != OwnerType.Tenant && ownerId is null)
+            return Result.Failure(FileErrors.OwnerRequired);
+
+        OwnerType = ownerType;
+        OwnerId = ownerId;
+        FolderId = null;
+        FolderAssignedAtUtc = null;
+        return Result.Success();
+    }
+
+    /// <summary>
     /// Recupera el archivo desde la papelera (Fase C1). No toca la cuota: mientras
     /// estuvo en la papelera el objeto fisico en MinIO nunca se borro, asi que
     /// UsedBytes nunca se libero — restaurar solo revierte el estado.

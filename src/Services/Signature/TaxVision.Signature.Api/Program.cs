@@ -213,6 +213,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignatureRequestReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Fase D1 — reemplaza el HttpClient a CloudStorage para subir el sellado/certificate.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ReassignFileOwnerRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureSettingsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignaturePlanConstraintsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 

@@ -110,6 +110,22 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .Take(batchSize)
             .ToListAsync(ct);
 
+    // Migracion (re-asignacion de sellados): tenantId explicito ES el limite, IgnoreQueryFilters() intencional.
+    public async Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .SignatureRequests.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(request => request.Signers)
+            .Where(request =>
+                request.TenantId == tenantId
+                && request.Status == SignatureRequestStatus.Completed
+                && request.SealedFileId != null
+            )
+            .ToListAsync(ct);
+
     public async Task AddAsync(SignatureRequest request, CancellationToken ct = default) =>
         await db.SignatureRequests.AddAsync(request, ct);
 

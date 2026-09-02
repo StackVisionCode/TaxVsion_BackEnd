@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
@@ -64,6 +65,7 @@ public static class DiscoverLoginHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IOptions<MfaOptions> mfaOptions,
         CancellationToken ct
     )
     {
@@ -74,7 +76,16 @@ public static class DiscoverLoginHandler
             );
 
         var email = command.Email.Trim().ToLowerInvariant();
-        var matches = await AuthenticateAcrossOfficesAsync(email, command.Password, users, tenants, hasher, mfa, ct);
+        var matches = await AuthenticateAcrossOfficesAsync(
+            email,
+            command.Password,
+            users,
+            tenants,
+            hasher,
+            mfa,
+            mfaOptions.Value.Enforced,
+            ct
+        );
 
         // 2. Sin coincidencias: fallo por IP + genérico. No se descuenta lockout por-cuenta (ver helper).
         if (matches.Count == 0)
@@ -138,6 +149,7 @@ public static class DiscoverLoginHandler
         ITenantRegistry tenants,
         IPasswordHasher hasher,
         IMfaRepository mfa,
+        bool mfaEnforced,
         CancellationToken ct
     )
     {
@@ -156,7 +168,7 @@ public static class DiscoverLoginHandler
             if (tenant is null || !tenant.IsActive)
                 continue;
 
-            var mfa2 = await MfaRequirement.DisposeAsync(user, mfa, ct);
+            var mfa2 = await MfaRequirement.DisposeAsync(user, mfa, ct, mfaEnforced);
             matches.Add(
                 new Match(
                     tenantId,

@@ -4,7 +4,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Commands;
+using TaxVision.CloudStorage.Application.Folders;
 using TaxVision.CloudStorage.Domain.Files;
+using TaxVision.CloudStorage.Domain.Folders;
 using TaxVision.CloudStorage.Domain.Quotas;
 using TaxVision.CloudStorage.Infrastructure.Storage;
 
@@ -92,6 +94,7 @@ public sealed class SaveFileFromSourceHandlerTests
             audit,
             new DefaultObjectKeyBuilder(),
             storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             DefaultOptions(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
@@ -156,6 +159,7 @@ public sealed class SaveFileFromSourceHandlerTests
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
             storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             DefaultOptions(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
@@ -186,6 +190,7 @@ public sealed class SaveFileFromSourceHandlerTests
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
             storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             DefaultOptions(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
@@ -220,6 +225,7 @@ public sealed class SaveFileFromSourceHandlerTests
                 new FakeStorageAuditRepository(),
                 new DefaultObjectKeyBuilder(),
                 storage,
+                new SystemFolderProvisioner(new FakeFolderRepository()),
                 DefaultOptions(),
                 new FakeSystemClock(DateTime.UtcNow),
                 unitOfWork,
@@ -259,6 +265,7 @@ public sealed class SaveFileFromSourceHandlerTests
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
             storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             DefaultOptions(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
@@ -289,6 +296,7 @@ public sealed class SaveFileFromSourceHandlerTests
             new FakeStorageAuditRepository(),
             new DefaultObjectKeyBuilder(),
             storage,
+            new SystemFolderProvisioner(new FakeFolderRepository()),
             DefaultOptions(),
             new FakeSystemClock(DateTime.UtcNow),
             unitOfWork,
@@ -300,5 +308,134 @@ public sealed class SaveFileFromSourceHandlerTests
 
         Assert.Empty(storage.Copied);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    // ===== Fase 2: auto-colocacion en carpeta de sistema (M2M) =====
+
+    [Fact]
+    public async Task Navigable_folder_type_places_the_file_in_its_system_folder()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var ownerId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
+        var folders = new FakeFolderRepository();
+
+        await SaveFileFromSourceHandler.Handle(
+            Evt(
+                tenantId,
+                fileId,
+                b =>
+                {
+                    b.OwnerType = "Customer";
+                    b.OwnerId = ownerId;
+                    b.FolderType = "Documents";
+                    b.OriginalName = "1040.pdf";
+                }
+            ),
+            files,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new FakeObjectStorage(),
+            new SystemFolderProvisioner(folders),
+            DefaultOptions(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var folder = await folders.GetByOwnerAndCategoryAsync(
+            tenantId,
+            OwnerType.Customer,
+            ownerId,
+            "sys.documents",
+            CancellationToken.None
+        );
+        Assert.NotNull(folder);
+        Assert.Equal("Documents", folder!.Name);
+        var registered = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.Equal(folder.Id, registered!.FolderId);
+    }
+
+    [Fact]
+    public async Task Internal_folder_type_leaves_the_file_at_root()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
+        var folders = new FakeFolderRepository();
+
+        await SaveFileFromSourceHandler.Handle(
+            Evt(
+                tenantId,
+                fileId,
+                b =>
+                {
+                    b.OwnerType = "Tenant";
+                    b.OwnerId = null;
+                    b.FolderType = "Branding";
+                    b.OriginalName = "logo.png";
+                    b.ContentType = "image/png";
+                }
+            ),
+            files,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new FakeObjectStorage(),
+            new SystemFolderProvisioner(folders),
+            DefaultOptions(),
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var registered = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.Null(registered!.FolderId);
+    }
+
+    [Fact]
+    public async Task Flag_off_leaves_even_navigable_types_at_root()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var limits = new FakeStorageLimitRepository();
+        limits.Seed(TenantStorageLimit.Create(tenantId, "starter", maxBytes: 1_000_000, maxFileSizeBytes: 1_000_000));
+        var folders = new FakeFolderRepository();
+        var options = Microsoft.Extensions.Options.Options.Create(
+            new CloudStorageOptions { AutoSystemFolders = false }
+        );
+
+        await SaveFileFromSourceHandler.Handle(
+            Evt(tenantId, fileId, b => b.FolderType = "Signatures"),
+            files,
+            limits,
+            new FakeStorageAuditRepository(),
+            new DefaultObjectKeyBuilder(),
+            new FakeObjectStorage(),
+            new SystemFolderProvisioner(folders),
+            options,
+            new FakeSystemClock(DateTime.UtcNow),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            NullLogger<SaveFileRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var registered = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.Null(registered!.FolderId);
     }
 }

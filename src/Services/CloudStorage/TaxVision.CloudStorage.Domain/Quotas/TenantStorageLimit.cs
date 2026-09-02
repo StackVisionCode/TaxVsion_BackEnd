@@ -14,8 +14,8 @@ public sealed class TenantStorageLimit : TenantEntity
     public long MaxFileSizeBytes { get; private set; }
     public bool IsSuspended { get; private set; }
 
-    /// <summary>Fase C3 — Public deshabilitado por defecto (datos fiscales); un Tenant Admin lo habilita explicitamente.</summary>
-    public bool AllowPublicShareLinks { get; private set; }
+    /// <summary>Habilitado por defecto; un Tenant Admin lo puede desactivar explicitamente desde Settings.</summary>
+    public bool AllowPublicShareLinks { get; private set; } = true;
     public byte[] RowVersion { get; private set; } = [];
 
     public static TenantStorageLimit Create(Guid tenantId, string planCode, long maxBytes, long maxFileSizeBytes)
@@ -26,6 +26,7 @@ public sealed class TenantStorageLimit : TenantEntity
             PlanCode = planCode,
             MaxBytes = maxBytes,
             MaxFileSizeBytes = maxFileSizeBytes,
+            AllowPublicShareLinks = true,
         };
         limit.SetTenant(tenantId);
         return limit;
