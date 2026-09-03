@@ -180,6 +180,38 @@ public sealed class PermissionCatalogTests
         Assert.Contains(PermissionCatalog.CustomersManage, tenantAdminDefaults);
     }
 
+    /// <summary>
+    /// Las comms de doble uso están marcadas IsCustomerPortal=true, así que el filtro
+    /// !IsCustomerPortal de los dos sets del admin las excluía — un Owner no podía iniciar chats,
+    /// unirse a reuniones ni leer sus notificaciones. Deben llegar por ambos caminos: el bundle de
+    /// creación (SystemRoleDefaults) y el resync de tenants existentes (SystemTenantAdminRootPermissions).
+    /// </summary>
+    [Theory]
+    [InlineData(PermissionCatalog.CommunicationChatStart)]
+    [InlineData(PermissionCatalog.CommunicationChatReply)]
+    [InlineData(PermissionCatalog.CommunicationMeetingJoin)]
+    [InlineData(PermissionCatalog.CommunicationScreenshotCreate)]
+    [InlineData(PermissionCatalog.CommunicationNotificationRead)]
+    public void SystemTenantAdmin_includes_the_dual_use_communication_permissions(string code)
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+
+        Assert.True(definition.IsCustomerPortal);
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin));
+        Assert.Contains(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
+    [Fact]
+    public void SystemTenantAdmin_communication_bundle_stays_deduped_and_scoped()
+    {
+        // Guardarraíl: el .Concat no introduce duplicados, y re-agregar las de doble uso no
+        // arrastra permisos portal-only genuinos (PortalFoldersView es del cliente, no del Owner).
+        var defaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+
+        Assert.Equal(defaults.Count, defaults.Distinct().Count());
+        Assert.DoesNotContain(PermissionCatalog.PortalFoldersView, defaults);
+    }
+
     [Fact]
     public void DmcaCounterNotice_is_deliberately_not_dangerous_despite_looking_like_a_legal_permission()
     {
