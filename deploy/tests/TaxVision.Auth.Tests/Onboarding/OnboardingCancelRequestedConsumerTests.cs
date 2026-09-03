@@ -142,6 +142,7 @@ public sealed class OnboardingCancelRequestedConsumerTests
             int size,
             string? search,
             bool? isActive,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

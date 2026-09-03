@@ -59,6 +59,7 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         int size,
         string? search,
         bool? isActive,
+        Guid? customerId = null,
         CancellationToken ct = default
     )
     {
@@ -66,6 +67,10 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
 
         if (isActive is not null)
             query = query.Where(user => user.IsActive == isActive);
+
+        // Filtro del CRM: el usuario de portal de un cliente concreto (solo los de portal llevan CustomerId).
+        if (customerId is not null)
+            query = query.Where(user => user.CustomerId == customerId);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

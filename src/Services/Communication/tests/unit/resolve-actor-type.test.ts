@@ -30,6 +30,7 @@ function fakeDirectory(result: UserDirectoryEntrySnapshot | null): UserDirectory
     upsert: async () => {},
     findByUserId: async () => result,
     markInactive: async () => {},
+    markActive: async () => {},
     searchByDisplayNameOrEmail: async () => [],
   };
 }

@@ -43,6 +43,7 @@ public sealed class UserManagementCommandsTests
             int size,
             string? search,
             bool? isActive,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw NotExpected();
     }

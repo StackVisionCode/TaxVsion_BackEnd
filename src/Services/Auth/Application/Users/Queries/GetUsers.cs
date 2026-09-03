@@ -13,7 +13,10 @@ public sealed record UserSummaryResponse(
     bool IsActive,
     bool MfaEnabled,
     DateTime CreatedAtUtc,
-    IReadOnlyList<string> Roles
+    IReadOnlyList<string> Roles,
+    // Solo tiene valor en usuarios de portal de cliente (ActorType CustomerPortal); permite al CRM
+    // correlacionar un usuario del portal con el cliente de su perfil. Ver el filtro `CustomerId`.
+    Guid? CustomerId
 );
 
 public sealed record GetUsersQuery(
@@ -21,7 +24,8 @@ public sealed record GetUsersQuery(
     int Page = 1,
     int Size = 20,
     string? Search = null,
-    bool? IsActive = null
+    bool? IsActive = null,
+    Guid? CustomerId = null
 );
 
 public static class GetUsersHandler
@@ -46,6 +50,7 @@ public static class GetUsersHandler
             query.Size,
             query.Search,
             query.IsActive,
+            query.CustomerId,
             ct
         );
 
@@ -66,7 +71,8 @@ public static class GetUsersHandler
                     user.IsActive,
                     user.MfaEnabled,
                     user.CreatedAtUtc,
-                    roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                    roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    user.CustomerId
                 )
             );
         }
@@ -108,7 +114,8 @@ public static class GetUserByIdHandler
                 user.IsActive,
                 user.MfaEnabled,
                 user.CreatedAtUtc,
-                roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                roleNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                user.CustomerId
             )
         );
     }

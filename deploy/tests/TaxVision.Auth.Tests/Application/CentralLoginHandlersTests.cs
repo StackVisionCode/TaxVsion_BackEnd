@@ -551,6 +551,7 @@ public sealed class CentralLoginHandlersTests
             int size,
             string? search,
             bool? isActive,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

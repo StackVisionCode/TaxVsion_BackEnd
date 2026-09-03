@@ -417,6 +417,37 @@ public sealed class Customer : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>
+    /// Actualiza los campos NO sensibles del perfil fiscal (filing/AGI/returning) sin tocar el
+    /// identificador cifrado ni su last4 — para editar el perfil sin re-teclear el SSN/EIN. El banco
+    /// solo se reemplaza si se pasan cifras nuevas; si vienen null se CONSERVA lo existente (a
+    /// diferencia de <see cref="SetFiscalProfile"/>, que reemplaza el perfil entero). Exige que el
+    /// perfil ya exista (crear uno requiere identificador).
+    /// </summary>
+    public Result UpdateFiscalProfile(
+        FiscalProfiles.FilingStatus? filingStatus,
+        decimal? priorYearAgi,
+        bool isReturningCustomer,
+        byte[]? refundBankAccountCipher,
+        byte[]? refundBankRoutingCipher,
+        Guid byUserId
+    )
+    {
+        EnsureActive();
+
+        if (FiscalProfile is null)
+            return Result.Failure(new Error("FiscalProfile.NotFound", "There is no fiscal profile to update."));
+
+        FiscalProfile.Update(filingStatus, priorYearAgi, isReturningCustomer, byUserId);
+
+        // Banco solo si se envió (ambas cifras). Vacío = conservar el actual, no borrarlo.
+        if (refundBankAccountCipher is not null && refundBankRoutingCipher is not null)
+            FiscalProfile.SetRefundBank(refundBankAccountCipher, refundBankRoutingCipher, byUserId);
+
+        Touch(byUserId);
+        return Result.Success();
+    }
+
     public Result ChangeOccupation(Guid? occupationId, Guid byUserId)
     {
         EnsureActive();

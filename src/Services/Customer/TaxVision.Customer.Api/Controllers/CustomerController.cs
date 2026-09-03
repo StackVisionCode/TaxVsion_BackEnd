@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Customers;
+using TaxVision.Customer.Application.Customers.Catalogs;
 using TaxVision.Customer.Application.Customers.Commands.Activate;
 using TaxVision.Customer.Application.Customers.Commands.AddAddress;
 using TaxVision.Customer.Application.Customers.Commands.AddContactPoint;
@@ -156,6 +157,35 @@ public sealed class CustomerController(IMessageBus bus) : ControllerBase
         if (result.Error.Code == "Customer.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- GET /customers/occupations ----------
+    /// <summary>Catálogo curado de ocupaciones para el selector del formulario de cliente (global, no por tenant).</summary>
+    [HttpGet("occupations")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.f.get")]
+    [ProducesResponseType<IReadOnlyList<OccupationResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetOccupations([FromQuery] string? q, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<OccupationResponse>>>(new ListOccupationsQuery(q), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // ---------- GET /customers/business-activities ----------
+    /// <summary>Catálogo curado de actividades NAICS para el selector del formulario de empresa (global).</summary>
+    [HttpGet("business-activities")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.f.get")]
+    [ProducesResponseType<IReadOnlyList<BusinessActivityResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetBusinessActivities([FromQuery] string? q, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<BusinessActivityResponse>>>(
+            new ListBusinessActivitiesQuery(q),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     // ---------- PATCH /customers/{id} ----------

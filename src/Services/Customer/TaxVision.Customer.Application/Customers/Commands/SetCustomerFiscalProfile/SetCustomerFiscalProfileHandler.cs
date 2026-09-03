@@ -23,6 +23,42 @@ public static class SetCustomerFiscalProfileHandler
         if (customer is null)
             return Result.Failure<CustomerFiscalProfileResponse>(new Error("Customer.NotFound", "Customer not found."));
 
+        // Editar sin re-enviar el identificador: cuando el tax id viene vacío y YA existe un perfil,
+        // se actualizan solo los campos no-sensibles (filing/AGI/returning) y el banco si se envió —
+        // el cifrado/blind-index/last4 quedan intactos. Así el CRM puede cambiar el filing status sin
+        // obligar a re-teclear el SSN. Crear un perfil SÍ exige identificador.
+        if (string.IsNullOrWhiteSpace(cmd.TaxIdentifier))
+        {
+            if (customer.FiscalProfile is null)
+                return Result.Failure<CustomerFiscalProfileResponse>(
+                    new Error(
+                        "FiscalProfile.TaxIdRequired",
+                        "A tax identifier is required to create the fiscal profile."
+                    )
+                );
+
+            var (keepBankAccount, keepBankRouting) = EncryptBankingIfPresent(
+                cmd.RefundBankAccount,
+                cmd.RefundBankRouting,
+                protector
+            );
+
+            var updateResult = customer.UpdateFiscalProfile(
+                filingStatus: cmd.FilingStatus,
+                priorYearAgi: cmd.PriorYearAgi,
+                isReturningCustomer: cmd.IsReturningCustomer,
+                refundBankAccountCipher: keepBankAccount,
+                refundBankRoutingCipher: keepBankRouting,
+                byUserId: cmd.ModifiedByUserId
+            );
+            if (updateResult.IsFailure)
+                return Result.Failure<CustomerFiscalProfileResponse>(updateResult.Error);
+
+            await unitOfWork.SaveChangesAsync(ct);
+            LogAudit(logger, cmd);
+            return Result.Success(MapResponse(customer, cmd.CustomerId));
+        }
+
         var taxIdValidation = ValidateAndNormalizeTaxIdentifier(cmd.TaxIdentifier, cmd.SubjectKind);
         if (taxIdValidation.IsFailure)
             return Result.Failure<CustomerFiscalProfileResponse>(taxIdValidation.Error);

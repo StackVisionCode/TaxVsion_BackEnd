@@ -1,10 +1,20 @@
 using BuildingBlocks.Common;
 using TaxVision.Customer.Application.Customers;
+using TaxVision.Customer.Application.Customers.Catalogs;
 
 namespace TaxVision.Customer.Application.Abstractions;
 
 public interface ICustomerReadService
 {
+    /// <summary>Catálogo curado de ocupaciones (global). `search` filtra por nombre; ordenado por DisplayOrder.</summary>
+    Task<IReadOnlyList<OccupationResponse>> ListOccupationsAsync(string? search, CancellationToken ct = default);
+
+    /// <summary>Catálogo curado de actividades NAICS (global). `search` filtra por código o descripción.</summary>
+    Task<IReadOnlyList<BusinessActivityResponse>> ListBusinessActivitiesAsync(
+        string? search,
+        CancellationToken ct = default
+    );
+
     Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
         Guid tenantId,
         string? term,

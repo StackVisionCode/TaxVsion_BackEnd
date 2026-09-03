@@ -41,6 +41,10 @@ export interface UserDirectoryRepository {
 
   markInactive(userId: string): Promise<void>;
 
+  /** Contraparte de `markInactive` para `auth.user.reactivated.v1`: restaura el entry al reactivar
+   * al usuario (el nombre/email siguen en la fila; solo se re-activa). */
+  markActive(userId: string): Promise<void>;
+
   /**
    * Fase Frontend 5 — autocomplete de employees al armar invitaciones de
    * meeting. Filtra por TenantId + IsActive; `query` matchea contra

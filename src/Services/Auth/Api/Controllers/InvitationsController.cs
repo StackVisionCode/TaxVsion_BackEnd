@@ -58,6 +58,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
         [FromQuery] InvitationStatus? status = null,
         [FromQuery] int page = 1,
         [FromQuery] int size = 20,
+        [FromQuery] Guid? customerId = null,
         CancellationToken ct = default
     )
     {
@@ -65,7 +66,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<InvitationResponse>>>(
-            new GetInvitationsQuery(tenantId, status, page, size),
+            new GetInvitationsQuery(tenantId, status, page, size, customerId),
             ct
         );
 

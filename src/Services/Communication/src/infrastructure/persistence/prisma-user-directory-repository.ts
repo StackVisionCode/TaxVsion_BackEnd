@@ -57,6 +57,12 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository {
       .catch(() => undefined);
   }
 
+  async markActive(userId: string): Promise<void> {
+    await this.prisma.userDirectoryEntry
+      .update({ where: { UserId: userId }, data: { IsActive: true } })
+      .catch(() => undefined);
+  }
+
   async searchByDisplayNameOrEmail(
     tenantId: string,
     query: string,

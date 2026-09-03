@@ -2,6 +2,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Domain.Addresses;
+using TaxVision.Customer.Domain.Catalogs;
 using TaxVision.Customer.Domain.ContactPoints;
 using TaxVision.Customer.Domain.Customers;
 using TaxVision.Customer.Domain.Customers.ValueObjects;
@@ -201,5 +202,95 @@ public sealed class CustomerDetailReadServiceTests
         var detail = await reader.GetDetailByIdAsync(otherTenant, customerId);
 
         Assert.Null(detail);
+    }
+
+    [Fact]
+    public async Task GetDetailByIdAsync_surfaces_the_date_of_birth()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var byUser = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+        var dob = new DateOnly(1985, 3, 15);
+
+        Guid customerId;
+        await using (var seedDb = CreateContext(databaseName, tenantContext))
+        {
+            var customer = NewCustomer(tenantId, byUser);
+            customer.ChangeDateOfBirth(dob, byUser);
+            await seedDb.Customers.AddAsync(customer);
+            await seedDb.SaveChangesAsync();
+            customerId = customer.Id;
+        }
+
+        await using var db = CreateContext(databaseName, tenantContext);
+        var reader = new CustomerReadService(db, new NoopProtector());
+
+        var detail = await reader.GetDetailByIdAsync(tenantId, customerId);
+
+        Assert.NotNull(detail);
+        Assert.Equal(dob, detail!.DateOfBirth);
+        // Partes del nombre (para que el form de edición prefille sin partir el DisplayName).
+        Assert.Equal("Grace", detail.FirstName);
+        Assert.Equal("Hopper", detail.LastName);
+    }
+
+    [Fact]
+    public async Task ListOccupationsAsync_returns_active_ordered_and_optionally_filtered()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(Guid.NewGuid());
+
+        await using (var seedDb = CreateContext(databaseName, tenantContext))
+        {
+            var mechanic = Occupation.Create(Guid.NewGuid(), "Mechanic", displayOrder: 2).Value;
+            var accountant = Occupation.Create(Guid.NewGuid(), "Accountant", displayOrder: 1).Value;
+            var retired = Occupation.Create(Guid.NewGuid(), "Retired teacher", displayOrder: 3).Value;
+            retired.Deactivate(); // no debe listarse
+            await seedDb.Occupations.AddRangeAsync(mechanic, accountant, retired);
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = CreateContext(databaseName, tenantContext);
+        var reader = new CustomerReadService(db, new NoopProtector());
+
+        var all = await reader.ListOccupationsAsync(null);
+        Assert.Equal(2, all.Count); // el desactivado queda fuera
+        Assert.Equal("Accountant", all[0].Name); // DisplayOrder 1 primero
+        Assert.Equal("Mechanic", all[1].Name);
+
+        // InMemory usa Contains ordinal (case-sensitive); en SQL Server la collation lo hace
+        // insensible a mayúsculas. Se usa el caso correcto para probar el filtro de forma portable.
+        var filtered = await reader.ListOccupationsAsync("Mech");
+        Assert.Equal("Mechanic", Assert.Single(filtered).Name);
+    }
+
+    [Fact]
+    public async Task ListBusinessActivitiesAsync_filters_by_code_or_description()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(Guid.NewGuid());
+
+        await using (var seedDb = CreateContext(databaseName, tenantContext))
+        {
+            var landscaping = PrincipalBusinessActivity
+                .Create(Guid.NewGuid(), "561730", "Landscaping Services", "Admin")
+                .Value;
+            var software = PrincipalBusinessActivity
+                .Create(Guid.NewGuid(), "541511", "Custom Computer Programming", "Info")
+                .Value;
+            await seedDb.PrincipalBusinessActivities.AddRangeAsync(landscaping, software);
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = CreateContext(databaseName, tenantContext);
+        var reader = new CustomerReadService(db, new NoopProtector());
+
+        Assert.Equal(2, (await reader.ListBusinessActivitiesAsync(null)).Count);
+        Assert.Equal("561730", Assert.Single(await reader.ListBusinessActivitiesAsync("5617")).NaicsCode); // por código
+        Assert.Equal("541511", Assert.Single(await reader.ListBusinessActivitiesAsync("Programming")).NaicsCode); // por descripción
     }
 }

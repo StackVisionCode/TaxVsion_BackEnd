@@ -18,6 +18,7 @@ import {
   DenyParticipantPayloadSchema,
   DominantSpeakerPayloadSchema,
   JoinMeetingPayloadSchema,
+  RejoinMeetingPayloadSchema,
   LeaveMeetingPayloadSchema,
   LockPayloadSchema,
   PromoteCohostPayloadSchema,
@@ -51,6 +52,7 @@ import {
 } from '../../../contracts/socket/meeting-socket-events.js';
 import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
 import { joinMeeting, type JoinMeetingResult } from '../../../application/use-cases/join-meeting.js';
+import { rejoinMeeting, type RejoinMeetingResult } from '../../../application/use-cases/rejoin-meeting.js';
 import { leaveMeeting } from '../../../application/use-cases/leave-meeting.js';
 import { relayMeetingSignal } from '../../../application/use-cases/relay-meeting-signal.js';
 import { updateMeetingMediaStatus, updateRaiseHand } from '../../../application/use-cases/update-meeting-media-status.js';
@@ -235,6 +237,27 @@ function wireMeetingSocket(
         });
       }
     }
+  });
+
+  // Re-suscripción tras reconnect transparente del socket (churn), sin recargar la página: re-une la
+  // room `m:{meetingId}` para un participante YA admitido, SIN media ni admisión. La room de chat del
+  // meeting la re-une el join-on-connect. Devuelve el snapshot para reconciliar participantes.
+  socket.on(MeetingSocketEvents.Rejoin, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<RejoinMeetingResult>) => void) : undefined;
+    const parsed = RejoinMeetingPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    // La autorización es ser participante Joined (lo valida rejoinMeeting) — no re-chequea el permiso
+    // de join: ya lo pasó al entrar, y un ticket de guest sigue acotado a su meeting.
+    const result = await rejoinMeeting({ tenantId, meetingId: parsed.data.meetingId, userId }, container);
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    await socket.join(`t:${tenantId}:m:${parsed.data.meetingId}`);
+    ack?.({ ok: true, value: result.value });
   });
 
   socket.on(MeetingSocketEvents.Leave, async (...args: unknown[]) => {

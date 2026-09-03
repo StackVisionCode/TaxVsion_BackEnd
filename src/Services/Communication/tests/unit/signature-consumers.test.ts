@@ -43,6 +43,7 @@ function setup() {
   const customerPortalAccounts: CustomerPortalAccountRepository = {
     upsert: vi.fn(),
     markInactiveByUserId: vi.fn(),
+    markActiveByUserId: vi.fn(),
     findActiveByCustomerId: vi.fn().mockResolvedValue(null),
     findActiveByCustomerIds: vi.fn().mockResolvedValue([]),
     findActiveByUserId: vi.fn().mockResolvedValue(null),

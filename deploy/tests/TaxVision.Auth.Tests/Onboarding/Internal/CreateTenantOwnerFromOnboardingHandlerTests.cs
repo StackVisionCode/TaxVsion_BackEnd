@@ -306,6 +306,7 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
             int size,
             string? search,
             bool? isActive,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

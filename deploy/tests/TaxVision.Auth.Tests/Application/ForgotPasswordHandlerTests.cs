@@ -142,6 +142,7 @@ public sealed class ForgotPasswordHandlerTests
             int size,
             string? search,
             bool? isActive,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }
@@ -173,6 +174,7 @@ public sealed class ForgotPasswordHandlerTests
             int size,
             string? search,
             bool? isActive,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }
