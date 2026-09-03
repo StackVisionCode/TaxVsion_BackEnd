@@ -106,6 +106,35 @@ describe('RedisPresenceService — derivacion multi-fuente de Busy/Online/Offlin
     expect(payloads).toHaveLength(1);
     expect(payloads[0]).toMatchObject({ status: 'Online' });
   });
+
+  it('no publica Offline al des-registrar una sesion si el usuario mantiene otra (gracia de reconexion, sin parpadeo)', async () => {
+    const redis = new FakeRedis();
+    const service = new RedisPresenceService(redis as unknown as Redis);
+    const tenantId = 'tenant-1';
+    const userId = 'user-3';
+
+    // Microcaida detras de cloudflared: la sesion vieja sigue viva (su lease TTL no
+    // ha expirado) cuando la reconexion registra una nueva. Es la invariante en la
+    // que se apoya la baja diferida de presencia (PRESENCE_DISCONNECT_GRACE_MS en
+    // chat-handlers): des-registrar la sesion vieja NO debe bajar a Offline mientras
+    // exista la nueva.
+    await service.register({ tenantId, userId, sessionId: 'socket-old', leaseSeconds: 30 });
+    await service.register({ tenantId, userId, sessionId: 'socket-new', leaseSeconds: 30 });
+
+    // Un solo 'Online' por la transicion 0->1; la segunda sesion no re-publica.
+    expect(publishedPayloads(redis)).toHaveLength(1);
+
+    await service.unregister({ tenantId, userId, sessionId: 'socket-old' });
+    const afterOld = publishedPayloads(redis);
+    expect(afterOld).toHaveLength(1);
+    expect(afterOld.some((p) => p.status === 'Offline')).toBe(false);
+
+    // Solo cuando cae la ultima sesion se publica Offline.
+    await service.unregister({ tenantId, userId, sessionId: 'socket-new' });
+    const afterAll = publishedPayloads(redis);
+    expect(afterAll).toHaveLength(2);
+    expect(afterAll[1]).toMatchObject({ userId, status: 'Offline', busyReason: null });
+  });
 });
 
 describe('RedisPresenceService — contrato del payload publicado (PresenceChangedDto)', () => {
