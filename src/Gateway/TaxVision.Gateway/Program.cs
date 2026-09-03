@@ -99,6 +99,12 @@ app.MapHealthChecks(
     "/health/dependencies",
     new HealthCheckOptions { Predicate = check => check.Tags.Contains("dependencies") }
 );
+// YARP solo proxya upgrades de WebSocket si el middleware de WebSockets está en el
+// pipeline; sin esto el gateway rechaza el handshake `Upgrade: websocket` con 400 y
+// socket.io cae a long-polling (que detrás de Cloudflare se rompe por buffering →
+// ping timeout). Debe ir antes de MapReverseProxy.
+app.UseWebSockets();
+
 app.MapReverseProxy();
 
 app.Run();
