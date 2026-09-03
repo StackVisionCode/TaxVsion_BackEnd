@@ -331,6 +331,14 @@ function wireMeetingSocket(
       event: MeetingSocketEvents.ParticipantChanged,
       envelope: envelope({ meetingId: parsed.data.meetingId, participant: result.value.participant, sequence: 0 }),
     });
+    // El admitido recibe su snapshot completo (conversationId + participantes +
+    // estrategia): al salir de la sala de espera no hay otro modo de conocerlos.
+    emitter.emitToUser({
+      tenantId,
+      userId: parsed.data.targetUserId,
+      event: MeetingSocketEvents.Snapshot,
+      envelope: envelope(result.value.snapshot),
+    });
   });
 
   socket.on(MeetingSocketEvents.Remove, async (...args: unknown[]) => {

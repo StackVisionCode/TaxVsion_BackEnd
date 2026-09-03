@@ -65,6 +65,13 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
   >(httpServer, {
     path: '/communication/socket.io',
     transports: ['websocket', 'polling'],
+    // Detras de Cloudflare/cloudflared el edge corta las conexiones idle ~15s
+    // ("transport close" en bucle → real-time perdido). Con el ping por defecto
+    // (25s) pasan 25s sin datos y el proxy la mata. Pingeamos cada 10s para que
+    // fluya actividad por debajo de ese umbral y la conexion se mantenga viva;
+    // pingTimeout amplio para no cortar por un pong lento.
+    pingInterval: 10_000,
+    pingTimeout: 20_000,
     cors: {
       origin: config.cors.origins.length === 0 ? true : config.cors.origins,
       credentials: true,

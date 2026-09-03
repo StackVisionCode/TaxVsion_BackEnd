@@ -4,7 +4,38 @@ import { listConversations } from '../../../application/use-cases/list-conversat
 import { getMessages } from '../../../application/use-cases/get-messages.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
 import { searchMessages } from '../../../application/use-cases/search-messages.js';
+import { getAttachmentMetadata } from '../../../application/use-cases/get-attachment-metadata.js';
+import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-attachment-download-url.js';
+import { createAttachmentUpload } from '../../../application/use-cases/create-attachment-upload.js';
+import { completeAttachmentUpload } from '../../../application/use-cases/complete-attachment-upload.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
+
+const AttachmentParams = z.object({ id: z.string().uuid(), fileId: z.string().uuid() });
+const ConversationParam = z.object({ id: z.string().uuid() });
+const CreateUploadBody = z.object({
+  originalName: z.string().min(1).max(255),
+  contentType: z.string().min(1).max(255),
+  sizeBytes: z.number().int().positive(),
+});
+
+// Estados de acceso a un adjunto → HTTP. El code queda para diagnostico; el
+// front muestra el message, nunca el code.
+function attachmentHttpStatus(code: string): number {
+  switch (code) {
+    case 'Chat.Attachment.NotFound':
+    case 'Chat.Conversation.NotFound':
+      return 404;
+    case 'Chat.Conversation.NotParticipant':
+    case 'Chat.Attachment.Unavailable':
+      return 403;
+    case 'Chat.Attachment.Deleted':
+      return 410;
+    case 'Chat.Attachment.Pending':
+      return 409;
+    default:
+      return 400;
+  }
+}
 
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -126,6 +157,116 @@ export async function registerConversationRoutes(
       if (!result.isSuccess) {
         const status = result.error.code === 'Chat.Conversation.NotFound' ? 404 : 400;
         return reply.code(status).send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // GET /communication/conversations/:id/attachments/:fileId — metadata + estado
+  // de escaneo de un adjunto, autorizado por membresia de conversacion.
+  app.get(
+    '/communication/conversations/:id/attachments/:fileId',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = AttachmentParams.parse(request.params);
+      const result = await getAttachmentMetadata(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          fileId: params.fileId,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply
+          .code(attachmentHttpStatus(result.error.code))
+          .send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/attachments/upload — inicia una subida
+  // mediada (blob ownerType=Communication); el browser sube directo a MinIO con la
+  // URL presignada que se devuelve.
+  app.post(
+    '/communication/conversations/:id/attachments/upload',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = ConversationParam.parse(request.params);
+      const body = CreateUploadBody.parse(request.body);
+      const result = await createAttachmentUpload(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          originalName: body.originalName,
+          contentType: body.contentType,
+          sizeBytes: body.sizeBytes,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply
+          .code(attachmentHttpStatus(result.error.code))
+          .send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(201).send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/attachments/:fileId/complete — finaliza
+  // la subida (verifica tamano + dispara escaneo).
+  app.post(
+    '/communication/conversations/:id/attachments/:fileId/complete',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = AttachmentParams.parse(request.params);
+      const result = await completeAttachmentUpload(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          fileId: params.fileId,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply
+          .code(attachmentHttpStatus(result.error.code))
+          .send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(202).send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/attachments/:fileId/download-url — URL
+  // presignada, autorizada por membresia y solo si el escaneo lo dejo Available.
+  // Communication media el acceso a un blob `ownerType=Communication` que el scope
+  // por-dueno de CloudStorage no le entregaria a un CustomerPortal.
+  app.post(
+    '/communication/conversations/:id/attachments/:fileId/download-url',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = AttachmentParams.parse(request.params);
+      const result = await getAttachmentDownloadUrl(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          fileId: params.fileId,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply
+          .code(attachmentHttpStatus(result.error.code))
+          .send({ code: result.error.code, message: result.error.message });
       }
       return reply.send(result.value);
     },

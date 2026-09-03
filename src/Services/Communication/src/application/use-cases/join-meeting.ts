@@ -11,7 +11,7 @@ import {
   type MeetingParticipantJoinedEvent,
 } from '../../contracts/events/meeting-events.js';
 import type { MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
-import { participantSnapshotToDto } from './meeting-mappers.js';
+import { buildMeetingSnapshotDto } from './meeting-mappers.js';
 import { ensureMeetingConversation } from './ensure-meeting-conversation.js';
 import { issueIceCredentials, type IssueIceCredentialsResult } from './issue-ice-credentials.js';
 
@@ -150,17 +150,7 @@ export async function joinMeeting(
     }
   }
 
-  const dto: MeetingSnapshotDto = {
-    meetingId: snapshot.id,
-    status: snapshot.status,
-    strategy: snapshot.strategy,
-    hostUserId: snapshot.hostUserId,
-    isLocked: snapshot.isLocked,
-    participants: snapshot.participants.map(participantSnapshotToDto),
-    yourRole,
-    sequence: 0,
-    conversationId,
-  };
+  const dto = buildMeetingSnapshotDto(snapshot, yourRole, conversationId);
 
   // Best-effort: `issueIceCredentials` no tiene ningun camino de fallo real
   // hoy (ver docblock de JoinMeetingResult.iceServers), pero si algun dia lo

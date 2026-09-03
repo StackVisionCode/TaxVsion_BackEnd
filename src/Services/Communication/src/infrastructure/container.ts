@@ -35,6 +35,8 @@ import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
 import { ServiceTokenClient } from './auth/service-token-client.js';
 import { HttpCloudStorageMetadataClient } from './cloudstorage/http-cloudstorage-metadata-client.js';
+import { HttpCloudStorageDownloadClient } from './cloudstorage/http-cloudstorage-download-client.js';
+import { HttpCloudStorageUploadClient } from './cloudstorage/http-cloudstorage-upload-client.js';
 import { HttpCustomerReconciliationClient } from './customer/http-customer-reconciliation-client.js';
 import { CachedPlanCodeReader } from './rate-limit/cached-plan-code-reader.js';
 import { HttpPlanRateLimitReader } from './rate-limit/http-plan-rate-limit-reader.js';
@@ -71,6 +73,8 @@ import type {
 import type { SfuService } from '../application/ports/sfu-service.js';
 import type { RealtimeEmitter } from '../application/ports/realtime-emitter.js';
 import type { CloudStorageMetadataClient } from '../application/ports/cloudstorage-metadata-client.js';
+import type { CloudStorageDownloadClient } from '../application/ports/cloudstorage-download-client.js';
+import type { CloudStorageUploadClient } from '../application/ports/cloudstorage-upload-client.js';
 
 /**
  * Contenedor de dependencias — sin frameworks DI. Cada campo es una interfaz
@@ -113,6 +117,8 @@ export interface AppContainer {
   readonly recordingSessions: RecordingSessionRepository;
   readonly recordingConsents: RecordingConsentRepository;
   readonly cloudStorageMetadata: CloudStorageMetadataClient;
+  readonly cloudStorageDownload: CloudStorageDownloadClient;
+  readonly cloudStorageUpload: CloudStorageUploadClient;
   readonly customerReconciliation: HttpCustomerReconciliationClient;
   /**
    * Wired late (post-init) por main.ts inmediatamente despues de construir el
@@ -168,6 +174,8 @@ export function buildContainer(): AppContainer {
     recordingSessions: new PrismaRecordingSessionRepository(prisma),
     recordingConsents: new PrismaRecordingConsentRepository(prisma),
     cloudStorageMetadata: new HttpCloudStorageMetadataClient(serviceTokens),
+    cloudStorageDownload: new HttpCloudStorageDownloadClient(serviceTokens),
+    cloudStorageUpload: new HttpCloudStorageUploadClient(serviceTokens),
     customerReconciliation: new HttpCustomerReconciliationClient(serviceTokens),
   };
 }
