@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { Meeting } from '../../src/domain/meetings/meeting.js';
+import { buildMeetingSnapshotDto } from '../../src/application/use-cases/meeting-mappers.js';
 
 function u(): string {
   return randomUUID();
@@ -16,6 +17,25 @@ function liveMeetingWithWaitingAttendee() {
   meeting.requestJoin({ userId: attendeeUserId, displayName: 'Cliente', hasValidInvitation: false, passcodeMatch: null });
   return { meeting, host, attendeeUserId };
 }
+
+describe('admit snapshot (buildMeetingSnapshotDto)', () => {
+  it('carries conversationId, the full participant list and the admitted attendee role', () => {
+    const { meeting, host, attendeeUserId } = liveMeetingWithWaitingAttendee();
+    meeting.admit({ hostUserId: host.userId, targetUserId: attendeeUserId });
+    const snapshot = meeting.toSnapshot();
+    const target = snapshot.participants.find(p => p.userId === attendeeUserId);
+    expect(target).toBeDefined();
+
+    const conversationId = u();
+    const dto = buildMeetingSnapshotDto(snapshot, target!.role, conversationId);
+
+    expect(dto.conversationId).toBe(conversationId);
+    expect(dto.yourRole).toBe(target!.role);
+    expect(dto.strategy).toBe(snapshot.strategy);
+    expect(dto.participants.some(p => p.userId === attendeeUserId && p.status === 'Joined')).toBe(true);
+    expect(dto.participants.some(p => p.userId === host.userId)).toBe(true);
+  });
+});
 
 describe('Meeting.denyWaitingRoom', () => {
   it('moves a Waiting participant to Removed', () => {

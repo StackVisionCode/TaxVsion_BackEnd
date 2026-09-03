@@ -38,7 +38,11 @@ public sealed class FilesController(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
         ActorType.PlatformAdmin,
-        ActorType.CustomerPortal
+        ActorType.CustomerPortal,
+        // Communication media la subida de adjuntos de chat con su token de servicio
+        // (ownerType=Communication, que el scope por-dueno de un CustomerPortal no puede crear).
+        // Mismo patron M2M que download-url mas abajo.
+        ActorType.Service
     )]
     [RateLimit("cloudstorage.i.upload")]
     [ProducesResponseType<InitiatedUploadResponse>(StatusCodes.Status201Created)]
@@ -62,7 +66,9 @@ public sealed class FilesController(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
         ActorType.PlatformAdmin,
-        ActorType.CustomerPortal
+        ActorType.CustomerPortal,
+        // Ver InitiateUpload: Communication finaliza la subida mediada como Service.
+        ActorType.Service
     )]
     [RateLimit("cloudstorage.i.upload")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]

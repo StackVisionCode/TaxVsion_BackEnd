@@ -12,8 +12,8 @@ import {
   type MeetingUnlockedEvent,
   type MeetingHostTransferredEvent,
 } from '../../contracts/events/meeting-events.js';
-import type { MeetingParticipantDto } from '../../contracts/socket/meeting-socket-events.js';
-import { participantSnapshotToDto } from './meeting-mappers.js';
+import type { MeetingParticipantDto, MeetingSnapshotDto } from '../../contracts/socket/meeting-socket-events.js';
+import { buildMeetingSnapshotDto, participantSnapshotToDto } from './meeting-mappers.js';
 import { ensureMeetingConversation, removeFromMeetingConversation } from './ensure-meeting-conversation.js';
 import { logHostAction } from './host-audit.js';
 
@@ -28,6 +28,7 @@ export interface AdmitCommand {
 export interface AdmitResult {
   readonly participant: MeetingParticipantDto;
   readonly conversationId: string | null;
+  readonly snapshot: MeetingSnapshotDto;
 }
 
 export async function admitParticipant(
@@ -87,9 +88,15 @@ export async function admitParticipant(
     deps,
   );
 
+  const conversationId = chatResult.isSuccess ? chatResult.value.conversationId : null;
   return Result.ok({
     participant: participantSnapshotToDto(target),
-    conversationId: chatResult.isSuccess ? chatResult.value.conversationId : null,
+    conversationId,
+    // Snapshot para el admitido: el backend no reenvia uno en la admision, y el
+    // `participant.changed` solo trae su propio participante — sin esto el cliente
+    // recien admitido no conoce conversationId ni la lista completa (rompia el chat
+    // del meeting y el arranque de SFU tras la sala de espera).
+    snapshot: buildMeetingSnapshotDto(snapshot, target.role, conversationId),
   });
 }
 

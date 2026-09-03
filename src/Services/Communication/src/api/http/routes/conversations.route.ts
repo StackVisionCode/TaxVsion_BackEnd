@@ -6,15 +6,24 @@ import { markMessagesRead } from '../../../application/use-cases/mark-messages-r
 import { searchMessages } from '../../../application/use-cases/search-messages.js';
 import { getAttachmentMetadata } from '../../../application/use-cases/get-attachment-metadata.js';
 import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-attachment-download-url.js';
+import { createAttachmentUpload } from '../../../application/use-cases/create-attachment-upload.js';
+import { completeAttachmentUpload } from '../../../application/use-cases/complete-attachment-upload.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const AttachmentParams = z.object({ id: z.string().uuid(), fileId: z.string().uuid() });
+const ConversationParam = z.object({ id: z.string().uuid() });
+const CreateUploadBody = z.object({
+  originalName: z.string().min(1).max(255),
+  contentType: z.string().min(1).max(255),
+  sizeBytes: z.number().int().positive(),
+});
 
 // Estados de acceso a un adjunto → HTTP. El code queda para diagnostico; el
 // front muestra el message, nunca el code.
 function attachmentHttpStatus(code: string): number {
   switch (code) {
     case 'Chat.Attachment.NotFound':
+    case 'Chat.Conversation.NotFound':
       return 404;
     case 'Chat.Conversation.NotParticipant':
     case 'Chat.Attachment.Unavailable':
@@ -176,6 +185,62 @@ export async function registerConversationRoutes(
           .send({ code: result.error.code, message: result.error.message });
       }
       return reply.send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/attachments/upload — inicia una subida
+  // mediada (blob ownerType=Communication); el browser sube directo a MinIO con la
+  // URL presignada que se devuelve.
+  app.post(
+    '/communication/conversations/:id/attachments/upload',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = ConversationParam.parse(request.params);
+      const body = CreateUploadBody.parse(request.body);
+      const result = await createAttachmentUpload(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          originalName: body.originalName,
+          contentType: body.contentType,
+          sizeBytes: body.sizeBytes,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply
+          .code(attachmentHttpStatus(result.error.code))
+          .send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(201).send(result.value);
+    },
+  );
+
+  // POST /communication/conversations/:id/attachments/:fileId/complete — finaliza
+  // la subida (verifica tamano + dispara escaneo).
+  app.post(
+    '/communication/conversations/:id/attachments/:fileId/complete',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = AttachmentParams.parse(request.params);
+      const result = await completeAttachmentUpload(
+        {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          conversationId: params.id,
+          fileId: params.fileId,
+        },
+        container,
+      );
+      if (!result.isSuccess) {
+        return reply
+          .code(attachmentHttpStatus(result.error.code))
+          .send({ code: result.error.code, message: result.error.message });
+      }
+      return reply.code(202).send(result.value);
     },
   );
 
