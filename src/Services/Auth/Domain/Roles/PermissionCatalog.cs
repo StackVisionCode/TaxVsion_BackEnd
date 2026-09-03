@@ -1829,6 +1829,20 @@ public static class PermissionCatalog
 
     public static Guid IdOf(string code) => IdsByCode[code];
 
+    // Comms de doble uso: marcados IsCustomerPortal=true (staff Y cliente los usan), pero un
+    // TenantAdmin/Owner real también los necesita. El filtro !IsCustomerPortal de los sets del
+    // admin los excluía, dejando al Owner sin poder iniciar/responder chats, unirse a reuniones,
+    // adjuntar archivos ni leer sus notificaciones. Se re-agregan explícitos, igual que ya se hace
+    // para el rol Employee.
+    private static readonly string[] TenantAdminCommunicationExtras =
+    [
+        CommunicationChatStart,
+        CommunicationChatReply,
+        CommunicationMeetingJoin,
+        CommunicationScreenshotCreate,
+        CommunicationNotificationRead,
+    ];
+
     /// <summary>Permisos por defecto de cada rol de sistema.</summary>
     public static IReadOnlyCollection<string> SystemRoleDefaults(string systemRoleName) =>
         systemRoleName switch
@@ -1845,6 +1859,8 @@ public static class PermissionCatalog
                     !definition.IsCustomerPortal && !definition.PlatformOnly && !definition.IsDangerous
                 )
                 .Select(definition => definition.Code)
+                .Concat(TenantAdminCommunicationExtras)
+                .Distinct()
                 .ToArray(),
             Role.SystemEmployee =>
             [
@@ -2005,6 +2021,8 @@ public static class PermissionCatalog
     public static IReadOnlyCollection<string> SystemTenantAdminRootPermissions() =>
         All.Where(definition => !definition.IsCustomerPortal && !definition.PlatformOnly)
             .Select(definition => definition.Code)
+            .Concat(TenantAdminCommunicationExtras)
+            .Distinct()
             .ToArray();
 
     /// <summary>
