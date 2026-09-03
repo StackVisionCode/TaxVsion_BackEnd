@@ -8,6 +8,7 @@ import { getAttachmentMetadata } from '../../../application/use-cases/get-attach
 import { getAttachmentDownloadUrl } from '../../../application/use-cases/get-attachment-download-url.js';
 import { createAttachmentUpload } from '../../../application/use-cases/create-attachment-upload.js';
 import { completeAttachmentUpload } from '../../../application/use-cases/complete-attachment-upload.js';
+import { CloudStorageUploadError } from '../../../infrastructure/cloudstorage/http-cloudstorage-upload-client.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const AttachmentParams = z.object({ id: z.string().uuid(), fileId: z.string().uuid() });
@@ -198,17 +199,30 @@ export async function registerConversationRoutes(
       const principal = request.principal!;
       const params = ConversationParam.parse(request.params);
       const body = CreateUploadBody.parse(request.body);
-      const result = await createAttachmentUpload(
-        {
-          tenantId: principal.tenantId,
-          userId: principal.userId,
-          conversationId: params.id,
-          originalName: body.originalName,
-          contentType: body.contentType,
-          sizeBytes: body.sizeBytes,
-        },
-        container,
-      );
+      let result;
+      try {
+        result = await createAttachmentUpload(
+          {
+            tenantId: principal.tenantId,
+            userId: principal.userId,
+            conversationId: params.id,
+            originalName: body.originalName,
+            contentType: body.contentType,
+            sizeBytes: body.sizeBytes,
+          },
+          container,
+        );
+      } catch (err) {
+        // Un fallo de CloudStorage con status de cliente (4xx: tipo no permitido, tamaño,
+        // cuota) se refleja tal cual; el resto es 502 (dependencia caída), nunca 500 opaco.
+        if (err instanceof CloudStorageUploadError) {
+          const status = err.status >= 400 && err.status < 500 ? err.status : 502;
+          return reply
+            .code(status)
+            .send({ code: err.code ?? 'Chat.Attachment.UploadFailed', message: err.detail });
+        }
+        throw err;
+      }
       if (!result.isSuccess) {
         return reply
           .code(attachmentHttpStatus(result.error.code))

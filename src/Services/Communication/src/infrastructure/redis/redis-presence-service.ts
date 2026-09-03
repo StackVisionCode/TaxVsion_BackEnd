@@ -43,8 +43,29 @@ export class RedisPresenceService implements PresenceService {
 
   private async countSessions(tenantId: string, userId: string): Promise<number> {
     const pattern = `comm:presence:t:${tenantId}:u:${userId}:s:*`;
-    const [_cursor, keys] = await this.redis.scan(0, 'MATCH', pattern, 'COUNT', 25);
-    return keys.length;
+    // Solo interesa "0 / 1 / ≥2" para decidir si publicar la transición → basta con tope 2.
+    return (await this.scanMatching(pattern, 2)).length;
+  }
+
+  /**
+   * Recorre el cursor de SCAN COMPLETO (hasta que vuelve a '0') recolectando hasta `limit` claves.
+   * `COUNT` es solo una PISTA por iteración, y `SCAN 0` sin iterar el cursor devuelve apenas la
+   * primera tanda del keyspace — en un Redis compartido con miles de claves, la de presencia casi
+   * nunca cae ahí, así que un único SCAN daba falsos "0 sesiones" (presencia siempre Offline).
+   * El early-exit por `limit` acota el coste: para existencia (`isOnline`) para en la 1ª coincidencia.
+   */
+  private async scanMatching(pattern: string, limit: number): Promise<string[]> {
+    const found: string[] = [];
+    let cursor = '0';
+    do {
+      const [next, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
+      cursor = next;
+      for (const key of keys) {
+        found.push(key);
+        if (found.length >= limit) return found;
+      }
+    } while (cursor !== '0');
+    return found;
   }
 
   async heartbeat(input: {
@@ -65,9 +86,8 @@ export class RedisPresenceService implements PresenceService {
 
   async isOnline(tenantId: string, userId: string): Promise<boolean> {
     const pattern = `comm:presence:t:${tenantId}:u:${userId}:s:*`;
-    // SCAN limitado — no bloqueamos Redis con KEYS.
-    const [_cursor, keys] = await this.redis.scan(0, 'MATCH', pattern, 'COUNT', 25);
-    return keys.length > 0;
+    // Existencia: recorre el cursor pero para en la 1ª coincidencia (no bloqueamos Redis con KEYS).
+    return (await this.scanMatching(pattern, 1)).length > 0;
   }
 
   async listOnline(tenantId: string, userIds: readonly string[]): Promise<readonly string[]> {
@@ -109,7 +129,8 @@ export class RedisPresenceService implements PresenceService {
     userId: string,
   ): Promise<{ count: number; firstReason: BusyReason | null }> {
     const pattern = `comm:presence:busy:t:${tenantId}:u:${userId}:src:*`;
-    const [_cursor, keys] = await this.redis.scan(0, 'MATCH', pattern, 'COUNT', 25);
+    // Mismo bug de SCAN que en isOnline: hay que iterar el cursor o Busy nunca se detecta. Tope 25.
+    const keys = await this.scanMatching(pattern, 25);
     if (keys.length === 0) return { count: 0, firstReason: null };
     const values = await this.redis.mget(...keys);
     const firstReason = values.find((v): v is BusyReason => v !== null && isBusyReason(v)) ?? null;
