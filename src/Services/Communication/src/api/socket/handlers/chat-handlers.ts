@@ -47,6 +47,14 @@ import {
 } from '../../../contracts/socket/chat-socket-events.js';
 import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
 
+// Detrás de cloudflared el WS cae y reconecta en ~0.5s. Si des-registramos la
+// presencia al instante, cada microcaída publica Offline y luego Online (parpadeo:
+// "nunca ambos online"). Esperamos esta gracia antes de dar de baja la sesión: si
+// el usuario ya reconectó (otra sesión con heartbeat vivo), su presencia sigue
+// arriba y unregister de la sesión vieja no baja el estado; si se fue de verdad,
+// publica Offline con este pequeño retraso. Debe ser < leaseSeconds (30s).
+const PRESENCE_DISCONNECT_GRACE_MS = 10_000;
+
 /**
  * Registra los handlers de chat en el Socket.IO server. Cada handler:
  *   1. Valida el payload con Zod (nunca confia en el cliente).
@@ -694,9 +702,15 @@ async function wireSocket(
 
   socket.on('disconnect', () => {
     clearInterval(heartbeat);
-    container.presence
-      .unregister({ tenantId, userId, sessionId: socket.id })
-      .catch((err) => logger.warn({ err }, 'presence unregister failed'));
+    // Baja diferida (ver PRESENCE_DISCONNECT_GRACE_MS): tolera la reconexión de la
+    // microcaída sin parpadear a Offline. La sesión vieja mantiene su lease TTL
+    // mientras tanto; unregister solo publica Offline si al ejecutarse ya no queda
+    // ninguna sesión del usuario.
+    setTimeout(() => {
+      container.presence
+        .unregister({ tenantId, userId, sessionId: socket.id })
+        .catch((err) => logger.warn({ err }, 'presence unregister failed'));
+    }, PRESENCE_DISCONNECT_GRACE_MS).unref();
 
     // Cierra cualquier indicador de "escribiendo..." que este socket dejo
     // pendiente — sin esto, un cierre abrupto de pestana deja el indicador
