@@ -61,6 +61,11 @@ export interface UserPermissionsProjectionRepository {
 
   markInactive(userId: string, now: Date): Promise<void>;
 
+  /** Contraparte de `markInactive` para `auth.user.reactivated.v1`: reactiva la fila SIN tocar
+   * `permissions`/`permissionVersion` (el evento no los transporta; siguen en la fila desde antes de
+   * la desactivación). Sin esto, un usuario reactivado quedaba fail-closed en Communication. */
+  markActive(userId: string, now: Date): Promise<void>;
+
   /** Fase 2 — usuarios activos de un tenant que tienen el RoleId dado entre sus RoleIds.
    * Usado por RolePermissionsChangedConsumer para saber a quien recomputarle Permissions. */
   findActiveByTenantAndRoleId(

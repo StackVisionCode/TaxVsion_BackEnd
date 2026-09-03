@@ -14,6 +14,7 @@ public interface IInvitationRepository
         InvitationStatus? status,
         int page,
         int size,
+        Guid? customerId = null,
         CancellationToken ct = default
     );
 }

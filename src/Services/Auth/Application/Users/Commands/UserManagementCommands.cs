@@ -85,10 +85,11 @@ public static class DeactivateUserHandler
 // Reactivar usuario (consume asiento: valida límites del plan)
 // ---------------------------------------------------------------------------
 
-/// <summary>Solicitud para reactivar un usuario previamente desactivado (vuelve a consumir un asiento del plan).</summary>
+/// <summary>Solicitud para reactivar un usuario previamente desactivado (vuelve a consumir un asiento
+/// del plan, salvo los usuarios de portal de cliente, que no cuentan como asiento del staff).</summary>
 public sealed record ReactivateUserCommand(Guid TenantId, Guid TargetUserId, Guid RequestedByUserId);
 
-/// <summary>Reactiva al usuario tras validar que el plan del tenant tiene asientos disponibles.</summary>
+/// <summary>Reactiva al usuario; valida asientos del plan salvo para usuarios de portal de cliente.</summary>
 public static class ReactivateUserHandler
 {
     public static async Task<Result> Handle(
@@ -111,9 +112,22 @@ public static class ReactivateUserHandler
         if (target.IsActive)
             return Result.Success();
 
-        var seatResult = await PlanGuard.EnsureSeatAvailableAsync(command.TenantId, planLimits, users, invitations, ct);
-        if (seatResult.IsFailure)
-            return seatResult;
+        // Los usuarios de portal de cliente NO consumen asiento del plan (mismo criterio que el alta:
+        // CreateInvitation salta el seat guard para CustomerPortal). Reactivar uno no debe fallar por
+        // el cupo de asientos del staff — si no, un portal desactivado quedaría atrapado en tenants
+        // con los asientos llenos.
+        if (target.ActorType != UserActorType.CustomerPortal)
+        {
+            var seatResult = await PlanGuard.EnsureSeatAvailableAsync(
+                command.TenantId,
+                planLimits,
+                users,
+                invitations,
+                ct
+            );
+            if (seatResult.IsFailure)
+                return seatResult;
+        }
 
         target.Reactivate();
 

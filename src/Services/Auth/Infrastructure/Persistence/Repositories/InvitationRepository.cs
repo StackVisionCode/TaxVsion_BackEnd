@@ -51,6 +51,7 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
         InvitationStatus? status,
         int page,
         int size,
+        Guid? customerId = null,
         CancellationToken ct = default
     )
     {
@@ -61,6 +62,11 @@ public sealed class InvitationRepository(AuthDbContext db) : IInvitationReposito
 
         if (status is not null)
             query = query.Where(invitation => invitation.Status == status);
+
+        // Filtro del CRM: las invitaciones de un cliente concreto (portal). Solo casa con las de
+        // portal, que son las únicas que llevan CustomerId.
+        if (customerId is not null)
+            query = query.Where(invitation => invitation.CustomerId == customerId);
 
         var total = await query.CountAsync(ct);
         var items = await query

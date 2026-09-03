@@ -80,13 +80,15 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
 
         // ---- Child entities navigation ----
 
-        b.HasMany(c => c.Addresses).WithOne().HasForeignKey(a => a.CustomerId).OnDelete(DeleteBehavior.NoAction);
+        // Cascade: al quitar un hijo de la colección del agregado (RemoveAddress/ContactPoint/Relation)
+        // EF debe BORRAR el huérfano, no anular su FK requerida (NoAction lanzaba 500 "association severed").
+        b.HasMany(c => c.Addresses).WithOne().HasForeignKey(a => a.CustomerId).OnDelete(DeleteBehavior.Cascade);
         b.Navigation(c => c.Addresses).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        b.HasMany(c => c.ContactPoints).WithOne().HasForeignKey(cp => cp.CustomerId).OnDelete(DeleteBehavior.NoAction);
+        b.HasMany(c => c.ContactPoints).WithOne().HasForeignKey(cp => cp.CustomerId).OnDelete(DeleteBehavior.Cascade);
         b.Navigation(c => c.ContactPoints).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        b.HasMany(c => c.Relations).WithOne().HasForeignKey(r => r.CustomerId).OnDelete(DeleteBehavior.NoAction);
+        b.HasMany(c => c.Relations).WithOne().HasForeignKey(r => r.CustomerId).OnDelete(DeleteBehavior.Cascade);
         b.Navigation(c => c.Relations).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         b.HasOne(c => c.FiscalProfile)

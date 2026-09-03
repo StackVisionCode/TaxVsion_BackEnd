@@ -15,6 +15,12 @@ public sealed record CustomerDetailResponse(
     CustomerKind Kind,
     CustomerStatus Status,
     string DisplayName,
+    // Partes del nombre (write-only hasta ahora): sin ellas el form de edición partía el DisplayName
+    // de forma lossy y, con el merge parcial del PATCH, corrompía el nombre. Solo proyección.
+    string? FirstName,
+    string? MiddleName,
+    string? LastName,
+    string? LegalName,
     string PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
@@ -23,6 +29,9 @@ public sealed record CustomerDetailResponse(
     string? OccupationName,
     Guid? PrincipalBusinessActivityId,
     string? PrincipalBusinessActivityName,
+    // Fecha de nacimiento (individuo). Se persiste desde el alta/edición pero hasta ahora no se
+    // devolvía en el detalle, así que la ficha la pintaba en blanco. Solo proyección de lectura.
+    DateOnly? DateOfBirth,
     DateTime CreatedAtUtc,
     Guid? AssignedPreparerUserId,
     IReadOnlyList<AddressResponse> Addresses,

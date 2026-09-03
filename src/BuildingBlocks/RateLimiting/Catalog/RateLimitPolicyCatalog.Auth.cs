@@ -208,6 +208,21 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // GetInvitations (InvitationsController) — listado paginado (+ filtro opcional por customerId
+    // que consume el CRM). Lectura simple, mismo perfil F que los demás reads del servicio. Faltaba
+    // en el catálogo: el atributo [RateLimit("auth.f.invitation_read")] existía pero sin política
+    // registrada, así que el endpoint respondía 500 en runtime.
+    public static readonly RateLimitPolicyDefinition AuthInvitationRead = Define(
+        "auth.f.invitation_read",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 300,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 3000
+    );
+
     // Compartida por Create + Resend + Cancel (InvitationsController) — Accept queda exenta (ver
     // doc-comment de fase, anónimo, protegido por ILoginThrottler).
     public static readonly RateLimitPolicyDefinition AuthInvitationManage = Define(

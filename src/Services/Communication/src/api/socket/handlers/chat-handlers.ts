@@ -93,6 +93,10 @@ function clearTypingTimer(key: string): void {
   typingTimers.delete(key);
 }
 
+/** Tope de conversaciones a las que se une un socket en connect. Un usuario real tiene decenas;
+ *  el tope acota el trabajo de un usuario con muchísimas (las rooms son baratas, pero no ilimitadas). */
+const MAX_JOINED_CONVERSATIONS = 500;
+
 async function wireSocket(
   socket: CommunicationSocket,
   io: CommunicationIoServer,
@@ -121,6 +125,29 @@ async function wireSocket(
       .heartbeat({ tenantId, userId, sessionId: socket.id, leaseSeconds: 30 })
       .catch((err) => logger.warn({ err }, 'presence heartbeat failed'));
   }, 15_000);
+
+  // Join-on-connect: los mensajes/typing se entregan SOLO a la room de conversación
+  // (emitToConversation → `t:{tenant}:c:{id}`). Sin esto, un socket solo entraba a esa room al
+  // ejecutar start_direct/start_group, así que el RECEPTOR de un directo (y los miembros de un grupo
+  // que no lo crearon) nunca la recibía en vivo, y en cada reconexión se perdía la membresía
+  // (connectionStateRecovery es best-effort, no un sustituto). Uniéndolo a TODAS sus conversaciones
+  // en cada (re)connect, la entrega es determinista e independiente de quién inició o de la recuperación.
+  try {
+    const own = await container.conversations.listForUser({
+      tenantId,
+      userId,
+      take: MAX_JOINED_CONVERSATIONS,
+      skip: 0,
+      includeArchived: false,
+    });
+    if (own.length > 0) {
+      await socket.join(own.map((c) => `t:${tenantId}:c:${c.id}`));
+    }
+  } catch (err) {
+    // Best-effort: si falla, el socket sigue vivo (rooms de tenant/usuario ya unidas en el middleware);
+    // un start_direct posterior o la próxima reconexión reintentan.
+    logger.warn({ err, userId }, 'join-on-connect: no se pudieron unir las rooms de conversación');
+  }
 
   socket.on(ChatSocketEvents.StartDirectConversation, async (...args: unknown[]) => {
     const raw = args[0];
@@ -157,7 +184,12 @@ async function wireSocket(
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
-    await socket.join(`t:${tenantId}:c:${result.value.conversationId}`);
+    const directRoom = `t:${tenantId}:c:${result.value.conversationId}`;
+    await socket.join(directRoom);
+    // El receptor puede estar conectado y aún NO en la room (la conversación recién existe) — unir sus
+    // sockets ya conectados para que reciba el primer mensaje/typing en vivo sin refrescar. Idempotente
+    // y cross-instancia (via Redis adapter). El join-on-connect cubre el caso de que reconecte luego.
+    io.in(`t:${tenantId}:u:${parsed.data.recipientUserId}`).socketsJoin(directRoom);
     ack?.({ ok: true, value: result.value });
   });
 
@@ -206,12 +238,13 @@ async function wireSocket(
       ack?.({ ok: false, code: result.error.code, message: result.error.message });
       return;
     }
-    await socket.join(`t:${tenantId}:c:${result.value.conversationId}`);
+    const groupRoom = `t:${tenantId}:c:${result.value.conversationId}`;
+    await socket.join(groupRoom);
     ack?.({ ok: true, value: result.value });
 
-    // Los miembros no estan conectados a la room todavia (no llamaron
-    // socket.join) — se les notifica por su room personal para que el
-    // cliente pueda refrescar su lista de conversaciones / unirse.
+    // A cada miembro: se une a la room sus sockets ya conectados (recibe en vivo sin refrescar) y se le
+    // notifica por su room personal para que el cliente refresque su lista. El join-on-connect cubre a
+    // los que reconecten después.
     const createdDto: ConversationCreatedDto = {
       id: result.value.conversationId,
       kind: 'Group',
@@ -220,6 +253,7 @@ async function wireSocket(
       createdAtUtc: new Date().toISOString(),
     };
     for (const member of members) {
+      io.in(`t:${tenantId}:u:${member.userId}`).socketsJoin(groupRoom);
       emitter.emitToUser({
         tenantId,
         userId: member.userId,
@@ -283,14 +317,18 @@ async function wireSocket(
       event: ChatSocketEvents.ConversationParticipantAdded,
       envelope: envelope(addedDto),
     });
-    // El nuevo miembro tampoco esta en la room (no llamo socket.join) — se le
-    // avisa por su room personal, igual que al crear el grupo.
+    // Se le avisa por su room personal (para refrescar la lista) y se unen sus sockets ya conectados a
+    // la room de la conversación, para que reciba los mensajes en vivo desde ya (join-on-connect cubre
+    // los que reconecten). Se une DESPUÉS del emitToConversation de arriba para no duplicarle ese evento.
     emitter.emitToUser({
       tenantId,
       userId: result.value.newParticipantUserId,
       event: ChatSocketEvents.ConversationParticipantAdded,
       envelope: envelope(addedDto),
     });
+    io.in(`t:${tenantId}:u:${result.value.newParticipantUserId}`).socketsJoin(
+      `t:${tenantId}:c:${result.value.conversationId}`,
+    );
   });
 
   socket.on(ChatSocketEvents.RemoveGroupParticipant, async (...args: unknown[]) => {

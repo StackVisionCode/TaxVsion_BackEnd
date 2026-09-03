@@ -21,6 +21,16 @@ export type JoinMeetingPayload = z.infer<typeof JoinMeetingPayloadSchema>;
 export const LeaveMeetingPayloadSchema = z.object({ meetingId: z.string().uuid() });
 export type LeaveMeetingPayload = z.infer<typeof LeaveMeetingPayloadSchema>;
 
+/**
+ * Re-unir la room `m:{meetingId}` tras un reconnect TRANSPARENTE del socket (churn del tunnel),
+ * sin recargar la página. A diferencia de `join`, NO pide cámara/mic, NO re-negocia media y NO
+ * re-pasa por sala de espera: solo re-suscribe al socket a los eventos del meeting (participantes/
+ * controles/señalización) para un participante que YA estaba admitido. Devuelve el snapshot para
+ * reconciliar la lista de participantes que pudo cambiar durante el corte.
+ */
+export const RejoinMeetingPayloadSchema = z.object({ meetingId: z.string().uuid() });
+export type RejoinMeetingPayload = z.infer<typeof RejoinMeetingPayloadSchema>;
+
 export const AdmitPayloadSchema = z.object({
   meetingId: z.string().uuid(),
   targetUserId: z.string().uuid(),
@@ -363,6 +373,7 @@ export interface MeetingParticipantDeniedDto {
 export const MeetingSocketEvents = {
   // c -> s
   Join: 'meeting.join',
+  Rejoin: 'meeting.rejoin',
   Leave: 'meeting.leave',
   Admit: 'meeting.host.admit',
   Remove: 'meeting.host.remove',

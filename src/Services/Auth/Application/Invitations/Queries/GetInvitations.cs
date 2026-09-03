@@ -14,10 +14,19 @@ public sealed record InvitationResponse(
     DateTime ExpiresAtUtc,
     int ResendCount,
     DateTime? LastSentAtUtc,
-    Guid? InvitedByUserId
+    Guid? InvitedByUserId,
+    // Solo tiene valor en invitaciones de portal de cliente (ActorType CustomerPortal); permite al
+    // CRM correlacionar una invitación con el cliente de su perfil. Ver el filtro `CustomerId` abajo.
+    Guid? CustomerId
 );
 
-public sealed record GetInvitationsQuery(Guid TenantId, InvitationStatus? Status = null, int Page = 1, int Size = 20);
+public sealed record GetInvitationsQuery(
+    Guid TenantId,
+    InvitationStatus? Status = null,
+    int Page = 1,
+    int Size = 20,
+    Guid? CustomerId = null
+);
 
 public static class GetInvitationsHandler
 {
@@ -34,7 +43,14 @@ public static class GetInvitationsHandler
             );
         }
 
-        var (items, total) = await invitations.GetPagedAsync(query.TenantId, query.Status, query.Page, query.Size, ct);
+        var (items, total) = await invitations.GetPagedAsync(
+            query.TenantId,
+            query.Status,
+            query.Page,
+            query.Size,
+            query.CustomerId,
+            ct
+        );
 
         IReadOnlyList<InvitationResponse> responses = items
             .Select(invitation => new InvitationResponse(
@@ -46,7 +62,8 @@ public static class GetInvitationsHandler
                 invitation.ExpiresAtUtc,
                 invitation.ResendCount,
                 invitation.LastSentAtUtc,
-                invitation.InvitedByUserId
+                invitation.InvitedByUserId,
+                invitation.CustomerId
             ))
             .ToList();
 

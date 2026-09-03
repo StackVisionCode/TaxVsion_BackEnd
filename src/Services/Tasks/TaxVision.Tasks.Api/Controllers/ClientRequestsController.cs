@@ -86,4 +86,28 @@ public sealed class ClientRequestsController(IMessageBus bus) : ControllerBase
 
         return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
     }
+
+    /// <summary>
+    /// Todo lo que se le pidió a este cliente, para su perfil en el CRM. Contraparte de staff del
+    /// listado del portal (que deriva el cliente del token): aquí el cliente va explícito en la query.
+    /// </summary>
+    [HttpGet]
+    [HasPermission(TasksPermissions.Read)]
+    [RateLimit("task.f.read")]
+    public async Task<IActionResult> ByCustomer(
+        [FromQuery] Guid customerId,
+        [FromQuery] bool onlyOpen,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<ClientRequestResponse>>>(
+            new ListCustomerClientRequestsQuery(tenantId, customerId, onlyOpen),
+            ct
+        );
+
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
 }

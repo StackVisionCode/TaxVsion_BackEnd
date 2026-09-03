@@ -7,7 +7,9 @@ public sealed record SetCustomerFiscalProfileCommand(
     Guid CustomerId,
     Guid ModifiedByUserId,
     FiscalSubjectKind SubjectKind,
-    string TaxIdentifier, // SSN/ITIN/EIN en plain — se normaliza y cifra en el handler
+    // SSN/ITIN/EIN en plain — se normaliza y cifra en el handler. Opcional al EDITAR: vacío conserva
+    // el identificador actual y solo actualiza filing/AGI/returning (+ banco si viene).
+    string? TaxIdentifier,
     FilingStatus? FilingStatus,
     decimal? PriorYearAgi,
     bool IsReturningCustomer,

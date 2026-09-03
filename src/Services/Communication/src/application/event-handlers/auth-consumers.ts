@@ -129,6 +129,20 @@ export function bindAuthConsumers(
     await deps.customerPortalAccounts.markInactiveByUserId(userId);
   });
 
+  // Contraparte de `deactivated`: sin este consumer, reactivar un usuario en Auth
+  // (`UserReactivatedIntegrationEvent`) nunca revertía las tres proyecciones que la desactivación
+  // dejó en `IsActive=false` — el usuario quedaba fail-closed en Communication y, si era de portal,
+  // su `CustomerPortalAccount` seguía inactivo: "portal activo" en Auth pero NO chateable en el CRM
+  // (gap medido en vivo: 1 sola cuenta de portal, atascada en false tras un deactivate→reactivate).
+  // El evento no transporta permisos, así que solo se re-activan las filas (que ya existían).
+  register('auth.user.reactivated.v1', async (env) => {
+    const userId = getString(env.payload, 'userId') ?? getString(env.payload, 'UserId');
+    if (!userId) return;
+    await deps.userPermissions.markActive(userId, new Date());
+    await deps.userDirectory.markActive(userId);
+    await deps.customerPortalAccounts.markActiveByUserId(userId);
+  });
+
   // Fase 2 del plan de notificaciones dinamicas. Sin este consumer, editar los permisos de
   // un rol con 50 empleados asignados nunca propaga a esta proyeccion — quedan con datos
   // viejos hasta que a cada uno individualmente le vuelvan a tocar su rol (que puede no pasar

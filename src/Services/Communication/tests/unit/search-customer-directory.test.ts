@@ -31,6 +31,7 @@ function fakePortalAccounts(active: CustomerPortalAccountSnapshot[]): CustomerPo
   return {
     async upsert(): Promise<void> {},
     async markInactiveByUserId(): Promise<void> {},
+    async markActiveByUserId(): Promise<void> {},
     async findActiveByCustomerId(): Promise<CustomerPortalAccountSnapshot | null> {
       return null;
     },

@@ -29,6 +29,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
         [FromQuery] int size = 20,
         [FromQuery] string? search = null,
         [FromQuery] bool? isActive = null,
+        [FromQuery] Guid? customerId = null,
         CancellationToken ct = default
     )
     {
@@ -36,7 +37,7 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<UserSummaryResponse>>>(
-            new GetUsersQuery(tenantId, page, size, search, isActive),
+            new GetUsersQuery(tenantId, page, size, search, isActive, customerId),
             ct
         );
 

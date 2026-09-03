@@ -27,12 +27,14 @@ function setup() {
     upsertIdentityPreservingPermissions: vi.fn(),
     findByUserId: vi.fn(),
     markInactive: vi.fn(),
+    markActive: vi.fn(),
     findActiveByTenantAndRoleId: vi.fn(),
   };
   const userDirectory: UserDirectoryRepository = {
     upsert: vi.fn(),
     findByUserId: vi.fn(),
     markInactive: vi.fn(),
+    markActive: vi.fn(),
     searchByDisplayNameOrEmail: vi.fn(),
   };
   const rolePermissions: RolePermissionsProjectionRepository = {
@@ -42,13 +44,14 @@ function setup() {
   const customerPortalAccounts: CustomerPortalAccountRepository = {
     upsert: vi.fn(),
     markInactiveByUserId: vi.fn(),
+    markActiveByUserId: vi.fn(),
     findActiveByCustomerId: vi.fn(),
     findActiveByCustomerIds: vi.fn().mockResolvedValue([]),
     findActiveByUserId: vi.fn(),
   };
 
   bindAuthConsumers(register, { userPermissions, userDirectory, rolePermissions, customerPortalAccounts });
-  return { handlers, userPermissions, rolePermissions, customerPortalAccounts };
+  return { handlers, userPermissions, userDirectory, rolePermissions, customerPortalAccounts };
 }
 
 function envelope(payload: Record<string, unknown>): IncomingEnvelope {
@@ -136,6 +139,35 @@ describe('bindAuthConsumers — contrato de campos con Auth (.NET)', () => {
     expect(userPermissions.upsertIdentityPreservingPermissions).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-4', tenantId: 'tenant-1', actorType: 'TenantAdmin' }),
     );
+  });
+
+  it('auth.user.reactivated.v1 re-activa las tres proyecciones (contraparte de deactivated)', async () => {
+    const { handlers, userPermissions, userDirectory, customerPortalAccounts } = setup();
+
+    const reactivated = handlers.get('auth.user.reactivated.v1');
+    // Sin este handler, un portal reactivado en Auth quedaba "activo pero no chateable" en Communication.
+    expect(reactivated).toBeDefined();
+    await reactivated?.({
+      ...envelope({ UserId: 'user-portal-1', Email: 'cliente@example.com', ActorType: 'CustomerPortal' }),
+      eventType: 'auth.user.reactivated.v1',
+    });
+
+    expect(userPermissions.markActive).toHaveBeenCalledWith('user-portal-1', expect.any(Date));
+    expect(userDirectory.markActive).toHaveBeenCalledWith('user-portal-1');
+    expect(customerPortalAccounts.markActiveByUserId).toHaveBeenCalledWith('user-portal-1');
+  });
+
+  it('auth.user.reactivated.v1 sin userId no toca ninguna proyeccion', async () => {
+    const { handlers, userPermissions, userDirectory, customerPortalAccounts } = setup();
+
+    await handlers.get('auth.user.reactivated.v1')!({
+      ...envelope({ Email: 'sin-id@example.com', ActorType: 'CustomerPortal' }),
+      eventType: 'auth.user.reactivated.v1',
+    });
+
+    expect(userPermissions.markActive).not.toHaveBeenCalled();
+    expect(userDirectory.markActive).not.toHaveBeenCalled();
+    expect(customerPortalAccounts.markActiveByUserId).not.toHaveBeenCalled();
   });
 });
 

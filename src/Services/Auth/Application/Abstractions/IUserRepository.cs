@@ -25,6 +25,7 @@ public interface IUserRepository
         int size,
         string? search,
         bool? isActive,
+        Guid? customerId = null,
         CancellationToken ct = default
     );
 }

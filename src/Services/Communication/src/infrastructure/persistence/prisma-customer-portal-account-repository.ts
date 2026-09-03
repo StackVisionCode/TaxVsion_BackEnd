@@ -31,6 +31,13 @@ export class PrismaCustomerPortalAccountRepository implements CustomerPortalAcco
     });
   }
 
+  async markActiveByUserId(userId: string): Promise<void> {
+    await this.prisma.customerPortalAccount.updateMany({
+      where: { UserId: userId },
+      data: { IsActive: true },
+    });
+  }
+
   async findActiveByCustomerId(customerId: string): Promise<CustomerPortalAccountSnapshot | null> {
     const row = await this.prisma.customerPortalAccount.findFirst({
       where: { CustomerId: customerId, IsActive: true },

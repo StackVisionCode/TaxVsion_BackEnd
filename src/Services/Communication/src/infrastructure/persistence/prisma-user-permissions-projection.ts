@@ -80,6 +80,12 @@ export class PrismaUserPermissionsProjectionRepository implements UserPermission
       .catch(() => undefined);
   }
 
+  async markActive(userId: string, _now: Date): Promise<void> {
+    await this.prisma.userPermissionsProjection
+      .update({ where: { UserId: userId }, data: { IsActive: true } })
+      .catch(() => undefined);
+  }
+
   async findActiveByTenantAndRoleId(
     tenantId: string,
     roleId: string,

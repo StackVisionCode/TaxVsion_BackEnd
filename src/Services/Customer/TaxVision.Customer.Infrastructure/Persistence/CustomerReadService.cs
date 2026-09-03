@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
+using TaxVision.Customer.Application.Customers.Catalogs;
 using TaxVision.Customer.Application.Customers.FiscalProfiles;
 using TaxVision.Customer.Domain.Customers;
 
@@ -144,6 +145,10 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 c.Kind,
                 c.Status,
                 c.DisplayName,
+                FirstName = c.PersonalName != null ? c.PersonalName.FirstName : null,
+                MiddleName = c.PersonalName != null ? c.PersonalName.MiddleName : null,
+                LastName = c.PersonalName != null ? c.PersonalName.LastName : null,
+                LegalName = c.BusinessIdentity != null ? c.BusinessIdentity.LegalName : null,
                 PrimaryEmail = c.PrimaryEmail.Value,
                 PrimaryPhone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
                 c.Language,
@@ -152,6 +157,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
                 OccupationName = o != null ? o.Name : null,
                 NaicsId = c.BusinessIdentity != null ? c.BusinessIdentity.PrincipalBusinessActivityId : null,
                 NaicsDescription = naics != null ? naics.Description : null,
+                c.DateOfBirth,
                 c.CreatedAtUtc,
                 c.AssignedPreparerUserId,
             }
@@ -290,6 +296,10 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             data.Kind,
             data.Status,
             data.DisplayName,
+            data.FirstName,
+            data.MiddleName,
+            data.LastName,
+            data.LegalName,
             data.PrimaryEmail,
             data.PrimaryPhone,
             data.Language,
@@ -298,6 +308,7 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             data.OccupationName,
             data.NaicsId,
             data.NaicsDescription,
+            data.DateOfBirth,
             data.CreatedAtUtc,
             data.AssignedPreparerUserId,
             addresses,
@@ -305,6 +316,46 @@ public sealed class CustomerReadService(CustomerDbContext db, ISensitiveDataProt
             relations,
             fiscalProfile
         );
+    }
+
+    public async Task<IReadOnlyList<OccupationResponse>> ListOccupationsAsync(
+        string? search,
+        CancellationToken ct = default
+    )
+    {
+        // Catálogo global (BaseEntity, no TenantEntity): sin filtro de tenant.
+        var query = db.Occupations.AsNoTracking().Where(o => o.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(o => o.Name.Contains(term));
+        }
+
+        return await query
+            .OrderBy(o => o.DisplayOrder)
+            .ThenBy(o => o.Name)
+            .Select(o => new OccupationResponse(o.Id, o.Name))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<BusinessActivityResponse>> ListBusinessActivitiesAsync(
+        string? search,
+        CancellationToken ct = default
+    )
+    {
+        var query = db.PrincipalBusinessActivities.AsNoTracking().Where(a => a.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(a => a.NaicsCode.Contains(term) || a.Description.Contains(term));
+        }
+
+        return await query
+            .OrderBy(a => a.NaicsCode)
+            .Select(a => new BusinessActivityResponse(a.Id, a.NaicsCode, a.Description, a.Sector))
+            .ToListAsync(ct);
     }
 
     public async Task<CustomerExistsResponse> CheckExistsAsync(

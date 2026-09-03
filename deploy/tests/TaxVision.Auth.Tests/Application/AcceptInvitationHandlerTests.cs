@@ -49,6 +49,7 @@ public sealed class AcceptInvitationHandlerTests
             InvitationStatus? status,
             int page,
             int size,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }
@@ -133,6 +134,7 @@ public sealed class AcceptInvitationHandlerTests
             int size,
             string? search,
             bool? isActive,
+            Guid? customerId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

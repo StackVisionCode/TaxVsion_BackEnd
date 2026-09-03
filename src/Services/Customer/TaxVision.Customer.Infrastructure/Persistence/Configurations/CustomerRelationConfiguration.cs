@@ -61,10 +61,11 @@ public sealed class CustomerRelationConfiguration : IEntityTypeConfiguration<Cus
             }
         );
 
+        // Cascade: borrar una relación con perfil fiscal debe llevarse su perfil, no anular la FK.
         b.HasOne(r => r.FiscalProfile)
             .WithOne()
             .HasForeignKey<CustomerRelationFiscalProfile>(fp => fp.CustomerRelationId)
-            .OnDelete(DeleteBehavior.NoAction);
+            .OnDelete(DeleteBehavior.Cascade);
 
         b.HasIndex(r => new
         {

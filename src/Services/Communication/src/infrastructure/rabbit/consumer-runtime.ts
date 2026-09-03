@@ -50,6 +50,7 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRegisteredIntegrationEvent': 'auth.user.registered.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserRolesChangedIntegrationEvent': 'auth.user.roles_changed.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserDeactivatedIntegrationEvent': 'auth.user.deactivated.v1',
+  'BuildingBlocks.Messaging.AuthIntegrationEvents.UserReactivatedIntegrationEvent': 'auth.user.reactivated.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent': 'auth.user.profile_updated.v1',
   // Fase 2 del plan de notificaciones dinamicas — cambio de permisos a nivel de ROL.
   'BuildingBlocks.Messaging.AuthIntegrationEvents.RolePermissionsChangedIntegrationEvent': 'auth.role.permissions_changed.v1',

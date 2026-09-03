@@ -47,6 +47,10 @@ export function createFakeProjectionRepository(
       const existing = byUserId.get(userId);
       if (existing) byUserId.set(userId, { ...existing, isActive: false, updatedAtUtc: now });
     },
+    async markActive(userId, now) {
+      const existing = byUserId.get(userId);
+      if (existing) byUserId.set(userId, { ...existing, isActive: true, updatedAtUtc: now });
+    },
     async findActiveByTenantAndRoleId(tenantId, roleId) {
       return [...byUserId.values()].filter(
         (s) => s.tenantId === tenantId && s.isActive && s.roleIds.includes(roleId),
