@@ -74,6 +74,17 @@ export const TypingPayloadSchema = z.object({
 });
 export type TypingPayload = z.infer<typeof TypingPayloadSchema>;
 
+/**
+ * Snapshot de presencia bajo demanda: el cliente pide el estado ACTUAL de unos userIds (los peers de
+ * la conversación que abrió). `chat.presence.changed` solo se emite en TRANSICIONES, así que un peer
+ * que ya estaba conectado antes de abrir el chat nunca se reflejaba (quedaba "Offline"). El server
+ * responde emitiendo `chat.presence.changed` (Online/Offline) SOLO a este socket, reusando el pipeline.
+ */
+export const PresenceQueryPayloadSchema = z.object({
+  userIds: z.array(z.string().uuid()).min(1).max(100),
+});
+export type PresenceQueryPayload = z.infer<typeof PresenceQueryPayloadSchema>;
+
 // ---------- Fase Backend 9 — reactions / pin / forward ----------
 
 export const AddReactionPayloadSchema = z.object({
@@ -249,6 +260,7 @@ export const ChatSocketEvents = {
   MarkRead: 'chat.message.mark_read',
   TypingStart: 'chat.typing.start',
   TypingStop: 'chat.typing.stop',
+  PresenceQuery: 'chat.presence.query',
   AddReaction: 'chat.message.reaction.add',
   RemoveReaction: 'chat.message.reaction.remove',
   PinMessage: 'chat.message.pin',

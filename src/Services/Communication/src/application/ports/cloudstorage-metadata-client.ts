@@ -9,6 +9,9 @@ export interface CloudStorageFileMetadata {
   readonly sizeBytes: number;
   readonly mimeType: string | null;
   readonly originalName: string | null;
+  /** Estado REAL del archivo en CloudStorage (FileStatus como string: 'Available', 'PendingScan', …).
+   * Fuente autoritativa del escaneo — permite sanar el AttachmentTracking sin depender del evento. */
+  readonly status: string | null;
 }
 
 export interface CloudStorageMetadataClient {

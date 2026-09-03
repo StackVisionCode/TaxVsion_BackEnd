@@ -22,6 +22,8 @@ interface RawCloudStorageMetadata {
   readonly contentType?: unknown;
   readonly originalName?: unknown;
   readonly fileName?: unknown;
+  readonly status?: unknown;
+  readonly Status?: unknown;
 }
 
 export class HttpCloudStorageMetadataClient implements CloudStorageMetadataClient {
@@ -56,6 +58,7 @@ export class HttpCloudStorageMetadataClient implements CloudStorageMetadataClien
       mimeType: typeof raw.mimeType === 'string' ? raw.mimeType : typeof raw.contentType === 'string' ? raw.contentType : null,
       originalName:
         typeof raw.originalName === 'string' ? raw.originalName : typeof raw.fileName === 'string' ? raw.fileName : null,
+      status: typeof raw.status === 'string' ? raw.status : typeof raw.Status === 'string' ? raw.Status : null,
     };
   }
 }

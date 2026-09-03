@@ -39,6 +39,7 @@ import {
   StartDirectConversationPayloadSchema,
   StartGroupConversationPayloadSchema,
   TypingPayloadSchema,
+  PresenceQueryPayloadSchema,
   UnpinMessagePayloadSchema,
   type ConversationCreatedDto,
   type ConversationParticipantAddedDto,
@@ -598,6 +599,29 @@ async function wireSocket(
     if (!parsed.success) return;
     clearTypingTimer(typingKey(tenantId, parsed.data.conversationId, userId));
     emitTypingStopped(parsed.data.conversationId);
+  });
+
+  // Snapshot de presencia bajo demanda: `chat.presence.changed` solo se emite en transiciones, así que
+  // un peer ya conectado antes de abrir el chat nunca se reflejaba. El cliente pide el estado de sus
+  // peers al seleccionar la conversación; se responde SOLO a este socket, reusando el mismo evento.
+  socket.on(ChatSocketEvents.PresenceQuery, async (...args: unknown[]) => {
+    const parsed = PresenceQueryPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) return;
+    const online = new Set(await container.presence.listOnline(tenantId, parsed.data.userIds));
+    const now = new Date().toISOString();
+    for (const targetUserId of parsed.data.userIds) {
+      // Solo online/offline (el getter de presencia no expone Busy); una transición Busy posterior la
+      // corrige en vivo. Suficiente para que el peer deje de verse "Offline" falso al abrir el chat.
+      socket.emit(
+        ChatSocketEvents.PresenceChanged,
+        envelope({
+          userId: targetUserId,
+          status: online.has(targetUserId) ? 'Online' : 'Offline',
+          busyReason: null,
+          changedAtUtc: now,
+        }),
+      );
+    }
   });
 
   socket.on(ChatSocketEvents.AddReaction, async (...args: unknown[]) => {
