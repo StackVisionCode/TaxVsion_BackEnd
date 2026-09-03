@@ -43,11 +43,21 @@ export async function getAttachmentMetadata(
     ? await deps.cloudStorageMetadata.getMetadata(command.tenantId, command.fileId).catch(() => null)
     : null;
 
+  // Self-heal: si el tracking sigue 'Pending' pero CloudStorage ya marcó el archivo 'Available',
+  // el evento `cloudstorage.file.available.v1` no llegó/consumió — no dejamos el adjunto en "Scanning"
+  // para siempre. CloudStorage es la fuente autoritativa del escaneo: promovemos y sanamos el tracking
+  // (best-effort) para que el próximo emit y las demás vistas ya lo vean disponible.
+  let status = tracking.status;
+  if (status === 'Pending' && meta?.status === 'Available') {
+    status = 'Available';
+    await deps.attachmentTracking.markStatus({ fileId: command.fileId, status: 'Available' }).catch(() => undefined);
+  }
+
   return Result.ok({
     fileId: command.fileId,
     fileName: meta?.originalName ?? null,
     sizeBytes: meta?.sizeBytes ?? null,
     contentType: meta?.mimeType ?? null,
-    status: tracking.status,
+    status,
   });
 }

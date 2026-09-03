@@ -1986,6 +1986,10 @@ public static class PermissionCatalog
             [
                 PortalFoldersView,
                 TasksPortalClientRequests,
+                // El cliente lee las notas que su preparador marcó ClientVisible (PortalNotesController,
+                // GET /notes/portal). Faltaba en el bundle del rol → el Portal recibía 403 aunque no
+                // hubiera notas. `notes.manage`/`notes.read` son del staff; PortalRead es exclusivo del cliente.
+                NotesPortalRead,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,

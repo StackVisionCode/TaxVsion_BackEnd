@@ -149,7 +149,12 @@ public sealed class FilesController(
         ActorType.TenantEmployee,
         ActorType.TenantAdmin,
         ActorType.PlatformAdmin,
-        ActorType.CustomerPortal
+        ActorType.CustomerPortal,
+        // Communication (y otros M2M con cloudstorage.file.view) leen metadata de un archivo vía token
+        // de servicio — p.ej. nombre/tamaño de un adjunto de chat. Mismo criterio que download-url más
+        // abajo (Hardening Fase 9): sin esto el ActorTypeAuthorizationFilter devolvía 403 antes del
+        // chequeo de permiso. La autorización real la sigue haciendo Scope.CanAccess(file) en la query.
+        ActorType.Service
     )]
     [RateLimit("cloudstorage.f.file_get")]
     [ProducesResponseType<FileResponse>(StatusCodes.Status200OK)]

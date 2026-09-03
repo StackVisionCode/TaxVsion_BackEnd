@@ -51,7 +51,14 @@ const downloadGone: CloudStorageDownloadClient = {
 
 const metadataOk: CloudStorageMetadataClient = {
   async getMetadata() {
-    return { fileId: u(), sizeBytes: 2048, mimeType: 'application/pdf', originalName: 'w-2.pdf' };
+    return { fileId: u(), sizeBytes: 2048, mimeType: 'application/pdf', originalName: 'w-2.pdf', status: 'Available' };
+  },
+};
+
+/** CloudStorage aún escaneando (PendingScan): no debe promover el tracking. */
+const metadataScanning: CloudStorageMetadataClient = {
+  async getMetadata() {
+    return { fileId: u(), sizeBytes: 2048, mimeType: 'application/pdf', originalName: 'w-2.pdf', status: 'PendingScan' };
   },
 };
 
@@ -206,6 +213,42 @@ describe('conversation attachment access', () => {
       expect(result.value.status).toBe('Infected');
       expect(result.value.fileName).toBeNull();
       expect(result.value.sizeBytes).toBeNull();
+    }
+  });
+
+  it('self-heals a Pending tracking to Available when CloudStorage reports Available (evento perdido)', async () => {
+    let healedTo: AttachmentTrackingStatus | null = null;
+    const healingRepo: AttachmentTrackingRepository = {
+      async register() {},
+      async markStatus(input) {
+        healedTo = input.status;
+        return null;
+      },
+      async findByFileId() {
+        return snap({ status: 'Pending' });
+      },
+    };
+    const result = await getAttachmentMetadata(cmd(), {
+      conversations: conversationRepo([memberId]),
+      attachmentTracking: healingRepo,
+      cloudStorageMetadata: metadataOk,
+    });
+    expect(result.isSuccess).toBe(true);
+    if (result.isSuccess) {
+      expect(result.value.status).toBe('Available');
+    }
+    expect(healedTo).toBe('Available'); // sanó el tracking, no solo devolvió el estado
+  });
+
+  it('mantiene Pending si CloudStorage sigue escaneando (no promueve de más)', async () => {
+    const result = await getAttachmentMetadata(cmd(), {
+      conversations: conversationRepo([memberId]),
+      attachmentTracking: trackingRepo(snap({ status: 'Pending' })),
+      cloudStorageMetadata: metadataScanning,
+    });
+    expect(result.isSuccess).toBe(true);
+    if (result.isSuccess) {
+      expect(result.value.status).toBe('Pending');
     }
   });
 

@@ -173,7 +173,7 @@ describe('attachMeetingRecording — Fase Backend 8 validation', () => {
     const { meeting, host } = liveMeeting();
     await meetings.save(meeting);
     const fileId = u();
-    const meta: CloudStorageFileMetadata = { fileId, sizeBytes: 0, mimeType: 'video/webm', originalName: 'x.webm' };
+    const meta: CloudStorageFileMetadata = { fileId, sizeBytes: 0, mimeType: 'video/webm', originalName: 'x.webm', status: 'Available' };
     const result = await attachMeetingRecording(
       { tenantId: meeting.tenantId, correlationId: u(), clientKey: u(), meetingId: meeting.id, actorUserId: host.userId, fileId },
       {
@@ -227,6 +227,7 @@ describe('attachMeetingRecording — Fase Backend 8 validation', () => {
           sizeBytes: 1_048_576,
           mimeType: 'video/webm',
           originalName: 'r.webm',
+          status: 'Available',
         }),
       },
     );
@@ -249,7 +250,7 @@ describe('attachCallRecording — Fase Backend 8 validation', () => {
         idempotency: new FakeIdempotencyStore(),
         publisher: new FakePublisher(),
         emitter: new FakeEmitter(),
-        cloudStorageMetadata: new StaticMetadataClient({ fileId, sizeBytes: 0, mimeType: null, originalName: null }),
+        cloudStorageMetadata: new StaticMetadataClient({ fileId, sizeBytes: 0, mimeType: null, originalName: null, status: 'Available' }),
       },
     );
     expect(result.isSuccess).toBe(false);
