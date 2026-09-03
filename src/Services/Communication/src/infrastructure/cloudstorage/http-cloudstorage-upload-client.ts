@@ -29,6 +29,28 @@ function asString(camel: unknown, pascal: unknown): string | null {
   return null;
 }
 
+/** Error de una subida a CloudStorage que conserva el status y el code para mapear la respuesta. */
+export class CloudStorageUploadError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+    readonly detail: string,
+  ) {
+    super(`CloudStorage initiate-upload failed with status ${status}${code ? ` (${code})` : ''}`);
+    this.name = 'CloudStorageUploadError';
+  }
+}
+
+/** Extrae el `code` del body `{ code, message }` de CloudStorage (best-effort). */
+function parseErrorCode(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { code?: unknown };
+    return typeof parsed.code === 'string' ? parsed.code : null;
+  } catch {
+    return null;
+  }
+}
+
 export class HttpCloudStorageUploadClient implements CloudStorageUploadClient {
   constructor(private readonly tokens: ServiceTokenClient) {}
 
@@ -42,7 +64,9 @@ export class HttpCloudStorageUploadClient implements CloudStorageUploadClient {
         contentType: request.contentType,
         sizeBytes: request.sizeBytes,
         ownerType: 'Communication',
-        ownerId: null,
+        // CloudStorage exige ownerId para todo ownerType != Tenant: el adjunto se ancla
+        // a la conversación (antes iba `null` → 400 File.OwnerRequired → 500 en el chat).
+        ownerId: request.conversationId,
         folderType: 'Other',
         taxYear: null,
       }),
@@ -50,7 +74,9 @@ export class HttpCloudStorageUploadClient implements CloudStorageUploadClient {
     if (!response.ok) {
       const body = await response.text().catch(() => '');
       logger.error({ status: response.status, body: body.slice(0, 300) }, 'cloudstorage initiate-upload failed');
-      throw new Error(`CloudStorage initiate-upload failed with status ${response.status}`);
+      // Propaga el error de CloudStorage. Un 4xx (tipo no permitido, tamaño, cuota) es culpa
+      // del cliente y debe llegar como 4xx al front — no como 500 genérico.
+      throw new CloudStorageUploadError(response.status, parseErrorCode(body), body.slice(0, 300));
     }
     const raw = (await response.json()) as RawInitiatedUpload;
     const fileId = asString(raw.fileId, raw.FileId);

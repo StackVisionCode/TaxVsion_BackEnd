@@ -19,6 +19,14 @@ public static class TenantEmailLinks
             : $"https://{tenantHost}{NormalizePrefix(portal.ClientPathPrefix)}";
 
     /// <summary>
+    /// Deep-link a la pestaña de documentos del portal (donde el cliente ve "Requested from you"
+    /// y sube lo pedido): <c>{ClientBase}/client/documents</c>. Un correo que pide subir un
+    /// documento debe llevar AQUÍ, no a la raíz del portal (donde el cliente no ve la solicitud).
+    /// </summary>
+    public static string ClientDocuments(string? tenantHost, PortalOptions portal) =>
+        $"{ClientBase(tenantHost, portal)}/client/documents";
+
+    /// <summary>
     /// Enlace público de firma bajo el subdominio de la oficina:
     /// <c>https://{host}/signature/public/{token}</c>. El firmante es anónimo y la página se
     /// sirve en la raíz del host de la oficina; sin host resuelto cae al base staff fijo.

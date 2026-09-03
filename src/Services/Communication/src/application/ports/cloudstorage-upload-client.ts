@@ -12,6 +12,9 @@ export interface CloudStorageUploadRequest {
   readonly originalName: string;
   readonly contentType: string;
   readonly sizeBytes: number;
+  // El blob se ancla a la conversación: CloudStorage exige un ownerId para todo
+  // ownerType != Tenant (FileObject.Create), así que va el conversationId como dueño.
+  readonly conversationId: string;
 }
 
 export interface CloudStorageInitiatedUpload {
