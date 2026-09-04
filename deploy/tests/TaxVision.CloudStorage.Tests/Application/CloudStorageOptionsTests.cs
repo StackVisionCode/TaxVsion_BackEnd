@@ -144,6 +144,33 @@ public sealed class CloudStorageOptionsTests
     }
 
     [Fact]
+    public void ResolveUploadPolicy_allows_audio_recordings_even_when_the_plan_does_not_list_audio()
+    {
+        var options = Options();
+        // La grabacion de una call/meeting de SOLO-AUDIO se sube como audio/webm. Recordings es media de
+        // SISTEMA (solo llega via el servidor de Communication), asi que su SET de tipos no se intersecta
+        // con el plan — sin esto la interseccion quitaba audio/* y el InitiateUpload devolvia 400. El plan
+        // "starter" no lista audio/* y ademas cap-ea Recordings a 150MB por FolderOverridesBytes.
+        options.PlanPolicies["starter"] = new StoragePlanPolicy
+        {
+            MaxFileSizeBytes = 10L * 1024 * 1024,
+            AllowedExtensions = [".webm", ".mp4"],
+            AllowedContentTypes = ["video/webm", "video/mp4"],
+            FolderOverridesBytes = new(StringComparer.OrdinalIgnoreCase) { ["Recordings"] = 150L * 1024 * 1024 },
+        };
+
+        var recordings = options.ResolveUploadPolicy("starter", FolderType.Recordings);
+
+        // El gating de TIPO se exceptua (audio/* pasa aunque el plan no lo liste)...
+        Assert.Contains("audio/webm", recordings.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("audio/mp4", recordings.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("video/webm", recordings.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(".webm", recordings.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        // ...pero el TAMANO SIGUE respetando el override por plan (no es un bypass total como VoiceNotes).
+        Assert.Equal(150L * 1024 * 1024, recordings.MaxFileSizeBytes);
+    }
+
+    [Fact]
     public void ResolveUploadPolicy_does_not_allow_audio_on_the_Other_FolderType_used_by_regular_attachments()
     {
         var options = Options();
