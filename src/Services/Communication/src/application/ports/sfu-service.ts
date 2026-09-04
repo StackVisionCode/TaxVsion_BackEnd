@@ -68,6 +68,15 @@ export interface SfuService {
 
   resumeConsumer(input: { meetingId: string; userId: string; consumerId: string }): Promise<boolean>;
 
+  /** Fija la capa de simulcast preferida de un consumidor (spotlight = alta, thumbnail = baja). */
+  setConsumerPreferredLayers(input: {
+    meetingId: string;
+    userId: string;
+    consumerId: string;
+    spatialLayer: number;
+    temporalLayer?: number;
+  }): Promise<boolean>;
+
   /** Producers de otros participantes ya activos en el meeting — para que un recien llegado sepa a que consumir. */
   listRemoteProducers(meetingId: string, excludeUserId: string): readonly RemoteProducerInfo[];
 

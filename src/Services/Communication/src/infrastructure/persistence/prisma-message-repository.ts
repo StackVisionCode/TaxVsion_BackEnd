@@ -238,6 +238,85 @@ export class PrismaMessageRepository implements MessageRepository {
     }
   }
 
+  async markBatchDelivered(input: {
+    tenantId: string;
+    conversationId: string;
+    userId: string;
+    upToMessageId: string;
+    now: Date;
+  }): Promise<{ markedCount: number }> {
+    const cutoff = await this.prisma.message.findFirst({
+      where: { Id: input.upToMessageId, TenantId: input.tenantId, ConversationId: input.conversationId },
+      select: { CreatedAtUtc: true },
+    });
+    if (!cutoff) return { markedCount: 0 };
+
+    const targetMessageIds = await this.prisma.message.findMany({
+      where: {
+        TenantId: input.tenantId,
+        ConversationId: input.conversationId,
+        SenderId: { not: input.userId },
+        IsDeleted: false,
+        CreatedAtUtc: { lte: cutoff.CreatedAtUtc },
+      },
+      select: { Id: true },
+    });
+    if (targetMessageIds.length === 0) return { markedCount: 0 };
+
+    // Idempotente y delivered-only (NO toca ReadAtUtc): createMany solo los que faltan.
+    // Un receipt existente ya tiene DeliveredAtUtc (read setea ambos), así que no hay update.
+    await this.prisma.$transaction(async (tx) => {
+      for (const chunk of chunks(targetMessageIds, 200)) {
+        const ids = chunk.map((m) => m.Id);
+        const existing = await tx.messageReceipt.findMany({
+          where: { UserId: input.userId, TenantId: input.tenantId, MessageId: { in: ids } },
+          select: { MessageId: true },
+        });
+        const existingSet = new Set(existing.map((r) => r.MessageId));
+        const missing = ids.filter((id) => !existingSet.has(id));
+        if (missing.length > 0) {
+          await tx.messageReceipt.createMany({
+            data: missing.map((id) => ({
+              MessageId: id,
+              UserId: input.userId,
+              TenantId: input.tenantId,
+              DeliveredAtUtc: input.now,
+            })),
+          });
+        }
+      }
+    });
+    return { markedCount: targetMessageIds.length };
+  }
+
+  async receiptsForOwnMessages(input: {
+    tenantId: string;
+    ownerUserId: string;
+    messageIds: readonly string[];
+  }): Promise<Map<string, { deliveredAtUtc: Date | null; readAtUtc: Date | null }>> {
+    const result = new Map<string, { deliveredAtUtc: Date | null; readAtUtc: Date | null }>();
+    if (input.messageIds.length === 0) return result;
+    for (const chunk of chunks([...input.messageIds], 200)) {
+      // Receipts de los OTROS participantes (UserId != dueño) para estos mensajes.
+      const rows = await this.prisma.messageReceipt.findMany({
+        where: { TenantId: input.tenantId, MessageId: { in: chunk }, UserId: { not: input.ownerUserId } },
+        select: { MessageId: true, DeliveredAtUtc: true, ReadAtUtc: true },
+      });
+      for (const r of rows) {
+        const acc = result.get(r.MessageId) ?? { deliveredAtUtc: null, readAtUtc: null };
+        // Agrega el MÁS RECIENTE (en 1:1 es el único; sirve para pintar el cotejo).
+        if (r.DeliveredAtUtc && (!acc.deliveredAtUtc || r.DeliveredAtUtc > acc.deliveredAtUtc)) {
+          acc.deliveredAtUtc = r.DeliveredAtUtc;
+        }
+        if (r.ReadAtUtc && (!acc.readAtUtc || r.ReadAtUtc > acc.readAtUtc)) {
+          acc.readAtUtc = r.ReadAtUtc;
+        }
+        result.set(r.MessageId, acc);
+      }
+    }
+    return result;
+  }
+
   async listByIds(tenantId: string, ids: readonly string[]): Promise<MessageSnapshot[]> {
     if (ids.length === 0) return [];
     const rows = await this.prisma.message.findMany({

@@ -19,6 +19,7 @@ import { sendMessage } from '../../../application/use-cases/send-message.js';
 import { editMessage } from '../../../application/use-cases/edit-message.js';
 import { deleteMessage } from '../../../application/use-cases/delete-message.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
+import { markMessagesDelivered } from '../../../application/use-cases/mark-messages-delivered.js';
 import { addMessageReaction } from '../../../application/use-cases/add-message-reaction.js';
 import { removeMessageReaction } from '../../../application/use-cases/remove-message-reaction.js';
 import { pinMessage } from '../../../application/use-cases/pin-message.js';
@@ -32,6 +33,7 @@ import {
   EditMessagePayloadSchema,
   ForwardMessagePayloadSchema,
   MarkReadPayloadSchema,
+  MarkDeliveredPayloadSchema,
   PinMessagePayloadSchema,
   RemoveGroupParticipantPayloadSchema,
   RemoveReactionPayloadSchema,
@@ -53,8 +55,10 @@ import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket
 // "nunca ambos online"). Esperamos esta gracia antes de dar de baja la sesión: si
 // el usuario ya reconectó (otra sesión con heartbeat vivo), su presencia sigue
 // arriba y unregister de la sesión vieja no baja el estado; si se fue de verdad,
-// publica Offline con este pequeño retraso. Debe ser < leaseSeconds (30s).
-const PRESENCE_DISCONNECT_GRACE_MS = 10_000;
+// publica Offline con este pequeño retraso. Solo tiene que cubrir la ventana de
+// reconexión (~0.5s), así que 2s deja Offline casi instantáneo sin reintroducir el
+// parpadeo. Debe ser < leaseSeconds (30s).
+const PRESENCE_DISCONNECT_GRACE_MS = 2_000;
 
 /**
  * Registra los handlers de chat en el Socket.IO server. Cada handler:
@@ -555,6 +559,40 @@ async function wireSocket(
       event: ChatSocketEvents.MessageRead,
       envelope: envelope(result.value.receipt),
     });
+  });
+
+  socket.on(ChatSocketEvents.MarkDelivered, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ markedCount: number }>) => void) : undefined;
+    const parsed = MarkDeliveredPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Chat.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await markMessagesDelivered(
+      {
+        tenantId,
+        conversationId: parsed.data.conversationId,
+        userUserId: userId,
+        upToMessageId: parsed.data.upToMessageId,
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: { markedCount: result.value.markedCount } });
+    // Solo vale la pena avisar al emisor si de verdad se marcó algo nuevo (evita ruido en cada
+    // mensaje ya entregado). El emisor pinta los 2 cotejos grises sobre sus mensajes ≤ upToMessageId.
+    if (result.value.markedCount > 0) {
+      emitter.emitToConversation({
+        tenantId,
+        conversationId: parsed.data.conversationId,
+        event: ChatSocketEvents.MessageDelivered,
+        envelope: envelope(result.value.receipt),
+      });
+    }
   });
 
   const emitTypingStopped = (conversationId: string): void => {

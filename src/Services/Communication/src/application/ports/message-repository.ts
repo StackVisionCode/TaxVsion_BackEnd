@@ -44,6 +44,32 @@ export interface MessageRepository {
     now: Date;
   }): Promise<void>;
 
+  /**
+   * Marca ENTREGA (Delivered) para todos los mensajes de la conversación hasta
+   * `upToMessageId` cuyo emisor NO es `userId`. Espeja `markBatchRead` pero sin
+   * tocar `ReadAtUtc` (entregado ≠ leído). Idempotente (WHERE DeliveredAtUtc IS NULL).
+   */
+  markBatchDelivered(input: {
+    tenantId: string;
+    conversationId: string;
+    userId: string;
+    upToMessageId: string;
+    now: Date;
+  }): Promise<{ markedCount: number }>;
+
+  /**
+   * Para pintar cotejos al cargar historial: dado un set de mensajes PROPIOS del
+   * emisor, devuelve el estado agregado del/los OTRO(S) participante(s):
+   * `deliveredAtUtc` = el más reciente entregado (null si ningún otro lo recibió),
+   * `readAtUtc` = el más reciente leído (null si ningún otro lo leyó). En 1:1 es el
+   * receipt del único otro; suficiente para el caso cliente↔preparador.
+   */
+  receiptsForOwnMessages(input: {
+    tenantId: string;
+    ownerUserId: string;
+    messageIds: readonly string[];
+  }): Promise<Map<string, { deliveredAtUtc: Date | null; readAtUtc: Date | null }>>;
+
   listByIds(tenantId: string, ids: readonly string[]): Promise<MessageSnapshot[]>;
 
   /**

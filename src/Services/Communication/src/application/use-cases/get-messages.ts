@@ -1,5 +1,6 @@
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
+import type { MessageRepository } from '../ports/message-repository.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
 
 /**
@@ -28,7 +29,7 @@ export interface GetMessagesResult {
 
 export async function getMessages(
   query: GetMessagesQuery,
-  deps: { conversations: ConversationRepository },
+  deps: { conversations: ConversationRepository; messages: MessageRepository },
 ): Promise<Result<GetMessagesResult>> {
   const take = Math.min(Math.max(query.take, 1), 100);
   const conversation = await deps.conversations.findById(query.tenantId, query.conversationId, 0);
@@ -56,24 +57,39 @@ export async function getMessages(
   else if (beforeUtc !== undefined) listArgs.beforeUtc = beforeUtc;
   const messages = await deps.conversations.listMessages(listArgs);
 
-  const items: MessageDto[] = messages.map((m) => ({
-    id: m.id,
-    conversationId: m.conversationId,
-    senderId: m.senderId,
-    senderDisplayName: m.senderDisplayName,
-    kind: m.kind,
-    body: m.isDeleted ? null : m.body,
-    attachmentFileId: m.isDeleted ? null : m.attachmentFileId,
-    replyToMessageId: m.replyToMessageId,
-    forwardedFromMessageId: m.forwardedFromMessageId,
-    isEdited: m.isEdited,
-    isDeleted: m.isDeleted,
-    isPinned: m.isPinned,
-    pinnedAtUtc: m.pinnedAtUtc ? m.pinnedAtUtc.toISOString() : null,
-    pinnedByUserId: m.pinnedByUserId,
-    createdAtUtc: m.createdAtUtc.toISOString(),
-    editedAtUtc: m.editedAtUtc ? m.editedAtUtc.toISOString() : null,
-  }));
+  // Cotejos del historial: solo para los mensajes PROPIOS del solicitante, se consulta el
+  // estado agregado del/los otro(s) participante(s) (entregado/leído). Así al abrir el chat el
+  // emisor ve 1/2-grises/2-azules sin esperar eventos en vivo. Los ajenos van con null.
+  const ownMessageIds = messages.filter((m) => m.senderId === query.requesterUserId && !m.isDeleted).map((m) => m.id);
+  const receipts = await deps.messages.receiptsForOwnMessages({
+    tenantId: query.tenantId,
+    ownerUserId: query.requesterUserId,
+    messageIds: ownMessageIds,
+  });
+
+  const items: MessageDto[] = messages.map((m) => {
+    const own = m.senderId === query.requesterUserId ? receipts.get(m.id) : undefined;
+    return {
+      id: m.id,
+      conversationId: m.conversationId,
+      senderId: m.senderId,
+      senderDisplayName: m.senderDisplayName,
+      kind: m.kind,
+      body: m.isDeleted ? null : m.body,
+      attachmentFileId: m.isDeleted ? null : m.attachmentFileId,
+      replyToMessageId: m.replyToMessageId,
+      forwardedFromMessageId: m.forwardedFromMessageId,
+      isEdited: m.isEdited,
+      isDeleted: m.isDeleted,
+      isPinned: m.isPinned,
+      pinnedAtUtc: m.pinnedAtUtc ? m.pinnedAtUtc.toISOString() : null,
+      pinnedByUserId: m.pinnedByUserId,
+      createdAtUtc: m.createdAtUtc.toISOString(),
+      editedAtUtc: m.editedAtUtc ? m.editedAtUtc.toISOString() : null,
+      deliveredAtUtc: own?.deliveredAtUtc ? own.deliveredAtUtc.toISOString() : null,
+      readAtUtc: own?.readAtUtc ? own.readAtUtc.toISOString() : null,
+    };
+  });
 
   const hasMore = items.length === take;
   const lastItem = items[items.length - 1];

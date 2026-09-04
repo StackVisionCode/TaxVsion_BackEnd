@@ -40,6 +40,7 @@ import {
   SfuListRemoteProducersPayloadSchema,
   SfuProducePayloadSchema,
   SfuResumeConsumerPayloadSchema,
+  SfuSetPreferredLayersPayloadSchema,
   SfuRouterCapabilitiesPayloadSchema,
   StopMeetingRecordingPayloadSchema,
   TransferHostPayloadSchema,
@@ -83,6 +84,7 @@ import {
   listSfuRemoteProducers,
   produceSfuMedia,
   resumeSfuConsumer,
+  setSfuConsumerPreferredLayers,
 } from '../../../application/use-cases/sfu-signaling.js';
 import { sendMessage } from '../../../application/use-cases/send-message.js';
 import { editMessage } from '../../../application/use-cases/edit-message.js';
@@ -1117,6 +1119,31 @@ function wireMeetingSocket(
     }
     const result = await resumeSfuConsumer(
       { tenantId, meetingId: parsed.data.meetingId, userId, consumerId: parsed.data.consumerId },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: {} });
+  });
+
+  socket.on(MeetingSocketEvents.SfuSetPreferredLayers, async (...args: unknown[]) => {
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<unknown>) => void) : undefined;
+    const parsed = SfuSetPreferredLayersPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Meeting.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const result = await setSfuConsumerPreferredLayers(
+      {
+        tenantId,
+        meetingId: parsed.data.meetingId,
+        userId,
+        consumerId: parsed.data.consumerId,
+        spatialLayer: parsed.data.spatialLayer,
+        ...(parsed.data.temporalLayer !== undefined ? { temporalLayer: parsed.data.temporalLayer } : {}),
+      },
       container,
     );
     if (!result.isSuccess) {

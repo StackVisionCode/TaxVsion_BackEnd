@@ -26,5 +26,9 @@ export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
     pinnedByUserId: m.pinnedByUserId,
     createdAtUtc: m.createdAtUtc.toISOString(),
     editedAtUtc: m.editedAtUtc ? m.editedAtUtc.toISOString() : null,
+    // Un mensaje recién creado/emitido en vivo aún no tiene cotejos (el receptor los emite después).
+    // get-messages los sobrescribe con el estado real al cargar historial.
+    deliveredAtUtc: null,
+    readAtUtc: null,
   };
 }
