@@ -27,6 +27,7 @@ export const CommunicationRateLimitPolicyNames = {
   ChatSend: 'communication.o.chat_send',
   ChatEdit: 'communication.o.chat_edit',
   ChatTyping: 'communication.o.chat_typing',
+  ChatVoiceRecording: 'communication.o.chat_voice_recording',
   CallInitiate: 'communication.o.call_initiate',
   CallSignal: 'communication.o.call_signal',
   MeetingChatSend: 'communication.o.meeting_chat_send',

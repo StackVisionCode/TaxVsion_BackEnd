@@ -31,6 +31,10 @@ export interface MessageSnapshot {
   readonly deletedAtUtc: Date | null;
   readonly createdAtUtc: Date;
   readonly editedAtUtc: Date | null;
+  /** Nota de voz: duración en ms. Null salvo un adjunto de audio. */
+  readonly audioDurationMs: number | null;
+  /** Nota de voz: waveform como JSON string (array de picos 0-100). Null salvo un adjunto de audio. */
+  readonly audioWaveform: string | null;
 }
 
 export class Message {
@@ -72,6 +76,8 @@ export class Message {
         deletedAtUtc: null,
         createdAtUtc: input.now ?? new Date(),
         editedAtUtc: null,
+        audioDurationMs: null,
+        audioWaveform: null,
       }),
     );
   }
@@ -83,6 +89,10 @@ export class Message {
     senderDisplayName: string;
     attachmentFileId: string;
     replyToMessageId?: string | null;
+    /** Nota de voz: duración en ms (adjunto de audio); null para otros adjuntos. */
+    audioDurationMs?: number | null;
+    /** Nota de voz: waveform ya serializado a JSON string; null para otros adjuntos. */
+    audioWaveform?: string | null;
     now?: Date;
   }): Result<Message> {
     if (!input.attachmentFileId) {
@@ -108,6 +118,8 @@ export class Message {
         deletedAtUtc: null,
         createdAtUtc: input.now ?? new Date(),
         editedAtUtc: null,
+        audioDurationMs: input.audioDurationMs ?? null,
+        audioWaveform: input.audioWaveform ?? null,
       }),
     );
   }
@@ -155,6 +167,9 @@ export class Message {
         deletedAtUtc: null,
         createdAtUtc: input.now ?? new Date(),
         editedAtUtc: null,
+        // Reenviar copia el adjunto original: si era una nota de voz, conserva duración/waveform.
+        audioDurationMs: input.origin.audioDurationMs,
+        audioWaveform: input.origin.audioWaveform,
       }),
     );
   }

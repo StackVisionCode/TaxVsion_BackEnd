@@ -56,6 +56,10 @@ export class HttpCloudStorageUploadClient implements CloudStorageUploadClient {
 
   async initiate(tenantId: string, request: CloudStorageUploadRequest): Promise<CloudStorageInitiatedUpload> {
     const token = await this.tokens.getToken(tenantId);
+    // Nota de voz (audio/*): va a la carpeta navegable "Voice Notes" del TENANT (decisión A: una sola
+    // carpeta en el gestor del staff), owner Tenant/ownerId=null. El resto de adjuntos siguen anclados
+    // a la conversación (owner Communication). Un adjunto normal nunca es audio — OtherPolicy lo rechaza.
+    const isVoiceNote = request.contentType.toLowerCase().startsWith('audio/');
     const response = await fetch(`${config.cloudStorage.baseUrl}/storage/files/uploads`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -63,11 +67,12 @@ export class HttpCloudStorageUploadClient implements CloudStorageUploadClient {
         originalName: request.originalName,
         contentType: request.contentType,
         sizeBytes: request.sizeBytes,
-        ownerType: 'Communication',
+        ownerType: isVoiceNote ? 'Tenant' : 'Communication',
         // CloudStorage exige ownerId para todo ownerType != Tenant: el adjunto se ancla
         // a la conversación (antes iba `null` → 400 File.OwnerRequired → 500 en el chat).
-        ownerId: request.conversationId,
-        folderType: 'Other',
+        // Para Tenant (nota de voz) va null: el tenant es implícito por el token/tenantId.
+        ownerId: isVoiceNote ? null : request.conversationId,
+        folderType: isVoiceNote ? 'VoiceNotes' : 'Other',
         taxYear: null,
       }),
     });

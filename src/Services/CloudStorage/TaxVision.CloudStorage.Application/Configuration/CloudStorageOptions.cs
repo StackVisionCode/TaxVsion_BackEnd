@@ -172,6 +172,7 @@ public sealed class CloudStorageOptions
             [FolderType.Backups] = BackupsPolicy(),
             [FolderType.Templates] = TemplatesPolicy(),
             [FolderType.Branding] = BrandingPolicy(),
+            [FolderType.VoiceNotes] = VoiceNotesPolicy(),
             [FolderType.Other] = OtherPolicy(),
         };
 
@@ -218,7 +219,10 @@ public sealed class CloudStorageOptions
         // valida. NO se intersecta con la plan policy (que limita las subidas de USUARIO por tier),
         // porque esa intersección dejaba fuera el SVG — que la folder policy sí permite a propósito.
         // Se sigue quitando DangerousExtensions por seguridad.
-        if (folderType == FolderType.Branding)
+        // VoiceNotes se trata igual que Branding: upload de SISTEMA mediado por Communication (Service),
+        // no un documento de usuario gateado por tier. La folder policy define el set de audio; sin este
+        // bypass la interseccion con el plan (que no lista audio/*) dejaria fuera las notas de voz.
+        if (folderType is FolderType.Branding or FolderType.VoiceNotes)
         {
             return new EffectiveUploadPolicy(
                 folderPolicy.MaxSizeBytes,
@@ -397,6 +401,22 @@ public sealed class CloudStorageOptions
             MaxSizeBytes = 200L * 1024 * 1024,
             AllowedExtensions = [".zip", ".json", ".csv"],
             AllowedContentTypes = ["application/zip", "application/json", "text/csv"],
+        };
+
+    /// <summary>
+    /// Notas de voz del chat (Communication). Se graba webm/opus (Chrome/Firefox) o mp4/AAC (Safari);
+    /// se listan AMBOS content-types declarados (audio/*) y los detectados por magic-bytes (video/*),
+    /// porque FileContentInspector sniffea webm→video/webm y mp4→video/mp4 (no distingue audio). 50MB
+    /// cubre el tope de 5min del grabador con holgura. `.mp3/.wav/.flac/.aac` quedan fuera a proposito
+    /// (siguen en DangerousExtensions). Como Branding, es un upload de SISTEMA (mediado por Communication
+    /// como Service, no un documento de usuario), asi que ResolveUploadPolicy NO lo intersecta con el plan.
+    /// </summary>
+    private static StorageFolderTypePolicy VoiceNotesPolicy() =>
+        new()
+        {
+            MaxSizeBytes = 50L * 1024 * 1024,
+            AllowedExtensions = [".webm", ".mp4"],
+            AllowedContentTypes = ["audio/webm", "video/webm", "audio/mp4", "video/mp4"],
         };
 
     private static StorageFolderTypePolicy OtherPolicy() =>

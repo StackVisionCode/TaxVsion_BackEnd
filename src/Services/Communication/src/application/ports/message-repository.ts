@@ -58,6 +58,21 @@ export interface MessageRepository {
   }): Promise<{ markedCount: number }>;
 
   /**
+   * Marca ENTREGA (Delivered) del BACKLOG entrante al CONECTAR: recorre las conversaciones dadas y
+   * marca delivered todo mensaje cuyo emisor NO es `userId`, no borrado, y sin receipt previo. Es lo
+   * que hace cumplir "conectado = entregado (2 grises)" para mensajes que llegaron ANTES de que el
+   * socket estuviera vivo (el camino en vivo `markBatchDelivered` solo cubre lo que llega por evento).
+   * Devuelve, por conversación con marcas nuevas, el último mensaje entregado (para el receipt) y el
+   * conteo — así el handler emite `chat.message.delivered` solo a las salas que cambiaron.
+   */
+  markPendingDeliveredForConversations(input: {
+    tenantId: string;
+    userId: string;
+    conversationIds: readonly string[];
+    now: Date;
+  }): Promise<{ conversationId: string; upToMessageId: string; markedCount: number }[]>;
+
+  /**
    * Para pintar cotejos al cargar historial: dado un set de mensajes PROPIOS del
    * emisor, devuelve el estado agregado del/los OTRO(S) participante(s):
    * `deliveredAtUtc` = el más reciente entregado (null si ningún otro lo recibió),

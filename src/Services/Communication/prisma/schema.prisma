@@ -364,6 +364,10 @@ model Message {
   DeletedAtUtc           DateTime? @db.DateTime2
   CreatedAtUtc           DateTime  @default(now()) @db.DateTime2
   EditedAtUtc            DateTime? @db.DateTime2
+  // Notas de voz (Kind=Attachment con adjunto audio/*): duración en ms y waveform (JSON array de
+  // picos 0-100) calculados por el cliente al grabar. Null para cualquier otro mensaje.
+  AudioDurationMs        Int?
+  AudioWaveform          String?   @db.NVarChar(Max)
 
   Conversation Conversation      @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
   Receipts     MessageReceipt[]

@@ -2,6 +2,7 @@ import { Result, makeError } from '../../domain/shared/result.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { MessageRepository } from '../ports/message-repository.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
+import { parseWaveform } from './chat-mappers.js';
 
 /**
  * Paginacion cursor-based con dos modos mutuamente excluyentes:
@@ -88,6 +89,9 @@ export async function getMessages(
       editedAtUtc: m.editedAtUtc ? m.editedAtUtc.toISOString() : null,
       deliveredAtUtc: own?.deliveredAtUtc ? own.deliveredAtUtc.toISOString() : null,
       readAtUtc: own?.readAtUtc ? own.readAtUtc.toISOString() : null,
+      // Nota de voz: la metadata de audio no se redacta al borrar (el player ya no la usa si isDeleted).
+      audioDurationMs: m.audioDurationMs,
+      audioWaveform: parseWaveform(m.audioWaveform),
     };
   });
 

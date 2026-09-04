@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../../../infrastructure/config.js';
 import { logger } from '../../../infrastructure/logger/logger.js';
-import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import {
+  checkPermission,
+  CommunicationPermissions,
+  isPlatformAdmin as isPlatformAdminActorType,
+} from '../../../domain/shared/permissions.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 import type {
   CommunicationIoServer,
@@ -20,6 +24,9 @@ import { editMessage } from '../../../application/use-cases/edit-message.js';
 import { deleteMessage } from '../../../application/use-cases/delete-message.js';
 import { markMessagesRead } from '../../../application/use-cases/mark-messages-read.js';
 import { markMessagesDelivered } from '../../../application/use-cases/mark-messages-delivered.js';
+import { markConnectedDelivered } from '../../../application/use-cases/mark-connected-delivered.js';
+import { markLiveDelivered } from '../../../application/use-cases/mark-live-delivered.js';
+import { sendSupportAgentMessage } from '../../../application/use-cases/send-support-agent-message.js';
 import { addMessageReaction } from '../../../application/use-cases/add-message-reaction.js';
 import { removeMessageReaction } from '../../../application/use-cases/remove-message-reaction.js';
 import { pinMessage } from '../../../application/use-cases/pin-message.js';
@@ -40,7 +47,10 @@ import {
   SendMessagePayloadSchema,
   StartDirectConversationPayloadSchema,
   StartGroupConversationPayloadSchema,
+  SupportAgentJoinPayloadSchema,
+  SupportAgentSendMessagePayloadSchema,
   TypingPayloadSchema,
+  RecordingPayloadSchema,
   PresenceQueryPayloadSchema,
   UnpinMessagePayloadSchema,
   type ConversationCreatedDto,
@@ -87,6 +97,15 @@ export function registerChatHandlers(io: CommunicationIoServer, container: AppCo
 const TYPING_TIMEOUT_MS = 8_000;
 const typingTimers = new Map<string, { timer: NodeJS.Timeout; conversationId: string }>();
 
+/**
+ * TTL del indicador "grabando una nota de voz…". El cliente re-emite RecordingStart cada ~12-15s
+ * mientras graba (una grabacion puede durar minutos), renovando este TTL — igual que typing se renueva
+ * por tecleo. Si el cliente crashea, el disconnect lo limpia; este timer es la red de seguridad si el
+ * RecordingStop nunca llega. Timer por-instancia (el emit viaja por el adapter de Socket.IO).
+ */
+const RECORDING_TIMEOUT_MS = 20_000;
+const recordingTimers = new Map<string, { timer: NodeJS.Timeout; conversationId: string }>();
+
 function typingKey(tenantId: string, conversationId: string, userId: string): string {
   return `${tenantId}:${conversationId}:${userId}`;
 }
@@ -96,6 +115,13 @@ function clearTypingTimer(key: string): void {
   if (!entry) return;
   clearTimeout(entry.timer);
   typingTimers.delete(key);
+}
+
+function clearRecordingTimer(key: string): void {
+  const entry = recordingTimers.get(key);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  recordingTimers.delete(key);
 }
 
 /** Tope de conversaciones a las que se une un socket en connect. Un usuario real tiene decenas;
@@ -147,11 +173,58 @@ async function wireSocket(
     });
     if (own.length > 0) {
       await socket.join(own.map((c) => `t:${tenantId}:c:${c.id}`));
+
+      // "Conectado = entregado (2 grises)": marca delivered el backlog entrante que llegó ANTES de que
+      // este socket estuviera vivo (el camino en vivo solo cubre lo que llega por evento con la conv
+      // cerrada). Sin esto, el receptor online-pero-sin-abrir dejaba los mensajes en "enviado" (1
+      // cotejo) y al ABRIR saltaban directo a leído — la regla intermedia nunca se veía. Best-effort.
+      try {
+        const receipts = await markConnectedDelivered(
+          { tenantId, userUserId: userId, conversationIds: own.map((c) => c.id) },
+          container,
+        );
+        for (const receipt of receipts) {
+          emitter.emitToConversation({
+            tenantId,
+            conversationId: receipt.conversationId,
+            event: ChatSocketEvents.MessageDelivered,
+            envelope: envelope(receipt),
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, userId }, 'mark-connected-delivered: no se pudo marcar el backlog entregado');
+      }
     }
   } catch (err) {
     // Best-effort: si falla, el socket sigue vivo (rooms de tenant/usuario ya unidas en el middleware);
     // un start_direct posterior o la próxima reconexión reintentan.
     logger.warn({ err, userId }, 'join-on-connect: no se pudieron unir las rooms de conversación');
+  }
+
+  // Support agent join-on-connect: si el usuario es agente del tenant Platform, unirlo a las salas de
+  // sus tickets ASIGNADOS (no terminales) para recibir el chat en vivo sin tener que abrir cada ticket.
+  // Las conversaciones Support viven en el tenant del CLIENTE, así que la sala es `t:{clienteTenant}:c:`.
+  try {
+    if (tenantId === container.platform.getPlatformTenantId()) {
+      const hasAgentPerm = (
+        await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+      ).allowed;
+      if (hasAgentPerm || isPlatformAdminActorType(principal.actorType)) {
+        const assigned = await container.supportTickets.listForAgentTenant({
+          agentTenantId: tenantId,
+          assignedAgentId: userId,
+          take: MAX_JOINED_CONVERSATIONS,
+          skip: 0,
+          includeClosed: false,
+        });
+        const rooms = assigned.map((t) => `t:${t.tenantId}:c:${t.conversationId}`);
+        if (rooms.length > 0) {
+          await socket.join(rooms);
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, userId }, 'support join-on-connect: no se pudieron unir las salas de tickets asignados');
   }
 
   socket.on(ChatSocketEvents.StartDirectConversation, async (...args: unknown[]) => {
@@ -432,6 +505,8 @@ async function wireSocket(
         body: parsed.data.body,
         attachmentFileId: parsed.data.attachmentFileId,
         replyToMessageId: parsed.data.replyToMessageId,
+        audioDurationMs: parsed.data.audioDurationMs,
+        audioWaveform: parsed.data.audioWaveform,
       },
       container,
     );
@@ -446,6 +521,144 @@ async function wireSocket(
       event: ChatSocketEvents.MessageNew,
       envelope: envelope(result.value.message),
     });
+
+    // "Conectado = entregado (2 grises)" en vivo: marca delivered a los destinatarios con sesión viva
+    // (aunque estén en otra página, sin el chat montado para auto-marcar) y avisa al emisor. El
+    // backlog pre-conexión lo cubre el delivered-on-connect. Best-effort: nunca bloquea el envío.
+    try {
+      const deliveredReceipts = await markLiveDelivered(
+        {
+          tenantId,
+          conversationId: parsed.data.conversationId,
+          messageId: result.value.message.id,
+          recipientUserIds: result.value.recipientUserIds,
+        },
+        container,
+      );
+      for (const receipt of deliveredReceipts) {
+        emitter.emitToConversation({
+          tenantId,
+          conversationId: receipt.conversationId,
+          event: ChatSocketEvents.MessageDelivered,
+          envelope: envelope(receipt),
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'mark-live-delivered: no se pudo marcar entregado en vivo');
+    }
+  });
+
+  // ----- Support: chat del AGENTE sobre un ticket (cross-tenant, autoría del placeholder "Support Team") -----
+
+  // El agente se une a la sala de la conversación del ticket para recibir mensajes/typing en vivo.
+  socket.on(ChatSocketEvents.SupportAgentJoin, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ joined: boolean }>) => void) : undefined;
+    const parsed = SupportAgentJoinPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Support.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const ticket = await container.supportTickets.findById(parsed.data.ticketId);
+    if (!ticket) {
+      ack?.({ ok: false, code: 'Support.NotFound', message: 'Support ticket not found.' });
+      return;
+    }
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    const canAccess = ticket.canBeAccessedBy({
+      actorUserId: userId,
+      actorTenantId: tenantId,
+      actorHasAgentPermission: hasAgentPerm,
+      isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+    });
+    if (!canAccess) {
+      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Not allowed to read this support ticket.' });
+      return;
+    }
+    const snap = ticket.toSnapshot();
+    // La conversación vive en el tenant del CLIENTE: unir esa sala (no la del tenant del agente).
+    await socket.join(`t:${snap.tenantId}:c:${snap.conversationId}`);
+    ack?.({ ok: true, value: { joined: true } });
+  });
+
+  socket.on(ChatSocketEvents.SupportAgentSendMessage, async (...args: unknown[]) => {
+    const raw = args[0];
+    const ack = typeof args[1] === 'function' ? (args[1] as (r: SocketAck<{ message: MessageDto }>) => void) : undefined;
+    const parsed = SupportAgentSendMessagePayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      ack?.({ ok: false, code: 'Support.BadPayload', message: parsed.error.message });
+      return;
+    }
+    const isPlatformAdmin = isPlatformAdminActorType(principal.actorType);
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    if (!hasAgentPerm && !isPlatformAdmin) {
+      ack?.({ ok: false, code: 'Auth.Forbidden', message: 'Missing communication.support.agent.' });
+      return;
+    }
+    // Rate-limit por el AGENTE real (no por el placeholder) — reusa la política de chat.
+    const allowed = await container.rateLimiter.allow({
+      scope: CommunicationRateLimitPolicyNames.ChatSend,
+      tenantId,
+      userId,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(tenantId, config.rateLimit.chatSend.maxPerWindow),
+      windowSeconds: config.rateLimit.chatSend.windowSeconds,
+    });
+    if (!allowed) {
+      ack?.({ ok: false, code: 'Chat.RateLimited', message: 'Too many messages, slow down.' });
+      return;
+    }
+    const result = await sendSupportAgentMessage(
+      {
+        correlationId: socket.id,
+        clientKey: parsed.data.clientKey,
+        ticketId: parsed.data.ticketId,
+        agent: { userId, tenantId, isPlatformAdmin },
+        body: parsed.data.body,
+        attachmentFileId: parsed.data.attachmentFileId,
+        replyToMessageId: parsed.data.replyToMessageId,
+        audioDurationMs: parsed.data.audioDurationMs,
+        audioWaveform: parsed.data.audioWaveform,
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      ack?.({ ok: false, code: result.error.code, message: result.error.message });
+      return;
+    }
+    ack?.({ ok: true, value: { message: result.value.message } });
+    // La conversación vive en el tenant del CLIENTE: emitir a ESA sala (el cliente y el agente unido la reciben).
+    emitter.emitToConversation({
+      tenantId: result.value.customerTenantId,
+      conversationId: result.value.conversationId,
+      event: ChatSocketEvents.MessageNew,
+      envelope: envelope(result.value.message),
+    });
+    // Entregado en vivo al cliente si está online (cotejos sobre el mensaje de "Support Team").
+    try {
+      const deliveredReceipts = await markLiveDelivered(
+        {
+          tenantId: result.value.customerTenantId,
+          conversationId: result.value.conversationId,
+          messageId: result.value.message.id,
+          recipientUserIds: result.value.recipientUserIds,
+        },
+        container,
+      );
+      for (const receipt of deliveredReceipts) {
+        emitter.emitToConversation({
+          tenantId: result.value.customerTenantId,
+          conversationId: receipt.conversationId,
+          event: ChatSocketEvents.MessageDelivered,
+          envelope: envelope(receipt),
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'support agent send: mark-live-delivered falló');
+    }
   });
 
   socket.on(ChatSocketEvents.EditMessage, async (...args: unknown[]) => {
@@ -639,6 +852,55 @@ async function wireSocket(
     emitTypingStopped(parsed.data.conversationId);
   });
 
+  // ---------- Indicador "grabando una nota de voz…" (clon del typing) ----------
+
+  const emitRecordingStopped = (conversationId: string): void => {
+    emitter.emitToConversation({
+      tenantId,
+      conversationId,
+      event: ChatSocketEvents.RecordingStopped,
+      envelope: envelope({ conversationId, userId, displayName: selfDisplayName }),
+    });
+  };
+
+  socket.on(ChatSocketEvents.RecordingStart, async (...args: unknown[]) => {
+    const parsed = RecordingPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) return;
+    const allowed = await container.rateLimiter.allow({
+      scope: CommunicationRateLimitPolicyNames.ChatVoiceRecording,
+      tenantId,
+      userId,
+      maxPerWindow: await container.tierAwareQuota.resolveMaxPerWindow(
+        tenantId,
+        config.rateLimit.chatVoiceRecording.maxPerWindow,
+      ),
+      windowSeconds: config.rateLimit.chatVoiceRecording.windowSeconds,
+    });
+    if (!allowed) return;
+    const { conversationId } = parsed.data;
+    emitter.emitToConversation({
+      tenantId,
+      conversationId,
+      event: ChatSocketEvents.RecordingStarted,
+      envelope: envelope({ conversationId, userId, displayName: selfDisplayName }),
+    });
+
+    const key = typingKey(tenantId, conversationId, userId);
+    clearRecordingTimer(key);
+    const timer = setTimeout(() => {
+      recordingTimers.delete(key);
+      emitRecordingStopped(conversationId);
+    }, RECORDING_TIMEOUT_MS);
+    recordingTimers.set(key, { timer, conversationId });
+  });
+
+  socket.on(ChatSocketEvents.RecordingStop, (...args: unknown[]) => {
+    const parsed = RecordingPayloadSchema.safeParse(args[0]);
+    if (!parsed.success) return;
+    clearRecordingTimer(typingKey(tenantId, parsed.data.conversationId, userId));
+    emitRecordingStopped(parsed.data.conversationId);
+  });
+
   // Snapshot de presencia bajo demanda: `chat.presence.changed` solo se emite en transiciones, así que
   // un peer ya conectado antes de abrir el chat nunca se reflejaba. El cliente pide el estado de sus
   // peers al seleccionar la conversación; se responde SOLO a este socket, reusando el mismo evento.
@@ -819,6 +1081,13 @@ async function wireSocket(
       if (!key.startsWith(`${tenantId}:`) || !key.endsWith(`:${userId}`)) continue;
       clearTypingTimer(key);
       emitTypingStopped(entry.conversationId);
+    }
+
+    // Igual para "grabando una nota de voz…": un cierre abrupto no debe dejar el indicador pegado.
+    for (const [key, entry] of recordingTimers) {
+      if (!key.startsWith(`${tenantId}:`) || !key.endsWith(`:${userId}`)) continue;
+      clearRecordingTimer(key);
+      emitRecordingStopped(entry.conversationId);
     }
   });
 }

@@ -95,6 +95,8 @@ export class PrismaConversationRepository implements ConversationRepository {
             DeletedAtUtc: m.deletedAtUtc,
             CreatedAtUtc: m.createdAtUtc,
             EditedAtUtc: m.editedAtUtc,
+            AudioDurationMs: m.audioDurationMs,
+            AudioWaveform: m.audioWaveform,
           })),
         });
       }

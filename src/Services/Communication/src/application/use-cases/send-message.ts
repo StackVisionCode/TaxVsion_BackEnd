@@ -32,10 +32,15 @@ export interface SendMessageCommand {
   readonly body?: string | undefined;
   readonly attachmentFileId?: string | undefined;
   readonly replyToMessageId?: string | undefined;
+  /** Nota de voz: metadata de audio (solo con attachmentFileId de audio). */
+  readonly audioDurationMs?: number | undefined;
+  readonly audioWaveform?: number[] | undefined;
 }
 
 export interface SendMessageResult {
   readonly message: MessageDto;
+  /** Otros participantes (no el emisor). El handler marca delivered a los que estén online. */
+  readonly recipientUserIds: readonly string[];
 }
 
 export interface SendMessageDeps {
@@ -95,6 +100,9 @@ export async function sendMessage(
           senderId: command.senderUserId,
           attachmentFileId: command.attachmentFileId,
           replyToMessageId: command.replyToMessageId ?? null,
+          audioDurationMs: command.audioDurationMs ?? null,
+          // El waveform (picos) se guarda serializado a JSON; el mapper lo re-parsea al DTO.
+          audioWaveform: command.audioWaveform ? JSON.stringify(command.audioWaveform) : null,
         })
       : conversation.sendText({
           senderId: command.senderUserId,
@@ -147,7 +155,7 @@ export async function sendMessage(
   await deps.publisher.enqueue(sentEvent);
 
   const dto: MessageDto = messageSnapshotToDto(messageSnapshot);
-  const result: SendMessageResult = { message: dto };
+  const result: SendMessageResult = { message: dto, recipientUserIds: recipients };
   await deps.idempotency.commit({
     tenantId: command.tenantId,
     userId: command.senderUserId,

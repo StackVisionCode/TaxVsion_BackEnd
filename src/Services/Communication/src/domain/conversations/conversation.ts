@@ -292,6 +292,10 @@ export class Conversation {
     senderId: string;
     attachmentFileId: string;
     replyToMessageId?: string | null;
+    /** Nota de voz: duración en ms; null para otros adjuntos. */
+    audioDurationMs?: number | null;
+    /** Nota de voz: waveform ya serializado a JSON string; null para otros adjuntos. */
+    audioWaveform?: string | null;
     now?: Date;
   }): Result<Message> {
     const guard = this.ensureActiveParticipant(input.senderId);
@@ -305,6 +309,8 @@ export class Conversation {
       senderDisplayName: guard.value.toSnapshot().displayName,
       attachmentFileId: input.attachmentFileId,
       replyToMessageId: input.replyToMessageId ?? null,
+      audioDurationMs: input.audioDurationMs ?? null,
+      audioWaveform: input.audioWaveform ?? null,
       now,
     });
     if (!messageResult.isSuccess) return messageResult;

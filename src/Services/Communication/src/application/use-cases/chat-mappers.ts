@@ -8,6 +8,20 @@ import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
  * `body`/`attachment` (get-messages lo hace, send/forward nunca porque el
  * mensaje recien creado nunca esta deleted).
  */
+/** Waveform persistido como JSON string (array de picos) → number[] para el wire; null si falta/corrupto. */
+export function parseWaveform(json: string | null): number[] | null {
+  if (!json) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (Array.isArray(parsed) && parsed.every((n) => typeof n === 'number')) {
+      return parsed as number[];
+    }
+  } catch {
+    // Corrupto: se ignora (el player cae a barra de progreso simple).
+  }
+  return null;
+}
+
 export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
   return {
     id: m.id,
@@ -30,5 +44,7 @@ export function messageSnapshotToDto(m: MessageSnapshot): MessageDto {
     // get-messages los sobrescribe con el estado real al cargar historial.
     deliveredAtUtc: null,
     readAtUtc: null,
+    audioDurationMs: m.audioDurationMs,
+    audioWaveform: parseWaveform(m.audioWaveform),
   };
 }

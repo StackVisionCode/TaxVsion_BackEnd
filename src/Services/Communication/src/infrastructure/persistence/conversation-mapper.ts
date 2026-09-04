@@ -59,6 +59,8 @@ export function toDomainMessage(row: PrismaMessage): MessageSnapshot {
     deletedAtUtc: row.DeletedAtUtc,
     createdAtUtc: row.CreatedAtUtc,
     editedAtUtc: row.EditedAtUtc,
+    audioDurationMs: row.AudioDurationMs,
+    audioWaveform: row.AudioWaveform,
   };
 }
 
