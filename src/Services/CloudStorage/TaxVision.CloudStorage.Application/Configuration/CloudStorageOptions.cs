@@ -233,13 +233,32 @@ public sealed class CloudStorageOptions
 
         var planPolicy = ResolvePlanPolicy(planCode);
 
-        var allowedExtensions = folderPolicy
-            .AllowedExtensions.Intersect(planPolicy.AllowedExtensions, StringComparer.OrdinalIgnoreCase)
+        // Recordings es media de SISTEMA: la grabacion de una call/meeting solo llega via eventos del
+        // servidor de Communication (nunca upload directo de usuario), y una call de solo-audio produce
+        // audio/webm. El SET de tipos lo define la folder policy sin intersectar con el plan (igual que
+        // VoiceNotes) — sin esto la interseccion quitaba audio/* y el InitiateUpload devolvia 400.
+        // El TAMANO sí sigue el override por plan (FolderOverridesBytes: enterprise 500MB, starter 150MB),
+        // por eso NO usa el early-return de arriba: solo se exceptua el gating de tipos, no el de tamano.
+        var systemMedia = folderType is FolderType.Recordings;
+
+        var allowedExtensions = (
+            systemMedia
+                ? folderPolicy.AllowedExtensions
+                : folderPolicy.AllowedExtensions.Intersect(
+                    planPolicy.AllowedExtensions,
+                    StringComparer.OrdinalIgnoreCase
+                )
+        )
             .Except(DangerousExtensions, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var allowedContentTypes = folderPolicy
-            .AllowedContentTypes.Intersect(planPolicy.AllowedContentTypes, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var allowedContentTypes = (
+            systemMedia
+                ? folderPolicy.AllowedContentTypes
+                : folderPolicy.AllowedContentTypes.Intersect(
+                    planPolicy.AllowedContentTypes,
+                    StringComparer.OrdinalIgnoreCase
+                )
+        ).ToArray();
 
         var planMaxSizeBytes = planPolicy.FolderOverridesBytes.TryGetValue(folderType.ToString(), out var overrideBytes)
             ? overrideBytes
@@ -344,13 +363,17 @@ public sealed class CloudStorageOptions
     /// del servidor de Communication, nunca upload directo de usuario — esa
     /// restriccion de ACTOR queda fuera de L1.1 (es de la Fase D, control de
     /// acceso) y se documenta como gap conocido en el reporte de fase.
+    /// Igual que VoiceNotes: una call/meeting de SOLO-AUDIO se graba webm/opus (Chrome/Firefox) o
+    /// mp4/AAC (Safari) y llega con content-type audio/*; se listan AMBOS (audio/* declarado y video/*
+    /// detectado por magic-bytes, porque FileContentInspector sniffea webm→video/webm sin distinguir
+    /// audio). Sin audio/webm el InitiateUpload de una llamada de audio devolvia 400.
     /// </summary>
     private static StorageFolderTypePolicy RecordingsPolicy() =>
         new()
         {
             MaxSizeBytes = 500L * 1024 * 1024,
             AllowedExtensions = [".webm", ".mp4"],
-            AllowedContentTypes = ["video/webm", "video/mp4"],
+            AllowedContentTypes = ["video/webm", "video/mp4", "audio/webm", "audio/mp4"],
         };
 
     /// <summary>
