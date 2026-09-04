@@ -125,6 +125,50 @@ public sealed class CloudStorageOptionsTests
     }
 
     [Fact]
+    public void ResolveUploadPolicy_allows_audio_voice_notes_even_when_the_plan_does_not_list_audio()
+    {
+        var options = Options();
+
+        // "unconfigured-plan" usa los defaults globales del plan, que NO listan audio/*. VoiceNotes es un
+        // upload de SISTEMA (bypass como Branding), asi que su folder policy define el set sin intersectar
+        // con el plan → el audio pasa igual. Sin el bypass, la interseccion dejaria fuera audio/webm.
+        var voice = options.ResolveUploadPolicy("unconfigured-plan", FolderType.VoiceNotes);
+
+        Assert.Contains(".webm", voice.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(".mp4", voice.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("audio/webm", voice.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("audio/mp4", voice.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+        // El inspector sniffea webm→video/webm y mp4→video/mp4: los detectados tambien deben estar permitidos.
+        Assert.Contains("video/webm", voice.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("video/mp4", voice.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveUploadPolicy_does_not_allow_audio_on_the_Other_FolderType_used_by_regular_attachments()
+    {
+        var options = Options();
+
+        // Guarda de regresion: los adjuntos normales del chat (FolderType.Other) NO deben aceptar audio;
+        // solo las notas de voz (FolderType.VoiceNotes) lo permiten.
+        var other = options.ResolveUploadPolicy("unconfigured-plan", FolderType.Other);
+
+        Assert.DoesNotContain(".webm", other.AllowedExtensions, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("audio/webm", other.AllowedContentTypes, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void VoiceNotes_is_a_navigable_system_folder()
+    {
+        // Decision A: las notas de voz aparecen como carpeta navegable "Voice Notes" en el gestor.
+        Assert.True(TaxVision.CloudStorage.Application.Folders.SystemFolderCatalog.IsNavigable(FolderType.VoiceNotes));
+        Assert.True(
+            TaxVision.CloudStorage.Application.Folders.SystemFolderCatalog.TryGet(FolderType.VoiceNotes, out var spec)
+        );
+        Assert.Equal("Voice Notes", spec.Name);
+        Assert.Equal("sys.voicenotes", spec.Category);
+    }
+
+    [Fact]
     public void ResolveFolderTypePolicy_falls_back_to_Other_when_a_FolderType_has_no_entry()
     {
         var options = Options();

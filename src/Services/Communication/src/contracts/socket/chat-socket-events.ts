@@ -46,6 +46,10 @@ export const SendMessagePayloadSchema = z.object({
   body: z.string().min(1).max(4000).optional(),
   attachmentFileId: z.string().uuid().optional(),
   replyToMessageId: z.string().uuid().optional(),
+  // Nota de voz: metadata de audio calculada por el cliente al grabar (solo con attachmentFileId de audio).
+  audioDurationMs: z.number().int().min(0).max(3_600_000).optional(),
+  // Waveform: picos 0-100 (se capa a 128 barras para no inflar el payload/DB).
+  audioWaveform: z.array(z.number().min(0).max(100)).max(128).optional(),
 });
 export type SendMessagePayload = z.infer<typeof SendMessagePayloadSchema>;
 
@@ -85,6 +89,13 @@ export const TypingPayloadSchema = z.object({
   conversationId: z.string().uuid(),
 });
 export type TypingPayload = z.infer<typeof TypingPayloadSchema>;
+
+// Indicador "grabando una nota de voz…" — mismo shape que typing (el cliente re-emite start cada pocos
+// segundos mientras graba para renovar el TTL del servidor, igual que typing renueva por tecleo).
+export const RecordingPayloadSchema = z.object({
+  conversationId: z.string().uuid(),
+});
+export type RecordingPayload = z.infer<typeof RecordingPayloadSchema>;
 
 /**
  * Snapshot de presencia bajo demanda: el cliente pide el estado ACTUAL de unos userIds (los peers de
@@ -127,6 +138,31 @@ export const ForwardMessagePayloadSchema = z.object({
 });
 export type ForwardMessagePayload = z.infer<typeof ForwardMessagePayloadSchema>;
 
+/**
+ * Support — chat del AGENTE sobre un ticket. La conversación Support vive en el tenant del CLIENTE y
+ * tiene 2 participantes fijos: el cliente + un placeholder "Support Team" (userId = id del tenant
+ * Platform). El agente real NO es participante y está en otro tenant, así que NO puede usar
+ * `chat.message.send` (escopa por su tenant + exige isParticipant). Estos comandos resuelven el ticket,
+ * validan acceso de agente y publican/leen la conversación cross-tenant AUTORÍA del placeholder
+ * ("Support Team", anonimiza al agente). La salida reusa `chat.message.new`/`chat.message.delivered`.
+ */
+export const SupportAgentSendMessagePayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  ticketId: z.string().uuid(),
+  body: z.string().min(1).max(4000).optional(),
+  attachmentFileId: z.string().uuid().optional(),
+  replyToMessageId: z.string().uuid().optional(),
+  audioDurationMs: z.number().int().min(0).max(3_600_000).optional(),
+  audioWaveform: z.array(z.number().min(0).max(100)).max(128).optional(),
+});
+export type SupportAgentSendMessagePayload = z.infer<typeof SupportAgentSendMessagePayloadSchema>;
+
+/** El agente se une a la sala de la conversación del ticket para recibir mensajes/typing en vivo. */
+export const SupportAgentJoinPayloadSchema = z.object({
+  ticketId: z.string().uuid(),
+});
+export type SupportAgentJoinPayload = z.infer<typeof SupportAgentJoinPayloadSchema>;
+
 // -------- Server -> Client --------
 
 export interface ConversationSummaryDto {
@@ -164,6 +200,9 @@ export interface MessageDto {
    */
   deliveredAtUtc: string | null;
   readAtUtc: string | null;
+  /** Nota de voz (attachment de audio): duración en ms y waveform (picos 0-100). Null en cualquier otro mensaje. */
+  audioDurationMs: number | null;
+  audioWaveform: number[] | null;
 }
 
 export interface MessageEditedDto {
@@ -180,6 +219,13 @@ export interface MessageDeletedDto {
 }
 
 export interface TypingDto {
+  conversationId: string;
+  userId: string;
+  displayName: string;
+}
+
+/** "grabando una nota de voz…" — mismo shape que TypingDto. */
+export interface RecordingDto {
   conversationId: string;
   userId: string;
   displayName: string;
@@ -289,12 +335,17 @@ export const ChatSocketEvents = {
   MarkDelivered: 'chat.message.mark_delivered',
   TypingStart: 'chat.typing.start',
   TypingStop: 'chat.typing.stop',
+  RecordingStart: 'chat.recording.start',
+  RecordingStop: 'chat.recording.stop',
   PresenceQuery: 'chat.presence.query',
   AddReaction: 'chat.message.reaction.add',
   RemoveReaction: 'chat.message.reaction.remove',
   PinMessage: 'chat.message.pin',
   UnpinMessage: 'chat.message.unpin',
   ForwardMessage: 'chat.message.forward',
+  // Support — chat de agente (c -> s). La salida reusa MessageNew/MessageDelivered.
+  SupportAgentJoin: 'support.ticket.join',
+  SupportAgentSendMessage: 'support.message.send',
 
   // s -> c
   MessageNew: 'chat.message.new',
@@ -304,6 +355,8 @@ export const ChatSocketEvents = {
   MessageDelivered: 'chat.message.delivered',
   TypingStarted: 'chat.typing.started',
   TypingStopped: 'chat.typing.stopped',
+  RecordingStarted: 'chat.recording.started',
+  RecordingStopped: 'chat.recording.stopped',
   ConversationCreated: 'chat.conversation.created',
   ConversationParticipantAdded: 'chat.conversation.participant_added',
   ConversationParticipantRemoved: 'chat.conversation.participant_removed',

@@ -84,6 +84,10 @@ const rawEnv = z
     COMMUNICATION_RATE_LIMIT_CHAT_EDIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
     COMMUNICATION_RATE_LIMIT_CHAT_TYPING_MAX: z.coerce.number().int().positive().default(20),
     COMMUNICATION_RATE_LIMIT_CHAT_TYPING_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
+    // "grabando nota de voz…": el cliente re-emite start cada ~12-15s mientras graba; un poco mas
+    // holgado que typing para no toparse con el heartbeat.
+    COMMUNICATION_RATE_LIMIT_CHAT_VOICE_RECORDING_MAX: z.coerce.number().int().positive().default(30),
+    COMMUNICATION_RATE_LIMIT_CHAT_VOICE_RECORDING_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
     // F11 QA gap — build-server.ts (limite HTTP global) y meeting-invitations.route.ts
     // (join-by-token/by-code, publicos) tenian estos numeros literales inline pese a que
     // el docblock de la ruta ya afirmaba que salian de config.rateLimit. Mismos defaults
@@ -251,6 +255,10 @@ export const config = {
     chatTyping: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_TYPING_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_TYPING_WINDOW_SECONDS,
+    },
+    chatVoiceRecording: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_VOICE_RECORDING_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_CHAT_VOICE_RECORDING_WINDOW_SECONDS,
     },
     httpGlobal: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_HTTP_GLOBAL_MAX,

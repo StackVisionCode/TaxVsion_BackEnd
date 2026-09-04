@@ -63,6 +63,8 @@ export class PrismaMessageRepository implements MessageRepository {
         DeletedAtUtc: m.deletedAtUtc,
         CreatedAtUtc: m.createdAtUtc,
         EditedAtUtc: m.editedAtUtc,
+        AudioDurationMs: m.audioDurationMs,
+        AudioWaveform: m.audioWaveform,
       },
     });
     await this.prisma.conversation.update({
@@ -287,6 +289,72 @@ export class PrismaMessageRepository implements MessageRepository {
       }
     });
     return { markedCount: targetMessageIds.length };
+  }
+
+  async markPendingDeliveredForConversations(input: {
+    tenantId: string;
+    userId: string;
+    conversationIds: readonly string[];
+    now: Date;
+  }): Promise<{ conversationId: string; upToMessageId: string; markedCount: number }[]> {
+    if (input.conversationIds.length === 0) return [];
+
+    // Candidatos: mensajes entrantes (no míos), no borrados, SIN receipt aún de este usuario, en sus
+    // conversaciones. El filtro `Receipts: none` hace barata la reconexión (churn del tunnel): en un
+    // socket que ya sincronizó, el set queda vacío en vez de traer todo el historial cada vez.
+    const candidates = await this.prisma.message.findMany({
+      where: {
+        TenantId: input.tenantId,
+        ConversationId: { in: [...input.conversationIds] },
+        SenderId: { not: input.userId },
+        IsDeleted: false,
+        Receipts: { none: { UserId: input.userId } },
+      },
+      select: { Id: true, ConversationId: true, CreatedAtUtc: true },
+    });
+    if (candidates.length === 0) return [];
+
+    // Por conversación con marcas NUEVAS: el mensaje más reciente entregado (para el receipt) + conteo.
+    const perConv = new Map<string, { upToMessageId: string; upToCreatedAt: Date; markedCount: number }>();
+    await this.prisma.$transaction(async (tx) => {
+      for (const chunk of chunks(candidates, 200)) {
+        const ids = chunk.map((m) => m.Id);
+        // Un receipt existente ya implica entregado (read setea ambos) → se omite (idempotente).
+        const existing = await tx.messageReceipt.findMany({
+          where: { UserId: input.userId, TenantId: input.tenantId, MessageId: { in: ids } },
+          select: { MessageId: true },
+        });
+        const existingSet = new Set(existing.map((r) => r.MessageId));
+        const missing = chunk.filter((m) => !existingSet.has(m.Id));
+        if (missing.length === 0) continue;
+        await tx.messageReceipt.createMany({
+          data: missing.map((m) => ({
+            MessageId: m.Id,
+            UserId: input.userId,
+            TenantId: input.tenantId,
+            DeliveredAtUtc: input.now,
+          })),
+        });
+        for (const m of missing) {
+          const cur = perConv.get(m.ConversationId);
+          if (!cur) {
+            perConv.set(m.ConversationId, { upToMessageId: m.Id, upToCreatedAt: m.CreatedAtUtc, markedCount: 1 });
+          } else {
+            cur.markedCount += 1;
+            if (m.CreatedAtUtc > cur.upToCreatedAt) {
+              cur.upToMessageId = m.Id;
+              cur.upToCreatedAt = m.CreatedAtUtc;
+            }
+          }
+        }
+      }
+    });
+
+    return [...perConv.entries()].map(([conversationId, v]) => ({
+      conversationId,
+      upToMessageId: v.upToMessageId,
+      markedCount: v.markedCount,
+    }));
   }
 
   async receiptsForOwnMessages(input: {

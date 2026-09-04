@@ -19,6 +19,7 @@ import {
   listSupportTicketsForAgent,
   listSupportTicketsForCustomer,
 } from '../../../application/use-cases/support-queries.js';
+import { getSupportAgentMessages } from '../../../application/use-cases/get-support-agent-messages.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const OpenBody = z.object({
@@ -41,6 +42,11 @@ const ListQuery = z.object({
 });
 
 const IdParams = z.object({ id: z.string().uuid() });
+
+const MessagesQuery = z.object({
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  before: z.string().datetime().optional(),
+});
 
 export async function registerSupportRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   // POST /communication/support — el customer (o TenantEmployee) abre un ticket.
@@ -119,6 +125,38 @@ export async function registerSupportRoutes(app: FastifyInstance, container: App
     );
     if (!result.isSuccess) {
       return reply.code(400).send({ code: result.error.code, message: result.error.message });
+    }
+    return reply.send(result.value);
+  });
+
+  // GET /communication/support/:id/messages — historial del chat del ticket para el AGENTE
+  // (la conversación vive en el tenant del cliente; se lee cross-tenant como el placeholder "Support Team").
+  app.get('/communication/support/:id/messages', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal!;
+    const params = IdParams.parse(request.params);
+    const query = MessagesQuery.parse(request.query);
+    const hasAgentPerm = (
+      await checkPermission(principal, CommunicationPermissions.SupportAgent, container.userPermissions)
+    ).allowed;
+    const result = await getSupportAgentMessages(
+      {
+        ticketId: params.id,
+        agent: {
+          userId: principal.userId,
+          tenantId: principal.tenantId,
+          hasAgentPermission: hasAgentPerm,
+          isPlatformAdmin: isPlatformAdminActorType(principal.actorType),
+        },
+        take: query.take,
+        ...(query.before !== undefined ? { beforeUtc: query.before } : {}),
+      },
+      container,
+    );
+    if (!result.isSuccess) {
+      return reply.code(result.error.code === 'Auth.Forbidden' ? 403 : 400).send({
+        code: result.error.code,
+        message: result.error.message,
+      });
     }
     return reply.send(result.value);
   });

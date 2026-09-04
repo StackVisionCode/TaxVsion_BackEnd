@@ -72,6 +72,14 @@ public enum FolderType
     /// </summary>
     Branding,
     Other,
+
+    /// <summary>
+    /// Notas de voz del chat (Communication). Audio corto webm/opus o mp4/AAC (Safari), subido
+    /// mediado por el servicio de Communication. Folder navegable propio (ver SystemFolderCatalog) y
+    /// politica de audio propia (VoiceNotesPolicy) — Other no permite audio. Se agrega AL FINAL para
+    /// no correr los valores int ya persistidos de los demas FolderType. Sin RequiresYear (no fiscal).
+    /// </summary>
+    VoiceNotes,
 }
 
 public static class FolderTypeRules
