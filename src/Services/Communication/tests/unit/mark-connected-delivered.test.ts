@@ -12,7 +12,7 @@ function repoReturning(
   spy?: (input: unknown) => void,
 ): MessageRepository {
   return {
-    async markPendingDeliveredForConversations(input) {
+    async markPendingDeliveredForConversations(input: unknown) {
       spy?.(input);
       return marks;
     },
@@ -43,10 +43,12 @@ describe('markConnectedDelivered', () => {
       { messages },
     );
     expect(receipts).toHaveLength(2);
-    expect(receipts[0]).toMatchObject({ conversationId: 'c1', userId: 'u1', upToMessageId: 'm9' });
-    expect(receipts[1]).toMatchObject({ conversationId: 'c2', userId: 'u1', upToMessageId: 'm4' });
+    const [first, second] = receipts;
+    if (!first || !second) throw new Error('se esperaban 2 receipts');
+    expect(first).toMatchObject({ conversationId: 'c1', userId: 'u1', upToMessageId: 'm9' });
+    expect(second).toMatchObject({ conversationId: 'c2', userId: 'u1', upToMessageId: 'm4' });
     // deliveredAtUtc es un ISO string válido.
-    expect(new Date(receipts[0].deliveredAtUtc).toISOString()).toBe(receipts[0].deliveredAtUtc);
+    expect(new Date(first.deliveredAtUtc).toISOString()).toBe(first.deliveredAtUtc);
   });
 
   it('no emite receipts para conversaciones sin marcas nuevas (backlog ya entregado)', async () => {
