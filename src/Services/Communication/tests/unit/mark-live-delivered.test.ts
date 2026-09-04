@@ -42,8 +42,10 @@ describe('markLiveDelivered', () => {
     );
     expect(recorded).toEqual(['u2']); // u3 offline → no se marca
     expect(receipts).toHaveLength(1);
-    expect(receipts[0]).toMatchObject({ conversationId: 'c1', userId: 'u2', upToMessageId: 'm9' });
-    expect(new Date(receipts[0].deliveredAtUtc).toISOString()).toBe(receipts[0].deliveredAtUtc);
+    const [only] = receipts;
+    if (!only) throw new Error('se esperaba 1 receipt');
+    expect(only).toMatchObject({ conversationId: 'c1', userId: 'u2', upToMessageId: 'm9' });
+    expect(new Date(only.deliveredAtUtc).toISOString()).toBe(only.deliveredAtUtc);
   });
 
   it('no marca ni emite si ningún destinatario está online (queda en enviado)', async () => {
