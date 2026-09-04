@@ -67,6 +67,12 @@ class FakeMessageRepository implements MessageRepository {
     return { markedCount: 1 };
   }
   async recordDelivered(): Promise<void> {}
+  async markBatchDelivered(): Promise<{ markedCount: number }> {
+    return { markedCount: 1 };
+  }
+  async receiptsForOwnMessages(): Promise<Map<string, { deliveredAtUtc: Date | null; readAtUtc: Date | null }>> {
+    return new Map();
+  }
   async listByIds(): Promise<MessageSnapshot[]> {
     return [];
   }

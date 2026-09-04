@@ -69,6 +69,18 @@ export const MarkReadPayloadSchema = z.object({
 });
 export type MarkReadPayload = z.infer<typeof MarkReadPayloadSchema>;
 
+/**
+ * Cotejo de ENTREGA (delivered): el receptor lo emite al RECIBIR mensajes por socket
+ * SIN abrir la conversación (marca los 2 cotejos grises al emisor). No implica lectura;
+ * abrir el chat dispara `mark_read` (2 azules) — son estados distintos a propósito.
+ */
+export const MarkDeliveredPayloadSchema = z.object({
+  clientKey: z.string().min(1).max(128),
+  conversationId: z.string().uuid(),
+  upToMessageId: z.string().uuid(),
+});
+export type MarkDeliveredPayload = z.infer<typeof MarkDeliveredPayloadSchema>;
+
 export const TypingPayloadSchema = z.object({
   conversationId: z.string().uuid(),
 });
@@ -144,6 +156,14 @@ export interface MessageDto {
   pinnedByUserId: string | null;
   createdAtUtc: string;
   editedAtUtc: string | null;
+  /**
+   * Cotejos del EMISOR sobre SU propio mensaje (agregado del otro/los otros participantes):
+   * `deliveredAtUtc` = entregado (2 grises), `readAtUtc` = leído (2 azules). `null` = solo enviado
+   * (1 gris). En `chat.message.new` llegan null (recién creado); se pueblan al cargar historial
+   * y avanzan en vivo por `chat.message.delivered` / `chat.message.read`. Para mensajes ajenos, null.
+   */
+  deliveredAtUtc: string | null;
+  readAtUtc: string | null;
 }
 
 export interface MessageEditedDto {
@@ -170,6 +190,14 @@ export interface ReadReceiptDto {
   userId: string;
   lastReadMessageId: string;
   readAtUtc: string;
+}
+
+/** Cotejo de entrega (2 grises). `userId` = quien recibió; el emisor lo pinta sobre sus mensajes ≤ upToMessageId. */
+export interface DeliveryReceiptDto {
+  conversationId: string;
+  userId: string;
+  upToMessageId: string;
+  deliveredAtUtc: string;
 }
 
 /**
@@ -258,6 +286,7 @@ export const ChatSocketEvents = {
   EditMessage: 'chat.message.edit',
   DeleteMessage: 'chat.message.delete',
   MarkRead: 'chat.message.mark_read',
+  MarkDelivered: 'chat.message.mark_delivered',
   TypingStart: 'chat.typing.start',
   TypingStop: 'chat.typing.stop',
   PresenceQuery: 'chat.presence.query',
@@ -272,6 +301,7 @@ export const ChatSocketEvents = {
   MessageEdited: 'chat.message.edited',
   MessageDeleted: 'chat.message.deleted',
   MessageRead: 'chat.message.read',
+  MessageDelivered: 'chat.message.delivered',
   TypingStarted: 'chat.typing.started',
   TypingStopped: 'chat.typing.stopped',
   ConversationCreated: 'chat.conversation.created',

@@ -195,6 +195,16 @@ export const SfuResumeConsumerPayloadSchema = z.object({
 });
 export type SfuResumeConsumerPayload = z.infer<typeof SfuResumeConsumerPayloadSchema>;
 
+// Capa preferida por consumidor (simulcast): el cliente pide capa alta para el tile destacado
+// (spotlight) y baja para los thumbnails. spatialLayer 0/1/2 = ¼/½/full (encodings r0/r1/r2).
+export const SfuSetPreferredLayersPayloadSchema = z.object({
+  meetingId: z.string().uuid(),
+  consumerId: z.string().min(1),
+  spatialLayer: z.number().int().min(0).max(2),
+  temporalLayer: z.number().int().min(0).max(2).optional(),
+});
+export type SfuSetPreferredLayersPayload = z.infer<typeof SfuSetPreferredLayersPayloadSchema>;
+
 export const SfuListRemoteProducersPayloadSchema = z.object({ meetingId: z.string().uuid() });
 export type SfuListRemoteProducersPayload = z.infer<typeof SfuListRemoteProducersPayloadSchema>;
 
@@ -399,6 +409,7 @@ export const MeetingSocketEvents = {
   SfuProduce: 'meeting.sfu.produce',
   SfuConsume: 'meeting.sfu.consume',
   SfuResumeConsumer: 'meeting.sfu.resume_consumer',
+  SfuSetPreferredLayers: 'meeting.sfu.set_preferred_layers',
   SfuListRemoteProducers: 'meeting.sfu.list_remote_producers',
   ChatSend: 'meeting.chat.send',
   ChatEdit: 'meeting.chat.edit',

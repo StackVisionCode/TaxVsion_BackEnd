@@ -1090,20 +1090,39 @@ public static class PermissionCatalog
             MinPlanTier: (int)PlanTier.Pro
         ),
         new(
+            // Dual-use (staff Y cliente): el cliente ahora puede LLAMAR a su preparador desde el
+            // chat del portal, no solo recibir. IsCustomerPortal=false (staff-primario) pero se
+            // lista CustomerPortal explícito para que el ActorTypeRoleGuard permita otorgarlo al rol
+            // SystemCustomerPortal — mismo patrón que SupportOpen/ChatStart arriba.
             new Guid("a1000000-0000-0000-0000-000000000050"),
             CommunicationCallStart,
             "communication",
             "Iniciar llamadas de audio 1:1",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
+            // Ver nota de CommunicationCallStart — mismo caso (el cliente inicia videollamada al preparador).
             new Guid("a1000000-0000-0000-0000-000000000051"),
             CommunicationVideoCallStart,
             "communication",
             "Iniciar llamadas de video 1:1",
             false,
-            MinPlanTier: (int)PlanTier.Pro
+            MinPlanTier: (int)PlanTier.Pro,
+            AllowedActorTypes:
+            [
+                UserActorType.TenantEmployee,
+                UserActorType.TenantAdmin,
+                UserActorType.PlatformAdmin,
+                UserActorType.CustomerPortal,
+            ]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000052"),
@@ -1998,6 +2017,10 @@ public static class PermissionCatalog
                 CommunicationChatStart,
                 CommunicationChatReply,
                 CommunicationSupportOpen,
+                // El cliente puede INICIAR llamada/videollamada 1:1 a su preparador desde el chat del
+                // portal (antes solo podía recibir). Gated por MinPlanTier=Pro como el staff.
+                CommunicationCallStart,
+                CommunicationVideoCallStart,
                 CommunicationMeetingJoin,
                 CommunicationScreenshotCreate,
                 CommunicationNotificationRead,

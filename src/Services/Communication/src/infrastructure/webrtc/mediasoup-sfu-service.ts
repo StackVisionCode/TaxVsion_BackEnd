@@ -171,6 +171,24 @@ export class MediasoupSfuService implements SfuService {
     return true;
   }
 
+  async setConsumerPreferredLayers(input: {
+    meetingId: string;
+    userId: string;
+    consumerId: string;
+    spatialLayer: number;
+    temporalLayer?: number;
+  }): Promise<boolean> {
+    const room = this.rooms.get(input.meetingId);
+    const consumer = room?.participants.get(input.userId)?.consumers.get(input.consumerId);
+    if (!consumer) return false;
+    // mediasoup ignora la petición si el consumer no es simulcast/SVC; clamp implícito a las capas reales.
+    await consumer.setPreferredLayers({
+      spatialLayer: input.spatialLayer,
+      ...(input.temporalLayer !== undefined ? { temporalLayer: input.temporalLayer } : {}),
+    });
+    return true;
+  }
+
   listRemoteProducers(meetingId: string, excludeUserId: string): readonly RemoteProducerInfo[] {
     const room = this.rooms.get(meetingId);
     if (!room) return [];

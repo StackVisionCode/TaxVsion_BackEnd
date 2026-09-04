@@ -1768,6 +1768,12 @@ services:
       # son de dev local y quedan inalcanzables desde dentro de este contenedor.
       COMMUNICATION_AUTH_BASE_URL: http://auth-api:8080
       COMMUNICATION_CLOUDSTORAGE_BASE_URL: http://cloudstorage-api:8080
+      # Cuotas por tier: HttpPlanRateLimitReader va contra el catálogo de Subscription. Sin esta base
+      # URL caía al default de dev (localhost:5360) que dentro del contenedor no resuelve → ECONNREFUSED
+      # constante ("plan-rate-limits catalog request failed; failing open"). Falla-abierto = cuota base,
+      # pero sin esto los tenants premium nunca reciben su multiplicador de tier. (El resto de servicios
+      # .NET ya apuntan aquí vía SubscriptionClient__BaseUrl; Communication usa este nombre de var.)
+      COMMUNICATION_SUBSCRIPTION_BASE_URL: http://subscription-api:8080
       # Job de reconciliación de CustomerDirectoryEntry (self-healing, cross-tenant M2M contra
       # customers/internal/reconciliation con token de PlatformTenant vía el mismo
       # communication-worker de arriba). Sin esta base URL, el scheduler caía al default de dev

@@ -164,6 +164,30 @@ export async function resumeSfuConsumer(
   }
 }
 
+// ---------- Set preferred layers (spotlight = alta, thumbnail = baja) ----------
+
+export async function setSfuConsumerPreferredLayers(
+  cmd: {
+    tenantId: string;
+    meetingId: string;
+    userId: string;
+    consumerId: string;
+    spatialLayer: number;
+    temporalLayer?: number;
+  },
+  deps: SfuDeps,
+): Promise<Result<void>> {
+  const guard = await ensureJoined(deps, cmd.tenantId, cmd.meetingId, cmd.userId);
+  if (!guard.isSuccess) return guard;
+  try {
+    const ok = await deps.sfu.setConsumerPreferredLayers(cmd);
+    if (!ok) return Result.fail(makeError('Meeting.Sfu.ConsumerNotFound', 'Consumer not found.'));
+    return Result.okVoid();
+  } catch (err) {
+    return Result.fail(makeError('Meeting.Sfu.PreferredLayersFailed', (err as Error).message));
+  }
+}
+
 // ---------- List remote producers (para el recien llegado) ----------
 
 export async function listSfuRemoteProducers(
