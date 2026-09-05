@@ -46,7 +46,7 @@ public sealed class PaymentAppDeployConfigWiringTests
         Assert.Contains("PaymentMethods__Onboarding__0__Enabled: ${STRIPE_ONBOARDING_ENABLED:-true}", compose);
         Assert.Contains("PaymentMethods__Onboarding__1__Provider: PayPal", compose);
         Assert.Contains("PaymentMethods__Onboarding__1__Method: Wallet", compose);
-        Assert.Contains("PaymentMethods__Onboarding__1__Enabled: ${PAYPAL_ONBOARDING_ENABLED:-true}", compose);
+        Assert.Contains("PaymentMethods__Onboarding__1__Enabled: ${PAYPAL_ONBOARDING_ENABLED:-false}", compose);
         Assert.Contains(
             "PaymentMethods__Onboarding__1__DisabledReason: ${PAYPAL_ONBOARDING_DISABLED_REASON:-}",
             compose
