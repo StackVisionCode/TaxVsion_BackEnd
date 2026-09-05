@@ -2617,6 +2617,40 @@
       ]
     },
     {
+      "name": "Permissions Admin (PlatformAdmin)",
+      "item": [
+        {
+          "name": "ReprojectUserPermissions (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/auth/permissions/admin/users/{{userId}}/reproject",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "auth",
+                "permissions",
+                "admin",
+                "users",
+                "{{userId}}",
+                "reproject"
+              ]
+            },
+            "description": "Sin body. PlatformAdmin-only (permiso onboarding.admin.manage). Break-glass del RBAC async: re-publica UserRolesChanged para el usuario con su set de roles/permisos ACTUAL, para que cada microservicio re-materialice su UserPermissionsProjection local. Usar cuando el rol SI esta asignado en Auth pero la proyeccion quedo ausente/desincronizada en algun servicio (evento de fan-out perdido, servicio caido durante el alta, reparacion manual de DB), sin tener que reiniciar Auth. NO bumpea PermissionsVersion (no invalida JWT vigentes). Responde 200 con { userId, tenantId, permissionsVersion, permissionCodeCount, roleCount }: si permissionCodeCount=0 el problema real es de asignacion de rol, no de proyeccion. Funciona sobre usuarios de cualquier tenant."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Health",
       "item": [
         {

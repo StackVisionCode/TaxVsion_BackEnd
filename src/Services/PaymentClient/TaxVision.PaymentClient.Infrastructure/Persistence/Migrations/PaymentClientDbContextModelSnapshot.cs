@@ -333,8 +333,7 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("PermissionCodesJson")
                         .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("PermissionsVersion")
                         .HasColumnType("int");
@@ -371,8 +370,7 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("PermissionCodesJson")
                         .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("PermissionsVersion")
                         .HasColumnType("int");

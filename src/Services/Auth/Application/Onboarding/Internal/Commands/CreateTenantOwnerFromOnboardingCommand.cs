@@ -56,6 +56,19 @@ public static class CreateTenantOwnerFromOnboardingHandler
         if (existing is not null)
             return Result.Success();
 
+        // Garantiza los roles de sistema del tenant ANTES de consumir el password y crear el owner.
+        // En el onboarding pago-primero este paso puede ganarle la carrera a TenantCreatedConsumer
+        // (que siembra los roles de forma async): si systemRole quedaba null, el owner nacía SIN rol,
+        // sin BumpPermissionsVersion (perm_v=0) y sin UserRolesChanged → proyección de permisos vacía
+        // en TODOS los servicios → 403 en todo. EnsureSystemRolesAsync es idempotente; el SaveChanges
+        // commitea SOLO los roles (nada más pendiente aún) para que GetSystemRoleAsync los vea (una
+        // query a DB no devuelve entidades Added sin persistir).
+        if (await roles.GetSystemRoleAsync(command.TenantId, Role.SystemTenantAdmin, ct) is null)
+        {
+            await roles.EnsureSystemRolesAsync(command.TenantId, ct);
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+
         var passwordHash = await passwordHashReferences.ConsumeAsync(command.PasswordHashReference, ct);
         if (string.IsNullOrWhiteSpace(passwordHash))
             return Result.Failure(
@@ -80,30 +93,32 @@ public static class CreateTenantOwnerFromOnboardingHandler
         await users.AddAsync(user, ct);
 
         var systemRole = await roles.GetSystemRoleAsync(command.TenantId, Role.SystemTenantAdmin, ct);
-        if (systemRole is not null)
-        {
-            await roles.ReplaceUserRolesAsync(user.Id, [systemRole.Id], assignedByUserId: null, ct);
-            user.BumpPermissionsVersion();
-
-            var tenantRoles = await roles.GetByIdsAsync(command.TenantId, [systemRole.Id], ct);
-            var catalog = await roles.GetPermissionsCatalogAsync(ct);
-
-            await bus.PublishAsync(
-                new UserRolesChangedIntegrationEvent
-                {
-                    TenantId = user.TenantId,
-                    UserId = user.Id,
-                    PermissionsVersion = user.PermissionsVersion,
-                    RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
-                    RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
-                    PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
-                    ActorType = user.ActorType.ToString(),
-                    CorrelationId = correlation.CorrelationId,
-                }
+        if (systemRole is null)
+            return Result.Failure(
+                new Error("Onboarding.SystemRoleMissing", "The tenant's system TenantAdmin role could not be ensured.")
             );
 
-            user.MarkPermissionsBackfilled(DateTime.UtcNow);
-        }
+        await roles.ReplaceUserRolesAsync(user.Id, [systemRole.Id], assignedByUserId: null, ct);
+        user.BumpPermissionsVersion();
+
+        var tenantRoles = await roles.GetByIdsAsync(command.TenantId, [systemRole.Id], ct);
+        var catalog = await roles.GetPermissionsCatalogAsync(ct);
+
+        await bus.PublishAsync(
+            new UserRolesChangedIntegrationEvent
+            {
+                TenantId = user.TenantId,
+                UserId = user.Id,
+                PermissionsVersion = user.PermissionsVersion,
+                RoleNames = tenantRoles.Select(role => role.Name).ToArray(),
+                RoleIds = tenantRoles.Select(role => role.Id).ToArray(),
+                PermissionCodes = ResolveEffectivePermissionCodes(tenantRoles, catalog),
+                ActorType = user.ActorType.ToString(),
+                CorrelationId = correlation.CorrelationId,
+            }
+        );
+
+        user.MarkPermissionsBackfilled(DateTime.UtcNow);
 
         await bus.PublishAsync(
             new TenantOwnerCreatedIntegrationEvent

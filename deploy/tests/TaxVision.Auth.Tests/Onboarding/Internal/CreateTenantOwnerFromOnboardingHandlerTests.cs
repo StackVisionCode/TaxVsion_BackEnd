@@ -186,7 +186,55 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
         Assert.Equal("Onboarding.PasswordReferenceExpired", result.Error.Code);
         Assert.Null(users.Added);
         Assert.Empty(bus.Published);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+        // El ensure idempotente de roles corre ANTES de consumir el password (para no gastar el
+        // one-shot si el seed fallara) → 1 save de roles; el owner no se crea ni se publican eventos.
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Seeds_the_system_role_inline_when_it_was_not_yet_present_so_the_owner_never_lands_without_permissions()
+    {
+        // Regresión del bug "403 en TODO" de signups nuevos: en el onboarding pago-primero este handler
+        // puede correr ANTES de que TenantCreatedConsumer siembre los roles de sistema. Antes, systemRole
+        // quedaba null y el bloque de asignación se salteaba en silencio → owner sin rol, perm_v=0, sin
+        // UserRolesChanged → proyección vacía en todos los servicios. Ahora siembra inline y asigna igual.
+        var tenantId = Guid.NewGuid();
+        var onboardingId = Guid.NewGuid();
+
+        var users = new FakeUserRepository();
+        var roles = new FakeRoleRepository { Catalog = [] }; // NINGÚN rol de sistema pre-sembrado
+        var tokenStore = new FakeTokenReferenceStore { ToConsume = "pbkdf2-hash-already-computed" };
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        var result = await CreateTenantOwnerFromOnboardingHandler.Handle(
+            new CreateTenantOwnerFromOnboardingCommand(
+                onboardingId,
+                tenantId,
+                "owner@acme.com",
+                "Ada",
+                "Lovelace",
+                tokenStore.Reference
+            ),
+            users,
+            roles,
+            tokenStore,
+            new FakeTenantOnboardingRepository(),
+            new FakeTenantTermsAcceptanceRepository(),
+            new FakeTermsVersionRepository(),
+            new FakeAuthAuditWriter(),
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.NotNull(users.Added);
+        Assert.Equal(1, users.Added!.PermissionsVersion); // se asignó el rol (bump), no quedó en 0
+        Assert.NotNull(users.Added.PermissionsBackfilledAt);
+        var rolesChanged = Assert.Single(bus.Published.OfType<UserRolesChangedIntegrationEvent>());
+        Assert.NotEmpty(rolesChanged.RoleIds); // el owner NUNCA nace sin rol
     }
 
     [Fact]
@@ -356,8 +404,14 @@ public sealed class CreateTenantOwnerFromOnboardingHandlerTests
             CancellationToken ct = default
         ) => Task.CompletedTask;
 
-        public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task EnsureSystemRolesAsync(Guid tenantId, CancellationToken ct = default)
+        {
+            // Mimic del repo real (idempotente): siembra el rol de sistema TenantAdmin si aún no está,
+            // para que GetSystemRoleAsync lo encuentre después. Cubre la rama de carrera del handler.
+            if (!_roles.Any(r => r.TenantId == tenantId && r.Name == Role.SystemTenantAdmin))
+                _roles.Add(Role.Create(tenantId, Role.SystemTenantAdmin, "System role", isSystem: true).Value);
+            return Task.CompletedTask;
+        }
 
         public Task<Role?> GetSystemRoleAsync(Guid tenantId, string systemRoleName, CancellationToken ct = default) =>
             Task.FromResult(_roles.SingleOrDefault(r => r.TenantId == tenantId && r.Name == systemRoleName));
