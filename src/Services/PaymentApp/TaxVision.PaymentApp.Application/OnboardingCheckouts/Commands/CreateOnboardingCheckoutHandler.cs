@@ -28,7 +28,7 @@ namespace TaxVision.PaymentApp.Application.OnboardingCheckouts.Commands;
 /// <para>
 /// PayFlow (auditoría F33) — <c>metrics.RecordAttempted</c> vivía repartido entre
 /// <c>CreateStripeSessionAsync</c> (rama de fallo) y <c>PersistAndAuditAsync</c> (rama de éxito),
-/// dos private methods no contiguos para el mismo contador. Ahora se registra una sola vez en
+/// dos private methods no contiguos para el mismo contador: viven juntos en <c>TrackSessionOutcome</c>, invocado desde
 /// <c>Handle</c>, justo después de conocer el resultado de la sesión de Stripe.
 /// </para>
 /// </summary>
@@ -76,16 +76,9 @@ public static class CreateOnboardingCheckoutHandler
             ct
         );
 
-        metrics.RecordAttempted(command.Provider.ToString(), SaaSPaymentType.OnboardingInitial.ToString());
+        TrackSessionOutcome(sessionResult, command.Provider.ToString(), metrics);
         if (sessionResult.IsFailure)
-        {
-            metrics.RecordFailed(
-                command.Provider.ToString(),
-                SaaSPaymentType.OnboardingInitial.ToString(),
-                sessionResult.Error.Code
-            );
             return Result.Failure<OnboardingCheckoutResponse>(sessionResult.Error);
-        }
 
         var session = sessionResult.Value;
         var recordResult = RecordSession(command, payment, session, nowUtc, logger);
@@ -263,6 +256,17 @@ public static class CreateOnboardingCheckoutHandler
         }
 
         return sessionResult;
+    }
+
+    private static void TrackSessionOutcome(
+        Result<HostedCheckoutSessionResult> sessionResult,
+        string provider,
+        IPaymentAppMetrics metrics
+    )
+    {
+        metrics.RecordAttempted(provider, SaaSPaymentType.OnboardingInitial.ToString());
+        if (sessionResult.IsFailure)
+            metrics.RecordFailed(provider, SaaSPaymentType.OnboardingInitial.ToString(), sessionResult.Error.Code);
     }
 
     private static Result RecordSession(
