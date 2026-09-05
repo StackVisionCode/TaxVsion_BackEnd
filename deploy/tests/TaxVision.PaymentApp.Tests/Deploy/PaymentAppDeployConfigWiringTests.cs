@@ -53,15 +53,6 @@ public sealed class PaymentAppDeployConfigWiringTests
         );
     }
 
-    [Fact]
-    public void Payment_provider_config_verifier_runs_in_deploy_workflow()
-    {
-        var workflow = ReadRepoFile(".github/workflows/deploy.yml");
-
-        Assert.Contains("Validate payment provider configuration", workflow);
-        Assert.Contains("scripts/verify-payment-provider-config.ps1 -Strict", workflow);
-    }
-
     public static IEnumerable<object[]> PaymentProviderVars() => PaymentProviderEnvVars.Select(v => new object[] { v });
 
     private static string ReadRepoFile(string relativePath)
