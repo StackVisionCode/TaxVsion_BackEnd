@@ -14,7 +14,7 @@ public sealed class NotificationRecipientPermissionsProjectionConfiguration
         builder.Property(p => p.TenantId).IsRequired();
         builder.Property(p => p.UserId).IsRequired();
         builder.Property(p => p.PermissionsVersion).IsRequired();
-        builder.Property(p => p.PermissionCodesJson).HasMaxLength(4000).IsRequired();
+        builder.Property(p => p.PermissionCodesJson).HasColumnType("nvarchar(max)").IsRequired();
         builder.Property(p => p.RoleIdsJson).HasMaxLength(2000).IsRequired();
         builder.Property(p => p.IsActive).IsRequired();
         builder.Property(p => p.CreatedAtUtc).IsRequired();
