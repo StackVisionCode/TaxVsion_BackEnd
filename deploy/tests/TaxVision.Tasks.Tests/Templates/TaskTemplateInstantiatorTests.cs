@@ -32,7 +32,7 @@ public sealed class TaskTemplateInstantiatorTests
         var executable = result.Value.Tasks.Where(t => !t.IsBlocked).ToList();
 
         Assert.Single(executable);
-        Assert.Equal("Solicitar documentos al cliente", executable[0].Title.Value);
+        Assert.Equal(FirstStepTitle(), executable[0].Title.Value);
     }
 
     [Fact]
@@ -40,8 +40,8 @@ public sealed class TaskTemplateInstantiatorTests
     {
         var result = Instantiator().Instantiate(Template1040(), Application());
 
-        var first = result.Value.Tasks.Single(t => t.Title.Value.StartsWith("Solicitar", StringComparison.Ordinal));
-        var last = result.Value.Tasks.Single(t => t.Title.Value.StartsWith("Transmitir", StringComparison.Ordinal));
+        var first = result.Value.Tasks.Single(t => t.Title.Value == FirstStepTitle());
+        var last = result.Value.Tasks.Single(t => t.Title.Value == LastStepTitle());
 
         Assert.Equal(DueAtUtc.AddDays(-60), first.Due!.DueAtUtc);
         Assert.Equal(DueAtUtc, last.Due!.DueAtUtc);
@@ -106,4 +106,14 @@ public sealed class TaskTemplateInstantiatorTests
 
         return template.Value;
     }
+
+    // Los títulos esperados salen del propio seed, no de literales: así traducir o reescribir el
+    // catálogo no rompe estos tests, que verifican el ORDEN y el mapeo, no el idioma. El texto en sí
+    // lo fija StandardTaxTemplatesTests.
+    private static string FirstStepTitle() => OrderedSteps().First().Title!;
+
+    private static string LastStepTitle() => OrderedSteps().Last().Title!;
+
+    private static IReadOnlyList<TaskTemplateStepDraft> OrderedSteps() =>
+        StandardTaxTemplates.All.Single(t => t.RecurrenceRule is null).Steps.OrderBy(s => s.Order).ToList();
 }

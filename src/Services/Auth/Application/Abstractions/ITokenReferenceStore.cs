@@ -18,6 +18,7 @@ namespace TaxVision.Auth.Application.Abstractions;
 public interface ITokenReferenceStore
 {
     Task<Guid> StoreAsync(string rawToken, CancellationToken ct = default);
+    Task StoreAsync(Guid reference, string rawToken, CancellationToken ct = default);
     Task<string?> ConsumeAsync(Guid reference, CancellationToken ct = default);
     Task<string?> PeekAsync(Guid reference, CancellationToken ct = default);
 }

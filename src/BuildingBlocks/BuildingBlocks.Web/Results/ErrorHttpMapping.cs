@@ -175,6 +175,13 @@ public static class ErrorHttpMapping
             or "Onboarding.TermsContentFetchFailed"
             or "Stripe.CheckoutSession.Failed"
             or "Stripe.CheckoutSession.MissingPaymentIntent"
+            or "PayPal.AuthenticationFailed"
+            or "PayPal.AuthenticationEmptyResponse"
+            or "PayPal.CheckoutSession.Failed"
+            or "PayPal.CheckoutSession.EmptyResponse"
+            or "PayPal.CheckoutSession.MissingApprovalLink"
+            or "PayPal.WebhookSignature.VerificationFailed"
+            or "PayPal.WebhookSignature.EmptyResponse"
             or "Manual.CheckoutSession.NotSupported"
             or "Intellipay.CheckoutSession.NotImplemented" => StatusCodes.Status502BadGateway,
             "ConnectorsClient.ServiceAuthUnavailable"
@@ -206,6 +213,9 @@ public static class ErrorHttpMapping
             or "Auth.HandoffInvalid"
             // El vale de takeover de sesión única es igual: portador, un solo uso; uno inválido es 401.
             or "Auth.TakeoverInvalid"
+            or "Onboarding.SessionRequired"
+            or "Onboarding.SessionInvalid"
+            or "Onboarding.SessionExpired"
             or "Auth.InvalidClient" => StatusCodes.Status401Unauthorized,
             "Auth.Inactive"
             or "Tenant.Inactive"
@@ -234,7 +244,11 @@ public static class ErrorHttpMapping
             or "Note.Forbidden"
             or "Task.Forbidden"
             or "Task.Timer.NotOwner"
-            or "Auth.UserInactive" => StatusCodes.Status403Forbidden,
+            or "Auth.UserInactive"
+            or "Onboarding.SessionEmailMismatch"
+            or "Onboarding.SessionChallengeMismatch"
+            or "Onboarding.SessionOnboardingMismatch"
+            or "Onboarding.PayerEmailMismatch" => StatusCodes.Status403Forbidden,
             "Tenant.SubdomainConflict"
             or "User.EmailConflict"
             or "Invitation.PendingConflict"
@@ -325,6 +339,12 @@ public static class ErrorHttpMapping
                         or "Codes.CodeRuleVersion.MinimumPurchaseNotMet" => StatusCodes.Status422UnprocessableEntity,
             var code when code.StartsWith("Codes.PaymentOutcomeVerifier.", StringComparison.Ordinal) =>
                 StatusCodes.Status503ServiceUnavailable,
+            "PaymentMethod.Disabled"
+            or "PaymentMethod.UnsupportedForCheckout"
+            or "PaymentMethod.UnsupportedByProvider"
+            or "PayPal.CheckoutSession.MethodUnsupported" => StatusCodes.Status422UnprocessableEntity,
+            "PaymentProvider.NotConfigured" => StatusCodes.Status502BadGateway,
+            "PayPal.ConfigurationMissing" or "PayPal.WebhookId.Missing" => StatusCodes.Status503ServiceUnavailable,
             "Growth.Idempotency.ConcurrentClaimUnavailable" or "Growth.Idempotency.SavepointsRequired" =>
                 StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status400BadRequest,

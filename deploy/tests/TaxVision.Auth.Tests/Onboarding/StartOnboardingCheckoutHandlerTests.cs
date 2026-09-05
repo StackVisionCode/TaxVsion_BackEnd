@@ -69,7 +69,51 @@ public sealed class StartOnboardingCheckoutHandlerTests
         Assert.False(result.Value.FullyCovered);
         Assert.Equal(TenantOnboardingStatus.PaymentProcessing, onboarding.Status);
         Assert.Equal(paymentId.ToString("N"), onboarding.PaymentReference);
+        Assert.Equal("Stripe", paymentApp.LastRequest!.Provider);
+        Assert.Equal("Card", paymentApp.LastRequest.Method);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Passes_the_selected_provider_and_method_to_paymentapp()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var paymentId = Guid.NewGuid();
+        var paymentApp = new FakePaymentAppOnboardingClient(
+            Result.Success(
+                new PaymentAppCheckoutResult(
+                    paymentId,
+                    "https://paypal.example.com/checkout",
+                    "order_123",
+                    now.AddHours(1)
+                )
+            )
+        );
+
+        var result = await StartOnboardingCheckoutHandler.Handle(
+            new StartOnboardingCheckoutCommand(
+                onboarding.Id,
+                "buyer@example.com",
+                "https://app.example.com/success",
+                "https://app.example.com/cancel",
+                Provider: "PayPal",
+                Method: "Wallet"
+            ),
+            onboardings,
+            BuildReserver(),
+            BuildCompleter(),
+            new FakePlanCatalogClient("Enterprise"),
+            paymentApp,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("PayPal", paymentApp.LastRequest!.Provider);
+        Assert.Equal("Wallet", paymentApp.LastRequest.Method);
     }
 
     [Fact]
@@ -100,6 +144,40 @@ public sealed class StartOnboardingCheckoutHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Onboarding.NotFound", result.Error.Code);
+        Assert.Null(paymentApp.LastRequest);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Fails_without_calling_paymentapp_when_payer_email_does_not_match()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var paymentApp = new FakePaymentAppOnboardingClient(
+            Result.Success(new PaymentAppCheckoutResult(Guid.NewGuid(), "url", "sess", DateTime.UtcNow))
+        );
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await StartOnboardingCheckoutHandler.Handle(
+            new StartOnboardingCheckoutCommand(
+                onboarding.Id,
+                "someone-else@example.com",
+                "https://app.example.com/success",
+                "https://app.example.com/cancel"
+            ),
+            onboardings,
+            BuildReserver(),
+            BuildCompleter(),
+            new FakePlanCatalogClient("Enterprise"),
+            paymentApp,
+            unitOfWork,
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.PayerEmailMismatch", result.Error.Code);
         Assert.Null(paymentApp.LastRequest);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }

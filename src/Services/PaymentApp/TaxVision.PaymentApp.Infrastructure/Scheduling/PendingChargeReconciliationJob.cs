@@ -75,7 +75,11 @@ public sealed class PendingChargeReconciliationJob(
             return false;
 
         var adapter = providerFactory.Resolve(payment.ProviderCode);
-        var statusResult = await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
+        var statusResult =
+            payment.Type == SaaSPaymentType.OnboardingInitial
+            && !string.IsNullOrWhiteSpace(payment.ProviderCheckoutSessionId)
+                ? await adapter.FinalizeHostedCheckoutAsync(payment.ExternalChargeReference.Value, payment.Amount, ct)
+                : await adapter.GetChargeStatusAsync(payment.ExternalChargeReference.Value, ct);
         if (statusResult.IsFailure)
         {
             logger.LogWarning(

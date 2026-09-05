@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.OnboardingCheckouts.Commands;
+using TaxVision.PaymentApp.Application.OnboardingPaymentOptions;
 using TaxVision.PaymentApp.Domain.Audit;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
@@ -39,6 +40,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             command,
             payments,
             new FakePaymentAdapterFactory(provider),
+            new FakeOnboardingPaymentMethodCatalog(),
             pricing,
             new FakePaymentAuditLogWriter(),
             new FakeUnitOfWork(),
@@ -78,6 +80,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             command,
             payments,
             new FakePaymentAdapterFactory(provider),
+            new FakeOnboardingPaymentMethodCatalog(),
             pricing,
             new FakePaymentAuditLogWriter(),
             new FakeUnitOfWork(),
@@ -93,6 +96,125 @@ public sealed class CreateOnboardingCheckoutHandlerTests
         Assert.Null(provider.LastRequest);
     }
 
+    [Fact]
+    public async Task Fails_before_pricing_or_provider_when_the_default_onboarding_method_is_disabled()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+        var provider = new FakePaymentProvider();
+        var pricing = new ThrowingSubscriptionPlanPricingClient();
+
+        var command = new CreateOnboardingCheckoutCommand(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "buyer@example.com",
+            "https://app.example.com/success",
+            "https://app.example.com/cancel",
+            "onboarding-checkout-key-disabled"
+        );
+
+        var result = await CreateOnboardingCheckoutHandler.Handle(
+            command,
+            payments,
+            new FakePaymentAdapterFactory(provider),
+            new FakeOnboardingPaymentMethodCatalog(enabled: false),
+            pricing,
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PaymentMethod.Disabled", result.Error.Code);
+        Assert.Null(provider.LastRequest);
+        Assert.Null(payments.Added);
+    }
+
+    [Fact]
+    public async Task Uses_the_requested_provider_and_method_for_hosted_checkout()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new HashSet<PaymentMethodKind> { PaymentMethodKind.Wallet }
+        );
+        var factory = new FakePaymentAdapterFactory(provider);
+        var pricing = new FakeSubscriptionPlanPricingClient(Result.Success(new PlanPrice(4900, "USD")));
+
+        var command = new CreateOnboardingCheckoutCommand(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "buyer@example.com",
+            "https://app.example.com/success",
+            "https://app.example.com/cancel",
+            "onboarding-checkout-key-paypal",
+            Provider: PaymentProviderCode.PayPal,
+            Method: PaymentMethodKind.Wallet
+        );
+
+        var result = await CreateOnboardingCheckoutHandler.Handle(
+            command,
+            payments,
+            factory,
+            new FakeOnboardingPaymentMethodCatalog(PaymentProviderCode.PayPal, PaymentMethodKind.Wallet),
+            pricing,
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentProviderCode.PayPal, factory.LastResolvedCode);
+        Assert.Equal(PaymentMethodKind.Wallet, provider.LastRequest!.Method);
+        Assert.Equal(PaymentProviderCode.PayPal, payments.Added!.ProviderCode);
+    }
+
+    [Fact]
+    public async Task Fails_before_creating_session_when_provider_does_not_support_hosted_checkout()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.Manual,
+            new HashSet<PaymentMethodKind> { PaymentMethodKind.Manual },
+            supportsHostedCheckout: false
+        );
+
+        var command = new CreateOnboardingCheckoutCommand(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "buyer@example.com",
+            "https://app.example.com/success",
+            "https://app.example.com/cancel",
+            "onboarding-checkout-key-manual",
+            Provider: PaymentProviderCode.Manual,
+            Method: PaymentMethodKind.Manual
+        );
+
+        var result = await CreateOnboardingCheckoutHandler.Handle(
+            command,
+            payments,
+            new FakePaymentAdapterFactory(provider),
+            new FakeOnboardingPaymentMethodCatalog(PaymentProviderCode.Manual, PaymentMethodKind.Manual),
+            new ThrowingSubscriptionPlanPricingClient(),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PaymentMethod.UnsupportedForCheckout", result.Error.Code);
+        Assert.Null(provider.LastRequest);
+        Assert.Null(payments.Added);
+    }
+
     private sealed class FakeSubscriptionPlanPricingClient(Result<PlanPrice> result) : ISubscriptionPlanPricingClient
     {
         public Task<Result<PlanPrice>> GetPriceAsync(
@@ -100,6 +222,56 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             string billingCycle,
             CancellationToken ct = default
         ) => Task.FromResult(result);
+    }
+
+    private sealed class ThrowingSubscriptionPlanPricingClient : ISubscriptionPlanPricingClient
+    {
+        public Task<Result<PlanPrice>> GetPriceAsync(
+            Guid planId,
+            string billingCycle,
+            CancellationToken ct = default
+        ) => throw new InvalidOperationException("Pricing must not be called when the payment method is disabled.");
+    }
+
+    private sealed class FakeOnboardingPaymentMethodCatalog(
+        PaymentProviderCode provider = PaymentProviderCode.Stripe,
+        PaymentMethodKind method = PaymentMethodKind.Card,
+        bool enabled = true
+    ) : IOnboardingPaymentMethodCatalog
+    {
+        private readonly OnboardingPaymentOption _option = new(
+            provider,
+            method,
+            method.ToString(),
+            enabled,
+            10,
+            enabled ? null : "maintenance"
+        );
+
+        public Task<Result<IReadOnlyList<OnboardingPaymentOption>>> GetOptionsAsync(
+            Guid planId,
+            string billingCycle,
+            string? currency = null,
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success<IReadOnlyList<OnboardingPaymentOption>>([_option]));
+
+        public Task<Result<IReadOnlyList<OnboardingPaymentOption>>> GetOperationalOptionsAsync(
+            CancellationToken ct = default
+        ) => Task.FromResult(Result.Success<IReadOnlyList<OnboardingPaymentOption>>([_option]));
+
+        public Task<Result<OnboardingPaymentOption>> EnsureEnabledAsync(
+            PaymentProviderCode provider,
+            PaymentMethodKind method,
+            Guid planId,
+            string billingCycle,
+            string? currency = null,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult(
+                enabled && provider == _option.Provider && method == _option.Method
+                    ? Result.Success(_option)
+                    : Result.Failure<OnboardingPaymentOption>(new Error("PaymentMethod.Disabled", "maintenance"))
+            );
     }
 
     private sealed class FakeSaaSPaymentRepository : ISaaSPaymentRepository
@@ -162,16 +334,52 @@ public sealed class CreateOnboardingCheckoutHandlerTests
 
     private sealed class FakePaymentAdapterFactory(IPaymentProvider provider) : IPaymentAdapterFactory
     {
-        public IPaymentProvider Resolve(PaymentProviderCode code) => provider;
+        public PaymentProviderCode? LastResolvedCode { get; private set; }
+
+        public IPaymentProvider Resolve(PaymentProviderCode code)
+        {
+            LastResolvedCode = code;
+            if (provider.Code != code)
+                throw new InvalidOperationException($"No provider for {code}.");
+
+            return provider;
+        }
     }
 
-    private sealed class FakePaymentProvider : IPaymentProvider
+    private sealed class FakePaymentProvider(
+        PaymentProviderCode code = PaymentProviderCode.Stripe,
+        IReadOnlySet<PaymentMethodKind>? supportedMethods = null,
+        bool supportsHostedCheckout = true
+    ) : IPaymentProvider
     {
         public HostedCheckoutSessionRequest? LastRequest { get; private set; }
 
-        public PaymentProviderCode Code => PaymentProviderCode.Stripe;
+        public PaymentProviderCode Code => code;
 
-        public ProviderCapabilities Capabilities => throw new NotSupportedException();
+        public ProviderCapabilities Capabilities { get; } =
+            new()
+            {
+                Code = code,
+                DisplayName = code.ToString(),
+                SupportsOneShotCharge = true,
+                SupportsRecurringCharge = false,
+                SupportsHostedCheckoutRedirect = supportsHostedCheckout,
+                SupportsInlineElements = false,
+                SupportsWebhookSignatureVerification = true,
+                SupportedMethods = supportedMethods ?? new HashSet<PaymentMethodKind> { PaymentMethodKind.Card },
+                SupportsPartialRefund = true,
+                Supports3DSecure = true,
+                SupportsSavedPaymentMethods = false,
+                SupportsMultiCurrency = true,
+                SupportsMarketplaceConnect = false,
+                SupportsIdempotencyKeys = true,
+                SupportsCardTokenization = false,
+                RequiresCustomerRegistrationBeforeCharge = false,
+                SupportedCurrencies = new HashSet<string> { "USD" },
+                SupportedCountries = new HashSet<string> { "US" },
+                TypicalAuthorizeLatency = TimeSpan.Zero,
+                SuggestedRetryCount = 0,
+            };
 
         public Task<Result<ProviderCustomerToken>> GetOrCreateCustomerAsync(
             Guid tenantId,
@@ -199,9 +407,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
         ) => throw new NotSupportedException();
 
         public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-            string rawPayload,
-            string signatureHeader,
-            string webhookSecret,
+            ProviderWebhookVerificationRequest request,
             CancellationToken ct
         ) => throw new NotSupportedException();
 
@@ -213,6 +419,12 @@ public sealed class CreateOnboardingCheckoutHandlerTests
 
         public Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(
             string providerChargeReference,
+            CancellationToken ct
+        ) => throw new NotSupportedException();
+
+        public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
+            string providerChargeReference,
+            Money amount,
             CancellationToken ct
         ) => throw new NotSupportedException();
 

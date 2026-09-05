@@ -42,7 +42,7 @@ public sealed class TaskTemplateAttachmentTests
         var result = Instantiator().Instantiate(template, Application());
 
         var carrier = result.Value.Tasks.Single(t => t.Attachments.Count > 0);
-        Assert.Equal("Solicitar documentos al cliente", carrier.Title.Value);
+        Assert.Equal(FirstStepTitle(), carrier.Title.Value);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class TaskTemplateAttachmentTests
         var result = Instantiator().Instantiate(template, Application());
 
         var carrier = result.Value.Tasks.Single(t => t.Attachments.Count > 0);
-        Assert.StartsWith("Transmitir", carrier.Title.Value, StringComparison.Ordinal);
+        Assert.Equal(LastStepTitle(), carrier.Title.Value);
     }
 
     [Fact]
@@ -155,4 +155,13 @@ public sealed class TaskTemplateAttachmentTests
 
         return template;
     }
+
+    // Título esperado desde el seed (no literal): el test verifica a QUÉ paso cuelga el adjunto, no
+    // el idioma del catálogo. El texto lo fija StandardTaxTemplatesTests.
+    private static string FirstStepTitle() => OrderedSteps().First().Title!;
+
+    private static string LastStepTitle() => OrderedSteps().Last().Title!;
+
+    private static IReadOnlyList<TaskTemplateStepDraft> OrderedSteps() =>
+        StandardTaxTemplates.All.Single(t => t.RecurrenceRule is null).Steps.OrderBy(s => s.Order).ToList();
 }

@@ -8,7 +8,7 @@ public sealed class OnboardingOptions
 {
     public const string SectionName = "Onboarding";
 
-    public string RegistrationUrlBase { get; set; } = "http://localhost:5173";
+    public string RegistrationUrlBase { get; set; } = "http://localhost:4200";
 
     /// <summary>Origen INTERNO de Auth: loopback de la saga (creación del owner vía
     /// <c>internal/tenants/{id}/owners</c>, que NO pasa por el Gateway). En prod es
@@ -36,4 +36,8 @@ public sealed class OnboardingOptions
     /// <c>TenantDomainOptions.SubdomainReservationTtlMinutes</c> para el flujo de PlatformAdmin —
     /// son módulos y flujos separados a propósito).</summary>
     public int SubdomainReservationTtlMinutes { get; set; } = 60;
+
+    /// <summary>TTL de la sesión corta emitida al verificar el OTP. Autoriza únicamente el carril
+    /// de onboarding pre-tenant y no reemplaza el JWT normal de usuarios autenticados.</summary>
+    public int OnboardingSessionTtlMinutes { get; set; } = 30;
 }

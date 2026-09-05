@@ -70,9 +70,7 @@ public sealed class ManualPaymentAdapter(ILogger<ManualPaymentAdapter> logger) :
     }
 
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-        string rawPayload,
-        string signatureHeader,
-        string webhookSecret,
+        ProviderWebhookVerificationRequest request,
         CancellationToken ct
     ) =>
         Task.FromResult(
@@ -104,6 +102,12 @@ public sealed class ManualPaymentAdapter(ILogger<ManualPaymentAdapter> logger) :
         Task.FromResult(
             Result.Success(new ChargeAuthorizationResult(providerChargeReference, PaymentStatus.Succeeded))
         );
+
+    public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
+        string providerChargeReference,
+        Money amount,
+        CancellationToken ct
+    ) => GetChargeStatusAsync(providerChargeReference, ct);
 
     public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct) =>
         Task.FromResult(

@@ -133,9 +133,7 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
     /// contrato <see cref="IPaymentProvider"/> y falla explícitamente para que ningún caller
     /// lo use por error como si fuera HMAC real.</summary>
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-        string rawPayload,
-        string signatureHeader,
-        string webhookSecret,
+        ProviderWebhookVerificationRequest request,
         CancellationToken ct
     ) =>
         Task.FromResult(
@@ -181,6 +179,12 @@ public sealed class IntellipayAdapter(IntellipayGateway gateway, ILogger<Intelli
     /// <summary>Intellipay no modela "adjuntar una tarjeta extra" — el custId ya es el token
     /// reusable. Gestión de múltiples tarjetas por customer queda para cuando el negocio lo
     /// pida (§44.12: Intellipay production-ready cubre charge/refund/status, no card vault).</summary>
+    public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
+        string providerChargeReference,
+        Money amount,
+        CancellationToken ct
+    ) => GetChargeStatusAsync(providerChargeReference, ct);
+
     public Task<Result<SetupIntentInfo>> CreateSetupIntentAsync(ProviderCustomerToken customer, CancellationToken ct) =>
         Task.FromResult(
             Result.Failure<SetupIntentInfo>(

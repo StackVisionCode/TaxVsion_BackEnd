@@ -41,6 +41,7 @@ public static class CreateOnboardingCheckoutHandler
         CreateOnboardingCheckoutCommand command,
         ISaaSPaymentRepository payments,
         IPaymentAdapterFactory providerFactory,
+        IOnboardingPaymentMethodCatalog paymentMethodCatalog,
         ISubscriptionPlanPricingClient planPricing,
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
@@ -50,6 +51,10 @@ public static class CreateOnboardingCheckoutHandler
         CancellationToken ct
     )
     {
+        var providerResult = await ResolveCheckoutProviderAsync(command, providerFactory, paymentMethodCatalog, ct);
+        if (providerResult.IsFailure)
+            return Result.Failure<OnboardingCheckoutResponse>(providerResult.Error);
+
         var replay = await TryReplayExistingAsync(command, payments, logger, ct);
         if (replay is not null)
             return replay;
@@ -62,13 +67,20 @@ public static class CreateOnboardingCheckoutHandler
         var nowUtc = DateTime.UtcNow;
         var expiresAtUtc = nowUtc.Add(SessionLifetime);
 
-        var sessionResult = await CreateStripeSessionAsync(command, payment, providerFactory, expiresAtUtc, logger, ct);
+        var sessionResult = await CreateHostedCheckoutSessionAsync(
+            command,
+            payment,
+            providerResult.Value,
+            expiresAtUtc,
+            logger,
+            ct
+        );
 
-        metrics.RecordAttempted(PaymentProviderCode.Stripe.ToString(), SaaSPaymentType.OnboardingInitial.ToString());
+        metrics.RecordAttempted(command.Provider.ToString(), SaaSPaymentType.OnboardingInitial.ToString());
         if (sessionResult.IsFailure)
         {
             metrics.RecordFailed(
-                PaymentProviderCode.Stripe.ToString(),
+                command.Provider.ToString(),
                 SaaSPaymentType.OnboardingInitial.ToString(),
                 sessionResult.Error.Code
             );
@@ -91,6 +103,84 @@ public static class CreateOnboardingCheckoutHandler
         return Result.Success(
             new OnboardingCheckoutResponse(payment.Id, session.CheckoutUrl, session.ProviderSessionId, expiresAtUtc)
         );
+    }
+
+    private static async Task<Result<IPaymentProvider>> ResolveCheckoutProviderAsync(
+        CreateOnboardingCheckoutCommand command,
+        IPaymentAdapterFactory providerFactory,
+        IOnboardingPaymentMethodCatalog paymentMethodCatalog,
+        CancellationToken ct
+    )
+    {
+        var methodAvailability = await EnsureCheckoutMethodEnabledAsync(command, paymentMethodCatalog, ct);
+        if (methodAvailability.IsFailure)
+            return Result.Failure<IPaymentProvider>(methodAvailability.Error);
+
+        var providerResult = ResolveProvider(command, providerFactory);
+        if (providerResult.IsFailure)
+            return providerResult;
+
+        var providerSupport = EnsureProviderSupportsCheckout(command, providerResult.Value);
+        return providerSupport.IsSuccess ? providerResult : Result.Failure<IPaymentProvider>(providerSupport.Error);
+    }
+
+    private static async Task<Result> EnsureCheckoutMethodEnabledAsync(
+        CreateOnboardingCheckoutCommand command,
+        IOnboardingPaymentMethodCatalog paymentMethodCatalog,
+        CancellationToken ct
+    )
+    {
+        var availability = await paymentMethodCatalog.EnsureEnabledAsync(
+            command.Provider,
+            command.Method,
+            command.PlanId,
+            command.BillingCycle,
+            command.Currency,
+            ct
+        );
+
+        return availability.IsSuccess ? Result.Success() : Result.Failure(availability.Error);
+    }
+
+    private static Result<IPaymentProvider> ResolveProvider(
+        CreateOnboardingCheckoutCommand command,
+        IPaymentAdapterFactory providerFactory
+    )
+    {
+        try
+        {
+            return Result.Success(providerFactory.Resolve(command.Provider));
+        }
+        catch (InvalidOperationException)
+        {
+            return Result.Failure<IPaymentProvider>(
+                new Error("PaymentProvider.NotConfigured", "The selected payment provider is not configured.")
+            );
+        }
+    }
+
+    private static Result EnsureProviderSupportsCheckout(
+        CreateOnboardingCheckoutCommand command,
+        IPaymentProvider provider
+    )
+    {
+        if (!provider.Capabilities.SupportsHostedCheckoutRedirect)
+            return Result.Failure(
+                new Error(
+                    "PaymentMethod.UnsupportedForCheckout",
+                    "The selected payment provider does not support hosted checkout."
+                )
+            );
+
+        if (!provider.Capabilities.SupportedMethods.Contains(command.Method))
+            return Result.Failure(
+                new Error(
+                    "PaymentMethod.UnsupportedByProvider",
+                    "The selected payment method is not supported by this provider."
+                )
+            );
+
+        return Result.Success();
     }
 
     private static async Task<Result<OnboardingCheckoutResponse>?> TryReplayExistingAsync(
@@ -136,18 +226,18 @@ public static class CreateOnboardingCheckoutHandler
         return PrepareNewPayment(command, priceResult.Value);
     }
 
-    private static async Task<Result<HostedCheckoutSessionResult>> CreateStripeSessionAsync(
+    private static async Task<Result<HostedCheckoutSessionResult>> CreateHostedCheckoutSessionAsync(
         CreateOnboardingCheckoutCommand command,
         SaaSPayment payment,
-        IPaymentAdapterFactory providerFactory,
+        IPaymentProvider adapter,
         DateTime expiresAtUtc,
         ILogger<SaaSPayment> logger,
         CancellationToken ct
     )
     {
-        var adapter = providerFactory.Resolve(PaymentProviderCode.Stripe);
         var sessionRequest = new HostedCheckoutSessionRequest(
             Amount: payment.Amount,
+            Method: command.Method,
             IdempotencyKey: payment.IdempotencyKey,
             Descriptor: payment.StatementDescriptor,
             PayerEmail: command.PayerEmail,
@@ -183,10 +273,7 @@ public static class CreateOnboardingCheckoutHandler
         ILogger<SaaSPayment> logger
     )
     {
-        var referenceResult = ExternalPaymentReference.Create(
-            PaymentProviderCode.Stripe,
-            session.ProviderPaymentIntentReference
-        );
+        var referenceResult = ExternalPaymentReference.Create(command.Provider, session.ProviderPaymentIntentReference);
         if (referenceResult.IsFailure)
         {
             // Bug real encontrado en la verificación E2E: si esto falla, Stripe YA creó la sesión
@@ -293,7 +380,7 @@ public static class CreateOnboardingCheckoutHandler
             keyResult.Value,
             amountResult.Value,
             command.PlanId,
-            PaymentProviderCode.Stripe,
+            command.Provider,
             descriptorResult.Value,
             DateTime.UtcNow
         );

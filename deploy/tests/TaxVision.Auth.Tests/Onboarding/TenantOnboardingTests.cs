@@ -248,6 +248,34 @@ public sealed class TenantOnboardingTests
         Assert.Equal("Onboarding.InvalidState", result.Error.Code);
     }
 
+    // ---------- RecordSettledAmount ----------
+
+    [Fact]
+    public void RecordSettledAmount_persists_the_paid_amount_when_no_code_froze_the_breakdown()
+    {
+        // Carril pagado sin código: el desglose nunca se congeló, así que el monto vivía solo en el evento.
+        var onboarding = AtPaymentCompleted();
+        Assert.Null(onboarding.NetAmountCents);
+
+        onboarding.RecordSettledAmount(4999, "USD");
+
+        // Bruto = neto = lo cobrado, descuento 0 → un recibo regenerado (resend/reconcile) sale con el monto real.
+        Assert.Equal(4999, onboarding.GrossAmountCents);
+        Assert.Equal(0, onboarding.TotalDiscountCents);
+        Assert.Equal(4999, onboarding.NetAmountCents);
+        Assert.Equal("USD", onboarding.Currency);
+    }
+
+    [Fact]
+    public void RecordSettledAmount_is_noop_for_the_zero_amount_carril()
+    {
+        var onboarding = AtPaymentCompleted();
+
+        onboarding.RecordSettledAmount(0, "USD");
+
+        Assert.Null(onboarding.NetAmountCents);
+    }
+
     // ---------- MarkPaymentFailed ----------
 
     [Fact]
@@ -795,7 +823,7 @@ public sealed class TenantOnboardingTests
     // ---------- ScheduleRetry / ResetRetryState (Fase 17) ----------
 
     [Fact]
-    public void ScheduleRetry_increments_attempt_and_sets_next_retry()
+    public void ScheduleRetry_sets_next_retry_without_consuming_attempt()
     {
         var onboarding = AtProvisioning();
         onboarding.MarkProvisioningFailed(TenantProvisioningStep.Tenant, "Tenant.RequestFailed", "network blip");
@@ -803,23 +831,24 @@ public sealed class TenantOnboardingTests
         var result = onboarding.ScheduleRetry(Now.AddMinutes(5));
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(1, onboarding.RetryAttempt);
+        Assert.Equal(0, onboarding.RetryAttempt);
         Assert.Equal(Now.AddMinutes(5), onboarding.NextRetryAtUtc);
     }
 
     [Fact]
-    public void ScheduleRetry_accumulates_across_repeated_failures()
+    public void ScheduleRetry_preserves_dispatched_attempts_across_repeated_failures()
     {
         var onboarding = AtProvisioning();
         onboarding.MarkProvisioningFailed(TenantProvisioningStep.Tenant, "Tenant.RequestFailed", "network blip");
         onboarding.ScheduleRetry(Now.AddMinutes(5));
+        onboarding.MarkRetryDispatched(Now.AddMinutes(10));
         onboarding.ResumeProvisioning();
         onboarding.MarkProvisioningFailed(TenantProvisioningStep.Tenant, "Tenant.RequestFailed", "network blip again");
 
         var result = onboarding.ScheduleRetry(Now.AddMinutes(15));
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(2, onboarding.RetryAttempt);
+        Assert.Equal(1, onboarding.RetryAttempt);
     }
 
     [Fact]
@@ -834,11 +863,40 @@ public sealed class TenantOnboardingTests
     }
 
     [Fact]
+    public void MarkRetryDispatched_preserves_failure_context_and_consumes_attempt()
+    {
+        var onboarding = AtProvisioning();
+        onboarding.MarkProvisioningFailed(TenantProvisioningStep.Tenant, "Tenant.RequestFailed", "network blip");
+        onboarding.ScheduleRetry(Now.AddMinutes(-1));
+
+        var result = onboarding.MarkRetryDispatched(Now.AddMinutes(5));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.ProvisioningFailed, onboarding.Status);
+        Assert.Equal(TenantProvisioningStep.Tenant, onboarding.FailedStep);
+        Assert.Equal("Tenant.RequestFailed", onboarding.FailureCode);
+        Assert.Equal(1, onboarding.RetryAttempt);
+        Assert.Equal(Now.AddMinutes(5), onboarding.NextRetryAtUtc);
+    }
+
+    [Fact]
+    public void MarkRetryDispatched_rejects_wrong_state()
+    {
+        var onboarding = AtProvisioning();
+
+        var result = onboarding.MarkRetryDispatched(Now.AddMinutes(5));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.InvalidState", result.Error.Code);
+    }
+
+    [Fact]
     public void ResumeProvisioning_does_not_reset_retry_attempt()
     {
         var onboarding = AtProvisioning();
         onboarding.MarkProvisioningFailed(TenantProvisioningStep.Tenant, "Tenant.RequestFailed", "network blip");
         onboarding.ScheduleRetry(Now.AddMinutes(5));
+        onboarding.MarkRetryDispatched(Now.AddMinutes(10));
 
         onboarding.ResumeProvisioning();
 
@@ -851,6 +909,7 @@ public sealed class TenantOnboardingTests
         var onboarding = AtProvisioning();
         onboarding.MarkProvisioningFailed(TenantProvisioningStep.Tenant, "Tenant.RequestFailed", "network blip");
         onboarding.ScheduleRetry(Now.AddMinutes(5));
+        onboarding.MarkRetryDispatched(Now.AddMinutes(10));
 
         var result = onboarding.ResetRetryState();
 

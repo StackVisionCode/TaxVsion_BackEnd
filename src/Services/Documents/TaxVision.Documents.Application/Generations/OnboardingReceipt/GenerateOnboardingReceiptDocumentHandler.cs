@@ -47,10 +47,30 @@ public static class GenerateOnboardingReceiptDocumentHandler
                 return Result.Failure<GenerateOnboardingReceiptDocumentResult>(validation.Error);
 
             var existing = await repository.GetByIdempotencyKeyAsync(PlatformTenant.Id, command.IdempotencyKey, ct);
-            if (existing is not null)
+            if (existing is not null && existing.Status != DocumentGenerationStatus.Failed)
                 return Result.Success(
                     new GenerateOnboardingReceiptDocumentResult(existing.Id, existing.Status.ToString())
                 );
+
+            if (existing is not null)
+            {
+                var retry = existing.RetryFromFailure(clock.GetUtcNow().UtcDateTime);
+                if (retry.IsFailure)
+                    return Result.Failure<GenerateOnboardingReceiptDocumentResult>(retry.Error);
+
+                await unitOfWork.SaveChangesAsync(ct);
+                await bus.PublishAsync(ToProcessCommand(command, existing.Id, correlationId));
+
+                logger.LogInformation(
+                    "Onboarding receipt document generation {GenerationId} re-queued for onboarding {OnboardingId}.",
+                    existing.Id,
+                    command.OnboardingId
+                );
+
+                return Result.Success(
+                    new GenerateOnboardingReceiptDocumentResult(existing.Id, DocumentGenerationStatus.Queued.ToString())
+                );
+            }
 
             var buildResult = BuildGeneration(command, clock.GetUtcNow().UtcDateTime);
             if (buildResult.IsFailure)

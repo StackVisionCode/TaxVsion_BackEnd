@@ -132,6 +132,14 @@ public sealed class AuthDbContext(
                 ex
             );
         }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException(
+                "Persistence.ConcurrencyConflict",
+                "The record was updated by another process. Refresh and retry the operation.",
+                ex
+            );
+        }
     }
 
     /// <summary>

@@ -25,4 +25,5 @@ public enum PaymentAuditAction
     // PaymentAuditLogRateLimitAuditSink). Sin aggregate real (bloqueado antes de resolver el
     // SaaSPayment) — AggregateType="RateLimitPolicy", AggregateId=Guid.Empty.
     RateLimitBlocked = 16,
+    OnboardingPaymentMethodAvailabilityChanged = 17,
 }

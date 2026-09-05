@@ -7,6 +7,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.PaymentApp.Domain.Audit;
+using TaxVision.PaymentApp.Domain.PaymentMethods;
 using TaxVision.PaymentApp.Domain.Permissions;
 using TaxVision.PaymentApp.Domain.ProviderCustomers;
 using TaxVision.PaymentApp.Domain.RateLimiting;
@@ -30,6 +31,8 @@ public sealed class PaymentAppDbContext(DbContextOptions<PaymentAppDbContext> op
     public DbSet<SaaSPayment> SaaSPayments => Set<SaaSPayment>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<PaymentAuditEntry> AuditEntries => Set<PaymentAuditEntry>();
+    public DbSet<OnboardingPaymentMethodOverride> OnboardingPaymentMethodOverrides =>
+        Set<OnboardingPaymentMethodOverride>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<TenantProviderCustomer> TenantProviderCustomers => Set<TenantProviderCustomer>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();

@@ -79,7 +79,7 @@ public sealed class OnboardingPaymentSucceededConsumerTests
             bus.Published.Single(p => p is OnboardingRegistrationReadyIntegrationEvent)
         );
         Assert.Equal(onboarding.Id, ready.OnboardingId);
-        Assert.Equal(tokenReferences.Reference, ready.TokenReference);
+        Assert.Equal(tokenReferences.StoredReference, ready.TokenReference);
         Assert.Equal("49.00 USD", ready.PriceFormatted);
 
         var finalize = Assert.IsType<OnboardingFinalizeCommand>(
@@ -142,5 +142,32 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.Empty(bus.Published);
         Assert.Null(tokenReferences.Stored);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Completer_does_not_store_raw_registration_token_when_state_transition_fails()
+    {
+        var onboarding = OnboardingTestFactory.NewOnboarding(DateTime.UtcNow);
+        var tokenReferences = new FakeTokenReferenceStore();
+        var bus = new FakeMessageBus();
+
+        var result = await BuildCompleter(tokenReferences, bus)
+            .CompleteAsync(
+                onboarding,
+                amountPaidCents: 4900,
+                currency: "USD",
+                paymentId: Guid.NewGuid(),
+                planName: "Enterprise",
+                paidAtUtc: DateTime.UtcNow,
+                providerPaymentReference: "pi_123",
+                paymentMethodMasked: "Visa **** 4242",
+                correlationId: "corr-test",
+                CancellationToken.None
+            );
+
+        Assert.True(result.IsFailure);
+        Assert.Null(tokenReferences.Stored);
+        Assert.Null(tokenReferences.StoredReference);
+        Assert.Empty(bus.Published);
     }
 }

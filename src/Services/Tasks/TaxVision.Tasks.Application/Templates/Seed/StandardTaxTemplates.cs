@@ -33,17 +33,17 @@ public static class StandardTaxTemplates
     /// </summary>
     private static StandardTaxTemplate Individual1040 =>
         new(
-            "1040 — Declaración individual",
-            "Del pedido de documentos al e-file, en el orden en que se hace.",
+            "1040 — Individual Return",
+            "From the document request to e-file, in the order the work happens.",
             null,
             RecurrenceMode.FixedSchedule,
             [
-                Step(1, "Solicitar documentos al cliente", -60, TaskPriority.High, estimated: 0.5m),
-                Step(2, "Revisar documentos recibidos", -35, TaskPriority.Normal, dependsOn: 1, estimated: 1m),
-                Step(3, "Preparar la declaración", -21, TaskPriority.High, dependsOn: 2, estimated: 3m),
-                Step(4, "Revisión interna", -14, TaskPriority.High, dependsOn: 3, estimated: 1m),
-                Step(5, "Aprobación del cliente", -7, TaskPriority.Urgent, dependsOn: 4, estimated: 0.5m),
-                Step(6, "Transmitir el e-file", 0, TaskPriority.Urgent, dependsOn: 5, statutory: true, estimated: 0.5m),
+                Step(1, "Request documents from the client", -60, TaskPriority.High, estimated: 0.5m),
+                Step(2, "Review received documents", -35, TaskPriority.Normal, dependsOn: 1, estimated: 1m),
+                Step(3, "Prepare the return", -21, TaskPriority.High, dependsOn: 2, estimated: 3m),
+                Step(4, "Internal review", -14, TaskPriority.High, dependsOn: 3, estimated: 1m),
+                Step(5, "Client approval", -7, TaskPriority.Urgent, dependsOn: 4, estimated: 0.5m),
+                Step(6, "Transmit the e-file", 0, TaskPriority.Urgent, dependsOn: 5, statutory: true, estimated: 0.5m),
             ]
         );
 
@@ -53,20 +53,29 @@ public static class StandardTaxTemplates
     /// </summary>
     private static StandardTaxTemplate EstimatedTax1040Es =>
         new(
-            "1040-ES — Pagos estimados trimestrales",
-            "Los cuatro vencimientos del año: 15 de abril, junio, septiembre y enero siguiente.",
+            "1040-ES — Quarterly Estimated Payments",
+            "The four due dates of the year: April 15, June, September, and the following January.",
             "FREQ=YEARLY;BYMONTH=1,4,6,9;BYMONTHDAY=15",
             RecurrenceMode.FixedSchedule,
-            [Step(1, "Calcular y enviar el pago estimado", 0, TaskPriority.High, statutory: true, estimated: 1m)]
+            [
+                Step(
+                    1,
+                    "Calculate and submit the estimated payment",
+                    0,
+                    TaskPriority.High,
+                    statutory: true,
+                    estimated: 1m
+                ),
+            ]
         );
 
     private static StandardTaxTemplate Payroll941 =>
         new(
-            "941 — Declaración trimestral de nómina",
-            "El 941 de cada trimestre, con vencimiento el último día del mes siguiente al cierre.",
+            "941 — Quarterly Payroll Return",
+            "The 941 for each quarter, due the last day of the month after the quarter closes.",
             "FREQ=YEARLY;BYMONTH=1,4,7,10;BYMONTHDAY=31",
             RecurrenceMode.FixedSchedule,
-            [Step(1, "Preparar y transmitir el 941", 0, TaskPriority.High, statutory: true, estimated: 2m)]
+            [Step(1, "Prepare and transmit the 941", 0, TaskPriority.High, statutory: true, estimated: 2m)]
         );
 
     private static TaskTemplateStepDraft Step(

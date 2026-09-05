@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using StackExchange.Redis;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
@@ -12,7 +13,9 @@ using TaxVision.PaymentApp.Infrastructure.Observability;
 using TaxVision.PaymentApp.Infrastructure.Persistence;
 using TaxVision.PaymentApp.Infrastructure.Persistence.Repositories;
 using TaxVision.PaymentApp.Infrastructure.Providers;
+using TaxVision.PaymentApp.Infrastructure.Providers.Catalog;
 using TaxVision.PaymentApp.Infrastructure.Providers.Intellipay;
+using TaxVision.PaymentApp.Infrastructure.Providers.PayPal;
 using TaxVision.PaymentApp.Infrastructure.Providers.Stripe;
 using TaxVision.PaymentApp.Infrastructure.RateLimiting;
 using TaxVision.PaymentApp.Infrastructure.Scheduling;
@@ -43,13 +46,28 @@ public static class DependencyInjection
         services.AddScoped<IPaymentAttemptThrottle, PaymentAttemptThrottle>();
         services.AddScoped<IWebhookEventRepository, WebhookEventRepository>();
         services.AddScoped<ITenantProviderCustomerRepository, TenantProviderCustomerRepository>();
+        services.AddScoped<IOnboardingPaymentMethodOverrideRepository, OnboardingPaymentMethodOverrideRepository>();
 
         services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));
         services.Configure<IntellipayOptions>(configuration.GetSection(IntellipayOptions.SectionName));
+        services.Configure<PayPalOptions>(configuration.GetSection(PayPalOptions.SectionName));
+        services.Configure<PaymentMethodCatalogOptions>(
+            configuration.GetSection(PaymentMethodCatalogOptions.SectionName)
+        );
 
         services.AddHttpClient<IntellipayGateway>();
+        services.AddHttpClient<PayPalGateway>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<PayPalOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(opt.HttpTimeoutSeconds);
+            }
+        );
         services.AddPaymentProviders();
+        services.AddScoped<IOnboardingPaymentMethodCatalog, ConfiguredOnboardingPaymentMethodCatalog>();
         services.AddScoped<IProviderWebhookSecrets, ProviderWebhookSecrets>();
+        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
             ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")

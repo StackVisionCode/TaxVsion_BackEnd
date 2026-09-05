@@ -15,12 +15,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Providers.Stripe;
 /// </summary>
 public sealed class StripeConnectGateway : IStripeConnectGateway
 {
-    private readonly StripeClient _client;
+    private readonly IOptions<PlatformStripeCredentials> _options;
     private readonly ILogger<StripeConnectGateway> _logger;
 
     public StripeConnectGateway(IOptions<PlatformStripeCredentials> options, ILogger<StripeConnectGateway> logger)
     {
-        _client = new StripeClient(options.Value.PlatformSecretKey);
+        _options = options;
         _logger = logger;
     }
 
@@ -30,7 +30,11 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
         CancellationToken ct
     )
     {
-        var service = new AccountService(_client);
+        var client = CreateClient();
+        if (client.IsFailure)
+            return Result.Failure<string>(client.Error);
+
+        var service = new AccountService(client.Value);
         try
         {
             var account = await service.CreateAsync(
@@ -65,7 +69,11 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
         CancellationToken ct
     )
     {
-        var service = new AccountLinkService(_client);
+        var client = CreateClient();
+        if (client.IsFailure)
+            return Result.Failure<string>(client.Error);
+
+        var service = new AccountLinkService(client.Value);
         try
         {
             var link = await service.CreateAsync(
@@ -99,7 +107,11 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
         CancellationToken ct
     )
     {
-        var service = new AccountService(_client);
+        var client = CreateClient();
+        if (client.IsFailure)
+            return Result.Failure<ConnectAccountStatusSnapshot>(client.Error);
+
+        var service = new AccountService(client.Value);
         try
         {
             var account = await service.GetAsync(stripeConnectAccountId, cancellationToken: ct);
@@ -132,6 +144,15 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
         CancellationToken ct
     )
     {
+        if (string.IsNullOrWhiteSpace(webhookSecret))
+        {
+            return Task.FromResult(
+                Result.Failure<ConnectWebhookEvent>(
+                    new Error("StripeConnect.WebhookSecret.Missing", "Stripe Connect webhook secret is not configured.")
+                )
+            );
+        }
+
         Event stripeEvent;
         try
         {
@@ -159,6 +180,19 @@ public sealed class StripeConnectGateway : IStripeConnectGateway
         };
 
         return Task.FromResult(result);
+    }
+
+    private Result<StripeClient> CreateClient()
+    {
+        var platformSecretKey = _options.Value.PlatformSecretKey;
+        return string.IsNullOrWhiteSpace(platformSecretKey)
+            ? Result.Failure<StripeClient>(
+                new Error(
+                    "StripeConnect.PlatformSecretKey.Missing",
+                    "Stripe Connect platform secret key is not configured."
+                )
+            )
+            : Result.Success(new StripeClient(platformSecretKey));
     }
 
     private static Result<ConnectWebhookEvent> ParseAccountEvent(Event stripeEvent)

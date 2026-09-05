@@ -4,6 +4,7 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Onboarding.EmailVerification.Commands;
 using Wolverine;
@@ -50,10 +51,18 @@ public sealed class OnboardingChallengesController(IMessageBus bus) : Controller
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-email-challenge")]
     [RateLimitExempt("Anónimo (F22) — conserva el limiter nativo onboarding-email-challenge, sin JWT que particionar.")]
+    [ProducesResponseType<VerifyEmailChallengeResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Verify(Guid challengeId, VerifyChallengeRequest request, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result>(new VerifyEmailChallengeCommand(challengeId, request.Code), ct);
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        var result = await bus.InvokeAsync<Result<VerifyEmailChallengeResponse>>(
+            new VerifyEmailChallengeCommand(challengeId, request.Code),
+            ct
+        );
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        OnboardingSessionHttp.AppendCookie(Response, result.Value.SessionToken, result.Value.ExpiresAtUtc);
+        return Ok(result.Value);
     }
 
     [HttpPost("{challengeId:guid}/resend")]
