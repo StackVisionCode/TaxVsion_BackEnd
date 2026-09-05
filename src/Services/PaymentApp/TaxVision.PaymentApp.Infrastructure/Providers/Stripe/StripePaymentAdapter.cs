@@ -327,6 +327,12 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         }
     }
 
+    public Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
+        string providerChargeReference,
+        Money amount,
+        CancellationToken ct
+    ) => GetChargeStatusAsync(providerChargeReference, ct);
+
     public async Task<Result<CaptureResult>> CaptureAsync(
         string providerChargeReference,
         Money amount,
@@ -413,7 +419,7 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                 new CheckoutSessionCreateOptions
                 {
                     Mode = "payment",
-                    PaymentMethodTypes = ["card"],
+                    PaymentMethodTypes = ToStripeCheckoutPaymentMethodTypes(request.Method),
                     CustomerEmail = request.PayerEmail,
                     LineItems =
                     [
@@ -472,13 +478,29 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         }
     }
 
+    private static List<string> ToStripeCheckoutPaymentMethodTypes(PaymentMethodKind method) =>
+        method switch
+        {
+            PaymentMethodKind.Card or PaymentMethodKind.ApplePay or PaymentMethodKind.GooglePay => ["card"],
+            PaymentMethodKind.AchDebit => ["us_bank_account"],
+            PaymentMethodKind.SepaDebit => ["sepa_debit"],
+            _ => ["card"],
+        };
+
     public Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-        string rawPayload,
-        string signatureHeader,
-        string webhookSecret,
+        ProviderWebhookVerificationRequest request,
         CancellationToken ct
     )
     {
+        if (string.IsNullOrWhiteSpace(request.SigningSecret))
+            return Task.FromResult(
+                Result.Failure<WebhookVerificationResult>(
+                    new Error("Stripe.WebhookSecret.Missing", "Stripe webhook secret is not configured.")
+                )
+            );
+
+        var signatureHeader = request.Headers.TryGetValue("Stripe-Signature", out var value) ? value : string.Empty;
+
         try
         {
             // Bug real encontrado en la verificación E2E de PayFlow: Stripe.net 47.4.0 tiene
@@ -489,13 +511,13 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             // único que realmente garantiza que el payload vino de Stripe) se sigue haciendo
             // igual con este flag en false.
             var stripeEvent = EventUtility.ConstructEvent(
-                rawPayload,
+                request.RawPayload,
                 signatureHeader,
-                webhookSecret,
+                request.SigningSecret,
                 throwOnApiVersionMismatch: false
             );
             return Task.FromResult(
-                Result.Success(new WebhookVerificationResult(stripeEvent.Id, stripeEvent.Type, rawPayload))
+                Result.Success(new WebhookVerificationResult(stripeEvent.Id, stripeEvent.Type, request.RawPayload))
             );
         }
         catch (StripeException ex)

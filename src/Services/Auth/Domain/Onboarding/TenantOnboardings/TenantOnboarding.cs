@@ -58,6 +58,7 @@ public sealed class TenantOnboarding : BaseEntity
     public IReadOnlyCollection<OnboardingCodeReservation> CodeReservations => _codeReservations;
 
     public string? RegistrationTokenHash { get; private set; }
+    public Guid? RegistrationTokenReference { get; private set; }
     public DateTime? RegistrationTokenExpiresAtUtc { get; private set; }
     public DateTime? RegistrationTokenUsedAtUtc { get; private set; }
 
@@ -82,15 +83,16 @@ public sealed class TenantOnboarding : BaseEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? ProvisioningStartedAtUtc { get; private set; }
     public DateTime? RegistrationCompletedAtUtc { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
 
     public TenantProvisioningStep CurrentStep { get; private set; } = TenantProvisioningStep.None;
     public TenantProvisioningStep? FailedStep { get; private set; }
     public string? FailureCode { get; private set; }
     public string? FailureReason { get; private set; }
 
-    /// <summary>PayFlow (Fase 17) — cuenta los reintentos automáticos ya intentados para el fallo
-    /// actual (se resetea a 0 en cada <see cref="ResumeProvisioning"/> exitoso). El poller de retry
-    /// la usa para la cadencia escalonada 5min/15min/1h hasta 24h.</summary>
+    /// <summary>PayFlow (Fase 17) — cuenta los reintentos automáticos programados para el fallo
+    /// actual. No se resetea durante el retry automático; el admin lo reinicia explícitamente con
+    /// <see cref="ResetRetryState"/> cuando hace un fresh start manual.</summary>
     public int RetryAttempt { get; private set; }
 
     /// <summary>PayFlow (Fase 17) — próximo intento de reintento automático programado por
@@ -259,6 +261,22 @@ public sealed class TenantOnboarding : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>Carril pagado SIN código: <see cref="ApplyOnboardingPricing"/> (que congela bruto/neto)
+    /// solo corre cuando se aplica un código, así que en el carril normal el monto realmente cobrado nunca
+    /// vivía en el aggregate — solo en el evento de pago, de un solo uso. Lo persiste UNA vez (bruto = neto =
+    /// cobrado, descuento 0) para que el recibo se pueda REGENERAR (resend admin, reconcile) con el monto
+    /// real y no en cero. No-op si el desglose ya existe (código aplicado) o si no hay monto (carril $0).</summary>
+    public void RecordSettledAmount(long amountPaidCents, string currency)
+    {
+        if (NetAmountCents is not null || amountPaidCents <= 0)
+            return;
+
+        GrossAmountCents = amountPaidCents;
+        TotalDiscountCents = 0;
+        NetAmountCents = amountPaidCents;
+        Currency ??= currency;
+    }
+
     public Result MarkPaymentFailed(string reason)
     {
         if (Status != TenantOnboardingStatus.PaymentProcessing)
@@ -270,12 +288,13 @@ public sealed class TenantOnboarding : BaseEntity
         return Result.Success();
     }
 
-    public Result SetRegistrationToken(RegistrationTokenHash hash, DateTime expiresAtUtc)
+    public Result SetRegistrationToken(RegistrationTokenHash hash, DateTime expiresAtUtc, Guid? tokenReference = null)
     {
         if (Status != TenantOnboardingStatus.PaymentCompleted)
             return Result.Failure(InvalidTransition());
 
         RegistrationTokenHash = hash.Value;
+        RegistrationTokenReference = tokenReference;
         RegistrationTokenExpiresAtUtc = expiresAtUtc;
         Status = TenantOnboardingStatus.RegistrationPending;
         return Result.Success();
@@ -414,20 +433,42 @@ public sealed class TenantOnboarding : BaseEntity
     }
 
     /// <summary>PayFlow (Fase 17) — programa el próximo reintento automático de un fallo transient.
-    /// Solo válido mientras el fallo sigue vivo (ProvisioningFailed); no cambia el Status.</summary>
+    /// Solo válido mientras el fallo sigue vivo (ProvisioningFailed); no cambia el Status ni consume
+    /// intento: el contador avanza cuando el comando de retry se despacha realmente.</summary>
     public Result ScheduleRetry(DateTime nextRetryAtUtc)
     {
         if (Status != TenantOnboardingStatus.ProvisioningFailed)
             return Result.Failure(InvalidTransition());
 
-        RetryAttempt++;
         NextRetryAtUtc = nextRetryAtUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Marks that a due automatic retry command was dispatched while preserving the failure
+    /// context required by the Saga to rebuild the failed step. The timestamp works as a visibility
+    /// timeout: if the command is not consumed, the scheduler may dispatch it again later, consuming
+    /// another bounded automatic attempt instead of retrying forever.</summary>
+    public Result MarkRetryDispatched(DateTime retryVisibleAgainAtUtc)
+    {
+        if (Status != TenantOnboardingStatus.ProvisioningFailed)
+            return Result.Failure(InvalidTransition());
+
+        if (FailedStep is null || string.IsNullOrWhiteSpace(FailureCode))
+        {
+            return Result.Failure(
+                new Error("Onboarding.RetryNotReady", "The onboarding does not have a retryable failure.")
+            );
+        }
+
+        RetryAttempt++;
+        NextRetryAtUtc = retryVisibleAgainAtUtc;
         return Result.Success();
     }
 
     /// <summary>Deja el onboarding "limpio" (borra FailedStep/FailureCode/FailureReason) mientras el
     /// paso reintentado está en vuelo. A propósito NO toca <see cref="RetryAttempt"/>/
-    /// <see cref="NextRetryAtUtc"/>: si el reintento vuelve a fallar,
+    /// <see cref="NextRetryAtUtc"/>: <see cref="MarkRetryDispatched"/> ya consumió el intento y,
+    /// si el reintento vuelve a fallar,
     /// <see cref="MarkProvisioningFailed"/> corre otra vez y <c>OnboardingRetryScheduler</c> necesita
     /// que <see cref="RetryAttempt"/> siga acumulando para la cadencia escalonada (5min/15min/1h) —
     /// resetearlo acá lo dejaría reintentando cada 5 minutos para siempre. Para un resume manual del

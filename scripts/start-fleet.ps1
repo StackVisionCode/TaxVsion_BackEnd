@@ -1,6 +1,7 @@
-# Levanta la flota .NET completa en local. Cada servicio arranca desde su propia carpeta
-# porque `dotnet <dll>` toma el cwd del shell como ContentRootPath.
+# Staggered launcher (mirror of scripts/start-fleet.ps1, with pauses to avoid the SQL thundering herd).
+# Auth first and wait until it listens; then the rest with pauses; Gateway last.
 $root = "C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd"
+$gap  = 3
 $fleet = @(
   @{ n = "Auth";           d = "src\Services\Auth\Api";                                p = 5124 },
   @{ n = "Tenant";         d = "src\Services\Tenant\TaxVision.Tenant.Api";             p = 5217 },
@@ -31,16 +32,13 @@ $fleet = @(
 $logs = Join-Path $root "logs"
 if (-not (Test-Path $logs)) { New-Item -ItemType Directory $logs | Out-Null }
 
-foreach ($s in $fleet) {
+function Start-One($s) {
   $wd = Join-Path $root $s.d
   $binDir = Join-Path $wd "bin\Debug\net10.0"
   $dll = Get-ChildItem -Path $binDir -Filter "TaxVision.*.dll" -ErrorAction SilentlyContinue |
          Where-Object { $_.BaseName -eq "TaxVision.$($s.n).Api" -or $_.BaseName -eq "TaxVision.$($s.n)" } |
          Select-Object -First 1
-  if (-not $dll) { Write-Host "SKIP $($s.n): no se encontro el dll en $binDir"; continue }
-
-  # Sin Development no se cargan appsettings.Development.json ni los user-secrets, y los
-  # servicios mueren al arrancar por falta de RabbitMq:Uri.
+  if (-not $dll) { Write-Host "SKIP $($s.n): no dll in $binDir"; return }
   $env:ASPNETCORE_ENVIRONMENT = "Development"
   $env:ASPNETCORE_URLS = "http://localhost:$($s.p)"
   Start-Process -FilePath "dotnet" -ArgumentList $dll.FullName -WorkingDirectory $wd `
@@ -50,43 +48,48 @@ foreach ($s in $fleet) {
   Write-Host "UP $($s.n) :$($s.p)"
 }
 
-# --- Servicios Node.js -------------------------------------------------------
-# Communication (WebRTC/chat, HTTP :5350) y su TranscriptWorker (background, sin HTTP).
-# Corren con `npm run dev` (tsx watch, sin build) y leen su PROPIO `.env` (dotenv), NO las
-# variables ASPNETCORE de arriba. Requieren node_modules (se instala si falta) y, en el caso
-# de Communication, el cliente de Prisma generado.
+function Wait-Port($port, $timeoutSec) {
+  $deadline = (Get-Date).AddSeconds($timeoutSec)
+  while ((Get-Date) -lt $deadline) {
+    if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { return $true }
+    Start-Sleep -Milliseconds 800
+  }
+  return $false
+}
+
+# 1) Auth alone first: let it apply/validate migrations and warm SQL with no competition.
+Start-One $fleet[0]
+if (Wait-Port 5124 45) { Write-Host "Auth listening :5124"; Start-Sleep -Seconds 5 }
+else { Write-Host "Auth did not listen in 45s (check logs\Auth.err.log) - continuing anyway" }
+
+# 2) The rest, staggered.
+foreach ($s in $fleet[1..($fleet.Count-1)]) {
+  Start-One $s
+  Start-Sleep -Seconds $gap
+}
+
+# 3) Node (Communication + worker), same as start-fleet.ps1.
 $nodeFleet = @(
-  @{ n = "Communication";                 d = "src\Services\Communication";                 p = 5350 },
+  @{ n = "Communication";                  d = "src\Services\Communication";                  p = 5350 },
   @{ n = "CommunicationTranscriptWorker";  d = "src\Services\CommunicationTranscriptWorker";  p = $null }
 )
-
-# npm.cmd (no el 'npm' sin extensión): Start-Process solo lanza ejecutables Win32, y el shim
-# extensionless revienta con "%1 is not a valid Win32 application".
 $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
-if (-not $npm) {
-  Write-Host "SKIP Node services: npm.cmd no está en el PATH."
-} else {
+if (-not $npm) { Write-Host "SKIP Node: npm.cmd not in PATH." }
+else {
   foreach ($s in $nodeFleet) {
     $wd = Join-Path $root $s.d
-    if (-not (Test-Path (Join-Path $wd "package.json"))) { Write-Host "SKIP $($s.n): no package.json en $wd"; continue }
-
-    # node_modules bajo demanda (primera vez): npm ci si hay lockfile, si no npm install.
+    if (-not (Test-Path (Join-Path $wd "package.json"))) { Write-Host "SKIP $($s.n): no package.json"; continue }
     if (-not (Test-Path (Join-Path $wd "node_modules"))) {
-      Write-Host "… $($s.n): instalando dependencias (npm)…"
       $installArgs = if (Test-Path (Join-Path $wd "package-lock.json")) { "ci" } else { "install" }
       & $npm.Source $installArgs --prefix $wd | Out-Null
     }
-    # Cliente de Prisma (solo Communication lo usa). Idempotente y barato.
-    if (Test-Path (Join-Path $wd "prisma\schema.prisma")) {
-      & $npm.Source "run" "prisma:generate" --prefix $wd 2>$null | Out-Null
-    }
-
-    # `npm.cmd run dev` desde su carpeta. Redirigir stdout/stderr de un .cmd es más fiable via
-    # el propio npm.cmd que via "npm" a secas.
+    if (Test-Path (Join-Path $wd "prisma\schema.prisma")) { & $npm.Source "run" "prisma:generate" --prefix $wd 2>$null | Out-Null }
     Start-Process -FilePath $npm.Source -ArgumentList "run", "dev" -WorkingDirectory $wd `
       -RedirectStandardOutput (Join-Path $logs "$($s.n).log") `
       -RedirectStandardError (Join-Path $logs "$($s.n).err.log") `
       -WindowStyle Hidden
-    Write-Host "UP $($s.n)$(if ($s.p) { " :$($s.p)" } else { " (worker)" })"
+    Write-Host "UP $($s.n)"
+    Start-Sleep -Seconds $gap
   }
 }
+Write-Host "=== staggered start launched ==="

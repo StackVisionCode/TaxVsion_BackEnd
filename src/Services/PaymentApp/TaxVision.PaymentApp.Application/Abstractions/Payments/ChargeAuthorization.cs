@@ -34,6 +34,13 @@ public sealed record CaptureResult(string ProviderChargeReference, PaymentStatus
 
 public sealed record RefundResult(string ProviderRefundReference, PaymentStatus Status, Money RefundedAmount);
 
+public sealed record ProviderWebhookVerificationRequest(
+    string RawPayload,
+    IReadOnlyDictionary<string, string> Headers,
+    string? SigningSecret,
+    string? WebhookId
+);
+
 public sealed record WebhookVerificationResult(string ProviderEventId, string EventType, string RawPayload);
 
 /// <summary>Datos canónicos extraídos de un webhook ya verificado — el aggregate afectado
@@ -71,6 +78,7 @@ public sealed record SavedPaymentMethodInfo(
 /// </summary>
 public sealed record HostedCheckoutSessionRequest(
     Money Amount,
+    PaymentMethodKind Method,
     IdempotencyKey IdempotencyKey,
     StatementDescriptor Descriptor,
     string PayerEmail,

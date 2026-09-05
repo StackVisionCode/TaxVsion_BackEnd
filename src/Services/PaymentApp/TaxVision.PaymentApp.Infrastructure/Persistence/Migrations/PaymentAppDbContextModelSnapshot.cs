@@ -80,6 +80,44 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.ToTable("PaymentAuditEntries", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.PaymentApp.Domain.PaymentMethods.OnboardingPaymentMethodOverride", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DisabledReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderCode", "Method")
+                        .IsUnique()
+                        .HasDatabaseName("UX_OnboardingPaymentMethodOverrides_Provider_Method");
+
+                    b.ToTable("OnboardingPaymentMethodOverrides", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")

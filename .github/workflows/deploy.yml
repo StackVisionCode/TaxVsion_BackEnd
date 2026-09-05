@@ -289,6 +289,14 @@ jobs:
           # ---------- PaymentApp (Fases A-K) ----------
           STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_ONBOARDING_ENABLED=${{ secrets.STRIPE_ONBOARDING_ENABLED }}
+          STRIPE_ONBOARDING_DISABLED_REASON=${{ secrets.STRIPE_ONBOARDING_DISABLED_REASON }}
+          PAYPAL_BASE_URL=${{ secrets.PAYPAL_BASE_URL }}
+          PAYPAL_CLIENT_ID=${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET=${{ secrets.PAYPAL_CLIENT_SECRET }}
+          PAYPAL_WEBHOOK_ID=${{ secrets.PAYPAL_WEBHOOK_ID }}
+          PAYPAL_ONBOARDING_ENABLED=${{ secrets.PAYPAL_ONBOARDING_ENABLED }}
+          PAYPAL_ONBOARDING_DISABLED_REASON=${{ secrets.PAYPAL_ONBOARDING_DISABLED_REASON }}
           INTELLIPAY_MERCHANT_KEY=${{ secrets.INTELLIPAY_MERCHANT_KEY }}
           INTELLIPAY_API_KEY=${{ secrets.INTELLIPAY_API_KEY }}
 
@@ -363,6 +371,17 @@ jobs:
           TAXVISION_SECRETS_DIR=${{ env.TAXVISION_SECRETS_DIR }}
           EOF
           chmod 600 .env
+
+      - name: Validate payment provider configuration
+        run: |
+          if command -v pwsh >/dev/null 2>&1; then
+            pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-payment-provider-config.ps1 -Strict
+          elif command -v powershell >/dev/null 2>&1; then
+            powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-payment-provider-config.ps1 -Strict
+          else
+            echo "::error::PowerShell is required to run scripts/verify-payment-provider-config.ps1."
+            exit 1
+          fi
 
       # ---------------------------------------------------------------------
       # Certificados/claves — NUNCA viven en el checkout de git. Se decodifican

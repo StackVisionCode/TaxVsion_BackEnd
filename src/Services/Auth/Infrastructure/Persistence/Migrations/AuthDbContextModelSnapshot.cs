@@ -748,6 +748,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<Guid?>("RegistrationTokenReference")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("RegistrationTokenUsedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -757,6 +760,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("RetryAttempt")
                         .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Status")
                         .IsRequired()

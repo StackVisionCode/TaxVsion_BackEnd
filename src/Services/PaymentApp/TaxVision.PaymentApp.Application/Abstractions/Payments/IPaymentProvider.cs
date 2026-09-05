@@ -41,9 +41,7 @@ public interface IPaymentProvider
     );
 
     Task<Result<WebhookVerificationResult>> VerifyWebhookSignatureAsync(
-        string rawPayload,
-        string signatureHeader,
-        string webhookSecret,
+        ProviderWebhookVerificationRequest request,
         CancellationToken ct
     );
 
@@ -57,6 +55,15 @@ public interface IPaymentProvider
     /// <c>PendingChargeReconciliationJob</c> para resolver pagos atascados en Processing
     /// tras una caída a mitad de cobro (§1714 del diseño).</summary>
     Task<Result<ChargeAuthorizationResult>> GetChargeStatusAsync(string providerChargeReference, CancellationToken ct);
+
+    /// <summary>Finaliza un checkout hosteado luego del redirect del provider. Para providers
+    /// donde el checkout ya captura automaticamente, equivale a leer estado. Para PayPal, este
+    /// metodo captura explicitamente el order aprobado de forma idempotente.</summary>
+    Task<Result<ChargeAuthorizationResult>> FinalizeHostedCheckoutAsync(
+        string providerChargeReference,
+        Money amount,
+        CancellationToken ct
+    );
 
     /// <summary>Adjunta un método ya tokenizado por el provider en el cliente (p.ej. Stripe
     /// Elements) al customer, y devuelve la metadata autoritativa (brand/last4/expiración)

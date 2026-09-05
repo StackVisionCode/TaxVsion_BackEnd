@@ -8,9 +8,11 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Application.Admin.Commands;
 using TaxVision.PaymentApp.Application.Admin.Queries;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
+using TaxVision.PaymentApp.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.PaymentApp.Api.Controllers;
@@ -27,6 +29,50 @@ namespace TaxVision.PaymentApp.Api.Controllers;
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class PaymentAppAdminController(IMessageBus bus) : ControllerBase
 {
+    public sealed record SetOnboardingPaymentMethodAvailabilityRequest(bool Enabled, string? DisabledReason = null);
+
+    [HttpGet("onboarding/payment-methods")]
+    [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.f.admin_read")]
+    [ProducesResponseType<IReadOnlyList<OnboardingPaymentMethodAdminResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetOnboardingPaymentMethods(CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<OnboardingPaymentMethodAdminResponse>>>(
+            new GetOnboardingPaymentMethodsAdminQuery(),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpPut("onboarding/payment-methods/{provider}/{method}/availability")]
+    [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
+    [RateLimit("payment_app.g.admin_manage")]
+    [ProducesResponseType<OnboardingPaymentMethodAdminResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SetOnboardingPaymentMethodAvailability(
+        PaymentProviderCode provider,
+        PaymentMethodKind method,
+        SetOnboardingPaymentMethodAvailabilityRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<OnboardingPaymentMethodAdminResponse>>(
+            new SetOnboardingPaymentMethodAvailabilityCommand(
+                provider,
+                method,
+                request.Enabled,
+                request.DisabledReason,
+                userId
+            ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpGet("payments")]
     [HasPermission(PaymentAppPermissions.AdminCrossTenant)]
     [RateLimit("payment_app.f.admin_read")]

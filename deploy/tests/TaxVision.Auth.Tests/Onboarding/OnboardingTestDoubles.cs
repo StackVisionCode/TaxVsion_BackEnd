@@ -1,7 +1,9 @@
+using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Application.Onboarding.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Onboarding.EmailVerification;
 using TaxVision.Auth.Domain.Onboarding.TenantOnboardings;
@@ -98,10 +100,65 @@ internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingReposito
     }
 }
 
+internal sealed class FakeOnboardingSessionStore : IOnboardingSessionStore
+{
+    public Dictionary<string, OnboardingSession> Sessions { get; } = [];
+    public List<string> RemovedHashes { get; } = [];
+
+    public Task SetAsync(
+        string sessionTokenHash,
+        OnboardingSession session,
+        TimeSpan ttl,
+        CancellationToken ct = default
+    )
+    {
+        Sessions[sessionTokenHash] = session;
+        return Task.CompletedTask;
+    }
+
+    public Task<OnboardingSession?> GetAsync(string sessionTokenHash, CancellationToken ct = default) =>
+        Task.FromResult(Sessions.TryGetValue(sessionTokenHash, out var session) ? session : null);
+
+    public Task RemoveAsync(string sessionTokenHash, CancellationToken ct = default)
+    {
+        RemovedHashes.Add(sessionTokenHash);
+        Sessions.Remove(sessionTokenHash);
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class FakePaymentAppOnboardingClient(Result<PaymentAppCheckoutResult> result)
     : IPaymentAppOnboardingClient
 {
     public PaymentAppCheckoutRequest? LastRequest { get; private set; }
+    public PaymentAppPaymentOptionsRequest? LastOptionsRequest { get; private set; }
+    public PaymentAppReconcileRequest? LastReconcileRequest { get; private set; }
+    public Result<PaymentAppPaymentOptionsResult> OptionsResult { get; set; } =
+        Result.Success(
+            new PaymentAppPaymentOptionsResult([
+                new PaymentAppPaymentOption(
+                    "Stripe",
+                    "Card",
+                    "Card",
+                    Enabled: true,
+                    Priority: 10,
+                    DisabledReason: null
+                ),
+            ])
+        );
+    public Result<PaymentAppReconcileResult> ReconcileResult { get; set; } =
+        Result.Success(
+            new PaymentAppReconcileResult(
+                Guid.NewGuid(),
+                OnboardingPaymentStatus.Processing,
+                4900,
+                "USD",
+                FailureCode: null,
+                FailureMessage: null,
+                ProviderPaymentReference: null,
+                PaidAtUtc: null
+            )
+        );
 
     public Task<Result<PaymentAppCheckoutResult>> CreateCheckoutAsync(
         PaymentAppCheckoutRequest request,
@@ -110,6 +167,24 @@ internal sealed class FakePaymentAppOnboardingClient(Result<PaymentAppCheckoutRe
     {
         LastRequest = request;
         return Task.FromResult(result);
+    }
+
+    public Task<Result<PaymentAppPaymentOptionsResult>> GetPaymentOptionsAsync(
+        PaymentAppPaymentOptionsRequest request,
+        CancellationToken ct = default
+    )
+    {
+        LastOptionsRequest = request;
+        return Task.FromResult(OptionsResult);
+    }
+
+    public Task<Result<PaymentAppReconcileResult>> ReconcileCheckoutAsync(
+        PaymentAppReconcileRequest request,
+        CancellationToken ct = default
+    )
+    {
+        LastReconcileRequest = request;
+        return Task.FromResult(ReconcileResult);
     }
 }
 
@@ -175,20 +250,29 @@ internal sealed class FakeTokenReferenceStore : ITokenReferenceStore
 {
     public string? Stored { get; private set; }
     public Guid Reference { get; } = Guid.NewGuid();
+    public Guid? StoredReference { get; private set; }
     public string? ToConsume { get; set; }
     public string? ToPeek { get; set; }
 
     public Task<Guid> StoreAsync(string rawToken, CancellationToken ct = default)
     {
         Stored = rawToken;
+        StoredReference = Reference;
         return Task.FromResult(Reference);
     }
 
+    public Task StoreAsync(Guid reference, string rawToken, CancellationToken ct = default)
+    {
+        Stored = rawToken;
+        StoredReference = reference;
+        return Task.CompletedTask;
+    }
+
     public Task<string?> ConsumeAsync(Guid reference, CancellationToken ct = default) =>
-        Task.FromResult(reference == Reference ? ToConsume : null);
+        Task.FromResult(reference == Reference || reference == StoredReference ? ToConsume : null);
 
     public Task<string?> PeekAsync(Guid reference, CancellationToken ct = default) =>
-        Task.FromResult(reference == Reference ? ToPeek : null);
+        Task.FromResult(reference == Reference || reference == StoredReference ? ToPeek : null);
 }
 
 internal static class OnboardingTestFactory

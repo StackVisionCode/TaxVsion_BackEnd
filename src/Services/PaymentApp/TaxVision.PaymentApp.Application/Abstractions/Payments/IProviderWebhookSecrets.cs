@@ -10,4 +10,6 @@ namespace TaxVision.PaymentApp.Application.Abstractions.Payments;
 public interface IProviderWebhookSecrets
 {
     string? GetWebhookSecret(PaymentProviderCode code);
+
+    string? GetWebhookId(PaymentProviderCode code);
 }

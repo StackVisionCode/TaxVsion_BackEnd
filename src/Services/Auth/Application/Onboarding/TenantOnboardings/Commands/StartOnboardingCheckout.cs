@@ -17,6 +17,8 @@ public sealed record StartOnboardingCheckoutCommand(
     string PayerEmail,
     string SuccessUrl,
     string CancelUrl,
+    string Provider = "Stripe",
+    string Method = "Card",
     string? ReferralCode = null,
     string? PromoCode = null,
     string? GiftCode = null
@@ -58,6 +60,13 @@ public static class StartOnboardingCheckoutHandler
             );
 
         // 1) Reserva secuencial apilada de códigos (idempotente: si ya se aplicó, se salta).
+        if (!string.Equals(onboarding.Email, command.PayerEmail.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            return Result.Failure<StartOnboardingCheckoutResponse>(
+                new Error("Onboarding.PayerEmailMismatch", "The payer email does not match this onboarding.")
+            );
+        }
+
         var codes = BuildCodeInputs(command);
         if (codes.Count > 0 && onboarding.CodeReservations.Count == 0)
         {
@@ -102,6 +111,8 @@ public static class StartOnboardingCheckoutHandler
                 command.SuccessUrl,
                 command.CancelUrl,
                 idempotencyKey,
+                Provider: command.Provider,
+                Method: command.Method,
                 BillingCycle: onboarding.BillingCycle,
                 NetAmountCents: onboarding.NetAmountCents,
                 DiscountAmountCents: onboarding.TotalDiscountCents,

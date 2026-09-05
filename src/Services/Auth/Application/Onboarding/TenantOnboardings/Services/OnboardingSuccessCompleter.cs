@@ -30,7 +30,7 @@ public sealed class OnboardingSuccessCompleter(
     ILogger<OnboardingSuccessCompleter> logger
 )
 {
-    public async Task<Result> CompleteAsync(
+    public async Task<Result<OnboardingSuccessCompletionResult>> CompleteAsync(
         TenantOnboarding onboarding,
         long amountPaidCents,
         string currency,
@@ -52,10 +52,11 @@ public sealed class OnboardingSuccessCompleter(
                 onboarding.Id,
                 hashResult.Error.Code
             );
-            return Result.Failure(hashResult.Error);
+            return Result.Failure<OnboardingSuccessCompletionResult>(hashResult.Error);
         }
 
-        var setToken = onboarding.SetRegistrationToken(hashResult.Value, DateTime.UtcNow.AddHours(72));
+        var tokenReference = Guid.NewGuid();
+        var setToken = onboarding.SetRegistrationToken(hashResult.Value, DateTime.UtcNow.AddHours(72), tokenReference);
         if (setToken.IsFailure)
         {
             logger.LogWarning(
@@ -63,10 +64,11 @@ public sealed class OnboardingSuccessCompleter(
                 onboarding.Id,
                 setToken.Error.Code
             );
-            return Result.Failure(setToken.Error);
+            return Result.Failure<OnboardingSuccessCompletionResult>(setToken.Error);
         }
 
-        var tokenReference = await tokenReferences.StoreAsync(rawToken, ct);
+        await tokenReferences.StoreAsync(tokenReference, rawToken, ct);
+        var registrationUrl = BuildRegistrationUrl(onboardingOptions.Value.RegistrationUrlBase, rawToken);
 
         bus.TenantId = PlatformTenant.Id.ToString();
         await bus.PublishAsync(
@@ -84,6 +86,11 @@ public sealed class OnboardingSuccessCompleter(
                 CorrelationId = correlationId,
             }
         );
+
+        // Carril pagado sin código: persiste lo efectivamente cobrado en el aggregate ANTES de leer el
+        // desglose, para que una regeneración posterior del recibo (resend admin, reconcile-PaymentCompleted)
+        // lea el monto real y no null → 0. No-op si ya hay desglose (código) o si es el carril $0.
+        onboarding.RecordSettledAmount(amountPaidCents, currency);
 
         // FINALIZE (Billing invoice + Growth commit/qualify) como comando local AUTO-CONTENIDO: lleva el
         // desglose y las reservas tomados del onboarding EN MEMORIA (fresco), para no depender de recargar
@@ -152,9 +159,25 @@ public sealed class OnboardingSuccessCompleter(
             paymentId,
             tokenReference
         );
-        return Result.Success();
+        return Result.Success(new OnboardingSuccessCompletionResult(tokenReference, registrationUrl));
+    }
+
+    public async Task<string?> TryBuildRegistrationUrlAsync(TenantOnboarding onboarding, CancellationToken ct)
+    {
+        if (onboarding.RegistrationTokenReference is not { } tokenReference)
+            return null;
+
+        var rawToken = await tokenReferences.PeekAsync(tokenReference, ct);
+        return string.IsNullOrWhiteSpace(rawToken)
+            ? null
+            : BuildRegistrationUrl(onboardingOptions.Value.RegistrationUrlBase, rawToken);
     }
 
     private static string FormatPrice(long amountCents, string currency) =>
         $"{(amountCents / 100m).ToString("F2", CultureInfo.InvariantCulture)} {currency}";
+
+    private static string BuildRegistrationUrl(string registrationUrlBase, string rawToken) =>
+        $"{registrationUrlBase.TrimEnd('/')}/register?token={Uri.EscapeDataString(rawToken)}";
 }
+
+public sealed record OnboardingSuccessCompletionResult(Guid TokenReference, string RegistrationUrl);

@@ -1,21 +1,31 @@
+using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Results;
 
 namespace TaxVision.Auth.Application.Onboarding.Abstractions;
 
-/// <summary>PayFlow (Fase 9) — Auth calling PaymentApp's M2M checkout endpoint (Fase 8). The
-/// implementation mints its own service token in-process (Auth hosts the token generator
-/// itself) instead of round-tripping through <c>POST auth/service-token</c> like every other
-/// service does — see <c>PaymentAppOnboardingClient</c> for why.</summary>
+/// <summary>
+/// Auth-to-PaymentApp client for pay-first onboarding. Auth transports the buyer's selected
+/// provider/method, while PaymentApp remains the owner of catalog, validation, checkout, webhook
+/// and reconciliation.
+/// </summary>
 public interface IPaymentAppOnboardingClient
 {
     Task<Result<PaymentAppCheckoutResult>> CreateCheckoutAsync(
         PaymentAppCheckoutRequest request,
         CancellationToken ct = default
     );
+
+    Task<Result<PaymentAppPaymentOptionsResult>> GetPaymentOptionsAsync(
+        PaymentAppPaymentOptionsRequest request,
+        CancellationToken ct = default
+    );
+
+    Task<Result<PaymentAppReconcileResult>> ReconcileCheckoutAsync(
+        PaymentAppReconcileRequest request,
+        CancellationToken ct = default
+    );
 }
 
-/// <summary>PayFlow (Fase 16) — deliberadamente sin precio/moneda: PaymentApp los resuelve
-/// server-side vía M2M a Subscription antes de crear el Stripe Checkout Session.</summary>
 public sealed record PaymentAppCheckoutRequest(
     Guid OnboardingId,
     Guid PlanId,
@@ -23,10 +33,9 @@ public sealed record PaymentAppCheckoutRequest(
     string SuccessUrl,
     string CancelUrl,
     string IdempotencyKey,
-    // Ciclo elegido ("Monthly"/"Yearly") — PaymentApp resuelve el bruto de ESE ciclo en Subscription.
+    string Provider = "Stripe",
+    string Method = "Card",
     string BillingCycle = "Monthly",
-    // Gift/Referral: si un código aplicó descuento (parcial), el NETO a cobrar (override del bruto) +
-    // el resumen de la reserva para trazabilidad. Null = sin código → PaymentApp resuelve el bruto.
     long? NetAmountCents = null,
     long? DiscountAmountCents = null,
     string? Currency = null,
@@ -39,4 +48,30 @@ public sealed record PaymentAppCheckoutResult(
     string CheckoutUrl,
     string ProviderSessionId,
     DateTime ExpiresAtUtc
+);
+
+public sealed record PaymentAppPaymentOptionsRequest(Guid PlanId, string BillingCycle, string? Currency = null);
+
+public sealed record PaymentAppPaymentOptionsResult(IReadOnlyList<PaymentAppPaymentOption> Options);
+
+public sealed record PaymentAppPaymentOption(
+    string Provider,
+    string Method,
+    string DisplayName,
+    bool Enabled,
+    int Priority,
+    string? DisabledReason
+);
+
+public sealed record PaymentAppReconcileRequest(Guid PaymentId);
+
+public sealed record PaymentAppReconcileResult(
+    Guid PaymentId,
+    OnboardingPaymentStatus Status,
+    long AmountPaidCents,
+    string Currency,
+    string? FailureCode,
+    string? FailureMessage,
+    string? ProviderPaymentReference,
+    DateTime? PaidAtUtc
 );

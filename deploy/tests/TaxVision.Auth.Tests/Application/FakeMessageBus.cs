@@ -11,6 +11,8 @@ namespace TaxVision.Auth.Tests.Application;
 internal sealed class FakeMessageBus : IMessageBus
 {
     public List<object> Published { get; } = [];
+    public List<object> Invoked { get; } = [];
+    public Func<object, object?>? InvokeHandler { get; set; }
 
     public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
     {
@@ -53,8 +55,15 @@ internal sealed class FakeMessageBus : IMessageBus
         set { }
     }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        Invoked.Add(message);
+        if (InvokeHandler is null)
+            throw new NotImplementedException();
+
+        InvokeHandler(message);
+        return Task.CompletedTask;
+    }
 
     public Task InvokeAsync(
         object message,
@@ -63,8 +72,14 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        Invoked.Add(message);
+        if (InvokeHandler is null)
+            throw new NotImplementedException();
+
+        return Task.FromResult((T)InvokeHandler(message)!);
+    }
 
     public Task<T> InvokeAsync<T>(
         object message,

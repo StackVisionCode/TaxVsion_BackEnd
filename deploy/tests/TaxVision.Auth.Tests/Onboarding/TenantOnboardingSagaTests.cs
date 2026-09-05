@@ -229,6 +229,84 @@ public sealed class TenantOnboardingSagaTests
     }
 
     [Fact]
+    public async Task Handle_Resume_rebuilds_tenant_command_and_clears_failure_context()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = NewProvisioningOnboarding(now);
+        var evt = StartedEvent(onboarding);
+        var (saga, _) = TenantOnboardingProcessManager.Start(evt);
+        Assert.True(
+            onboarding
+                .MarkProvisioningFailed(
+                    TenantProvisioningStep.Tenant,
+                    "TenantProvisioningClient.RequestFailed",
+                    "Could not reach Tenant."
+                )
+                .IsSuccess
+        );
+
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await saga.Handle(
+            new ResumeOnboardingProvisioningCommand(onboarding.Id),
+            onboardings,
+            unitOfWork,
+            CancellationToken.None
+        );
+
+        var command = Assert.IsType<CreateTenantForOnboardingCommand>(result);
+        Assert.Equal(onboarding.Id, command.OnboardingId);
+        Assert.Equal(onboarding.OfficeName, command.OfficeName);
+        Assert.Equal(onboarding.RequestedSubdomain, command.Subdomain);
+        Assert.Equal(TenantOnboardingStatus.Provisioning, onboarding.Status);
+        Assert.Null(onboarding.FailedStep);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Handle_Resume_rebuilds_subscription_command_from_saga_and_aggregate_state()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = NewProvisioningOnboarding(now);
+        var evt = StartedEvent(onboarding);
+        var (saga, _) = TenantOnboardingProcessManager.Start(evt);
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        Assert.True(onboarding.SetTenantCreated(tenantId).IsSuccess);
+        Assert.True(onboarding.SetTenantAdminCreated(userId).IsSuccess);
+        Assert.True(
+            onboarding
+                .MarkProvisioningFailed(
+                    TenantProvisioningStep.Subscription,
+                    "SubscriptionActivationClient.RequestFailed",
+                    "Could not reach Subscription."
+                )
+                .IsSuccess
+        );
+        saga.TenantId = tenantId;
+
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var unitOfWork = new FakeUnitOfWork();
+
+        var result = await saga.Handle(
+            new ResumeOnboardingProvisioningCommand(onboarding.Id),
+            onboardings,
+            unitOfWork,
+            CancellationToken.None
+        );
+
+        var command = Assert.IsType<ActivateSubscriptionCommand>(result);
+        Assert.Equal(onboarding.Id, command.OnboardingId);
+        Assert.Equal(tenantId, command.TenantId);
+        Assert.Equal(onboarding.PlanId, command.PlanId);
+        Assert.Equal(onboarding.BillingCycle, command.BillingCycle);
+        Assert.Equal(TenantOnboardingStatus.Provisioning, onboarding.Status);
+        Assert.Null(onboarding.FailedStep);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
     public void Handle_TenantOnboardingCompleted_marks_the_saga_completed()
     {
         var now = DateTime.UtcNow;

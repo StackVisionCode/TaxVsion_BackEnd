@@ -1,10 +1,13 @@
+using TaxVision.PaymentApp.Application.Abstractions.Payments;
+using TaxVision.PaymentApp.Domain.ValueObjects;
+
 namespace TaxVision.PaymentApp.Application.OnboardingCheckouts.Commands;
 
-/// <summary>PayFlow (Fase 8/16) — <paramref name="PayerEmail"/> viene del email ya verificado
-/// (OTP, Auth Fase 5) del onboarding: se pasa a Stripe para prellenar/bloquear el campo en la
-/// página de checkout hosteada, en vez de pedírselo de nuevo al pagador. Deliberadamente NO recibe
-/// precio/moneda — <see cref="CreateOnboardingCheckoutHandler"/> los resuelve server-side vía M2M a
-/// Subscription (Fase 16), cerrando el price-trust gap que existía hasta esa fase.</summary>
+/// <summary>
+/// PayFlow onboarding checkout. The payer email comes from the OTP-verified onboarding email;
+/// provider/method are selected from PaymentApp's catalog; price/currency are still resolved
+/// server-side through Subscription.
+/// </summary>
 public sealed record CreateOnboardingCheckoutCommand(
     Guid OnboardingId,
     Guid PlanId,
@@ -12,11 +15,9 @@ public sealed record CreateOnboardingCheckoutCommand(
     string SuccessUrl,
     string CancelUrl,
     string IdempotencyKey,
-    // Ciclo elegido ("Monthly"/"Yearly") — resuelve el bruto de ESE ciclo en Subscription.
+    PaymentProviderCode Provider = PaymentProviderCode.Stripe,
+    PaymentMethodKind Method = PaymentMethodKind.Card,
     string BillingCycle = "Monthly",
-    // Gift/Referral: si un código aplicó descuento parcial, el NETO a cobrar (override del bruto) + el
-    // resumen de la reserva. Null = sin código → se cobra el bruto resuelto server-side. El neto se valida
-    // contra el bruto (nunca mayor). El carril $0 nunca llega acá (Auth no invoca checkout si net = 0).
     long? NetAmountCents = null,
     long? DiscountAmountCents = null,
     string? Currency = null,

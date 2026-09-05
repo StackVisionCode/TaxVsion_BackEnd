@@ -18,6 +18,8 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Invitations.Commands;
 using TaxVision.Auth.Application.Onboarding;
 using TaxVision.Auth.Application.Onboarding.Abstractions;
+using TaxVision.Auth.Application.Onboarding.Sagas.Services;
+using TaxVision.Auth.Application.Onboarding.Sessions;
 using TaxVision.Auth.Application.RateLimiting.Abstractions;
 using TaxVision.Auth.Application.ServiceTokens;
 using TaxVision.Auth.Application.TenantDomains;
@@ -27,6 +29,7 @@ using TaxVision.Auth.Infrastructure.Onboarding.HttpClients;
 using TaxVision.Auth.Infrastructure.Onboarding.Observability;
 using TaxVision.Auth.Infrastructure.Onboarding.Persistence.Repositories;
 using TaxVision.Auth.Infrastructure.Onboarding.Security;
+using TaxVision.Auth.Infrastructure.Onboarding.Sessions;
 using TaxVision.Auth.Infrastructure.Onboarding.Storage;
 using TaxVision.Auth.Infrastructure.Persistence;
 using TaxVision.Auth.Infrastructure.Persistence.Repositories;
@@ -91,6 +94,8 @@ public static class DependencyInjection
         services.AddScoped<ITermsVersionRepository, TermsVersionRepository>();
         services.AddScoped<ITenantOnboardingRepository, TenantOnboardingRepository>();
         services.AddScoped<IOnboardingSubdomainReservationRepository, OnboardingSubdomainReservationRepository>();
+        services.AddScoped<IOnboardingSessionStore, RedisOnboardingSessionStore>();
+        services.AddScoped<OnboardingSessionService>();
         services.AddOptions<TenantClientOptions>().Bind(configuration.GetSection(TenantClientOptions.SectionName));
         services.AddHttpClient<ICloudflareProvisioningClient, CloudflareProvisioningClient>(
             (provider, client) =>
@@ -201,6 +206,7 @@ public static class DependencyInjection
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingFinalizer>();
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingSuccessCompleter>();
         services.AddScoped<TaxVision.Auth.Application.Onboarding.TenantOnboardings.Services.OnboardingReservationCanceller>();
+        services.AddScoped<OnboardingRetryProcessor>();
 
         // Gift/Referral en onboarding — cliente M2M Auth→Growth (codes + referrals).
         services.AddOptions<GrowthClientOptions>().Bind(configuration.GetSection(GrowthClientOptions.SectionName));

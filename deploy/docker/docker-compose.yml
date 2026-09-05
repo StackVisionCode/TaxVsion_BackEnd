@@ -351,11 +351,12 @@ services:
       Onboarding__AuthPublicBaseUrl: http://auth-api:8080
       # Base PÚBLICO (vía Gateway) del link de descarga del recibo del email — /onboarding/receipts/{id}/
       # download. Distinto del loopback interno de arriba: este lo abre el navegador del usuario.
-      Onboarding__ReceiptDownloadBaseUrl: https://api.taxproffice.com
+      Onboarding__ReceiptDownloadBaseUrl: https://${TAXVISION_DOMAIN:-api.taxproffice.com}
       # Frontend público que sirve /register (completar cuenta post-pago). El registro vive en el
-      # landing (taxproffice.com), no en el CRM. Sin esto cae al default de dev (localhost:5173) y el
+      # landing (taxproffice.com), no en el CRM. Sin esto cae al default de dev (localhost:4200) y el
       # correo "Completa tu cuenta" salía con un link a localhost.
-      Onboarding__RegistrationUrlBase: https://taxproffice.com
+      Onboarding__RegistrationUrlBase: https://${TAXVISION_BASE_DOMAIN:-taxproffice.com}
+      Onboarding__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # Cliente de servicio (M2M) para el worker de Notification: emite tokens con permisos de
       # CloudStorage y (Fase 10.5 hardening) scribe.render — ScribeRenderClient reusa este mismo
       # token M2M para llamar POST /scribe/render, gateado por [HasPermission(ScribePermissions.
@@ -1470,10 +1471,26 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
-      # Producción: solo estas dos claves — el resto del adapter Intellipay usa
-      # defaults hardcoded (ver IntellipayOptions.cs).
+      # Produccion: credenciales de proveedor + catalogo de metodos. Stripe queda ON por defecto;
+      # PayPal queda OFF hasta configurar credenciales, webhook id y kill switch.
       Stripe__SecretKey: ${STRIPE_SECRET_KEY:?Set STRIPE_SECRET_KEY in .env}
       Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET:?Set STRIPE_WEBHOOK_SECRET in .env}
+      PayPal__BaseUrl: ${PAYPAL_BASE_URL:-https://api-m.sandbox.paypal.com}
+      PayPal__ClientId: ${PAYPAL_CLIENT_ID:-}
+      PayPal__ClientSecret: ${PAYPAL_CLIENT_SECRET:-}
+      PayPal__WebhookId: ${PAYPAL_WEBHOOK_ID:-}
+      PaymentMethods__Onboarding__0__Provider: Stripe
+      PaymentMethods__Onboarding__0__Method: Card
+      PaymentMethods__Onboarding__0__DisplayName: Card
+      PaymentMethods__Onboarding__0__Enabled: ${STRIPE_ONBOARDING_ENABLED:-true}
+      PaymentMethods__Onboarding__0__Priority: 10
+      PaymentMethods__Onboarding__0__DisabledReason: ${STRIPE_ONBOARDING_DISABLED_REASON:-}
+      PaymentMethods__Onboarding__1__Provider: PayPal
+      PaymentMethods__Onboarding__1__Method: Wallet
+      PaymentMethods__Onboarding__1__DisplayName: PayPal
+      PaymentMethods__Onboarding__1__Enabled: ${PAYPAL_ONBOARDING_ENABLED:-false}
+      PaymentMethods__Onboarding__1__Priority: 20
+      PaymentMethods__Onboarding__1__DisabledReason: ${PAYPAL_ONBOARDING_DISABLED_REASON:-}
       Intellipay__MerchantKey: ${INTELLIPAY_MERCHANT_KEY:-}
       Intellipay__ApiKey: ${INTELLIPAY_API_KEY:-}
       # PayFlow (Fase 16) — M2M hacia Subscription para resolver el precio real del plan

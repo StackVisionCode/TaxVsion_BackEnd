@@ -18,9 +18,14 @@ public sealed class RedisTokenReferenceStore(IConnectionMultiplexer redis) : ITo
     public async Task<Guid> StoreAsync(string rawToken, CancellationToken ct = default)
     {
         var reference = Guid.NewGuid();
+        await StoreAsync(reference, rawToken, ct);
+        return reference;
+    }
+
+    public async Task StoreAsync(Guid reference, string rawToken, CancellationToken ct = default)
+    {
         var db = redis.GetDatabase();
         await db.StringSetAsync(Key(reference), rawToken, Ttl);
-        return reference;
     }
 
     public async Task<string?> ConsumeAsync(Guid reference, CancellationToken ct = default)

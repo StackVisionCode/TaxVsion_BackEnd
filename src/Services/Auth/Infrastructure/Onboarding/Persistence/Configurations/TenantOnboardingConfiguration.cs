@@ -28,6 +28,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(onboarding => onboarding.PaymentReference).HasMaxLength(128);
 
         builder.Property(onboarding => onboarding.RegistrationTokenHash).HasMaxLength(64);
+        builder.Property(onboarding => onboarding.RegistrationTokenReference);
 
         builder.Property(onboarding => onboarding.OfficeName).HasMaxLength(256);
         builder.Property(onboarding => onboarding.RequestedSubdomain).HasMaxLength(63);
@@ -37,6 +38,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(onboarding => onboarding.UserAgent).HasMaxLength(512);
 
         builder.Property(onboarding => onboarding.CreatedAtUtc).IsRequired();
+        builder.Property(onboarding => onboarding.RowVersion).IsRowVersion();
 
         // Gift/Referral: desglose comercial congelado + reservas de código apiladas.
         builder.Property(onboarding => onboarding.Currency).HasMaxLength(3);
