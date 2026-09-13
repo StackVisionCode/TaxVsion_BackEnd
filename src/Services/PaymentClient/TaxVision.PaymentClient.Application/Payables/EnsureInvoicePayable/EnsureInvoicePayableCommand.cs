@@ -4,4 +4,4 @@ namespace TaxVision.PaymentClient.Application.Payables.EnsureInvoicePayable;
 /// (TenantId, InvoicePayment, InvoiceId): reintentar devuelve el mismo payable/referencia.</summary>
 public sealed record EnsureInvoicePayableCommand(Guid TenantId, long AmountCents, string Currency, string InvoiceId);
 
-public sealed record EnsureInvoicePayableResponse(Guid PayableId, string Reference);
+public sealed record EnsureInvoicePayableResponse(Guid PayableId, string Reference, string? SubDomain);
