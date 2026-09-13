@@ -523,8 +523,11 @@ public sealed class StripePaymentAdapter : IPaymentProvider
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe webhook signature verification failed.");
+            // F3: no se ecoa ex.Message al caller (endpoint anónimo) — el detalle queda solo en el log.
             return Task.FromResult(
-                Result.Failure<WebhookVerificationResult>(new Error("Stripe.WebhookSignature.Invalid", ex.Message))
+                Result.Failure<WebhookVerificationResult>(
+                    new Error("Stripe.WebhookSignature.Invalid", "The webhook signature could not be verified.")
+                )
             );
         }
     }
@@ -594,7 +597,9 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                 RefundedAmountCents: null,
                 ReconciledChargeReference: string.IsNullOrEmpty(session.PaymentIntentId)
                     ? null
-                    : session.PaymentIntentId
+                    : session.PaymentIntentId,
+                PaidAmountCents: status == PaymentStatus.Succeeded ? session.AmountTotal : null,
+                PaidCurrency: status == PaymentStatus.Succeeded ? session.Currency : null
             )
         );
     }
@@ -612,7 +617,10 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                 Status: mappedStatus,
                 FailureCode: intent.LastPaymentError?.Code,
                 FailureMessage: intent.LastPaymentError?.Message,
-                RefundedAmountCents: null
+                RefundedAmountCents: null,
+                // Monto cobrado autoritativo solo en el éxito — el handler lo coteja con el cargo (F2).
+                PaidAmountCents: mappedStatus == PaymentStatus.Succeeded ? intent.Amount : null,
+                PaidCurrency: mappedStatus == PaymentStatus.Succeeded ? intent.Currency : null
             )
         );
     }

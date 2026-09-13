@@ -79,40 +79,64 @@ public static class ProcessTenantWebhookHandler
         }
 
         var verification = verificationResult.Value;
-        var alreadyReceived = await webhookEvents.ExistsAsync(
+        var nowUtc = DateTime.UtcNow;
+
+        // Idempotencia STATUS-AWARE (F1): un evento en estado terminal ya fue resuelto → se descarta
+        // como duplicado; uno NO terminal (Failed) quedó a medias por un fallo transitorio y esta nueva
+        // entrega del provider lo RE-PROCESA — así un cobro real nunca se pierde por un reintento
+        // tratado como duplicado.
+        var existing = await webhookEvents.GetByProviderEventIdAsync(
             command.TenantId,
             command.ProviderCode,
             verification.ProviderEventId,
             ct
         );
-        if (alreadyReceived)
+        WebhookEvent webhookEvent;
+        if (existing is not null)
         {
-            metrics.RecordWebhookDuplicate(command.ProviderCode.ToString());
-            logger.LogInformation(
-                "{Provider} webhook {ProviderEventId} for tenant {TenantId} already processed; skipping (idempotent).",
+            if (existing.IsTerminal)
+            {
+                metrics.RecordWebhookDuplicate(command.ProviderCode.ToString());
+                logger.LogInformation(
+                    "{Provider} webhook {ProviderEventId} for tenant {TenantId} already {Status}; skipping (idempotent).",
+                    command.ProviderCode,
+                    verification.ProviderEventId,
+                    command.TenantId,
+                    existing.Status
+                );
+                return Result.Success();
+            }
+
+            var reprocessResult = existing.MarkReprocessing(nowUtc);
+            if (reprocessResult.IsFailure)
+                return Result.Failure(reprocessResult.Error);
+            webhookEvent = existing;
+            logger.LogWarning(
+                "{Provider} webhook {ProviderEventId} for tenant {TenantId} was not applied on a previous delivery ({Status}); reprocessing.",
                 command.ProviderCode,
                 verification.ProviderEventId,
-                command.TenantId
+                command.TenantId,
+                existing.Status
             );
-            return Result.Success();
         }
+        else
+        {
+            var receiveResult = WebhookEvent.Receive(
+                command.TenantId,
+                command.ProviderCode,
+                verification.ProviderEventId,
+                verification.EventType,
+                command.RawPayload,
+                command.SignatureHeader,
+                nowUtc
+            );
+            if (receiveResult.IsFailure)
+                return Result.Failure(receiveResult.Error);
 
-        var nowUtc = DateTime.UtcNow;
-        var receiveResult = WebhookEvent.Receive(
-            command.TenantId,
-            command.ProviderCode,
-            verification.ProviderEventId,
-            verification.EventType,
-            command.RawPayload,
-            command.SignatureHeader,
-            nowUtc
-        );
-        if (receiveResult.IsFailure)
-            return Result.Failure(receiveResult.Error);
-
-        var webhookEvent = receiveResult.Value;
-        await webhookEvents.AddAsync(webhookEvent, ct);
-        webhookEvent.MarkProcessing(nowUtc);
+            webhookEvent = receiveResult.Value;
+            await webhookEvents.AddAsync(webhookEvent, ct);
+            webhookEvent.MarkProcessing(nowUtc);
+        }
 
         var payloadResult = await adapter.ParseWebhookEventAsync(command.RawPayload, verification.EventType, ct);
         if (payloadResult.IsFailure)
@@ -225,6 +249,9 @@ public static class ProcessTenantWebhookHandler
         switch (payload.Status)
         {
             case PaymentStatus.Succeeded:
+                var amountMismatch = VerifyPaidAmount(payment, payload);
+                if (amountMismatch is not null)
+                    return Result.Failure(amountMismatch);
                 return payment.MarkSucceeded(nowUtc, Guid.Empty);
 
             case PaymentStatus.Failed:
@@ -258,6 +285,29 @@ public static class ProcessTenantWebhookHandler
                     )
                 );
         }
+    }
+
+    // F2 defense-in-depth: aunque el evento de éxito esté autenticado por firma, se exige que el monto
+    // cobrado que reporta el provider coincida con el cargo esperado (y la moneda). Si no coincide, NO
+    // se aplica: el caller lo marca Stale con este código y el pago no queda como "Succeeded" por un
+    // importe distinto. Sin monto reportado (null) no se puede verificar → se aplica (compat).
+    private static Error? VerifyPaidAmount(TenantPayment payment, WebhookEventPayload payload)
+    {
+        if (payload.PaidAmountCents is not { } paidCents)
+            return null;
+
+        var currencyMatches =
+            payload.PaidCurrency is null
+            || string.Equals(payload.PaidCurrency, payment.Amount.Currency, StringComparison.OrdinalIgnoreCase);
+
+        if (paidCents == payment.Amount.AmountCents && currencyMatches)
+            return null;
+
+        return new Error(
+            "WebhookEvent.AmountMismatch",
+            $"Provider reported {paidCents} {payload.PaidCurrency ?? "?"} paid but the charge expects "
+                + $"{payment.Amount.AmountCents} {payment.Amount.Currency}; not applying."
+        );
     }
 
     /// <summary>Completa el <c>PaymentLink</c> que originó este cobro, si lo hay — cubre el

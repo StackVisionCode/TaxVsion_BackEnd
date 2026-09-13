@@ -112,7 +112,10 @@ public sealed class ProcessProviderWebhookHandlerTests
             new WebhookVerificationResult("paypal-event-duplicate", "PAYMENT.CAPTURE.COMPLETED", "{}"),
             new WebhookEventPayload("ORDER-123", PaymentStatus.Succeeded, null, null, null)
         );
-        var webhooks = new FakeWebhookEventRepository(existingEventId: "paypal-event-duplicate");
+        // El evento ya fue aplicado (estado terminal) en una entrega anterior → se descarta.
+        var webhooks = new FakeWebhookEventRepository(
+            AppliedEvent(PaymentProviderCode.PayPal, "paypal-event-duplicate")
+        );
 
         var result = await ProcessProviderWebhookHandler.Handle(
             new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
@@ -133,6 +136,140 @@ public sealed class ProcessProviderWebhookHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Null(webhooks.Added);
         Assert.False(provider.ParseWasCalled);
+    }
+
+    [Fact]
+    public async Task Reprocesses_a_previously_failed_event_on_provider_retry_so_the_payment_is_not_lost()
+    {
+        // F1: la entrega anterior insertó la fila pero un fallo transitorio la dejó Failed (no
+        // terminal) sin aplicar el cargo. El reintento del provider debe RE-PROCESARLA, no descartarla
+        // como duplicado — de lo contrario un pago real se perdería.
+        var payment = CreateProcessingOnboardingPayment();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new WebhookVerificationResult("paypal-event-retry", "PAYMENT.CAPTURE.COMPLETED", "{}"),
+            new WebhookEventPayload(
+                ProviderChargeReference: "ORDER-123",
+                Status: PaymentStatus.Succeeded,
+                FailureCode: null,
+                FailureMessage: null,
+                RefundedAmountCents: null,
+                ReconciledChargeReference: "CAPTURE-123"
+            )
+        );
+        var existing = FailedEvent(PaymentProviderCode.PayPal, "paypal-event-retry");
+        var webhooks = new FakeWebhookEventRepository(existing);
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessProviderWebhookHandler.Handle(
+            new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
+            new FakePaymentAdapterFactory(provider),
+            new FakeProviderWebhookSecrets(),
+            webhooks,
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakePaymentAttemptThrottle(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger<WebhookEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.True(provider.ParseWasCalled); // se re-procesó, NO se descartó
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        Assert.Equal(WebhookEventStatus.Applied, existing.Status); // reusó la fila existente
+        Assert.Null(webhooks.Added); // no insertó otra fila
+        Assert.Single(bus.Published.OfType<OnboardingPaymentSucceededIntegrationEvent>());
+    }
+
+    [Fact]
+    public async Task Amount_mismatch_on_a_success_event_is_not_applied_and_the_event_is_marked_stale()
+    {
+        // F2: el pago espera 4900 USD; el provider reporta que se cobró solo 100. Aunque el evento
+        // esté firmado, NO debe marcarse Succeeded por un importe distinto.
+        var payment = CreateProcessingOnboardingPayment();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new WebhookVerificationResult("paypal-event-mismatch", "PAYMENT.CAPTURE.COMPLETED", "{}"),
+            new WebhookEventPayload(
+                ProviderChargeReference: "ORDER-123",
+                Status: PaymentStatus.Succeeded,
+                FailureCode: null,
+                FailureMessage: null,
+                RefundedAmountCents: null,
+                ReconciledChargeReference: "CAPTURE-123",
+                PaidAmountCents: 100,
+                PaidCurrency: "USD"
+            )
+        );
+        var webhooks = new FakeWebhookEventRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessProviderWebhookHandler.Handle(
+            new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
+            new FakePaymentAdapterFactory(provider),
+            new FakeProviderWebhookSecrets(),
+            webhooks,
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakePaymentAttemptThrottle(),
+            new FakeCorrelationContext(),
+            bus,
+            NullLogger<WebhookEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess); // no reintenta en bucle: se registra y no se aplica
+        Assert.Equal(PaymentStatus.Processing, payment.Status); // NO quedó Succeeded
+        Assert.Equal(WebhookEventStatus.Stale, webhooks.Added!.Status);
+        Assert.Empty(bus.Published); // no se publicó éxito de onboarding
+    }
+
+    [Fact]
+    public async Task Matching_amount_on_a_success_event_is_applied()
+    {
+        // F2 (contraparte): monto y moneda coinciden con el cargo → se aplica normalmente.
+        var payment = CreateProcessingOnboardingPayment();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new WebhookVerificationResult("paypal-event-match", "PAYMENT.CAPTURE.COMPLETED", "{}"),
+            new WebhookEventPayload(
+                ProviderChargeReference: "ORDER-123",
+                Status: PaymentStatus.Succeeded,
+                FailureCode: null,
+                FailureMessage: null,
+                RefundedAmountCents: null,
+                ReconciledChargeReference: "CAPTURE-123",
+                PaidAmountCents: 4900,
+                PaidCurrency: "usd"
+            )
+        );
+        var webhooks = new FakeWebhookEventRepository();
+
+        var result = await ProcessProviderWebhookHandler.Handle(
+            new ProcessProviderWebhookCommand(PaymentProviderCode.PayPal, "{}", PayPalHeaders()),
+            new FakePaymentAdapterFactory(provider),
+            new FakeProviderWebhookSecrets(),
+            webhooks,
+            new FakeSaaSPaymentRepository(payment),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakePaymentAttemptThrottle(),
+            new FakeCorrelationContext(),
+            new FakeMessageBus(),
+            NullLogger<WebhookEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        Assert.Equal(WebhookEventStatus.Applied, webhooks.Added!.Status);
     }
 
     [Fact]
@@ -326,15 +463,20 @@ public sealed class ProcessProviderWebhookHandlerTests
             code == PaymentProviderCode.PayPal ? "paypal-webhook-id" : null;
     }
 
-    private sealed class FakeWebhookEventRepository(string? existingEventId = null) : IWebhookEventRepository
+    private sealed class FakeWebhookEventRepository(WebhookEvent? existing = null) : IWebhookEventRepository
     {
         public WebhookEvent? Added { get; private set; }
 
-        public Task<bool> ExistsAsync(
+        public Task<WebhookEvent?> GetByProviderEventIdAsync(
             PaymentProviderCode code,
             string providerEventId,
             CancellationToken ct = default
-        ) => Task.FromResult(providerEventId == existingEventId);
+        ) =>
+            Task.FromResult(
+                existing is not null && existing.ProviderCode == code && existing.ProviderEventId == providerEventId
+                    ? existing
+                    : null
+            );
 
         public Task AddAsync(WebhookEvent webhookEvent, CancellationToken ct = default)
         {
@@ -342,6 +484,41 @@ public sealed class ProcessProviderWebhookHandlerTests
             return Task.CompletedTask;
         }
     }
+
+    private static WebhookEvent BuildEvent(
+        PaymentProviderCode code,
+        string eventId,
+        Action<WebhookEvent> transitionToState
+    )
+    {
+        var evt = WebhookEvent
+            .Receive(code, eventId, "PAYMENT.CAPTURE.COMPLETED", "{}", "signature-snapshot", DateTime.UtcNow)
+            .Value;
+        transitionToState(evt);
+        return evt;
+    }
+
+    private static WebhookEvent AppliedEvent(PaymentProviderCode code, string eventId) =>
+        BuildEvent(
+            code,
+            eventId,
+            evt =>
+            {
+                evt.MarkProcessing(DateTime.UtcNow);
+                evt.MarkApplied(null, DateTime.UtcNow);
+            }
+        );
+
+    private static WebhookEvent FailedEvent(PaymentProviderCode code, string eventId) =>
+        BuildEvent(
+            code,
+            eventId,
+            evt =>
+            {
+                evt.MarkProcessing(DateTime.UtcNow);
+                evt.MarkFailed("transient failure on a previous delivery", DateTime.UtcNow);
+            }
+        );
 
     private sealed class FakeSaaSPaymentRepository(SaaSPayment payment) : ISaaSPaymentRepository
     {
