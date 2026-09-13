@@ -77,6 +77,26 @@ public sealed class LogoResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_tenant_with_an_svg_logo_falls_back_to_system_because_email_cannot_render_svg()
+    {
+        // El brand del tenant permite SVG (válido para CRM/Portal en el navegador), pero el logo va
+        // inline por Content-ID en el correo y ningún cliente de email renderiza SVG → debe caer al
+        // logo de plataforma (PNG), no devolver el SVG roto. Y NO es un "logo faltante": el tenant sí
+        // tiene logo, solo incompatible con email → no registra la nota interna.
+        var tenantId = Guid.NewGuid();
+        var logoRefs = new FakeTenantLogoRefRepository();
+        logoRefs.Seed(TenantLogoRef.Create(tenantId, Guid.NewGuid(), "image/svg+xml", 512, 180, 60, DateTime.UtcNow));
+        var notifications = new FakeTenantLogoMissingNotificationRepository();
+        var resolver = BuildResolver(logoRefs, notifications);
+
+        var result = await resolver.ResolveAsync(LogoScope.Tenant, tenantId);
+
+        Assert.True(result.IsFallback);
+        Assert.Equal(SystemLogo.CloudStorageFileId, result.CloudStorageFileId);
+        Assert.Null(await notifications.GetByTenantIdAsync(tenantId));
+    }
+
+    [Fact]
     public async Task ResolveAsync_tenant_without_logo_falls_back_and_records_the_miss()
     {
         var tenantId = Guid.NewGuid();
