@@ -18,6 +18,7 @@ public static class EnsureInvoicePayableHandler
     public static async Task<Result<EnsureInvoicePayableResponse>> Handle(
         EnsureInvoicePayableCommand command,
         IPayableReferenceRepository payables,
+        ITenantRegistry tenants,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -26,6 +27,11 @@ public static class EnsureInvoicePayableHandler
         if (amountResult.IsFailure)
             return Result.Failure<EnsureInvoicePayableResponse>(amountResult.Error);
 
+        // Subdominio del tenant desde la proyección local (poblada por TenantCreatedConsumer) — así la
+        // URL estable se compone en el host de la firma sin llamar a Auth/Tenant en este path.
+        var tenant = await tenants.GetByIdAsync(command.TenantId, ct);
+        var subDomain = tenant?.SubDomain;
+
         var existing = await payables.GetByExternalReferenceAsync(
             command.TenantId,
             PaymentPurposeKind.InvoicePayment,
@@ -33,7 +39,7 @@ public static class EnsureInvoicePayableHandler
             ct
         );
         if (existing is not null)
-            return Result.Success(new EnsureInvoicePayableResponse(existing.Id, existing.Reference));
+            return Result.Success(new EnsureInvoicePayableResponse(existing.Id, existing.Reference, subDomain));
 
         var created = PayableReference.Create(
             command.TenantId,
@@ -49,6 +55,6 @@ public static class EnsureInvoicePayableHandler
         await payables.AddAsync(payable, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(new EnsureInvoicePayableResponse(payable.Id, payable.Reference));
+        return Result.Success(new EnsureInvoicePayableResponse(payable.Id, payable.Reference, subDomain));
     }
 }

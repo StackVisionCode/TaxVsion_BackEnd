@@ -1539,6 +1539,10 @@ services:
       Jwt__ValidAudiences__1: taxvision-payments
       # Base pública con la que PaymentClient compone la URL ESTABLE de facturas (la del PDF). Dev = gateway.
       PaymentClient__Public__BaseUrl: ${PAYMENTCLIENT_PUBLIC_BASE_URL:-http://localhost:5047}
+      # Dominio base multi-tenant: con esto la URL de la factura se compone en el subdominio del tenant
+      # ({sub}.{TenantBaseDomain}/payments-client/invoices/{ref}) — el mismo host que la firma. Mismo
+      # valor que Onboarding__TenantBaseDomain / TenantDomains__BaseDomain.
+      PaymentClient__Public__TenantBaseDomain: ${TAXVISION_BASE_DOMAIN:-taxproffice.com}
       # RBAC Fase 7: enforza permisos contra la proyección local (poblada por eventos de Auth) en vez de
       # leer perms embebidos en el JWT — los tokens self-service vienen sin perms. Habilita los endpoints
       # humanos de config de pago (settings 2B). Mismo modo que documents-api.

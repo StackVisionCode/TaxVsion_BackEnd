@@ -24,6 +24,7 @@ public static class ResolvePayableHandler
         ResolvePayableCommand command,
         IPayableReferenceRepository payables,
         IPaymentLinkRepository links,
+        ITenantRegistry tenants,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -34,11 +35,15 @@ public static class ResolvePayableHandler
                 new Error("Payable.NotFound", "No payable exists for that reference.")
             );
 
+        // Subdominio del tenant (proyección local) para redirigir el checkout al host de la firma.
+        var tenant = await tenants.GetByIdAsync(payable.TenantId, ct);
+        var subDomain = tenant?.SubDomain;
+
         var nowUtc = DateTime.UtcNow;
 
         var existing = await links.GetActiveByExternalReferenceAsync(payable.TenantId, payable.ExternalReferenceId, ct);
         if (existing is not null && existing.IsRedeemable(nowUtc))
-            return Result.Success(new ResolvePayableResponse(existing.Token.Value));
+            return Result.Success(new ResolvePayableResponse(existing.Token.Value, subDomain));
 
         var purposeResult = PaymentPurpose.Create(payable.PurposeKind, payable.ExternalReferenceId);
         if (purposeResult.IsFailure)
@@ -61,6 +66,6 @@ public static class ResolvePayableHandler
         await links.AddAsync(link, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(new ResolvePayableResponse(link.Token.Value));
+        return Result.Success(new ResolvePayableResponse(link.Token.Value, subDomain));
     }
 }

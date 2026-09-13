@@ -60,11 +60,39 @@ public sealed class LogoResolver(
         return new LogoAsset(Guid.Empty, string.Empty, 0, IsFallback: true);
     }
 
+    // El logo va embebido inline por Content-ID en el correo y los clientes de email NO renderizan
+    // SVG. El brand del tenant permite image/svg+xml (válido para el CRM/Portal en el navegador),
+    // así que un logo SVG llegaría acá y saldría roto en el correo — solo raster es email-safe.
+    private static readonly HashSet<string> EmailSafeRasterTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+    };
+
     private async Task<LogoAsset> ResolveTenantLogoAsync(Guid tenantId, CancellationToken ct)
     {
         var logoRef = await logoRefRepository.GetByTenantIdAsync(tenantId, ct);
         if (logoRef is not null && logoRef.IsActive)
-            return new LogoAsset(logoRef.CloudStorageFileId, logoRef.ContentType, logoRef.SizeBytes, IsFallback: false);
+        {
+            if (EmailSafeRasterTypes.Contains(logoRef.ContentType))
+                return new LogoAsset(
+                    logoRef.CloudStorageFileId,
+                    logoRef.ContentType,
+                    logoRef.SizeBytes,
+                    IsFallback: false
+                );
+
+            // El tenant SÍ tiene logo, solo que no es usable en email (SVG) → cae al logo de
+            // plataforma. No dispara la nota de "logo faltante": no es que falte, es incompatible.
+            logger.LogWarning(
+                "Tenant {TenantId} logo content-type '{ContentType}' is not email-safe (email clients do not render SVG); falling back to the platform logo for this email.",
+                tenantId,
+                logoRef.ContentType
+            );
+            var systemFallback = await SystemLogoAsync(ct);
+            return systemFallback with { IsFallback = true };
+        }
 
         await NotifyMissingLogoAsync(tenantId, ct);
 

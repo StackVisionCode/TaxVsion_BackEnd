@@ -41,8 +41,13 @@ public sealed class PayableResolverController(IMessageBus bus, IOptions<PaymentC
             return NotFound(new { result.Error.Code, result.Error.Message });
 
         // 302 a la PÁGINA de checkout del frontend (que consume GET /payments-client/checkout/{token} y
-        // renderiza Stripe con la key del tenant). Base configurable (dev = ng serve).
-        var pageBase = options.Value.CheckoutPageBaseUrl.TrimEnd('/');
-        return Redirect($"{pageBase}/pay/{result.Value.CheckoutToken}");
+        // renderiza Stripe con la key del tenant). Se compone en el subdominio del tenant (mismo host
+        // que la firma) cuando está disponible; si no, cae a la base por path (dev = ng serve).
+        var redirectUrl = PayablePublicUrls.CheckoutPageUrl(
+            options.Value,
+            result.Value.SubDomain,
+            result.Value.CheckoutToken
+        );
+        return Redirect(redirectUrl);
     }
 }
