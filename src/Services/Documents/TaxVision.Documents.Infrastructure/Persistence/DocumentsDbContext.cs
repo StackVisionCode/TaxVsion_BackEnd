@@ -31,6 +31,7 @@ public sealed class DocumentsDbContext(DbContextOptions<DocumentsDbContext> opti
 
     public DbSet<DocumentGeneration> DocumentGenerations => Set<DocumentGeneration>();
     public DbSet<DocumentBranding> DocumentBrandings => Set<DocumentBranding>();
+    public DbSet<TenantLogoRef> TenantLogoRefs => Set<TenantLogoRef>();
     public DbSet<AuthzUserPermissionsProjection> AuthzUserPermissionsProjections =>
         Set<AuthzUserPermissionsProjection>();
     public DbSet<AuthzRolePermissionsProjection> AuthzRolePermissionsProjections =>

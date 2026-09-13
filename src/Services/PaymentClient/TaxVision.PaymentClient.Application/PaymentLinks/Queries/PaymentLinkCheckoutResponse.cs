@@ -18,5 +18,6 @@ public sealed record CheckoutPaymentMethod(
     string ProviderCode,
     string DisplayName,
     string StatementDescriptor,
-    string PublishableKey
+    string PublishableKey,
+    string? ApiBaseUrl
 );

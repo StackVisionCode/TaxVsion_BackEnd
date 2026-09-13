@@ -16,4 +16,7 @@ public interface ITenantPaymentConfigRepository
     /// <summary>Todas las configs del tenant (activas e inactivas), para la pantalla de settings.</summary>
     Task<IReadOnlyList<TenantPaymentConfig>> GetAllByTenantAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantPaymentConfig config, CancellationToken ct = default);
+
+    /// <summary>Elimina la config (y sus webhook endpoints por cascade). Para corregir un alta errónea.</summary>
+    void Remove(TenantPaymentConfig config);
 }

@@ -39,7 +39,8 @@ public static class GetPaymentLinkByTokenHandler
                 c.ProviderCode.ToString(),
                 c.ProviderCode.ToString(),
                 c.StatementDescriptor.Value,
-                c.PublishableKey
+                c.PublishableKey,
+                c.ApiBaseUrl
             ))
             .ToList();
 

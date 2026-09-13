@@ -10,7 +10,9 @@ using TaxVision.PaymentClient.Api.Common;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.ActivateTenantPaymentConfig;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.CreateTenantPaymentConfig;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.DeactivateTenantPaymentConfig;
+using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.DeleteTenantPaymentConfig;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.UpdateTenantPaymentConfigSecrets;
+using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Commands.UpdateTenantPaymentConfigUrl;
 using TaxVision.PaymentClient.Application.TenantPaymentConfigs.Queries;
 using TaxVision.PaymentClient.Domain.TenantPaymentConfigs;
 using TaxVision.PaymentClient.Domain.ValueObjects;
@@ -64,7 +66,8 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
         PaymentProviderCode ProviderCode,
         TenantPaymentMode Mode,
         string PublishableKey,
-        string StatementDescriptor
+        string StatementDescriptor,
+        string? ApiBaseUrl = null
     );
 
     [HttpPost]
@@ -83,12 +86,39 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
                 request.Mode,
                 request.PublishableKey,
                 request.StatementDescriptor,
-                userId
+                userId,
+                request.ApiBaseUrl
             ),
             ct
         );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record UpdateUrlRequest(string? ApiBaseUrl);
+
+    /// <summary>Edita la URL/endpoint del proveedor de un config existente (settings del tenant).
+    /// Null/vacío la limpia.</summary>
+    [HttpPut("{provider}/url")]
+    [RateLimit("payment_client.g.config_manage")]
+    [HasPermission(PaymentClientPermissions.ConfigManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateUrl(
+        PaymentProviderCode provider,
+        UpdateUrlRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new UpdateTenantPaymentConfigUrlCommand(tenantId, provider, request.ApiBaseUrl, userId),
+            ct
+        );
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     public sealed record UpdateSecretsRequest(string SecretKey, string WebhookSecret);
@@ -116,6 +146,24 @@ public sealed class TenantPaymentConfigsController(IMessageBus bus) : Controller
                 request.WebhookSecret,
                 userId
             ),
+            ct
+        );
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Elimina por completo la config de un proveedor — para corregir un alta errónea.</summary>
+    [HttpDelete("{provider}")]
+    [RateLimit("payment_client.g.config_manage")]
+    [HasPermission(PaymentClientPermissions.ConfigManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(PaymentProviderCode provider, CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(
+            new DeleteTenantPaymentConfigCommand(tenantId, provider, userId),
             ct
         );
 

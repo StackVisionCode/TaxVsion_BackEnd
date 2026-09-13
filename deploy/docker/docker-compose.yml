@@ -1717,6 +1717,8 @@ services:
       ServiceAuthClient__ClientId: ${DOCUMENTS_SERVICE_CLIENT_ID:-documents-worker}
       ServiceAuthClient__ClientSecret: ${DOCUMENTS_SERVICE_CLIENT_SECRET:-}
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # Para bajar el logo del tenant (marca de Company settings) y estamparlo en el PDF de factura.
+      CloudStorageClient__BaseUrl: http://cloudstorage-api:8080
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
