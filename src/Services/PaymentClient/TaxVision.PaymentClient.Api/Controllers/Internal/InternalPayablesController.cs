@@ -49,8 +49,13 @@ public sealed class InternalPayablesController(IMessageBus bus, IOptions<Payment
         if (result.IsFailure)
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
 
-        var baseUrl = publicOptions.Value.BaseUrl.TrimEnd('/');
-        var checkoutUrl = $"{baseUrl}/payments-client/invoices/{result.Value.Reference}";
+        // URL ESTABLE en el subdominio del tenant (mismo host que la firma) cuando está disponible;
+        // si no, cae a la base por path. Ver PayablePublicUrls / PaymentClientPublicOptions.
+        var checkoutUrl = PayablePublicUrls.StableInvoiceUrl(
+            publicOptions.Value,
+            result.Value.SubDomain,
+            result.Value.Reference
+        );
         return Ok(new EnsureInvoicePayableApiResponse(result.Value.PayableId, result.Value.Reference, checkoutUrl));
     }
 }

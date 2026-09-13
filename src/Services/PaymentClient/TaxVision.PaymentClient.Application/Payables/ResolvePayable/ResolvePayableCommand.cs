@@ -4,4 +4,4 @@ namespace TaxVision.PaymentClient.Application.Payables.ResolvePayable;
 /// forma perezosa si no hay ninguno Active para el payable (o el anterior expiró).</summary>
 public sealed record ResolvePayableCommand(string Reference);
 
-public sealed record ResolvePayableResponse(string CheckoutToken);
+public sealed record ResolvePayableResponse(string CheckoutToken, string? SubDomain);
