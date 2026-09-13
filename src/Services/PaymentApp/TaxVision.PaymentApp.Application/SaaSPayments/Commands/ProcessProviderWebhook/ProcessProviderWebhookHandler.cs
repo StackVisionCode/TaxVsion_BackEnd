@@ -102,46 +102,70 @@ public static class ProcessProviderWebhookHandler
         }
 
         var verification = verificationResult.Value;
-        var alreadyReceived = await webhookEvents.ExistsAsync(provider, verification.ProviderEventId, ct);
-        if (alreadyReceived)
-        {
-            metrics.RecordWebhookDuplicate(provider.ToString());
-            logger.LogInformation(
-                "{Provider} webhook {ProviderEventId} already processed; skipping (idempotent).",
-                provider,
-                verification.ProviderEventId
-            );
-            return Result.Success();
-        }
-
         var nowUtc = DateTime.UtcNow;
-        var receiveResult = WebhookEvent.Receive(
-            provider,
-            verification.ProviderEventId,
-            verification.EventType,
-            rawPayload,
-            BuildSignatureSnapshot(provider, headers),
-            nowUtc
-        );
-        if (receiveResult.IsFailure)
-            return Result.Failure(receiveResult.Error);
 
-        var webhookEvent = receiveResult.Value;
-        await webhookEvents.AddAsync(webhookEvent, ct);
-        webhookEvent.MarkProcessing(nowUtc);
-        try
+        // Idempotencia STATUS-AWARE (F1): un evento en estado terminal ya fue resuelto → se descarta
+        // como duplicado; uno NO terminal quedó a medias por un fallo transitorio (p.ej. crash tras
+        // insertar la fila pero antes de aplicar el cargo) y esta nueva entrega del provider lo
+        // re-procesa — así un pago real nunca se pierde por un reintento tratado como duplicado.
+        var existing = await webhookEvents.GetByProviderEventIdAsync(provider, verification.ProviderEventId, ct);
+        WebhookEvent webhookEvent;
+        if (existing is not null)
         {
-            await unitOfWork.SaveChangesAsync(ct);
-        }
-        catch (ConflictException ex) when (ex.Code == "Persistence.UniqueConstraint")
-        {
-            metrics.RecordWebhookDuplicate(provider.ToString());
-            logger.LogInformation(
-                "{Provider} webhook {ProviderEventId} was inserted by a concurrent delivery; skipping (idempotent).",
+            if (existing.IsTerminal)
+            {
+                metrics.RecordWebhookDuplicate(provider.ToString());
+                logger.LogInformation(
+                    "{Provider} webhook {ProviderEventId} already {Status}; skipping (idempotent).",
+                    provider,
+                    verification.ProviderEventId,
+                    existing.Status
+                );
+                return Result.Success();
+            }
+
+            var reprocessResult = existing.MarkReprocessing(nowUtc);
+            if (reprocessResult.IsFailure)
+                return Result.Failure(reprocessResult.Error);
+            webhookEvent = existing;
+            logger.LogWarning(
+                "{Provider} webhook {ProviderEventId} was not applied on a previous delivery ({Status}); reprocessing.",
                 provider,
-                verification.ProviderEventId
+                verification.ProviderEventId,
+                existing.Status
             );
-            return Result.Success();
+        }
+        else
+        {
+            var receiveResult = WebhookEvent.Receive(
+                provider,
+                verification.ProviderEventId,
+                verification.EventType,
+                rawPayload,
+                BuildSignatureSnapshot(provider, headers),
+                nowUtc
+            );
+            if (receiveResult.IsFailure)
+                return Result.Failure(receiveResult.Error);
+
+            webhookEvent = receiveResult.Value;
+            await webhookEvents.AddAsync(webhookEvent, ct);
+            webhookEvent.MarkProcessing(nowUtc);
+            try
+            {
+                await unitOfWork.SaveChangesAsync(ct);
+            }
+            catch (ConflictException ex) when (ex.Code == "Persistence.UniqueConstraint")
+            {
+                // Otra entrega concurrente insertó la fila primero — ella la está procesando.
+                metrics.RecordWebhookDuplicate(provider.ToString());
+                logger.LogInformation(
+                    "{Provider} webhook {ProviderEventId} was inserted by a concurrent delivery; skipping (idempotent).",
+                    provider,
+                    verification.ProviderEventId
+                );
+                return Result.Success();
+            }
         }
 
         var payloadResult = await adapter.ParseWebhookEventAsync(rawPayload, verification.EventType, ct);
@@ -296,6 +320,9 @@ public static class ProcessProviderWebhookHandler
                 return Result.Success();
 
             case PaymentStatus.Succeeded:
+                var amountMismatch = VerifyPaidAmount(payment, payload);
+                if (amountMismatch is not null)
+                    return Result.Failure(amountMismatch);
                 return payment.MarkSucceeded(nowUtc, Guid.Empty);
 
             case PaymentStatus.Failed:
@@ -333,6 +360,30 @@ public static class ProcessProviderWebhookHandler
                     )
                 );
         }
+    }
+
+    // F2 defense-in-depth: aunque el evento de éxito esté autenticado por firma, se exige que el monto
+    // cobrado que reporta el provider coincida con el cargo esperado (y la moneda). Si no coincide, NO
+    // se aplica: el caller lo marca Stale con este código y el pago no queda como "Succeeded" por un
+    // importe distinto (captura parcial / misconfig). Si el adapter no reporta monto (null) no se puede
+    // verificar y se aplica igual — compatibilidad hacia atrás.
+    private static Error? VerifyPaidAmount(SaaSPayment payment, WebhookEventPayload payload)
+    {
+        if (payload.PaidAmountCents is not { } paidCents)
+            return null;
+
+        var currencyMatches =
+            payload.PaidCurrency is null
+            || string.Equals(payload.PaidCurrency, payment.Amount.Currency, StringComparison.OrdinalIgnoreCase);
+
+        if (paidCents == payment.Amount.AmountCents && currencyMatches)
+            return null;
+
+        return new Error(
+            "WebhookEvent.AmountMismatch",
+            $"Provider reported {paidCents} {payload.PaidCurrency ?? "?"} paid but the charge expects "
+                + $"{payment.Amount.AmountCents} {payment.Amount.Currency}; not applying."
+        );
     }
 
     private static Result ApplyRefund(

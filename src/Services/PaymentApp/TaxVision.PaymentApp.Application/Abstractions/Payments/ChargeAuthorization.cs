@@ -57,7 +57,13 @@ public sealed record WebhookEventPayload(
     string? FailureCode,
     string? FailureMessage,
     long? RefundedAmountCents,
-    string? ReconciledChargeReference = null
+    string? ReconciledChargeReference = null,
+    // Monto/moneda que el provider confirma como cobrado — SOLO para eventos de éxito (Succeeded).
+    // Nulo cuando el adapter no lo puede extraer del payload: en ese caso no se puede verificar y se
+    // aplica igual (compat). Cuando viene, el handler exige que coincida con el cargo esperado antes
+    // de marcar el pago Succeeded (defense-in-depth: bloquea capturas parciales / misconfig).
+    long? PaidAmountCents = null,
+    string? PaidCurrency = null
 );
 
 /// <summary>Metadata autoritativa de un método de pago tal como el provider la confirma —

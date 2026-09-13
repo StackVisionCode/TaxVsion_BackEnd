@@ -118,7 +118,10 @@ public sealed class PayPalPaymentAdapter(PayPalGateway gateway, ILogger<PayPalPa
                             FailureCode: null,
                             FailureMessage: null,
                             RefundedAmountCents: null,
-                            ReconciledChargeReference: GetRequiredString(root, "resource", "id")
+                            ReconciledChargeReference: GetRequiredString(root, "resource", "id"),
+                            // Monto/moneda de la captura → el handler los coteja con el cargo (F2).
+                            PaidAmountCents: GetAmountCents(root),
+                            PaidCurrency: TryGetString(root, "resource", "amount", "currency_code")
                         )
                     ),
                     "PAYMENT.CAPTURE.PENDING" => Result.Success(

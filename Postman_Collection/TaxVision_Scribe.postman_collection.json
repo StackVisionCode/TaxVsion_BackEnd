@@ -713,6 +713,48 @@
 			]
 		},
 		{
+			"name": "System Assets (PlatformAdmin)",
+			"item": [
+				{
+					"name": "UpdateHeaderLogo (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "PNG con fondo transparente (obligatorio: los clientes de email NO renderizan SVG). Max 1 MB."
+								}
+							]
+						},
+						"url": {
+							"raw": "{{UrlBase}}/scribe/system-assets/header-logo",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"scribe",
+								"system-assets",
+								"header-logo"
+							]
+						},
+						"description": "PlatformAdmin-only (permiso scribe.layouts.write). Reemplaza en caliente el logo de header de la plataforma que se embebe en TODOS los correos del sistema (SystemAssetRef 'header-logo'). Solo PNG (email no renderiza SVG; el storage fuerza image/png). Sube a CloudStorage, espera a que quede descargable y recien ahi apunta el ref al nuevo FileId (nunca deja el ref roto). Responde 200 con { fileId, sizeBytes }. El logo de un TENANT no se toca aca: sale de su brand asset 'CRM Logo' (Tenant service) que ya alimenta TenantLogoRef. Errores: 400 SystemAsset.ContentType (no es PNG), SystemAsset.NotPng (bytes invalidos), SystemAsset.TooLarge (>1MB), SystemAsset.NotCatalogued (CloudStorage no catalogo a tiempo)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
 			"name": "Negative Cases — Actor Type",
 			"item": [
 				{
