@@ -107,6 +107,32 @@
       "response": []
     },
     {
+      "name": "MyEffectiveAccess",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{UrlBase}}/auth/me/effective-access",
+          "host": [
+            "{{UrlBase}}"
+          ],
+          "path": [
+            "auth",
+            "me",
+            "effective-access"
+          ]
+        },
+        "description": "Debugging (RBAC Fase 7): acceso efectivo del usuario actual — por permiso, su modulo y si es efectivo (transversal o modulo habilitado). Responde \"por que 403\" sin leer logs. Cualquier actor autenticado."
+      },
+      "response": []
+    },
+    {
       "name": "Refresh",
       "request": {
         "method": "POST",

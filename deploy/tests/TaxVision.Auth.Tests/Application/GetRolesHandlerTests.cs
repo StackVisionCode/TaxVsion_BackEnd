@@ -19,18 +19,20 @@ public sealed class GetRolesHandlerTests
         // Permiso staff (inferencia default → TenantEmployee/TenantAdmin/PlatformAdmin) y permiso
         // de portal (isCustomerPortal → solo CustomerPortal).
         var staffPerm = Permission.Seed(staffPermId, "customers.view", "customers", "Ver clientes");
-        var portalPerm = Permission.Seed(portalPermId, "portal.docs.view", "documents", "Portal docs", isCustomerPortal: true);
+        var portalPerm = Permission.Seed(
+            portalPermId,
+            "portal.docs.view",
+            "documents",
+            "Portal docs",
+            isCustomerPortal: true
+        );
 
         var staffRole = Role.Create(tenantId, "Firm Staff", null).Value;
         staffRole.SetPermissions([staffPermId], seeding: true);
         var portalRole = Role.Create(tenantId, "Customer Portal", null, isSystem: true).Value;
         portalRole.SetPermissions([portalPermId], seeding: true);
 
-        var repo = new FakeRoleRepository
-        {
-            TenantRoles = [staffRole, portalRole],
-            Catalog = [staffPerm, portalPerm],
-        };
+        var repo = new FakeRoleRepository { TenantRoles = [staffRole, portalRole], Catalog = [staffPerm, portalPerm] };
 
         var result = await GetRolesHandler.Handle(new GetRolesQuery(tenantId), repo, CancellationToken.None);
 
@@ -71,7 +73,8 @@ public sealed class GetRolesHandlerTests
         public Task<IReadOnlyList<Permission>> GetPermissionsCatalogAsync(CancellationToken ct = default) =>
             Task.FromResult(Catalog);
 
-        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public Task<IReadOnlyList<Role>> GetByIdsAsync(
             Guid tenantId,
@@ -90,8 +93,10 @@ public sealed class GetRolesHandlerTests
         public Task<IReadOnlyList<Role>> GetUserRolesAsync(Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(Guid userId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task ReplaceUserRolesAsync(
             Guid userId,

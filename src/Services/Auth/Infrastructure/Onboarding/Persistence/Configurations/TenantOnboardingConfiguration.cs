@@ -69,10 +69,7 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
             .IsUnique()
             .HasFilter("[RegistrationTokenHash] IS NOT NULL");
 
-        builder
-            .HasIndex(onboarding => onboarding.ReceiptFileId)
-            .IsUnique()
-            .HasFilter("[ReceiptFileId] IS NOT NULL");
+        builder.HasIndex(onboarding => onboarding.ReceiptFileId).IsUnique().HasFilter("[ReceiptFileId] IS NOT NULL");
 
         builder.HasIndex(onboarding => new { onboarding.Email, onboarding.Status });
         builder.HasIndex(onboarding => new { onboarding.Status, onboarding.CreatedAtUtc });

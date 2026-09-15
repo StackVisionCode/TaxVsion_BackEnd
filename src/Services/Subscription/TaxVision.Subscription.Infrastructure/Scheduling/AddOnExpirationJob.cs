@@ -31,6 +31,7 @@ public sealed class AddOnExpirationJob(
         var tenantAddOns = services.GetRequiredService<ITenantAddOnRepository>();
         var bus = services.GetRequiredService<IMessageBus>();
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+        var metrics = services.GetRequiredService<ISubscriptionMetrics>();
         var logger = services.GetRequiredService<ILogger<AddOnExpirationJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -38,7 +39,8 @@ public sealed class AddOnExpirationJob(
 
         var suspendedTimedOut = await tenantAddOns.GetSuspendedBeforeAsync(nowUtc - SuspensionTimeout, BatchSize, ct);
         foreach (var addOn in suspendedTimedOut)
-            expiredCount += await TryExpireAsync(
+        {
+            var expired = await TryExpireAsync(
                 addOn.ExpireAfterSuspensionTimeout(Guid.Empty, nowUtc),
                 addOn.TenantId,
                 unitOfWork,
@@ -46,10 +48,15 @@ public sealed class AddOnExpirationJob(
                 logger,
                 ct
             );
+            if (expired > 0)
+                metrics.RecordAddOnExpired(addOn.AddOnCode);
+            expiredCount += expired;
+        }
 
         var cancelledPastPeriod = await tenantAddOns.GetCancelledPastPeriodEndAsync(nowUtc, BatchSize, ct);
         foreach (var addOn in cancelledPastPeriod)
-            expiredCount += await TryExpireAsync(
+        {
+            var expired = await TryExpireAsync(
                 addOn.ExpireAfterCancellationPeriodEnded(Guid.Empty, nowUtc),
                 addOn.TenantId,
                 unitOfWork,
@@ -57,6 +64,10 @@ public sealed class AddOnExpirationJob(
                 logger,
                 ct
             );
+            if (expired > 0)
+                metrics.RecordAddOnExpired(addOn.AddOnCode);
+            expiredCount += expired;
+        }
 
         if (expiredCount > 0)
             logger.LogInformation("AddOnExpirationJob expired {Count} add-on(s).", expiredCount);

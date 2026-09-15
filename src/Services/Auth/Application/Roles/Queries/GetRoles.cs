@@ -12,7 +12,11 @@ public static class GetRolesHandler
     // Actor types del tenant asignables por rol (PlatformAdmin queda fuera: es god-mode, no se asigna
     // por rol). Un rol es asignable a X si TODOS sus permisos permiten X (misma regla que ActorTypeRoleGuard).
     private static readonly UserActorType[] TenantActorTypes =
-        [UserActorType.TenantEmployee, UserActorType.TenantAdmin, UserActorType.CustomerPortal];
+    [
+        UserActorType.TenantEmployee,
+        UserActorType.TenantAdmin,
+        UserActorType.CustomerPortal,
+    ];
 
     public static async Task<Result<IReadOnlyList<RoleResponse>>> Handle(
         GetRolesQuery query,

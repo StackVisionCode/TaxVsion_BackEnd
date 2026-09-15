@@ -16,7 +16,8 @@ namespace TaxVision.Documents.Infrastructure.Migrations
                 table: "TenantPlanCodeProjections",
                 type: "nvarchar(max)",
                 nullable: false,
-                defaultValue: "[]");
+                defaultValue: "[]"
+            );
         }
 
         /// <inheritdoc />
@@ -25,7 +26,8 @@ namespace TaxVision.Documents.Infrastructure.Migrations
             migrationBuilder.DropColumn(
                 name: "EnabledModulesJson",
                 schema: "documents",
-                table: "TenantPlanCodeProjections");
+                table: "TenantPlanCodeProjections"
+            );
         }
     }
 }

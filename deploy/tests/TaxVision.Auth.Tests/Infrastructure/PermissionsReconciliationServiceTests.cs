@@ -25,12 +25,30 @@ public sealed class PermissionsReconciliationServiceTests
     {
         var (provider, bus) = BuildProvider(Guid.NewGuid().ToString());
 
-        var activeA = User.Register(Guid.NewGuid(), "Ada", "Lovelace", "ada@acme.com", "hash", UserActorType.TenantAdmin)
-            .Value;
-        var activeB = User.Register(Guid.NewGuid(), "Grace", "Hopper", "grace@acme.com", "hash", UserActorType.TenantEmployee)
-            .Value;
-        var inactive = User.Register(Guid.NewGuid(), "Alan", "Turing", "alan@acme.com", "hash", UserActorType.TenantEmployee)
-            .Value;
+        var activeA = User.Register(
+            Guid.NewGuid(),
+            "Ada",
+            "Lovelace",
+            "ada@acme.com",
+            "hash",
+            UserActorType.TenantAdmin
+        ).Value;
+        var activeB = User.Register(
+            Guid.NewGuid(),
+            "Grace",
+            "Hopper",
+            "grace@acme.com",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
+        var inactive = User.Register(
+            Guid.NewGuid(),
+            "Alan",
+            "Turing",
+            "alan@acme.com",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
         inactive.Deactivate(DateTime.UtcNow);
 
         await using (var scope = provider.CreateAsyncScope())
@@ -105,10 +123,13 @@ public sealed class PermissionsReconciliationServiceTests
         public Task<IReadOnlyList<Role>> GetUserRolesAsync(Guid userId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<Role>>([]);
 
-        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(Guid userId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<string>>(["customers.view"]);
+        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<string>>(["customers.view"]);
 
-        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public Task<IReadOnlyList<Role>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();

@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
-using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -25,11 +24,13 @@ public sealed class AddOnRenewalJob(
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)
     {
         var tenantAddOns = services.GetRequiredService<ITenantAddOnRepository>();
+        var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
         var bus = services.GetRequiredService<IMessageBus>();
         var correlation = services.GetRequiredService<ICorrelationContext>();
         // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
         using var correlationScope = correlation.Push(Guid.NewGuid().ToString("N"));
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+        var metrics = services.GetRequiredService<ISubscriptionMetrics>();
         var logger = services.GetRequiredService<ILogger<AddOnRenewalJob>>();
 
         var nowUtc = DateTime.UtcNow;
@@ -37,8 +38,19 @@ public sealed class AddOnRenewalJob(
 
         foreach (var addOn in due)
         {
+            // Co-terminación: la renovación llega hasta el próximo aniversario de la base, no por el
+            // ciclo propio del add-on, para que no se desfase del plan.
+            var subscription = await subscriptions.GetByTenantIdAsync(addOn.TenantId, ct);
+            if (subscription is null)
+            {
+                logger.LogWarning("Add-on {TenantAddOnId} has no base subscription; skipping renewal.", addOn.Id);
+                continue;
+            }
+
+            var newPeriodEndUtc = subscription.NextCoTermEnd(addOn.CurrentPeriodEndUtc);
+
             var idempotencyKey = IdempotencyKeyFactory.AddOnRenewal(addOn.Id, addOn.CurrentPeriodEndUtc);
-            var result = addOn.BeginRenewal(idempotencyKey, actorUserId: Guid.Empty, nowUtc);
+            var result = addOn.BeginRenewal(idempotencyKey, newPeriodEndUtc, actorUserId: Guid.Empty, nowUtc);
             if (result.IsFailure)
             {
                 logger.LogWarning(
@@ -51,6 +63,7 @@ public sealed class AddOnRenewalJob(
 
             await unitOfWork.SaveChangesAsync(ct);
 
+            var amountCents = (long)Math.Round(addOn.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero);
             await bus.PublishAsync(
                 new AddOnRenewalDueIntegrationEvent
                 {
@@ -59,12 +72,13 @@ public sealed class AddOnRenewalJob(
                     TenantAddOnId = addOn.Id,
                     AddOnCode = addOn.AddOnCode,
                     PeriodStartUtc = addOn.CurrentPeriodEndUtc,
-                    PeriodEndUtc = addOn.BillingCycle.CalculateNext(addOn.CurrentPeriodEndUtc),
+                    PeriodEndUtc = newPeriodEndUtc,
                     IdempotencyKey = idempotencyKey,
-                    AmountCents = (long)Math.Round(addOn.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
+                    AmountCents = amountCents,
                     Currency = addOn.UnitPrice.Currency,
                 }
             );
+            metrics.RecordAddOnBilled(addOn.AddOnCode, amountCents);
         }
 
         if (due.Count > 0)

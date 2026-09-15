@@ -40,8 +40,9 @@ public static class GetMyEffectiveAccessHandler
         var (roleNames, permissions) = await UserAccessResolver.ResolveAsync(user, roles, ct);
 
         var limits = await planLimits.GetAsync(user.TenantId, ct);
-        var enabledModules =
-            limits is null ? [] : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
+        var enabledModules = limits is null
+            ? []
+            : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
         var enabledSet = enabledModules.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var permissionAccess = permissions

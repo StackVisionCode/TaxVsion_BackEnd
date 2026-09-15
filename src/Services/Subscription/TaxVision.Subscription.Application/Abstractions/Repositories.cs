@@ -131,12 +131,17 @@ public interface IAddOnDefinitionRepository
     Task<IReadOnlyList<AddOnDefinition>> GetPublishedAsync(CancellationToken ct = default);
     Task<AddOnDefinition?> GetByCodeAsync(string code, CancellationToken ct = default);
     Task<AddOnDefinition?> GetByIdAsync(Guid addOnDefinitionId, CancellationToken ct = default);
+    Task AddAsync(AddOnDefinition definition, CancellationToken ct = default);
+    Task<AddOnDefinition?> GetByIdForUpdateAsync(Guid addOnDefinitionId, CancellationToken ct = default);
 }
 
 public interface ITenantAddOnRepository
 {
     Task<TenantAddOn?> GetByIdAsync(Guid tenantAddOnId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<TenantAddOn>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Add-ons del tenant trackeados (para mutar y persistir, ej. absorción en upgrade).</summary>
+    Task<IReadOnlyList<TenantAddOn>> GetByTenantIdForUpdateAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(TenantAddOn addOn, CancellationToken ct = default);
 
     /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>

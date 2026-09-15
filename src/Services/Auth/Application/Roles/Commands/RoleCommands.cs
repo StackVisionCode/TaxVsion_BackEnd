@@ -156,9 +156,7 @@ public static class CreateRoleHandler
 
         var limits = await planLimits.GetAsync(tenantId, ct);
         var tier = PlanTierResolver.FromPlanCode(limits?.PlanCode);
-        var modules = limits is null
-            ? []
-            : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
+        var modules = limits is null ? [] : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
         var enabledModules = modules.ToHashSet(StringComparer.OrdinalIgnoreCase);
         return RolePermissionGuard.Validate(catalog, permissionIds, tier, enabledModules);
     }

@@ -27,6 +27,13 @@ public sealed class AddOnDefinitionRepository(SubscriptionDbContext db) : IAddOn
         WithChildren(db.AddOnDefinitions.AsNoTracking())
             .FirstOrDefaultAsync(definition => definition.Id == addOnDefinitionId, ct);
 
+    public async Task AddAsync(AddOnDefinition definition, CancellationToken ct = default) =>
+        await db.AddOnDefinitions.AddAsync(definition, ct);
+
+    // Trackeado (sin AsNoTracking) para editar precios y persistir.
+    public Task<AddOnDefinition?> GetByIdForUpdateAsync(Guid addOnDefinitionId, CancellationToken ct = default) =>
+        WithChildren(db.AddOnDefinitions).FirstOrDefaultAsync(definition => definition.Id == addOnDefinitionId, ct);
+
     private static IQueryable<AddOnDefinition> WithChildren(IQueryable<AddOnDefinition> query) =>
         query
             .Include(definition => definition.Features)

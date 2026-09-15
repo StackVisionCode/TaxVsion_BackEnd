@@ -110,10 +110,13 @@ public sealed class GetMyEffectiveAccessHandlerTests
         public Task<IReadOnlyList<Role>> GetUserRolesAsync(Guid userId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<Role>>([]);
 
-        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(Guid userId, CancellationToken ct = default) =>
-            Task.FromResult(EffectiveCodes);
+        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult(EffectiveCodes);
 
-        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public Task<IReadOnlyList<Role>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();

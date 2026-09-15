@@ -14,8 +14,14 @@ public sealed class GetUsersHandlerTests
     {
         var tenantId = Guid.NewGuid();
         // Register siembra user.Roles con el actor_type ("TenantAdmin").
-        var user = User.Register(tenantId, "Carlos", "Castillo", "carlos@acme.com", "hash", UserActorType.TenantAdmin)
-            .Value;
+        var user = User.Register(
+            tenantId,
+            "Carlos",
+            "Castillo",
+            "carlos@acme.com",
+            "hash",
+            UserActorType.TenantAdmin
+        ).Value;
         var systemRole = Role.Create(tenantId, "Tenant Admin", null, isSystem: true).Value;
 
         var users = new FakeUserRepository { Page = [user] };
@@ -71,7 +77,8 @@ public sealed class GetUsersHandlerTests
         public Task<IReadOnlyList<Role>> GetUserRolesAsync(Guid userId, CancellationToken ct = default) =>
             Task.FromResult(UserRoles);
 
-        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<Role?> GetByIdAsync(Guid roleId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
 
         public Task<IReadOnlyList<Role>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
             throw new NotSupportedException();
@@ -93,8 +100,10 @@ public sealed class GetUsersHandlerTests
         public Task<IReadOnlyList<Permission>> GetPermissionsCatalogAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(Guid userId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public Task<IReadOnlyList<string>> GetEffectivePermissionCodesAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
 
         public Task ReplaceUserRolesAsync(
             Guid userId,

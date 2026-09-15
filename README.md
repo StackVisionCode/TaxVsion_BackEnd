@@ -4969,8 +4969,18 @@ fases sobre la rama `task/ms-subscription-redesign`:
 | 6 | Cambios de plan (`PlanChangeRequest`, Immediate/EndOfPeriod) | Hecho, **sin prorrateo** |
 | 7 | Audit log (`SubscriptionAuditLog`) + endpoints admin cross-tenant | Hecho |
 
-La Fase 5 (Billing real) y cualquier calculo de prorrateo quedan fuera de este
-microservicio a proposito — ver §32.3.
+> **Actualización — epic Facturación de Add-ons (dependientes/co-terminados/prorrateados), fases 1–7 HECHAS.**
+> La tabla de arriba refleja el rediseño original; desde entonces se cerró un epic aparte que **supersede** los
+> "no implementado / sin prorrateo" en lo que toca a add-ons:
+> - **Precio real** de add-ons (catálogo sembrado + `AddOnDefinition.ResolveUnitPrice`) — ya no `Money.Zero`.
+> - **Autoría admin** (PlatformAdmin): crear add-ons y editar precios de add-on **y** de plan por endpoint (`admin/subscription/addons`, `plans/{id}/prices`, `plans/{id}/modules`).
+> - **Co-terminación**: el add-on hereda el ciclo del plan y vence/renueva en el aniversario de la base (`CoTermTo`/`NextCoTermEnd`).
+> - **Prorrateo** del período **parcial inicial** de un add-on (`ProrationCalculator`) — **la base sigue sin prorratear (invariante)**.
+> - **Enforcement status-aware**: los `module.*` se apagan cuando la base no da acceso (cierra el gap "el downgrade no revocaba"); acceso = {Trialing, Active, PastDue, GracePeriod}.
+> - **Absorción**: subir a un plan que ya incluye el módulo del add-on lo cancela sin doble cobro (`SupersedeByPlan`).
+> - **Loop de cobro** real cerrado vía eventos (`AddOnRenewalDue` → PaymentApp → `…PaymentSucceeded/Failed` → `CompleteRenewal`/`PastDue`) + métricas (`TaxVision.Subscription`).
+> Guía completa con diagramas: [`Implementaciones/Subscriptions/Guia_Facturacion_AddOns.md`](../../Implementaciones/Subscriptions/Guia_Facturacion_AddOns.md).
+> El gate de **módulo** en runtime (cómo `module.*` se traduce en acceso denegado/permitido en los 12+ servicios) se explica en [`Implementaciones/RABC/Guia_Arquitectura_de_Accesos.md`](../../Implementaciones/RABC/Guia_Arquitectura_de_Accesos.md).
 
 ## 32.2 Dominio: agregados y ciclo de vida
 
@@ -4984,8 +4994,11 @@ microservicio a proposito — ver §32.3.
 - **`SubscriptionSeat`** + **`SubscriptionSeatAssignment`**: asientos comprados por
   el tenant y su asignacion a un usuario concreto (con cooldown configurable de
   reasignacion).
-- **`TenantAddOn`** + **`AddOnDefinition`**: add-ons opcionales (almacenamiento
-  extra, modulos), con su propio ciclo de renovacion independiente del plan base.
+- **`TenantAddOn`** + **`AddOnDefinition`**: add-ons opcionales (módulos à la carte,
+  almacenamiento extra). Aggregate con estado propio, pero **dependiente** de la base:
+  **co-terminado** a su ciclo, **prorrateado** solo en su período inicial y **absorbido**
+  (cancelado sin doble cobro) al subir a un plan que ya incluye su módulo — ver el epic de
+  facturación de add-ons en la nota de §32.1.
 - **`TenantEntitlementSnapshot`**: proyeccion combinada (plan + seats + add-ons)
   que responde "que puede hacer este tenant ahora mismo", cacheada en Redis e
   invalidada por `RecalculateEntitlementsCommand` cada vez que algo cambia.
@@ -5203,9 +5216,10 @@ resto de colecciones (`UrlBase` = Gateway, `accessToken` obtenido de `POST
 - **Billing real (Fase 5)**: no hay integracion con un proveedor de pagos. Los
   endpoints `renew` manuales y los jobs de renovacion son un sustituto temporal
   mientras no exista ese microservicio.
-- **Prorrateo**: excluido a proposito de todo el microservicio (§32.3) — no es
-  logica de este sistema, sera responsabilidad exclusiva de Billing si alguna vez
-  se necesita cobrar la diferencia de un cambio de plan a mitad de periodo.
+- **Prorrateo de la BASE**: excluido a proposito (§32.3) — un cambio de plan a
+  mitad de periodo nunca prorratea ni acredita. **Excepcion (epic add-ons, ver §32.1):**
+  los **add-ons** sí prorratean su periodo parcial inicial (`ProrationCalculator`), por
+  dias, dentro de este microservicio; la base sigue intacta.
 - `/internal/users/{userId}/access` no se expone via Gateway — solo Auth lo llama
   en la red interna con un JWT de servicio (`actor_type=Service`).
 - **Entitlements `communication.*` (Fase 9)**: el catalogo de planes no define
@@ -7344,6 +7358,31 @@ con 4 capas independientes (permiso, actor type, tenant boundary, resource owner
 (role-assignment, session revoke) + fitness functions de CI + observabilidad — sin ningún rediseño
 del modelo `ActorType + Role + Permission + AllowedActorTypes` original (regla de oro #1 del plan,
 respetada en las 10 fases).
+
+## 41.14 Gate de módulo comercial (eje ortogonal a RBAC)
+
+Las capas de §41 responden *"¿este actor puede ejecutar esta acción?"* (RBAC + actor type). Hay un
+eje **adicional y ortogonal**, comercial: *"¿el plan del tenant tiene encendido este módulo?"* — un
+`TenantEmployee` con el permiso `email.*` igual no puede usar Email si el tenant no contrató ese
+módulo. No es RBAC: es **entitlement comercial**.
+
+- **Origen**: Subscription arma el `TenantEntitlementSnapshot` (plan publicado + add-ons activos) y
+  emite los `module.*` en `TenantEntitlementsChanged`. El builder es **status-aware**: un `module.*`
+  solo se enciende si la base da acceso (estados {Trialing, Active, PastDue, GracePeriod}); en
+  Suspended/Cancelled/Expired/Draft se apaga (fail-closed) — esto cierra el gap histórico *"el
+  downgrade no revocaba el módulo"*.
+- **Propagación**: los **12+ servicios gateados** + Auth consumen el evento y derivan
+  `EnabledModules` con el mismo helper compartido (`TenantEntitlementModuleExtensions`,
+  `bool.TryParse(value) && enabled`), persistido en su `TenantPlanCodeProjection` local. El gate de
+  runtime niega el módulo entero cuando su valor está en `false` — sin llamada síncrona a
+  Subscription (mismo criterio de proyección local que la Capa 1).
+- **Prefijo→módulo**: `PermissionModuleMap` (código, `BuildingBlocks.Authorization`) mapea el prefijo
+  de permiso (`email.` → `email`) al módulo. Un módulo nuevo exige agregar su línea + deploy.
+- **Add-ons**: un add-on enciende un `module.*` igual que un plan; su facturación (dependiente,
+  co-terminada, prorrateada, absorbible) se documenta aparte — ver §32.1.
+
+Modelo completo de los **4 ejes** (Identidad/ActorType · Capacidad/RBAC · **Módulos/Entitlements** ·
+Propiedad/Ownership) con diagramas: [`Implementaciones/RABC/Guia_Arquitectura_de_Accesos.md`](../../Implementaciones/RABC/Guia_Arquitectura_de_Accesos.md).
 
 # 42. PayFlow Fase 16 — Endpoints M2M (Tenant + Subscription)
 

@@ -15,15 +15,14 @@ namespace TaxVision.Connectors.Infrastructure.Persistence.Migrations
                 table: "TenantPlanCodeProjections",
                 type: "nvarchar(max)",
                 nullable: false,
-                defaultValue: "[]");
+                defaultValue: "[]"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "EnabledModulesJson",
-                table: "TenantPlanCodeProjections");
+            migrationBuilder.DropColumn(name: "EnabledModulesJson", table: "TenantPlanCodeProjections");
         }
     }
 }

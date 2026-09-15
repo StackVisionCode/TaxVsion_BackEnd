@@ -304,5 +304,4 @@ public sealed class ActivateFromOnboardingHandlerTests
             public void Dispose() { }
         }
     }
-
 }

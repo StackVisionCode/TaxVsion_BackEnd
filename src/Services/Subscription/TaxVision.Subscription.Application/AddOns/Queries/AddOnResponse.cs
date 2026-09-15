@@ -10,5 +10,9 @@ public sealed record AddOnResponse(
     DateTime CurrentPeriodEndUtc,
     DateTime? NextRenewalAtUtc,
     bool AutoRenew,
-    DateTime PurchasedAtUtc
+    DateTime PurchasedAtUtc,
+    decimal UnitPriceAmount,
+    string Currency,
+    // Con motivo "Absorbed by plan upgrade" la UI identifica los add-ons absorbidos y suma su precio = ahorro.
+    string? CancellationReason
 );

@@ -15,9 +15,12 @@ namespace TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEn
 public static class RecalculateEntitlementsExtensions
 {
     /// <summary>
-    /// Loguea el fallo y sigue — para call-sites donde el flujo que dispara el recalculo
-    /// (compra de seat, cambio de plan, jobs de expiracion) ya completo su propio efecto
-    /// principal y no debe deshacerse ni reintentarse solo porque el recalculo fallo.
+    /// Encola el recálculo (no lo invoca inline): se PUBLICA para que corra DESPUÉS de que la
+    /// transacción del handler commitee (outbox durable). Un <c>InvokeAsync</c> anidado corre en un
+    /// scope/DbContext nuevo y NO ve los cambios aún no commiteados del handler (ej. el add-on recién
+    /// comprado), así que dejaría el snapshot viejo hasta un recálculo posterior. Al publicarlo,
+    /// Wolverine lo entrega tras el commit y le aplica sus reintentos si el recálculo falla — para
+    /// call-sites cuyo efecto principal ya se completó y no debe deshacerse por un fallo del recálculo.
     /// </summary>
     public static async Task RecalculateEntitlementsSafelyAsync(
         this IMessageBus bus,
@@ -26,19 +29,8 @@ public static class RecalculateEntitlementsExtensions
         CancellationToken ct
     )
     {
-        var result = await bus.InvokeAsync<Result>(new RecalculateEntitlementsCommand(tenantId), ct);
-        if (result.IsFailure)
-        {
-            logger.LogError(
-                "RecalculateEntitlementsCommand failed for tenant {TenantId}: {ErrorCode} - {ErrorMessage}. "
-                    + "The tenant's entitlement snapshot is now stale or missing, so downstream services "
-                    + "(Auth/CloudStorage/Communication) won't see the change. Retry via "
-                    + "POST /admin/subscription/tenants/{{tenantId}}/recalculate-entitlements.",
-                tenantId,
-                result.Error.Code,
-                result.Error.Message
-            );
-        }
+        await bus.PublishAsync(new RecalculateEntitlementsCommand(tenantId));
+        logger.LogDebug("Entitlement recalculation queued for tenant {TenantId}.", tenantId);
     }
 
     /// <summary>

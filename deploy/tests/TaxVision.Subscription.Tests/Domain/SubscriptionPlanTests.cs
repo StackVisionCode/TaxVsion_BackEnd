@@ -65,11 +65,17 @@ public sealed class SubscriptionPlanTests
         var plan = CreatePlan("starter");
         var v1 = CreateVersion(plan.Id, versionNumber: 1);
         v1.AddEntitlementDefinition(
-            PlanEntitlementDefinition.Create(v1.Id, EntitlementKey.Create("seats.max").Value, EntitlementValueType.Int, "5", "seats.max").Value
+            PlanEntitlementDefinition
+                .Create(v1.Id, EntitlementKey.Create("seats.max").Value, EntitlementValueType.Int, "5", "seats.max")
+                .Value
         );
-        v1.AddPriceTier(PlanPriceTier.Create(v1.Id, BillingCycle.Monthly, 1, null, Money.Create(10m, "USD").Value).Value);
+        v1.AddPriceTier(
+            PlanPriceTier.Create(v1.Id, BillingCycle.Monthly, 1, null, Money.Create(10m, "USD").Value).Value
+        );
         v1.AddFeature(PlanFeature.Create(v1.Id, EntitlementKey.Create("core.chat").Value, true, "core.chat").Value);
-        v1.AddFeature(PlanFeature.Create(v1.Id, EntitlementKey.Create("module.signatures").Value, true, "module.signatures").Value);
+        v1.AddFeature(
+            PlanFeature.Create(v1.Id, EntitlementKey.Create("module.signatures").Value, true, "module.signatures").Value
+        );
         plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
         plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
 
@@ -96,6 +102,54 @@ public sealed class SubscriptionPlanTests
         var plan = CreatePlan("starter");
 
         var result = plan.ReviseModules(["documents"], Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Plan.NoPublishedVersion", result.Error.Code);
+    }
+
+    [Fact]
+    public void RevisePrices_publishes_a_new_version_with_the_new_prices_and_keeps_modules_and_limits()
+    {
+        var plan = CreatePlan("starter");
+        var v1 = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly, BillingCycle.Yearly]).Value;
+        v1.AddEntitlementDefinition(
+            PlanEntitlementDefinition
+                .Create(v1.Id, EntitlementKey.Create("seats.max").Value, EntitlementValueType.Int, "5", "seats.max")
+                .Value
+        );
+        v1.AddFeature(
+            PlanFeature.Create(v1.Id, EntitlementKey.Create("module.signatures").Value, true, "module.signatures").Value
+        );
+        v1.AddPriceTier(
+            PlanPriceTier.Create(v1.Id, BillingCycle.Monthly, 1, null, Money.Create(49m, "USD").Value).Value
+        );
+        v1.AddPriceTier(
+            PlanPriceTier.Create(v1.Id, BillingCycle.Yearly, 1, null, Money.Create(490m, "USD").Value).Value
+        );
+        plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
+        plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+
+        var result = plan.RevisePrices(59m, 590m, Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PlanVersionStatus.Superseded, v1.Status);
+
+        var published = plan.GetPublishedVersion()!;
+        Assert.Equal(2, published.VersionNumber);
+        var monthly = Assert.Single(published.PriceTiers, t => t.BillingCycle == BillingCycle.Monthly);
+        var yearly = Assert.Single(published.PriceTiers, t => t.BillingCycle == BillingCycle.Yearly);
+        Assert.Equal(59m, monthly.UnitAmount.Amount);
+        Assert.Equal(590m, yearly.UnitAmount.Amount);
+        Assert.Contains("module.signatures", published.Features.Select(f => f.FeatureKey.Value)); // módulo conservado
+        Assert.Single(published.Entitlements); // límite conservado
+    }
+
+    [Fact]
+    public void RevisePrices_fails_when_there_is_no_published_version()
+    {
+        var plan = CreatePlan("starter");
+
+        var result = plan.RevisePrices(59m, 590m, Guid.NewGuid(), DateTime.UtcNow);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Plan.NoPublishedVersion", result.Error.Code);

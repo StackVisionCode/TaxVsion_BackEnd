@@ -172,7 +172,10 @@ public sealed class ModuleGateLogOnlyIntegrationTests : IClassFixture<SignatureA
         {
             listener.InstrumentPublished = (instrument, l) =>
             {
-                if (instrument.Meter.Name == AuthorizationMetrics.MeterName && instrument.Name == "authz.module_decision")
+                if (
+                    instrument.Meter.Name == AuthorizationMetrics.MeterName
+                    && instrument.Name == "authz.module_decision"
+                )
                     l.EnableMeasurementEvents(instrument);
             };
             listener.SetMeasurementEventCallback<int>(

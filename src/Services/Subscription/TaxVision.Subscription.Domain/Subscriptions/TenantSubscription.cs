@@ -61,6 +61,12 @@ public sealed class TenantSubscription : TenantEntity
 
     private TenantSubscription() { }
 
+    /// <summary>Fin de período de la base al que co-terminar un add-on cuyo período termina en
+    /// <paramref name="addOnPeriodEndUtc"/>: el fin vigente si la base ya avanzó su ciclo, o el
+    /// siguiente aniversario del plan si aún no.</summary>
+    public DateTime NextCoTermEnd(DateTime addOnPeriodEndUtc) =>
+        CurrentPeriodEndUtc > addOnPeriodEndUtc ? CurrentPeriodEndUtc : BillingCycle.CalculateNext(addOnPeriodEndUtc);
+
     public static Result<TenantSubscription> StartTrial(
         Guid tenantId,
         SubscriptionPlan plan,

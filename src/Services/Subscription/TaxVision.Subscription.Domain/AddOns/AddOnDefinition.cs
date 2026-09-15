@@ -82,6 +82,78 @@ public sealed class AddOnDefinition : BaseEntity
         return Result.Success(definition);
     }
 
+    /// <summary>Igual que <see cref="Create"/> pero con Id fijo, para el seed idempotente del catálogo.</summary>
+    public static Result<AddOnDefinition> Seed(
+        Guid id,
+        AddOnCode code,
+        string name,
+        string description,
+        string category,
+        bool allowMultipleInstances,
+        IReadOnlyCollection<BillingCycle> supportedBillingCycles,
+        DateTime nowUtc
+    )
+    {
+        var created = Create(
+            code,
+            name,
+            description,
+            category,
+            allowMultipleInstances,
+            supportedBillingCycles,
+            Guid.Empty,
+            nowUtc
+        );
+        if (created.IsFailure)
+            return created;
+
+        created.Value.Id = id;
+        return created;
+    }
+
+    /// <summary>True si este add-on es de tipo módulo (features <c>module.*</c>) y TODOS sus módulos ya
+    /// los cubre el plan destino, sin aportar cuota aditiva (Sum/Max) — entonces se absorbe en el upgrade.
+    /// Un add-on con entitlements aditivos sigue sumando valor y NO se absorbe.</summary>
+    public bool IsAbsorbedByPlanModules(IReadOnlyCollection<string> planModuleKeys)
+    {
+        foreach (var entitlement in _entitlements)
+        {
+            if (entitlement.MergeStrategy is AddOnMergeStrategy.Sum or AddOnMergeStrategy.Max)
+                return false;
+        }
+
+        var hasModuleFeature = false;
+        foreach (var feature in _features)
+        {
+            if (!feature.Enabled || !feature.FeatureKey.Value.StartsWith("module.", StringComparison.Ordinal))
+                continue;
+
+            hasModuleFeature = true;
+            if (!planModuleKeys.Contains(feature.FeatureKey.Value))
+                return false;
+        }
+
+        return hasModuleFeature;
+    }
+
+    /// <summary>Precio unitario del tramo que aplica al ciclo y la cantidad. El total lo calcula quien cobra (unitario × cantidad).</summary>
+    public Result<Money> ResolveUnitPrice(BillingCycle billingCycle, int quantity)
+    {
+        foreach (var tier in _priceTiers)
+        {
+            if (
+                tier.BillingCycle == billingCycle
+                && quantity >= tier.MinQuantity
+                && (tier.MaxQuantity is null || quantity <= tier.MaxQuantity)
+            )
+                return Result.Success(tier.UnitAmount);
+        }
+
+        return Result.Failure<Money>(
+            new Error("AddOn.NoPriceTier", $"No price tier for cycle {billingCycle} and quantity {quantity}.")
+        );
+    }
+
     public Result AddFeature(AddOnFeature feature)
     {
         var guard = EnsureDraft();
@@ -109,6 +181,27 @@ public sealed class AddOnDefinition : BaseEntity
             return guard;
 
         _priceTiers.Add(tier);
+        return Result.Success();
+    }
+
+    /// <summary>Reemplaza los precios. A diferencia de features/entitlements, editable tras publicar:
+    /// afecta compras NUEVAS; las vigentes conservan su precio en TenantAddOn.UnitPrice.</summary>
+    public Result ReplacePriceTiers(IReadOnlyCollection<AddOnPriceTier> tiers, Guid actorUserId, DateTime nowUtc)
+    {
+        if (tiers.Count == 0)
+            return Result.Failure(new Error("AddOnDefinition.NoPriceTiers", "At least one price tier is required."));
+
+        foreach (var tier in tiers)
+        {
+            if (tier.AddOnDefinitionId != Id)
+                return Result.Failure(
+                    new Error("AddOnDefinition.TierMismatch", "A price tier does not belong to this add-on.")
+                );
+        }
+
+        _priceTiers.Clear();
+        _priceTiers.AddRange(tiers);
+        Touch(actorUserId, nowUtc);
         return Result.Success();
     }
 
