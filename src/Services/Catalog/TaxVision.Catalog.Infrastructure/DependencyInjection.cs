@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Catalog.Application.Abstractions;
 using TaxVision.Catalog.Application.Permissions.Abstractions;
 using TaxVision.Catalog.Application.RateLimiting.Abstractions;
+using TaxVision.Catalog.Infrastructure.Permissions;
 using TaxVision.Catalog.Infrastructure.Persistence;
 using TaxVision.Catalog.Infrastructure.Persistence.Repositories;
 using TaxVision.Catalog.Infrastructure.RateLimiting;
@@ -43,8 +44,28 @@ public static class DependencyInjection
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
         AddRateLimitTierQuotas(services, configuration);
+        AddPermissionsPullRecovery(services);
 
         return services;
+    }
+
+    // H-04 — recuperación pull bajo demanda de permisos. Cuando ProjectionPermissionsSource
+    // (BuildingBlocks.Web) no encuentra la fila local, le pregunta a Auth en vez de negar sin más:
+    // Catalog casi nunca recibió el UserRolesChangedIntegrationEvent (backfill pendiente), así que un
+    // usuario legítimo daba 403 permanente. Reutiliza el ServiceAuthClientOptions + IServiceTokenAcquirer
+    // ya registrados (apuntan a Auth): un HttpClient tipado más. Sin este registro los dos parámetros
+    // opcionales del constructor de la fuente quedan null y el comportamiento es fail-closed puro.
+    private static void AddPermissionsPullRecovery(IServiceCollection services)
+    {
+        services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
     }
 
     // RateLimit Fase 2 — piezas siempre registradas: los lectores concretos de la proyección local

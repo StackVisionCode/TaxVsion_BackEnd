@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -36,7 +37,14 @@ public sealed record RoleResponse(
     bool IsSystem,
     bool IsActive,
     IReadOnlyList<string> PermissionCodes
-);
+)
+{
+    /// <summary>Actor types del tenant a los que este rol es asignable (todos sus permisos los
+    /// permiten). Lo llena el listado (GET /auth/roles) para que el picker del frontend no ofrezca
+    /// roles que el backend rechazaría con Role.NotAssignableToActorType. Vacío en respuestas de
+    /// create/update (el frontend recarga el catálogo tras esas acciones).</summary>
+    public IReadOnlyList<string> AssignableActorTypes { get; init; } = [];
+}
 
 public static class CreateRoleHandler
 {
@@ -148,7 +156,11 @@ public static class CreateRoleHandler
 
         var limits = await planLimits.GetAsync(tenantId, ct);
         var tier = PlanTierResolver.FromPlanCode(limits?.PlanCode);
-        return RolePermissionGuard.Validate(catalog, permissionIds, tier);
+        var modules = limits is null
+            ? []
+            : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
+        var enabledModules = modules.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return RolePermissionGuard.Validate(catalog, permissionIds, tier, enabledModules);
     }
 
     internal static async Task<RoleResponse> ToResponseAsync(Role role, IRoleRepository roles, CancellationToken ct)

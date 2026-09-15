@@ -132,6 +132,23 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         return (items, totalCount);
     }
 
+    // IgnoreQueryFilters: recálculo masivo cross-tenant (PlatformAdmin) — enumera los tenants de un
+    // plan por keyset para propagar un cambio de módulos sin offset caro.
+    public async Task<IReadOnlyList<Guid>> GetTenantIdsByPlanAsync(
+        Guid planId,
+        Guid afterTenantId,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Subscriptions.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.PlanId == planId && s.TenantId > afterTenantId)
+            .OrderBy(s => s.TenantId)
+            .Take(batchSize)
+            .Select(s => s.TenantId)
+            .ToListAsync(ct);
+
     private static IQueryable<TenantSubscription> WithRenewals(IQueryable<TenantSubscription> query) =>
         query.Include(s => s.Renewals).Include(s => s.PlanChangeRequests).Include(s => s.PendingDowngrades);
 }

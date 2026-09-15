@@ -1,3 +1,4 @@
+import type { TenantCommunicationLimitsSnapshot } from '../../domain/settings/tenant-communication-limits.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { LimitsRepository } from '../ports/settings-repository.js';
 import { applyLimitsUpdate } from '../use-cases/settings-use-cases.js';
@@ -18,7 +19,11 @@ import { applyLimitsUpdate } from '../use-cases/settings-use-cases.js';
  */
 export function bindSubscriptionConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
-  deps: { limits: LimitsRepository; planCodeCache?: { invalidate(tenantId: string): void } },
+  deps: {
+    limits: LimitsRepository;
+    planCodeCache?: { invalidate(tenantId: string): void };
+    modulesCache?: { invalidate(tenantId: string): void };
+  },
 ): void {
   register('subscription.entitlements_changed.v1', async (env) => {
     const snapshot = extractLimitsSnapshot(env);
@@ -27,18 +32,7 @@ export function bindSubscriptionConsumers(
   });
 }
 
-function extractLimitsSnapshot(env: IncomingEnvelope): {
-  tenantId: string;
-  planCode: string;
-  maxMeetingParticipants: number;
-  maxMeetingMinutes: number;
-  maxConcurrentCalls: number;
-  maxMonthlyMinutes: number;
-  recordingEnabled: boolean;
-  supportEnabled: boolean;
-  isSuspended: boolean;
-  updatedAtUtc: Date;
-} | null {
+function extractLimitsSnapshot(env: IncomingEnvelope): TenantCommunicationLimitsSnapshot | null {
   const planCode = getString(env.payload, 'planCode', 'PlanCode');
   if (!planCode) return null;
 
@@ -55,8 +49,23 @@ function extractLimitsSnapshot(env: IncomingEnvelope): {
     recordingEnabled: getEntitlementBool(entitlementValues, 'communication.recording_enabled') ?? false,
     supportEnabled: getEntitlementBool(entitlementValues, 'communication.support_chat_enabled') ?? true,
     isSuspended: subscriptionStatus === 'Suspended',
+    enabledModules: extractEnabledModules(entitlementValues),
     updatedAtUtc: new Date(),
   };
+}
+
+/**
+ * Modulos habilitados (`module.*` con valor `true`, sin el prefijo) — espejo de
+ * `BuildingBlocks.Messaging...TenantEntitlementModuleExtensions.ExtractEnabledModules` (.NET).
+ */
+function extractEnabledModules(entitlementValues: Record<string, string>): string[] {
+  const modules: string[] = [];
+  for (const [key, value] of Object.entries(entitlementValues)) {
+    if (key.startsWith('module.') && (value === 'True' || value === 'true')) {
+      modules.push(key.slice('module.'.length));
+    }
+  }
+  return modules;
 }
 
 function getEntitlementValues(payload: Record<string, unknown>): Record<string, string> {

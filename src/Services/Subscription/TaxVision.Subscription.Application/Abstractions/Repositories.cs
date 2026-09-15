@@ -13,6 +13,9 @@ public interface IPlanRepository
     Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default);
     Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default);
     Task<SubscriptionPlan?> GetByIdAsync(Guid planId, CancellationToken ct = default);
+
+    /// <summary>Plan trackeado (con versiones e hijas) para autoría; el resto de reads son AsNoTracking.</summary>
+    Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default);
 }
 
 public interface ISubscriptionRepository
@@ -61,6 +64,15 @@ public interface ISubscriptionRepository
     Task<(IReadOnlyList<TenantSubscription> Items, int TotalCount)> GetPastDueAsync(
         int page,
         int pageSize,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Ids de tenants suscritos a un plan, paginado por keyset (TenantId &gt; afterTenantId).
+    /// Cross-tenant — lo usa el recálculo masivo de entitlements.</summary>
+    Task<IReadOnlyList<Guid>> GetTenantIdsByPlanAsync(
+        Guid planId,
+        Guid afterTenantId,
+        int batchSize,
         CancellationToken ct = default
     );
 }

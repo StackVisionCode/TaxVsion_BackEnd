@@ -14,6 +14,10 @@ public sealed class TenantPlanCodeProjectionConfiguration : IEntityTypeConfigura
         builder.Property(p => p.PlanCode).HasMaxLength(100).IsRequired();
         builder.Property(p => p.RevisionNumber).IsRequired();
         builder.Property(p => p.UpdatedAtUtc).IsRequired();
+        // Default "[]" (no ""): backfilea filas preexistentes con un JSON válido de lista vacía, así
+        // EnabledModules deserializa sin reventar.
+        builder.Property(p => p.EnabledModulesJson).HasColumnType("nvarchar(max)").IsRequired().HasDefaultValue("[]");
+        builder.Ignore(p => p.EnabledModules); // computada: se deriva de EnabledModulesJson
 
         builder.HasIndex(p => p.TenantId).IsUnique();
     }

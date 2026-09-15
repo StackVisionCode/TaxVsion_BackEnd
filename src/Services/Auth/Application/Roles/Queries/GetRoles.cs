@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Roles.Commands;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Roles.Queries;
 
@@ -8,6 +9,11 @@ public sealed record GetRolesQuery(Guid TenantId);
 
 public static class GetRolesHandler
 {
+    // Actor types del tenant asignables por rol (PlatformAdmin queda fuera: es god-mode, no se asigna
+    // por rol). Un rol es asignable a X si TODOS sus permisos permiten X (misma regla que ActorTypeRoleGuard).
+    private static readonly UserActorType[] TenantActorTypes =
+        [UserActorType.TenantEmployee, UserActorType.TenantAdmin, UserActorType.CustomerPortal];
+
     public static async Task<Result<IReadOnlyList<RoleResponse>>> Handle(
         GetRolesQuery query,
         IRoleRepository roles,
@@ -16,20 +22,33 @@ public static class GetRolesHandler
     {
         var tenantRoles = await roles.GetByTenantAsync(query.TenantId, ct);
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
-        var codesById = catalog.ToDictionary(permission => permission.Id, permission => permission.Code);
+        var permissionsById = catalog.ToDictionary(permission => permission.Id);
 
         IReadOnlyList<RoleResponse> response = tenantRoles
-            .Select(role => new RoleResponse(
-                role.Id,
-                role.Name,
-                role.Description,
-                role.IsSystem,
-                role.IsActive,
-                role.Permissions.Where(link => codesById.ContainsKey(link.PermissionId))
-                    .Select(link => codesById[link.PermissionId])
-                    .OrderBy(code => code)
-                    .ToList()
-            ))
+            .Select(role =>
+            {
+                var rolePermissions = role
+                    .Permissions.Where(link => permissionsById.ContainsKey(link.PermissionId))
+                    .Select(link => permissionsById[link.PermissionId])
+                    .ToList();
+
+                var assignableActorTypes = TenantActorTypes
+                    .Where(actorType => rolePermissions.All(p => p.AllowedActorTypes.Contains(actorType)))
+                    .Select(actorType => actorType.ToString())
+                    .ToList();
+
+                return new RoleResponse(
+                    role.Id,
+                    role.Name,
+                    role.Description,
+                    role.IsSystem,
+                    role.IsActive,
+                    rolePermissions.Select(p => p.Code).OrderBy(code => code).ToList()
+                )
+                {
+                    AssignableActorTypes = assignableActorTypes,
+                };
+            })
             .ToList();
 
         return Result.Success(response);

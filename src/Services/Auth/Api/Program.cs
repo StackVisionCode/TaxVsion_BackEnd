@@ -102,6 +102,7 @@ builder.Services.AddHostedService<PlatformAdminEmergencyAccessService>();
 builder.Services.AddHostedService<SystemRolePermissionsSyncService>();
 builder.Services.AddHostedService<TenantDomainBackfillService>();
 builder.Services.AddHostedService<PermissionsBackfillService>();
+builder.Services.AddHostedService<PermissionsReconciliationService>();
 builder.Services.AddHostedService<TenantDomainProvisioningPoller>();
 builder.Services.AddHostedService<AuthMaintenanceService>();
 builder.Services.AddHostedService<OnboardingRetryScheduler>();

@@ -76,6 +76,9 @@ internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingReposito
         CancellationToken ct = default
     ) => Task.FromResult(Existing?.RegistrationTokenHash == registrationTokenHash ? Existing : null);
 
+    public Task<TenantOnboarding?> GetByReceiptFileIdAsync(Guid receiptFileId, CancellationToken ct = default) =>
+        Task.FromResult(Existing?.ReceiptFileId == receiptFileId ? Existing : null);
+
     public Task AddAsync(TenantOnboarding onboarding, CancellationToken ct = default)
     {
         Added = onboarding;

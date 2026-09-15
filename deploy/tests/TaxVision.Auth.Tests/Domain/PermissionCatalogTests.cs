@@ -228,6 +228,25 @@ public sealed class PermissionCatalogTests
         Assert.Contains(PermissionCatalog.CloudStorageDmcaCounterNotice, tenantAdminDefaults);
     }
 
+    // verbo≠permiso: la purga de correspondencia y el legal hold de firma dejaron de vivir bajo un
+    // permiso de lectura. Ambos son gestión admin-only: llegan a TenantAdmin por el bundle automático
+    // pero NO al empleado (no están en la lista explícita de SystemEmployee).
+    [Theory]
+    [InlineData(PermissionCatalog.CorrespondenceManage)]
+    [InlineData(PermissionCatalog.SignatureLegalManage)]
+    [InlineData(PermissionCatalog.CustomersImport)]
+    public void Management_permissions_reach_tenant_admin_but_not_employees_by_default(string code)
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+        var tenantAdminDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin);
+        var employeeDefaults = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+
+        Assert.False(definition.IsDangerous);
+        Assert.False(definition.PlatformOnly);
+        Assert.Contains(code, tenantAdminDefaults);
+        Assert.DoesNotContain(code, employeeDefaults);
+    }
+
     // RBAC Fase 8 (RBAC_Hardening_Plan.md) — migración de [Authorize(Roles=...)] a
     // [HasPermission] en Subscription/Auth-Invitations/Tenant. Los TenantAdmin-only de antes
     // (subscription.plan.change, seats.manage, addons.manage) deben seguir llegando por el

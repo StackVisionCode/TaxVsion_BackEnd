@@ -1,3 +1,4 @@
+using System.Linq;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -139,6 +140,88 @@ public sealed class SubscriptionPlan : BaseEntity
         Status = PlanStatus.Archived;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Publica una versión nueva idéntica a la actual pero con otro conjunto de módulos (module.*),
+    /// superando la anterior. Una versión publicada es inmutable, por eso se versiona en vez de editar.
+    /// Los límites, precios y features no-módulo se conservan.
+    /// </summary>
+    public Result ReviseModules(IReadOnlyCollection<string> modules, Guid actorUserId, DateTime nowUtc)
+    {
+        var published = FindPublishedVersion();
+        if (published is null)
+            return Result.Failure(new Error("Plan.NoPublishedVersion", "Plan has no published version to revise."));
+
+        var draft = SubscriptionPlanVersion.Create(
+            Id,
+            published.VersionNumber + 1,
+            published.TrialDaysDefault,
+            published.SupportedBillingCycles.ToArray()
+        );
+        if (draft.IsFailure)
+            return Result.Failure(draft.Error);
+
+        var version = draft.Value;
+
+        foreach (var entitlement in published.Entitlements)
+        {
+            var clone = PlanEntitlementDefinition.Create(
+                version.Id,
+                entitlement.Key,
+                entitlement.ValueType,
+                entitlement.DefaultValue,
+                entitlement.Description
+            );
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddEntitlementDefinition(clone.Value);
+        }
+
+        foreach (var tier in published.PriceTiers)
+        {
+            // UnitAmount es owned type: hay que clonar el Money, no reusar la instancia del tier viejo.
+            var amount = Money.Create(tier.UnitAmount.Amount, tier.UnitAmount.Currency);
+            if (amount.IsFailure)
+                return Result.Failure(amount.Error);
+            var clone = PlanPriceTier.Create(
+                version.Id,
+                tier.BillingCycle,
+                tier.MinQuantity,
+                tier.MaxQuantity,
+                amount.Value
+            );
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddPriceTier(clone.Value);
+        }
+
+        foreach (var feature in published.Features)
+        {
+            if (feature.FeatureKey.Value.StartsWith("module.", StringComparison.Ordinal))
+                continue;
+            var clone = PlanFeature.Create(version.Id, feature.FeatureKey, feature.DefaultEnabled, feature.Description);
+            if (clone.IsFailure)
+                return Result.Failure(clone.Error);
+            version.AddFeature(clone.Value);
+        }
+
+        foreach (var module in modules.Select(m => m.Trim()).Where(m => m.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var key = EntitlementKey.Create($"module.{module}");
+            if (key.IsFailure)
+                return Result.Failure(key.Error);
+            var feature = PlanFeature.Create(version.Id, key.Value, defaultEnabled: true, description: $"module.{module}");
+            if (feature.IsFailure)
+                return Result.Failure(feature.Error);
+            version.AddFeature(feature.Value);
+        }
+
+        var added = AddVersion(version, actorUserId, nowUtc);
+        if (added.IsFailure)
+            return added;
+
+        return PublishVersion(version.Id, nowUtc, actorUserId, nowUtc);
     }
 
     public SubscriptionPlanVersion? GetPublishedVersion() => FindPublishedVersion();

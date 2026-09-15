@@ -1,3 +1,5 @@
+using System.Linq;
+using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.ValueObjects;
 
@@ -55,6 +57,48 @@ public sealed class SubscriptionPlanTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Plan.NotDeprecated", result.Error.Code);
+    }
+
+    [Fact]
+    public void ReviseModules_publishes_a_new_version_with_the_new_modules_and_keeps_the_rest()
+    {
+        var plan = CreatePlan("starter");
+        var v1 = CreateVersion(plan.Id, versionNumber: 1);
+        v1.AddEntitlementDefinition(
+            PlanEntitlementDefinition.Create(v1.Id, EntitlementKey.Create("seats.max").Value, EntitlementValueType.Int, "5", "seats.max").Value
+        );
+        v1.AddPriceTier(PlanPriceTier.Create(v1.Id, BillingCycle.Monthly, 1, null, Money.Create(10m, "USD").Value).Value);
+        v1.AddFeature(PlanFeature.Create(v1.Id, EntitlementKey.Create("core.chat").Value, true, "core.chat").Value);
+        v1.AddFeature(PlanFeature.Create(v1.Id, EntitlementKey.Create("module.signatures").Value, true, "module.signatures").Value);
+        plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
+        plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+
+        var result = plan.ReviseModules(["documents"], Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PlanVersionStatus.Superseded, v1.Status);
+
+        var published = plan.GetPublishedVersion()!;
+        Assert.NotEqual(v1.Id, published.Id);
+        Assert.Equal(2, published.VersionNumber);
+
+        var featureKeys = published.Features.Select(f => f.FeatureKey.Value).ToList();
+        Assert.Contains("module.documents", featureKeys);
+        Assert.DoesNotContain("module.signatures", featureKeys);
+        Assert.Contains("core.chat", featureKeys); // feature no-módulo conservada
+        Assert.Single(published.Entitlements); // límite conservado
+        Assert.Single(published.PriceTiers); // precio conservado
+    }
+
+    [Fact]
+    public void ReviseModules_fails_when_there_is_no_published_version()
+    {
+        var plan = CreatePlan("starter");
+
+        var result = plan.ReviseModules(["documents"], Guid.NewGuid(), DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Plan.NoPublishedVersion", result.Error.Code);
     }
 
     private static SubscriptionPlan CreatePlan(string code) =>

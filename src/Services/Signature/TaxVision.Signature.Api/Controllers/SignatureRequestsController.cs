@@ -396,7 +396,7 @@ public sealed class SignatureRequestsController(
 
     // ---------- POST /signature/requests/{id}/legal-hold ----------
     [HttpPost("{id:guid}/legal-hold")]
-    [HasPermission(SignaturePermissions.DocumentAuditRead)]
+    [HasPermission(SignaturePermissions.LegalHoldManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
@@ -415,7 +415,7 @@ public sealed class SignatureRequestsController(
 
     // ---------- DELETE /signature/requests/{id}/legal-hold ----------
     [HttpDelete("{id:guid}/legal-hold")]
-    [HasPermission(SignaturePermissions.DocumentAuditRead)]
+    [HasPermission(SignaturePermissions.LegalHoldManage)]
     [RateLimit("signature.g.request_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]

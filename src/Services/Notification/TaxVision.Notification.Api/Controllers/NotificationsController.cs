@@ -1,4 +1,5 @@
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -19,7 +20,7 @@ public sealed class NotificationsController(IMessageBus bus) : ControllerBase
 {
     /// <summary>Historial de notificaciones del tenant (email/SMS/in-app) para auditoría y soporte.</summary>
     [HttpGet]
-    [Authorize(Roles = "TenantAdmin,PlatformAdmin")]
+    [HasPermission(NotificationPermissions.LogView)]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [RateLimit("notification.f.list")]
     [ProducesResponseType<PagedResult<NotificationResponse>>(StatusCodes.Status200OK)]

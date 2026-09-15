@@ -189,6 +189,28 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Debugging (Fase 7): el acceso efectivo del usuario actual — por permiso, su módulo y si
+    /// es efectivo (transversal o módulo habilitado). Responde "por qué 403" sin leer logs.</summary>
+    [HttpGet("me/effective-access")]
+    [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
+    [RateLimit("auth.f.me_read")]
+    [ProducesResponseType<EffectiveAccessResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> MyEffectiveAccess(CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<EffectiveAccessResponse>>(new GetMyEffectiveAccessQuery(userId), ct);
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>JWKS público para validadores RS256. Con HS256 devuelve un set vacío.</summary>
     [HttpGet(".well-known/jwks.json")]
     [AllowAnonymous]

@@ -79,7 +79,7 @@ const repo = createFakeProjectionRepository([
 describe('checkPermission — cross-actor isolation', () => {
   it.each(STAFF_ONLY_PERMISSIONS)('rejects a CustomerPortal caller from the staff-only permission %s', async (permission) => {
     const result = await checkPermission(
-      { userId: CUSTOMER_PORTAL_USER_ID, actorType: 'CustomerPortal', permissionVersion: 1 },
+      { userId: CUSTOMER_PORTAL_USER_ID, tenantId: 't-actor-iso', actorType:'CustomerPortal', permissionVersion: 1 },
       permission,
       repo,
     );
@@ -89,7 +89,7 @@ describe('checkPermission — cross-actor isolation', () => {
 
   it.each(STAFF_ONLY_PERMISSIONS)('accepts a TenantEmployee caller with the staff-only permission %s', async (permission) => {
     const result = await checkPermission(
-      { userId: TENANT_EMPLOYEE_USER_ID, actorType: 'TenantEmployee', permissionVersion: 1 },
+      { userId: TENANT_EMPLOYEE_USER_ID, tenantId: 't-actor-iso', actorType:'TenantEmployee', permissionVersion: 1 },
       permission,
       repo,
     );
@@ -99,7 +99,7 @@ describe('checkPermission — cross-actor isolation', () => {
 
   it.each(SHARED_STAFF_AND_CUSTOMER_PERMISSIONS)('accepts a CustomerPortal caller with the shared permission %s', async (permission) => {
     const result = await checkPermission(
-      { userId: CUSTOMER_PORTAL_USER_ID, actorType: 'CustomerPortal', permissionVersion: 1 },
+      { userId: CUSTOMER_PORTAL_USER_ID, tenantId: 't-actor-iso', actorType:'CustomerPortal', permissionVersion: 1 },
       permission,
       repo,
     );
@@ -109,7 +109,7 @@ describe('checkPermission — cross-actor isolation', () => {
 
   it('rejects any actor type that is missing the required permission, regardless of which one', async () => {
     const result = await checkPermission(
-      { userId: MISSING_PERM_USER_ID, actorType: 'TenantAdmin', permissionVersion: 1 },
+      { userId: MISSING_PERM_USER_ID, tenantId: 't-actor-iso', actorType:'TenantAdmin', permissionVersion: 1 },
       CommunicationPermissions.SettingsManage,
       repo,
     );
@@ -119,7 +119,7 @@ describe('checkPermission — cross-actor isolation', () => {
 
   it('PlatformAdmin bypasses the projection entirely — documented, not a fail-open regression', async () => {
     const result = await checkPermission(
-      { userId: PLATFORM_ADMIN_USER_ID, actorType: 'PlatformAdmin', permissionVersion: 1 },
+      { userId: PLATFORM_ADMIN_USER_ID, tenantId: 't-actor-iso', actorType:'PlatformAdmin', permissionVersion: 1 },
       CommunicationPermissions.SettingsManage,
       repo,
     );

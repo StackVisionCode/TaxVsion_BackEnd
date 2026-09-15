@@ -19,7 +19,7 @@ namespace TaxVision.Catalog.Api.Controllers;
 [ApiController]
 [Route("catalog/items")]
 [Authorize]
-[AllowActorTypes(ActorType.Service, ActorType.TenantAdmin, ActorType.TenantEmployee)]
+[AllowActorTypes(ActorType.TenantAdmin, ActorType.TenantEmployee)]
 public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : ControllerBase
 {
     public sealed record AttributeRequest(string Key, string Value, string? ValueType);

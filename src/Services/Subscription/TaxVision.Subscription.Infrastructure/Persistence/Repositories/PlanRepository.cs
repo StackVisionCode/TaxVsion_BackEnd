@@ -26,6 +26,9 @@ public sealed class PlanRepository(SubscriptionDbContext db) : IPlanRepository
     public Task<SubscriptionPlan?> GetByIdAsync(Guid planId, CancellationToken ct = default) =>
         WithVersions(db.Plans.AsNoTracking()).FirstOrDefaultAsync(plan => plan.Id == planId, ct);
 
+    public Task<SubscriptionPlan?> GetByIdForUpdateAsync(Guid planId, CancellationToken ct = default) =>
+        WithVersions(db.Plans).FirstOrDefaultAsync(plan => plan.Id == planId, ct);
+
     private static IQueryable<SubscriptionPlan> WithVersions(IQueryable<SubscriptionPlan> query) =>
         query
             .Include(plan => plan.Versions)

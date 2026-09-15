@@ -56,6 +56,13 @@ builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "customer-serv
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
+// Gate de módulo Fase 1 (LOG-ONLY, opt-in): el hook de PermissionPolicyProvider resuelve esta fuente
+// por request y loguea allow/deny por módulo SIN bloquear.
+builder.Services.AddScoped<
+    BuildingBlocks.Web.ActorTypeAuthorization.ITenantModuleEntitlementsSource,
+    BuildingBlocks.Web.ActorTypeAuthorization.TenantModuleEntitlementsSource
+>();
+
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
 // 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.

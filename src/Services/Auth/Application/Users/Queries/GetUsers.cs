@@ -58,8 +58,10 @@ public static class GetUsersHandler
         foreach (var user in items)
         {
             var userRoles = await roles.GetUserRolesAsync(user.Id, ct);
-            var roleNames = new List<string>(user.Roles);
-            roleNames.AddRange(userRoles.Where(role => role.IsActive).Select(role => role.Name));
+            // Solo los roles asignados reales (Role.Name). No se incluye user.Roles porque ahí el
+            // actor_type viaja como pseudo-rol (UserActorRoles.For → "CustomerPortal") y se duplicaría
+            // con el nombre del rol de sistema ("Customer Portal"); el actor_type ya va en ActorType.
+            var roleNames = userRoles.Where(role => role.IsActive).Select(role => role.Name).ToList();
 
             responses.Add(
                 new UserSummaryResponse(
@@ -101,8 +103,9 @@ public static class GetUserByIdHandler
         }
 
         var userRoles = await roles.GetUserRolesAsync(user.Id, ct);
-        var roleNames = new List<string>(user.Roles);
-        roleNames.AddRange(userRoles.Where(role => role.IsActive).Select(role => role.Name));
+        // Solo roles reales (ver GetUsersHandler): user.Roles trae el actor_type como pseudo-rol y se
+        // duplicaría con el rol de sistema; el actor_type ya va en ActorType.
+        var roleNames = userRoles.Where(role => role.IsActive).Select(role => role.Name).ToList();
 
         return Result.Success(
             new UserSummaryResponse(

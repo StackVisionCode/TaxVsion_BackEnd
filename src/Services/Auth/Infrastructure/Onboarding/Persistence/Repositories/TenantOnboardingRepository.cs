@@ -24,6 +24,9 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
             ct
         );
 
+    public Task<TenantOnboarding?> GetByReceiptFileIdAsync(Guid receiptFileId, CancellationToken ct = default) =>
+        db.TenantOnboardings.FirstOrDefaultAsync(onboarding => onboarding.ReceiptFileId == receiptFileId, ct);
+
     public async Task AddAsync(TenantOnboarding onboarding, CancellationToken ct = default) =>
         await db.TenantOnboardings.AddAsync(onboarding, ct);
 

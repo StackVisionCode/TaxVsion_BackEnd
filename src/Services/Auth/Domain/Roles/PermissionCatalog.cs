@@ -29,6 +29,7 @@ public static class PermissionCatalog
     public const string CustomersManage = CustomersPermissions.Manage;
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
+    public const string CustomersImport = CustomersPermissions.Import;
     public const string SignaturesRequest = "signatures.request";
     public const string DocumentsView = "documents.view";
     public const string DocumentsManage = "documents.manage";
@@ -60,6 +61,7 @@ public static class PermissionCatalog
     public const string SignatureRequestResend = SignaturePermissions.RequestResend;
     public const string SignatureRequestExpire = SignaturePermissions.RequestExpire;
     public const string SignatureRequestManage = SignaturePermissions.RequestManage;
+    public const string SignatureLegalManage = SignaturePermissions.LegalHoldManage;
     public const string SignatureDocumentPrepare = SignaturePermissions.DocumentPrepare;
     public const string SignatureDocumentSign = SignaturePermissions.DocumentSign;
     public const string SignatureDocumentView = SignaturePermissions.DocumentView;
@@ -91,6 +93,7 @@ public static class PermissionCatalog
     public const string CorrespondenceCompose = CorrespondencePermissions.Compose;
     public const string CorrespondenceReply = CorrespondencePermissions.Reply;
     public const string CorrespondenceSend = CorrespondencePermissions.Send;
+    public const string CorrespondenceManage = CorrespondencePermissions.Manage;
 
     // Connectors — cuentas de correo conectadas (OAuth Gmail/Graph o IMAP+SMTP manual) que
     // alimentan el envío/recepción de Correspondence (bounded context propio, ver microservicio
@@ -152,9 +155,8 @@ public static class PermissionCatalog
     // Notification — configuración SMTP/API, envío/historial, templates/layouts, campañas y logs
     // (bounded context propio, ver microservicio Notification). Mismo gap y mismo hallazgo que
     // Postmaster arriba: 8 de estos 9 permisos ya los exigían los 5 controllers de Notification
-    // vía [HasPermission(...)], pero nunca se habían sembrado en este catálogo. LogView no lo usa
-    // ningún controller todavía (reservado, mismo criterio que ScribeCampaignsRead/Write) — se
-    // siembra igual porque el código ya define la constante.
+    // vía [HasPermission(...)], pero nunca se habían sembrado en este catálogo. LogView lo exige
+    // ahora el GET de NotificationsController (historial del tenant para auditoría/soporte).
     public const string NotificationSettingsManage = NotificationPermissions.SettingsManage;
     public const string NotificationEmailSend = NotificationPermissions.EmailSend;
     public const string NotificationEmailView = NotificationPermissions.EmailView;
@@ -420,6 +422,16 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Importación masiva — antes admin-only vía [Authorize(Roles="TenantAdmin")]. Admin-only por
+            // defecto (no está en la lista de SystemEmployee); no confundir con CustomersManage (que el
+            // empleado sí tiene): importar en bloque es una operación administrativa.
+            new Guid("a1000000-0000-0000-0000-00000000009c"),
+            CustomersImport,
+            "customers",
+            "Importar clientes en bloque (CSV/Excel)",
+            false
+        ),
+        new(
             new Guid("a1000000-0000-0000-0000-000000000012"),
             SignaturesRequest,
             "signatures",
@@ -682,6 +694,16 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Gestión de bandeja (archivar/papelera/restaurar/purgar). Incluye la purga permanente, por
+            // eso no va bajo CorrespondenceRead — mismo criterio admin-only que CloudStorageShareManage:
+            // no se otorga al empleado por defecto (no está en SystemRoleDefaults(SystemEmployee)).
+            new Guid("a1000000-0000-0000-0000-00000000009a"),
+            CorrespondenceManage,
+            "correspondence",
+            "Archivar, enviar a papelera, restaurar y borrar definitivamente correspondencia",
+            false
+        ),
+        new(
             new Guid("a1000000-0000-0000-0000-000000000077"),
             ConnectorsAccountsRead,
             "connectors",
@@ -924,6 +946,15 @@ public static class PermissionCatalog
             SignatureDocumentAuditRead,
             "signature",
             "Consultar el audit trail de una firma",
+            false
+        ),
+        new(
+            // Legal hold escribe estado (bloquea el borrado), no es una lectura del audit trail — por
+            // eso se separa de DocumentAuditRead. Admin-only por defecto (no está en la lista Employee).
+            new Guid("a1000000-0000-0000-0000-00000000009b"),
+            SignatureLegalManage,
+            "signature",
+            "Colocar y levantar retención legal (legal hold) sobre una firma",
             false
         ),
         new(
@@ -1333,7 +1364,7 @@ public static class PermissionCatalog
             new Guid("a1000000-0000-0000-0000-000000000102"),
             NotificationLogView,
             "notification",
-            "Ver logs de auditoría de Notification del tenant (reservado, sin controller aún)",
+            "Ver el historial de notificaciones del tenant (email/SMS/in-app) para auditoría y soporte",
             false
         ),
         // PaymentApp (ver comentario junto a los const de arriba).

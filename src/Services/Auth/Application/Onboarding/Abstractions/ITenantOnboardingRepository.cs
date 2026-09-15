@@ -14,6 +14,11 @@ public interface ITenantOnboardingRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Resuelve el onboarding dueño de un recibo por su FileId. Respalda el endpoint público
+    /// de descarga: solo un FileId que sea realmente un recibo emitido puede resolverse, así el
+    /// endpoint anónimo deja de ser un resolver genérico de archivos por GUID.</summary>
+    Task<TenantOnboarding?> GetByReceiptFileIdAsync(Guid receiptFileId, CancellationToken ct = default);
+
     Task AddAsync(TenantOnboarding onboarding, CancellationToken ct = default);
 
     /// <summary>PayFlow (Fase 17) — onboardings ProvisioningFailed con reintento automático

@@ -187,6 +187,13 @@ public sealed class OnboardingCancelRequestedConsumerTests
             int pageSize,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<Guid>> GetTenantIdsByPlanAsync(
+            Guid planId,
+            Guid afterTenantId,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

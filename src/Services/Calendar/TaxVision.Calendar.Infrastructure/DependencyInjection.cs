@@ -76,6 +76,11 @@ public static class DependencyInjection
     {
         services.AddScoped<ITenantPlanCodeProjectionRepository, TenantPlanCodeProjectionRepository>();
         services.AddScoped<EfTenantPlanCodeReader>();
+        // Gate de módulo Fase 1 — lector de módulos (fuente en Program.cs).
+        services.AddScoped<
+            BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader,
+            TaxVision.Calendar.Infrastructure.RateLimiting.EfTenantEntitlementModulesReader
+        >();
         services.AddScoped(sp => new CachedTenantPlanCodeReader(
             sp.GetRequiredService<ICacheService>(),
             sp.GetRequiredService<EfTenantPlanCodeReader>()

@@ -67,7 +67,7 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("correspondence/threads/{threadId:guid}/archive")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.thread_manage")]
     public async Task<IActionResult> Archive(Guid threadId, CancellationToken ct)
     {
@@ -79,7 +79,7 @@ public sealed class ThreadsController(IMessageBus bus) : ControllerBase
     }
 
     [HttpPost("correspondence/threads/{threadId:guid}/unarchive")]
-    [HasPermission(CorrespondencePermissions.Read)]
+    [HasPermission(CorrespondencePermissions.Manage)]
     [RateLimit("correspondence.g.thread_manage")]
     public async Task<IActionResult> Unarchive(Guid threadId, CancellationToken ct)
     {

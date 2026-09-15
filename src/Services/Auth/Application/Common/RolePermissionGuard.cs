@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Tenants;
@@ -22,7 +23,8 @@ public static class RolePermissionGuard
     public static Result Validate(
         IReadOnlyCollection<Permission> catalog,
         IReadOnlyCollection<Guid>? requestedPermissionIds,
-        PlanTier tenantPlanTier
+        PlanTier tenantPlanTier,
+        IReadOnlySet<string> enabledModules
     )
     {
         if (requestedPermissionIds is null || requestedPermissionIds.Count == 0)
@@ -40,7 +42,20 @@ public static class RolePermissionGuard
                 continue;
 
             if (!permission.IsAssignableByTenant || (int)tenantPlanTier < permission.MinPlanTier)
+            {
                 rejected.Add(permission.Code);
+                continue;
+            }
+
+            // Ceiling de entitlement: un permiso de un módulo que el plan del tenant no habilita no
+            // puede darse en un rol custom. Solo se aplica si conocemos los módulos (set no vacío);
+            // vacío = sin datos aún, no se bloquea (el gate en runtime es el enforcement real).
+            if (enabledModules.Count > 0)
+            {
+                var module = PermissionModuleMap.ModuleFor(permission.Code);
+                if (module is not null && !enabledModules.Contains(module))
+                    rejected.Add(permission.Code);
+            }
         }
 
         if (rejected.Count == 0)
