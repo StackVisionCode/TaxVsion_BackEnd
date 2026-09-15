@@ -9,5 +9,6 @@ public sealed record CreateTenantPaymentConfigCommand(
     TenantPaymentMode Mode,
     string PublishableKey,
     string StatementDescriptor,
-    Guid ActorUserId
+    Guid ActorUserId,
+    string? ApiBaseUrl = null
 );

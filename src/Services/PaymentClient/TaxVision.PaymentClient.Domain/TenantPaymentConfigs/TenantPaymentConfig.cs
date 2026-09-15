@@ -22,6 +22,11 @@ public sealed class TenantPaymentConfig : TenantEntity
     public PaymentProviderCode ProviderCode { get; private set; }
     public TenantPaymentMode Mode { get; private set; }
     public string PublishableKey { get; private set; } = default!;
+
+    /// <summary>URL/endpoint del proveedor, configurable por el tenant. Opcional — Stripe no lo
+    /// necesita (SDK con endpoints fijos), pero otros gateways (IntelliPay, un procesador propio, etc.)
+    /// requieren su URL base. Null = usar el default del adapter.</summary>
+    public string? ApiBaseUrl { get; private set; }
     public EncryptedSecret? SecretKeyEncrypted { get; private set; }
     public EncryptedSecret? WebhookSecretEncrypted { get; private set; }
     public StatementDescriptor StatementDescriptor { get; private set; } = null!;
@@ -41,7 +46,8 @@ public sealed class TenantPaymentConfig : TenantEntity
         TenantPaymentMode mode,
         string publishableKey,
         StatementDescriptor descriptor,
-        DateTime nowUtc
+        DateTime nowUtc,
+        string? apiBaseUrl = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -59,6 +65,7 @@ public sealed class TenantPaymentConfig : TenantEntity
             ProviderCode = providerCode,
             Mode = mode,
             PublishableKey = publishableKey.Trim(),
+            ApiBaseUrl = string.IsNullOrWhiteSpace(apiBaseUrl) ? null : apiBaseUrl.Trim(),
             StatementDescriptor = descriptor,
             IsActive = false,
             CreatedAtUtc = nowUtc,
@@ -66,6 +73,14 @@ public sealed class TenantPaymentConfig : TenantEntity
         };
         config.SetTenant(tenantId);
         return Result.Success(config);
+    }
+
+    /// <summary>Edita la URL/endpoint del proveedor (settings del tenant). Null/whitespace la limpia.</summary>
+    public Result UpdateApiBaseUrl(string? apiBaseUrl, Guid actorUserId, DateTime nowUtc)
+    {
+        ApiBaseUrl = string.IsNullOrWhiteSpace(apiBaseUrl) ? null : apiBaseUrl.Trim();
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
     }
 
     public Result UpdateSecrets(

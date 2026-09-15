@@ -27,7 +27,8 @@ public static class GetTenantPaymentConfigHandler
                 config.WebhookSecretEncrypted is not null,
                 config.StatementDescriptor.Value,
                 config.IsActive,
-                config.SettledAtUtc
+                config.SettledAtUtc,
+                config.ApiBaseUrl
             )
         );
     }

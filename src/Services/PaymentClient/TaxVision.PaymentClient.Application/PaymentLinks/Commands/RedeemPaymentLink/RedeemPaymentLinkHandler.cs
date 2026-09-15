@@ -107,7 +107,12 @@ public static class RedeemPaymentLinkHandler
         }
         else
         {
-            var credentials = new TenantProviderCredentials(secretKey, WebhookSecret: null);
+            var credentials = new TenantProviderCredentials(
+                secretKey,
+                WebhookSecret: null,
+                PublishableKey: config.PublishableKey,
+                ApiBaseUrl: config.ApiBaseUrl
+            );
             var adapter = providerFactory.Resolve(config.ProviderCode);
             await ExecuteChargeAsync(payment, adapter, credentials, command, ct);
         }

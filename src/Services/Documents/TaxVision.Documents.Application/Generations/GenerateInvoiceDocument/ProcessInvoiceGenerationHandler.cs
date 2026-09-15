@@ -33,6 +33,7 @@ public static class ProcessInvoiceGenerationHandler
         ProcessInvoiceGenerationCommand command,
         IDocumentGenerationRepository repository,
         IDocumentBrandingRepository brandingRepository,
+        ITenantLogoResolver tenantLogoResolver,
         IDocumentTemplateRenderer renderer,
         IHtmlToPdfConverter pdfConverter,
         IDocumentStorageClient storageClient,
@@ -77,6 +78,19 @@ public static class ProcessInvoiceGenerationHandler
             // sobrescribir campo a campo (override puntual sin tocar el perfil).
             var storedBranding = await brandingRepository.GetByTenantAsync(command.TenantId, ct);
             var effectiveBranding = ResolveBranding(command.Branding, storedBranding);
+
+            // Si no hay un logo embebido explícito (request u override guardado en Documents), usar el logo
+            // de la marca del tenant (Company settings → TenantBrands), bajado on-demand de CloudStorage.
+            // Best-effort: si no hay logo o falla la bajada, el PDF sale sin logo (comportamiento actual).
+            if (string.IsNullOrWhiteSpace(effectiveBranding?.LogoDataUri))
+            {
+                var tenantLogo = await tenantLogoResolver.ResolveLogoDataUriAsync(command.TenantId, ct);
+                if (!string.IsNullOrEmpty(tenantLogo))
+                    effectiveBranding = (effectiveBranding ?? new BrandingPayload(null, null, null, null)) with
+                    {
+                        LogoDataUri = tenantLogo,
+                    };
+            }
 
             var pdf = await RenderAndConvertAsync(command, effectiveBranding, renderer, pdfConverter, qrGenerator, ct);
             if (pdf.IsFailure)
