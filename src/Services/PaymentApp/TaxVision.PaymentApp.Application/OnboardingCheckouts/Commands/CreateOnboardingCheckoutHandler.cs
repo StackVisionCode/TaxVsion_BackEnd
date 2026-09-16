@@ -79,7 +79,40 @@ public static class CreateOnboardingCheckoutHandler
         if (sessionResult.IsFailure)
             return Result.Failure<OnboardingCheckoutResponse>(sessionResult.Error);
 
-        var session = sessionResult.Value;
+        return await FinalizeCheckoutAsync(
+            command,
+            payment,
+            sessionResult.Value,
+            isNew,
+            nowUtc,
+            expiresAtUtc,
+            payments,
+            audit,
+            unitOfWork,
+            correlation,
+            logger,
+            ct
+        );
+    }
+
+    /// <summary>PayFlow (auditoría F20) — paso final del checkout: registra la sesión de Stripe en el
+    /// aggregate, persiste+audita y arma la respuesta. Extraído de <c>Handle</c> para que no vuelva a
+    /// crecer; el comportamiento no cambió.</summary>
+    private static async Task<Result<OnboardingCheckoutResponse>> FinalizeCheckoutAsync(
+        CreateOnboardingCheckoutCommand command,
+        SaaSPayment payment,
+        HostedCheckoutSessionResult session,
+        bool isNew,
+        DateTime nowUtc,
+        DateTime expiresAtUtc,
+        ISaaSPaymentRepository payments,
+        IPaymentAuditLogWriter audit,
+        IUnitOfWork unitOfWork,
+        ICorrelationContext correlation,
+        ILogger<SaaSPayment> logger,
+        CancellationToken ct
+    )
+    {
         var recordResult = RecordSession(command, payment, session, nowUtc, logger);
         if (recordResult.IsFailure)
             return Result.Failure<OnboardingCheckoutResponse>(recordResult.Error);
