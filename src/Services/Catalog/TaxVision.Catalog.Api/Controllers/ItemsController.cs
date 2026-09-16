@@ -36,6 +36,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
         decimal? CostAmount,
         string? CostCurrency,
         string? Unit,
+        int TaxRateBasisPoints,
         bool TrackInventory,
         string? ImageUrl,
         IReadOnlyList<AttributeRequest>? Attributes
@@ -47,6 +48,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
         string? Barcode,
         Guid CategoryId,
         string? Unit,
+        int TaxRateBasisPoints,
         string? ImageUrl,
         IReadOnlyList<AttributeRequest>? Attributes
     );
@@ -86,6 +88,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
                 request.CostAmount,
                 request.CostCurrency,
                 request.Unit,
+                request.TaxRateBasisPoints,
                 request.TrackInventory,
                 request.ImageUrl,
                 Map(request.Attributes)
@@ -140,6 +143,7 @@ public sealed class ItemsController(IMessageBus bus, ITenantContext tenant) : Co
                 request.Barcode,
                 request.CategoryId,
                 request.Unit,
+                request.TaxRateBasisPoints,
                 request.ImageUrl,
                 Map(request.Attributes)
             ),

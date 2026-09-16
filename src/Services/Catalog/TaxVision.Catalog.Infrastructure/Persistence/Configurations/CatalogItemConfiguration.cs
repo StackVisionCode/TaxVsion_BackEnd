@@ -20,6 +20,8 @@ public sealed class CatalogItemConfiguration : IEntityTypeConfiguration<CatalogI
         builder.Property(i => i.CategoryId).IsRequired();
         builder.Property(i => i.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(i => i.Unit).HasMaxLength(50);
+        // Tasa de impuesto por defecto del ítem (puntos básicos). Default 0 para filas existentes.
+        builder.Property(i => i.TaxRateBasisPoints).IsRequired().HasDefaultValue(0);
         builder.Property(i => i.ImageUrl).HasMaxLength(2000);
         builder.Property(i => i.TrackInventory).IsRequired();
         builder.Property(i => i.IsActive).IsRequired();

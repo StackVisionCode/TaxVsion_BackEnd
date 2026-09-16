@@ -43,4 +43,26 @@ public sealed class InvoiceLineItem : BaseEntity
         LineTotal = lineTotal;
         CatalogItemId = catalogItemId;
     }
+
+    /// <summary>Actualiza los valores de la línea IN SITU (mismo Id/fila). Al editar la factura se
+    /// reconcilian las líneas actualizando las existentes en vez de borrarlas y recrearlas — así EF emite
+    /// UPDATE en lugar de DELETE+INSERT, evitando el falso conflicto de concurrencia de la colección owned.</summary>
+    internal void Update(
+        string description,
+        int quantity,
+        Money unitAmount,
+        int taxBasisPoints,
+        Money taxAmount,
+        Money lineTotal,
+        Guid? catalogItemId
+    )
+    {
+        Description = description;
+        Quantity = quantity;
+        UnitAmount = unitAmount;
+        TaxBasisPoints = taxBasisPoints;
+        TaxAmount = taxAmount;
+        LineTotal = lineTotal;
+        CatalogItemId = catalogItemId;
+    }
 }

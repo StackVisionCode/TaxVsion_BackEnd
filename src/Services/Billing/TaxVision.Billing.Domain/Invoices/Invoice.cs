@@ -71,6 +71,12 @@ public sealed class Invoice : AggregateRoot
     public Guid CreatedBy { get; private set; }
     public Guid? LastModifiedBy { get; private set; }
     public DateTime? DeletedAtUtc { get; private set; }
+
+    /// <summary>Anulación (void): una factura ya emitida/pagada no se borra, se anula — queda registrada
+    /// con fecha y motivo. El stock descontado al emitir se repone al anular (lo hace el handler).</summary>
+    public DateTime? VoidedAtUtc { get; private set; }
+    public string? VoidReason { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     public IReadOnlyCollection<InvoiceLineItem> Lines => _lines;
@@ -118,24 +124,38 @@ public sealed class Invoice : AggregateRoot
         };
         invoice.SetTenant(tenantId);
 
+        var applied = invoice.RebuildLines(cur, lines);
+        if (applied.IsFailure)
+            return Result.Failure<Invoice>(applied.Error);
+
+        invoice.AmountPaid = Money.Zero(cur);
+        invoice.AmountDue = invoice.Total;
+
+        return Result.Success(invoice);
+    }
+
+    /// <summary>Reemplaza las líneas y recalcula los totales congelados (subtotal/impuesto/total), con la
+    /// MISMA aritmética que el borrador. No toca AmountPaid/AmountDue — el caller decide. Valida cada línea.</summary>
+    private Result RebuildLines(string cur, IReadOnlyList<DraftInvoiceLine> lines)
+    {
+        // 1) Validar y calcular TODO primero (sin mutar nada): si una línea es inválida, no se toca el estado.
+        var computed = new List<(string Desc, int Qty, long Unit, int Bps, long Tax, long Total, Guid? Cat)>(lines.Count);
         long subtotalCents = 0;
         long taxCents = 0;
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line.Description))
-                return Result.Failure<Invoice>(
-                    new Error("Billing.Invoice.LineDescription", "Line description is required.")
-                );
+                return Result.Failure(new Error("Billing.Invoice.LineDescription", "Line description is required."));
             if (line.Quantity <= 0)
-                return Result.Failure<Invoice>(
+                return Result.Failure(
                     new Error("Billing.Invoice.LineQuantity", "Line quantity must be greater than zero.")
                 );
             if (line.UnitAmountCents < 0)
-                return Result.Failure<Invoice>(
+                return Result.Failure(
                     new Error("Billing.Invoice.LineAmount", "Line unit amount cannot be negative.")
                 );
             if (line.TaxBasisPoints is < 0 or > 100_000)
-                return Result.Failure<Invoice>(
+                return Result.Failure(
                     new Error("Billing.Invoice.LineTax", "Tax basis points must be between 0 and 100000.")
                 );
 
@@ -143,32 +163,121 @@ public sealed class Invoice : AggregateRoot
             var lineTax = (long)
                 Math.Round(lineSubtotal * (line.TaxBasisPoints / 10_000.0), MidpointRounding.AwayFromZero);
             var lineTotal = lineSubtotal + lineTax;
-
-            invoice._lines.Add(
-                new InvoiceLineItem(
-                    invoice.Id,
-                    line.Description.Trim(),
-                    line.Quantity,
-                    Money.Create(line.UnitAmountCents, cur).Value,
-                    line.TaxBasisPoints,
-                    Money.Create(lineTax, cur).Value,
-                    Money.Create(lineTotal, cur).Value,
-                    line.CatalogItemId
-                )
+            computed.Add(
+                (line.Description.Trim(), line.Quantity, line.UnitAmountCents, line.TaxBasisPoints, lineTax, lineTotal, line.CatalogItemId)
             );
-
             subtotalCents += lineSubtotal;
             taxCents += lineTax;
         }
 
-        invoice.Subtotal = Money.Create(subtotalCents, cur).Value;
-        invoice.TaxTotal = Money.Create(taxCents, cur).Value;
-        invoice.DiscountTotal = Money.Zero(cur);
-        invoice.Total = Money.Create(subtotalCents + taxCents, cur).Value;
-        invoice.AmountPaid = Money.Zero(cur);
-        invoice.AmountDue = invoice.Total;
+        // 2) Reconciliar EN SITU: actualizar las filas existentes por posición, agregar las nuevas y quitar
+        //    las sobrantes. Editar cantidades/precios (mismo número de líneas) emite solo UPDATEs — nunca
+        //    DELETE+INSERT de la colección owned, que dispara un falso conflicto de concurrencia en EF.
+        for (var i = 0; i < computed.Count; i++)
+        {
+            var c = computed[i];
+            var unit = Money.Create(c.Unit, cur).Value;
+            var tax = Money.Create(c.Tax, cur).Value;
+            var total = Money.Create(c.Total, cur).Value;
+            if (i < _lines.Count)
+                _lines[i].Update(c.Desc, c.Qty, unit, c.Bps, tax, total, c.Cat);
+            else
+                _lines.Add(new InvoiceLineItem(Id, c.Desc, c.Qty, unit, c.Bps, tax, total, c.Cat));
+        }
+        for (var i = _lines.Count - 1; i >= computed.Count; i--)
+            _lines.RemoveAt(i);
 
-        return Result.Success(invoice);
+        Subtotal = Money.Create(subtotalCents, cur).Value;
+        TaxTotal = Money.Create(taxCents, cur).Value;
+        DiscountTotal = Money.Zero(cur);
+        Total = Money.Create(subtotalCents + taxCents, cur).Value;
+        return Result.Success();
+    }
+
+    /// <summary>Edita una factura editable: solo <see cref="InvoiceStatus.Draft"/> o una
+    /// <see cref="InvoiceStatus.Issued"/>/<see cref="InvoiceStatus.Sent"/> AÚN SIN PAGOS. Reemplaza
+    /// cliente/moneda/líneas/notas y recalcula totales; conserva número y estado. Una factura pagada,
+    /// parcialmente pagada, anulada o borrada no se edita (usar anulación + nueva factura).</summary>
+    public Result Edit(
+        CustomerSnapshot customer,
+        string currency,
+        IReadOnlyList<DraftInvoiceLine> lines,
+        string? notes,
+        DateTime nowUtc,
+        Guid actorUserId
+    )
+    {
+        // Libertad total (decisión del usuario): se edita CUALQUIER factura, incluso pagada — solo se
+        // impide sobre una anulada o borrada (esas son estados terminales). Los pagos ya aplicados se
+        // CONSERVAN y el saldo se recalcula contra el nuevo total.
+        if (DeletedAtUtc is not null)
+            return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be edited."));
+        if (Status == InvoiceStatus.Voided)
+            return Result.Failure(
+                new Error("Billing.Invoice.NotEditable", "A voided invoice cannot be edited.")
+            );
+        if (customer is null)
+            return Result.Failure(new Error("Billing.Invoice.CustomerRequired", "Customer is required."));
+        if (lines is null || lines.Count == 0)
+            return Result.Failure(new Error("Billing.Invoice.NoLines", "An invoice needs at least one line."));
+
+        var currencyCheck = Money.Create(0, currency);
+        if (currencyCheck.IsFailure)
+            return Result.Failure(currencyCheck.Error);
+        var cur = currencyCheck.Value.Currency;
+
+        var paidCents = AmountPaid.AmountCents; // preservar lo ya pagado
+
+        Customer = customer;
+        Currency = cur;
+        Notes = notes;
+
+        var applied = RebuildLines(cur, lines);
+        if (applied.IsFailure)
+            return applied;
+
+        AmountPaid = Money.Create(paidCents, cur).Value;
+        var dueCents = Total.AmountCents - paidCents;
+        AmountDue = Money.Create(dueCents < 0 ? 0 : dueCents, cur).Value;
+        UpdatedAtUtc = nowUtc;
+        LastModifiedBy = actorUserId;
+        return Result.Success();
+    }
+
+    /// <summary>Borrado (soft) de un BORRADOR únicamente. Una factura emitida no se borra: se anula
+    /// (<see cref="Void"/>). Idempotente: reborrar es no-op.</summary>
+    public Result SoftDeleteDraft(DateTime nowUtc, Guid actorUserId)
+    {
+        if (DeletedAtUtc is not null)
+            return Result.Success();
+        if (Status != InvoiceStatus.Draft)
+            return Result.Failure(
+                new Error("Billing.Invoice.NotDraft", $"Only a Draft invoice can be deleted (current: {Status}).")
+            );
+        DeletedAtUtc = nowUtc;
+        UpdatedAtUtc = nowUtc;
+        LastModifiedBy = actorUserId;
+        return Result.Success();
+    }
+
+    /// <summary>Anula una factura ya emitida/enviada/pagada: pasa a <see cref="InvoiceStatus.Voided"/> con
+    /// fecha y motivo. El stock descontado al emitir lo repone el handler. Idempotente: reanular es no-op.</summary>
+    public Result Void(string? reason, DateTime nowUtc, Guid actorUserId)
+    {
+        if (Status == InvoiceStatus.Voided)
+            return Result.Success();
+        if (DeletedAtUtc is not null)
+            return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be voided."));
+        if (Status is not (InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid or InvoiceStatus.Paid))
+            return Result.Failure(
+                new Error("Billing.Invoice.NotVoidable", $"An invoice in status {Status} cannot be voided.")
+            );
+        Status = InvoiceStatus.Voided;
+        VoidedAtUtc = nowUtc;
+        VoidReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        UpdatedAtUtc = nowUtc;
+        LastModifiedBy = actorUserId;
+        return Result.Success();
     }
 
     /// <summary>

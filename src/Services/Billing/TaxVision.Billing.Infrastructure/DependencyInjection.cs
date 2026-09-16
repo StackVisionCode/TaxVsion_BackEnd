@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.RateLimiting.Abstractions;
 using TaxVision.Billing.Infrastructure.Documents;
+using TaxVision.Billing.Infrastructure.Inventory;
 using TaxVision.Billing.Infrastructure.Observability;
 using TaxVision.Billing.Infrastructure.Payments;
 using TaxVision.Billing.Infrastructure.Permissions;
@@ -97,6 +98,19 @@ public static class DependencyInjection
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<BillingPaymentClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+
+        // --- M2M hacia Inventory (descuento de stock al emitir la factura, Fase 3) ---
+        services
+            .AddOptions<BillingInventoryOptions>()
+            .Bind(configuration.GetSection(BillingInventoryOptions.SectionName));
+        services.AddHttpClient<IInventoryStockClient, BillingInventoryClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<BillingInventoryOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
             }

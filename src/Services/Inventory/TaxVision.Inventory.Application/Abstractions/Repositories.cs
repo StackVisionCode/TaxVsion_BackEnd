@@ -10,6 +10,23 @@ public interface IStockRepository
 {
     Task<StockLevel?> GetByCatalogItemAsync(Guid tenantId, Guid catalogItemId, CancellationToken ct = default);
 
+    /// <summary>Niveles de stock de un lote de ítems (para la venta de una factura). Change-tracked (NO
+    /// AsNoTracking) porque el caller les aplica movimientos y persiste. Solo devuelve los que existen.</summary>
+    Task<IReadOnlyList<StockLevel>> GetByCatalogItemsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> catalogItemIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Todos los movimientos con esta referencia (el id de factura). Con ellos el commit de la
+    /// venta calcula el estado ACTUAL descontado por la factura y reconcilia por delta: así emitir, editar
+    /// (cambia cantidades) y anular (repone todo) son la misma operación idempotente.</summary>
+    Task<IReadOnlyList<StockMovement>> GetMovementsByReferenceAsync(
+        Guid tenantId,
+        string reference,
+        CancellationToken ct = default
+    );
+
     Task AddStockLevelAsync(StockLevel level, CancellationToken ct = default);
 
     Task AddMovementAsync(StockMovement movement, CancellationToken ct = default);
