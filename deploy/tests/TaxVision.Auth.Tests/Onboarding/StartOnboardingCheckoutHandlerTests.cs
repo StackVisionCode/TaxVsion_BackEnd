@@ -201,7 +201,12 @@ public sealed class StartOnboardingCheckoutHandlerTests
         var paymentId = Guid.NewGuid();
         var paymentApp = new FakePaymentAppOnboardingClient(
             Result.Success(
-                new PaymentAppCheckoutResult(paymentId, "https://checkout.example.com/session", "sess_123", now.AddHours(1))
+                new PaymentAppCheckoutResult(
+                    paymentId,
+                    "https://checkout.example.com/session",
+                    "sess_123",
+                    now.AddHours(1)
+                )
             )
         );
 

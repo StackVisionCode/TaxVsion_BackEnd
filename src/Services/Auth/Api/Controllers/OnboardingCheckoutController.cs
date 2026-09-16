@@ -138,7 +138,9 @@ public sealed class OnboardingCheckoutController(
     [HttpPost("resume-checkout")]
     [AllowAnonymous]
     [EnableRateLimiting("onboarding-checkout-create")]
-    [RateLimitExempt("Anonymous onboarding checkout resume keeps the native limiter; the opaque reference is the authorization.")]
+    [RateLimitExempt(
+        "Anonymous onboarding checkout resume keeps the native limiter; the opaque reference is the authorization."
+    )]
     [ProducesResponseType<StartOnboardingCheckoutResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ResumeCheckout(ResumeCheckoutRequest request, CancellationToken ct)
     {
@@ -225,7 +227,11 @@ public sealed class OnboardingCheckoutController(
         return StatusCode(error.ToHttpStatusCode(), error);
     }
 
-    private async Task<IActionResult> ReconcileAsync(Guid onboardingId, bool includeRegistrationUrl, CancellationToken ct)
+    private async Task<IActionResult> ReconcileAsync(
+        Guid onboardingId,
+        bool includeRegistrationUrl,
+        CancellationToken ct
+    )
     {
         var result = await bus.InvokeAsync<Result<ReconcileOnboardingPaymentResponse>>(
             new ReconcileOnboardingPaymentCommand(onboardingId, includeRegistrationUrl),

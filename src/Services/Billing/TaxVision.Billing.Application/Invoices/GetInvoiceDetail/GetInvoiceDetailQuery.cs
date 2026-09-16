@@ -8,13 +8,7 @@ namespace TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
 /// edición. El listado/summary no trae líneas; esto sí.</summary>
 public sealed record GetInvoiceDetailQuery(Guid TenantId, Guid InvoiceId);
 
-public sealed record InvoiceDetailCustomer(
-    Guid CustomerId,
-    string Name,
-    string? Email,
-    string? Phone,
-    string? TaxId
-);
+public sealed record InvoiceDetailCustomer(Guid CustomerId, string Name, string? Email, string? Phone, string? TaxId);
 
 public sealed record InvoiceDetailLine(
     string Description,
@@ -57,7 +51,8 @@ public static class GetInvoiceDetailHandler
 
         // Libertad total: se edita cualquier factura salvo una anulada (estado terminal).
         var editable = invoice.Status != Domain.ValueObjects.InvoiceStatus.Voided;
-        var voidable = invoice.Status
+        var voidable =
+            invoice.Status
             is Domain.ValueObjects.InvoiceStatus.Issued
                 or Domain.ValueObjects.InvoiceStatus.Sent
                 or Domain.ValueObjects.InvoiceStatus.PartiallyPaid

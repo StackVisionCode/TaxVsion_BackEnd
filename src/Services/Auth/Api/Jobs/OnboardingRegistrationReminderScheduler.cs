@@ -27,8 +27,7 @@ public sealed class OnboardingRegistrationReminderScheduler(
             try
             {
                 using var scope = scopeFactory.CreateScope();
-                var processor =
-                    scope.ServiceProvider.GetRequiredService<OnboardingRegistrationReminderProcessor>();
+                var processor = scope.ServiceProvider.GetRequiredService<OnboardingRegistrationReminderProcessor>();
                 var published = await processor.ProcessDueAsync(DateTime.UtcNow, stoppingToken);
 
                 if (published > 0)

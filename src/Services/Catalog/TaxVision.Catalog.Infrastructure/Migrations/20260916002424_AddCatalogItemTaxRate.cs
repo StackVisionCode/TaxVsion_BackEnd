@@ -15,15 +15,14 @@ namespace TaxVision.Catalog.Infrastructure.Migrations
                 table: "CatalogItems",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "TaxRateBasisPoints",
-                table: "CatalogItems");
+            migrationBuilder.DropColumn(name: "TaxRateBasisPoints", table: "CatalogItems");
         }
     }
 }

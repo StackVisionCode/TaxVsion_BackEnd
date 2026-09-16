@@ -14,7 +14,23 @@ public sealed class CatalogItemTests
 
     private static CatalogItem NewProduct(string? sku = "SKU-1", ItemKind kind = ItemKind.Product, bool track = true) =>
         CatalogItem
-            .Create(Tenant, User, "Widget", "desc", sku, "BC-1", Category, kind, Price, null, "unit", track, null, Now)
+            .Create(
+                Tenant,
+                User,
+                "Widget",
+                "desc",
+                sku,
+                "BC-1",
+                Category,
+                kind,
+                Price,
+                null,
+                "unit",
+                0,
+                track,
+                null,
+                Now
+            )
             .Value;
 
     [Fact]
@@ -46,6 +62,7 @@ public sealed class CatalogItemTests
                 Price,
                 null,
                 null,
+                0,
                 true,
                 null,
                 Now
@@ -85,6 +102,7 @@ public sealed class CatalogItemTests
             Price,
             null,
             null,
+            0,
             true,
             null,
             Now
@@ -111,6 +129,7 @@ public sealed class CatalogItemTests
                     Price,
                     null,
                     null,
+                    0,
                     true,
                     null,
                     Now
@@ -132,6 +151,7 @@ public sealed class CatalogItemTests
                     Price,
                     null,
                     null,
+                    0,
                     true,
                     null,
                     Now
@@ -156,6 +176,7 @@ public sealed class CatalogItemTests
             Price,
             null,
             null,
+            0,
             true,
             null,
             Now
@@ -199,9 +220,9 @@ public sealed class CatalogItemTests
     {
         var item = NewProduct();
         var newCat = Guid.NewGuid();
-        Assert.True(item.Update("Widget v2", "d2", "BC-2", newCat, "u2", "img", Now).IsSuccess);
+        Assert.True(item.Update("Widget v2", "d2", "BC-2", newCat, "u2", 0, "img", Now).IsSuccess);
         Assert.Equal("Widget v2", item.Name);
         Assert.Equal(newCat, item.CategoryId);
-        Assert.True(item.Update("", null, null, newCat, null, null, Now).IsFailure);
+        Assert.True(item.Update("", null, null, newCat, null, 0, null, Now).IsFailure);
     }
 }

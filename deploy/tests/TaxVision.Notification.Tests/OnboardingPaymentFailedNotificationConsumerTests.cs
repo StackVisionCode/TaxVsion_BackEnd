@@ -74,9 +74,7 @@ public sealed class OnboardingPaymentFailedNotificationConsumerTests
             CancellationToken ct = default
         ) =>
             Task.FromResult(
-                Result.Success(
-                    new ScribeRenderedEmail("Tu pago no se procesó", "<p>Inténtalo de nuevo</p>", null)
-                )
+                Result.Success(new ScribeRenderedEmail("Tu pago no se procesó", "<p>Inténtalo de nuevo</p>", null))
             );
     }
 

@@ -38,7 +38,9 @@ public static class DependencyInjection
 
         // Logo del tenant en el PDF: proyección local (TenantLogoRef, alimentada por eventos de Tenant)
         // + bajada on-demand de bytes desde CloudStorage vía M2M presignado. Best-effort (sin logo si falla).
-        services.AddOptions<CloudStorageClientOptions>().Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
+        services
+            .AddOptions<CloudStorageClientOptions>()
+            .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
         services.AddHttpClient<ITenantLogoResolver, CloudStorageTenantLogoResolver>(
             (sp, http) =>
             {

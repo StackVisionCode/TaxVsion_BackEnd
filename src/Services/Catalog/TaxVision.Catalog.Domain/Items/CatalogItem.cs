@@ -25,6 +25,7 @@ public sealed class CatalogItem : TenantEntity
     public ItemKind Kind { get; private set; }
     public Money Price { get; private set; } = default!;
     public Money? Cost { get; private set; }
+
     /// <summary>Tasa de impuesto por defecto del ítem, en puntos básicos (825 = 8.25%). 0 = sin impuesto.
     /// La factura la copia a la línea al agregar el ítem (editable). Rango [0, 100000].</summary>
     public int TaxRateBasisPoints { get; private set; }

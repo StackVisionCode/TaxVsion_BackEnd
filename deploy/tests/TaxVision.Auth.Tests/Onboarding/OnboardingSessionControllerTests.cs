@@ -59,7 +59,11 @@ public sealed class OnboardingSessionControllerTests
             InvokeHandler = _ =>
                 Result.Success(new CreateOnboardingResponse(Guid.NewGuid(), "owner@castillotax.com", Guid.NewGuid())),
         };
-        var controller = new OnboardingCheckoutController(bus, SessionService(new FakeOnboardingSessionStore()), new FakeOnboardingReturnReferenceStore())
+        var controller = new OnboardingCheckoutController(
+            bus,
+            SessionService(new FakeOnboardingSessionStore()),
+            new FakeOnboardingReturnReferenceStore()
+        )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -134,7 +138,11 @@ public sealed class OnboardingSessionControllerTests
     public async Task Payment_options_rejects_missing_onboarding_session_before_invoking_bus()
     {
         var bus = new FakeMessageBus { InvokeHandler = _ => Result.Success(new OnboardingPaymentOptionsResponse([])) };
-        var controller = new OnboardingCheckoutController(bus, SessionService(new FakeOnboardingSessionStore()), new FakeOnboardingReturnReferenceStore())
+        var controller = new OnboardingCheckoutController(
+            bus,
+            SessionService(new FakeOnboardingSessionStore()),
+            new FakeOnboardingReturnReferenceStore()
+        )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -265,7 +273,11 @@ public sealed class OnboardingSessionControllerTests
                     )
                 ),
         };
-        var controller = new OnboardingCheckoutController(bus, SessionService(new FakeOnboardingSessionStore()), new FakeOnboardingReturnReferenceStore())
+        var controller = new OnboardingCheckoutController(
+            bus,
+            SessionService(new FakeOnboardingSessionStore()),
+            new FakeOnboardingReturnReferenceStore()
+        )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };

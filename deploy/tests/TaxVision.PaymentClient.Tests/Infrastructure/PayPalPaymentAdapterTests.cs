@@ -71,7 +71,11 @@ public sealed class PayPalPaymentAdapterTests
             """;
         var adapter = CreateAdapter(RouteHandler(captureResponse: Ok(captureBody)));
 
-        var result = await adapter.AuthorizeChargeAsync(Credentials, Request(amountCents: 15000), CancellationToken.None);
+        var result = await adapter.AuthorizeChargeAsync(
+            Credentials,
+            Request(amountCents: 15000),
+            CancellationToken.None
+        );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PaymentStatus.Failed, result.Value.Status);
@@ -83,10 +87,12 @@ public sealed class PayPalPaymentAdapterTests
     {
         const string errorBody = """{ "name": "UNPROCESSABLE_ENTITY", "message": "Order already captured." }""";
         var adapter = CreateAdapter(
-            RouteHandler(captureResponse: new HttpResponseMessage(HttpStatusCode.UnprocessableEntity)
-            {
-                Content = new StringContent(errorBody, Encoding.UTF8, "application/json"),
-            })
+            RouteHandler(
+                captureResponse: new HttpResponseMessage(HttpStatusCode.UnprocessableEntity)
+                {
+                    Content = new StringContent(errorBody, Encoding.UTF8, "application/json"),
+                }
+            )
         );
 
         var result = await adapter.AuthorizeChargeAsync(Credentials, Request(), CancellationToken.None);

@@ -26,12 +26,7 @@ public static class VoidInvoiceHandler
 
         // Reponer el stock ANTES de anular: reconciliación a cantidades vacías (idempotente, nunca bloquea).
         // Un fallo (Inventory inalcanzable) aborta la anulación para reintentar sin dejar stock sin reponer.
-        var restocked = await inventory.CommitInvoiceSaleAsync(
-            command.TenantId,
-            invoice.Id,
-            [],
-            ct
-        );
+        var restocked = await inventory.CommitInvoiceSaleAsync(command.TenantId, invoice.Id, [], ct);
         if (restocked.IsFailure)
             return restocked;
 

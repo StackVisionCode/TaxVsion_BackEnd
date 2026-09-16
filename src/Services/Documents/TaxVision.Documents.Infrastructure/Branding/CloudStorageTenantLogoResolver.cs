@@ -49,7 +49,10 @@ public sealed class CloudStorageTenantLogoResolver(
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrEmpty(token))
         {
-            logger.LogWarning("No M2M token to fetch tenant logo for {TenantId}; PDF will render without logo.", tenantId);
+            logger.LogWarning(
+                "No M2M token to fetch tenant logo for {TenantId}; PDF will render without logo.",
+                tenantId
+            );
             return null;
         }
 
@@ -62,7 +65,11 @@ public sealed class CloudStorageTenantLogoResolver(
             using var fileResponse = await httpClient.GetAsync(url, ct);
             if (!fileResponse.IsSuccessStatusCode)
             {
-                logger.LogWarning("Tenant logo presigned download failed ({Status}) for {TenantId}.", (int)fileResponse.StatusCode, tenantId);
+                logger.LogWarning(
+                    "Tenant logo presigned download failed ({Status}) for {TenantId}.",
+                    (int)fileResponse.StatusCode,
+                    tenantId
+                );
                 return null;
             }
 
@@ -74,7 +81,11 @@ public sealed class CloudStorageTenantLogoResolver(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
-            logger.LogWarning(ex, "Could not resolve tenant logo for {TenantId}; PDF will render without logo.", tenantId);
+            logger.LogWarning(
+                ex,
+                "Could not resolve tenant logo for {TenantId}; PDF will render without logo.",
+                tenantId
+            );
             return null;
         }
     }
@@ -87,7 +98,11 @@ public sealed class CloudStorageTenantLogoResolver(
         using var response = await httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
-            logger.LogWarning("CloudStorage download-url call failed ({Status}) for file {FileId}.", (int)response.StatusCode, fileId);
+            logger.LogWarning(
+                "CloudStorage download-url call failed ({Status}) for file {FileId}.",
+                (int)response.StatusCode,
+                fileId
+            );
             return null;
         }
 

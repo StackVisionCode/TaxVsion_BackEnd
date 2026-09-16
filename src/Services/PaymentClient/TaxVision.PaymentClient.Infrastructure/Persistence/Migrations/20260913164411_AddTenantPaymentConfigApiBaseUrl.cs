@@ -15,15 +15,14 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                 table: "TenantPaymentConfigs",
                 type: "nvarchar(2048)",
                 maxLength: 2048,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ApiBaseUrl",
-                table: "TenantPaymentConfigs");
+            migrationBuilder.DropColumn(name: "ApiBaseUrl", table: "TenantPaymentConfigs");
         }
     }
 }

@@ -47,7 +47,8 @@ public static class CommitInvoiceSaleHandler
         var current = new Dictionary<Guid, int>();
         foreach (var m in priorMovements)
         {
-            var signed = m.Type == StockMovementType.Sale ? m.Quantity
+            var signed =
+                m.Type == StockMovementType.Sale ? m.Quantity
                 : m.Type == StockMovementType.Return ? -m.Quantity
                 : 0;
             current[m.CatalogItemId] = current.GetValueOrDefault(m.CatalogItemId) + signed;

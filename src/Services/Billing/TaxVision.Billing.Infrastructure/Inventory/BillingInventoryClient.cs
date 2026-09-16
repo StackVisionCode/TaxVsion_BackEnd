@@ -28,11 +28,7 @@ public sealed class BillingInventoryClient(
         CancellationToken ct = default
     )
     {
-        var token = await tokenProvider.GetTokenAsync(
-            BillingServiceClientsOptions.PlatformClientName,
-            tenantId,
-            ct
-        );
+        var token = await tokenProvider.GetTokenAsync(BillingServiceClientsOptions.PlatformClientName, tenantId, ct);
         if (string.IsNullOrEmpty(token))
             return Result.Failure(
                 new Error("Billing.Inventory.TokenFailed", "Could not acquire a service token for Inventory.")

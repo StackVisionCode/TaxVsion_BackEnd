@@ -139,7 +139,9 @@ public sealed class Invoice : AggregateRoot
     private Result RebuildLines(string cur, IReadOnlyList<DraftInvoiceLine> lines)
     {
         // 1) Validar y calcular TODO primero (sin mutar nada): si una línea es inválida, no se toca el estado.
-        var computed = new List<(string Desc, int Qty, long Unit, int Bps, long Tax, long Total, Guid? Cat)>(lines.Count);
+        var computed = new List<(string Desc, int Qty, long Unit, int Bps, long Tax, long Total, Guid? Cat)>(
+            lines.Count
+        );
         long subtotalCents = 0;
         long taxCents = 0;
         foreach (var line in lines)
@@ -151,9 +153,7 @@ public sealed class Invoice : AggregateRoot
                     new Error("Billing.Invoice.LineQuantity", "Line quantity must be greater than zero.")
                 );
             if (line.UnitAmountCents < 0)
-                return Result.Failure(
-                    new Error("Billing.Invoice.LineAmount", "Line unit amount cannot be negative.")
-                );
+                return Result.Failure(new Error("Billing.Invoice.LineAmount", "Line unit amount cannot be negative."));
             if (line.TaxBasisPoints is < 0 or > 100_000)
                 return Result.Failure(
                     new Error("Billing.Invoice.LineTax", "Tax basis points must be between 0 and 100000.")
@@ -164,7 +164,15 @@ public sealed class Invoice : AggregateRoot
                 Math.Round(lineSubtotal * (line.TaxBasisPoints / 10_000.0), MidpointRounding.AwayFromZero);
             var lineTotal = lineSubtotal + lineTax;
             computed.Add(
-                (line.Description.Trim(), line.Quantity, line.UnitAmountCents, line.TaxBasisPoints, lineTax, lineTotal, line.CatalogItemId)
+                (
+                    line.Description.Trim(),
+                    line.Quantity,
+                    line.UnitAmountCents,
+                    line.TaxBasisPoints,
+                    lineTax,
+                    lineTotal,
+                    line.CatalogItemId
+                )
             );
             subtotalCents += lineSubtotal;
             taxCents += lineTax;
@@ -213,9 +221,7 @@ public sealed class Invoice : AggregateRoot
         if (DeletedAtUtc is not null)
             return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be edited."));
         if (Status == InvoiceStatus.Voided)
-            return Result.Failure(
-                new Error("Billing.Invoice.NotEditable", "A voided invoice cannot be edited.")
-            );
+            return Result.Failure(new Error("Billing.Invoice.NotEditable", "A voided invoice cannot be edited."));
         if (customer is null)
             return Result.Failure(new Error("Billing.Invoice.CustomerRequired", "Customer is required."));
         if (lines is null || lines.Count == 0)
@@ -268,7 +274,10 @@ public sealed class Invoice : AggregateRoot
             return Result.Success();
         if (DeletedAtUtc is not null)
             return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be voided."));
-        if (Status is not (InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid or InvoiceStatus.Paid))
+        if (
+            Status
+            is not (InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid or InvoiceStatus.Paid)
+        )
             return Result.Failure(
                 new Error("Billing.Invoice.NotVoidable", $"An invoice in status {Status} cannot be voided.")
             );

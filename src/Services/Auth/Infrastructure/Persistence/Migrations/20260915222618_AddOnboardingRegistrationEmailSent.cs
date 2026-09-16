@@ -15,15 +15,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 name: "RegistrationEmailSentAtUtc",
                 table: "TenantOnboardings",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RegistrationEmailSentAtUtc",
-                table: "TenantOnboardings");
+            migrationBuilder.DropColumn(name: "RegistrationEmailSentAtUtc", table: "TenantOnboardings");
         }
     }
 }

@@ -84,7 +84,18 @@ public static class CreateOnboardingCheckoutHandler
         if (recordResult.IsFailure)
             return Result.Failure<OnboardingCheckoutResponse>(recordResult.Error);
 
-        await PersistAndAuditAsync(command, payment, session, isNew, payments, audit, unitOfWork, correlation, nowUtc, ct);
+        await PersistAndAuditAsync(
+            command,
+            payment,
+            session,
+            isNew,
+            payments,
+            audit,
+            unitOfWork,
+            correlation,
+            nowUtc,
+            ct
+        );
 
         logger.LogInformation(
             "Onboarding checkout {SaaSPaymentId} created for onboarding {OnboardingId}.",
@@ -175,7 +186,11 @@ public static class CreateOnboardingCheckoutHandler
         return Result.Success();
     }
 
-    private sealed record CheckoutPaymentResolution(OnboardingCheckoutResponse? Replay, SaaSPayment? Payment, bool IsNew);
+    private sealed record CheckoutPaymentResolution(
+        OnboardingCheckoutResponse? Replay,
+        SaaSPayment? Payment,
+        bool IsNew
+    );
 
     /// <summary>Decide qué pago usar: replay del intento vigente (mismo key, sesión usable), reintento
     /// de un intento fallido (reusa el aggregate vía <see cref="SaaSPayment.PrepareForOnboardingRetry"/>),

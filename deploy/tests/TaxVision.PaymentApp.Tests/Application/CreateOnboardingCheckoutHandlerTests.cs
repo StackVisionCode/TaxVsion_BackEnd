@@ -279,7 +279,14 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             "https://checkout.example.com/old",
             now
         );
-        payment.MarkFailed("card_declined", "Your card was declined.", willRetry: false, nextRetryAtUtc: null, Guid.Empty, now);
+        payment.MarkFailed(
+            "card_declined",
+            "Your card was declined.",
+            willRetry: false,
+            nextRetryAtUtc: null,
+            Guid.Empty,
+            now
+        );
         return payment;
     }
 

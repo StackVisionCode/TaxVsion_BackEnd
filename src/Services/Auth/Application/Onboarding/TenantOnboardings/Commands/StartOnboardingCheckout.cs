@@ -65,9 +65,7 @@ public static class StartOnboardingCheckoutHandler
         // El pagador es el email del onboarding. En sesión (cookie) el request lo trae y DEBE coincidir;
         // en el resume por token del email (que ya autorizó) el request lo deja vacío y se usa el del
         // onboarding directamente, sin exigir la cookie (el link puede abrirse en otro navegador).
-        var payerEmail = string.IsNullOrWhiteSpace(command.PayerEmail)
-            ? onboarding.Email
-            : command.PayerEmail.Trim();
+        var payerEmail = string.IsNullOrWhiteSpace(command.PayerEmail) ? onboarding.Email : command.PayerEmail.Trim();
         if (!string.Equals(onboarding.Email, payerEmail, StringComparison.OrdinalIgnoreCase))
         {
             return Result.Failure<StartOnboardingCheckoutResponse>(

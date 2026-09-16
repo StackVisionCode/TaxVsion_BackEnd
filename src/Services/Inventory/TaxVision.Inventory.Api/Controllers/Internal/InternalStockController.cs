@@ -33,9 +33,7 @@ public sealed class InternalStockController(IMessageBus bus, ITenantContext tena
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CommitSale([FromBody] CommitInvoiceSaleRequest request, CancellationToken ct)
     {
-        var lines = (request.Lines ?? [])
-            .Select(l => new CommitSaleLine(l.CatalogItemId, l.Quantity))
-            .ToList();
+        var lines = (request.Lines ?? []).Select(l => new CommitSaleLine(l.CatalogItemId, l.Quantity)).ToList();
 
         var result = await bus.InvokeAsync<Result>(
             new CommitInvoiceSaleCommand(tenant.TenantId, request.InvoiceId, lines),

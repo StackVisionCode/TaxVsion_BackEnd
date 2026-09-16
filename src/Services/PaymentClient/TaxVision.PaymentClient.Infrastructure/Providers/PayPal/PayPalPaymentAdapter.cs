@@ -192,8 +192,15 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
             if (!response.IsSuccessStatusCode)
             {
                 var (code, detail) = ReadPayPalError(body);
-                logger.LogWarning("PayPal refund failed for capture {Reference}: {Code} {Detail}", providerChargeReference, code, detail);
-                return Result.Failure<RefundResult>(new Error("PayPal.Refund.Failed", detail ?? "PayPal refund failed."));
+                logger.LogWarning(
+                    "PayPal refund failed for capture {Reference}: {Code} {Detail}",
+                    providerChargeReference,
+                    code,
+                    detail
+                );
+                return Result.Failure<RefundResult>(
+                    new Error("PayPal.Refund.Failed", detail ?? "PayPal refund failed.")
+                );
             }
 
             using var doc = JsonDocument.Parse(body);
@@ -225,7 +232,10 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
     ) =>
         Task.FromResult(
             Result.Failure<WebhookVerificationResult>(
-                new Error("PayPal.Webhook.NotSupported", "PayPal webhooks are not processed yet; capture is synchronous.")
+                new Error(
+                    "PayPal.Webhook.NotSupported",
+                    "PayPal webhooks are not processed yet; capture is synchronous."
+                )
             )
         );
 
@@ -264,7 +274,10 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
             {
                 logger.LogWarning("PayPal OAuth failed ({Status}).", (int)response.StatusCode);
                 return Result.Failure<string>(
-                    new Error("PayPal.Auth.Failed", "Could not authenticate with PayPal (check client-id/secret and URL).")
+                    new Error(
+                        "PayPal.Auth.Failed",
+                        "Could not authenticate with PayPal (check client-id/secret and URL)."
+                    )
                 );
             }
 

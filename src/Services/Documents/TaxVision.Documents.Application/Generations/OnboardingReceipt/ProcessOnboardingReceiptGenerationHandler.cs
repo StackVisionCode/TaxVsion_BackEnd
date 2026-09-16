@@ -89,7 +89,14 @@ public static class ProcessOnboardingReceiptGenerationHandler
                 );
             }
 
-            var pdf = await RenderAndConvertAsync(command, issuerProvider.GetSnapshot(), brandLogo, renderer, pdfConverter, ct);
+            var pdf = await RenderAndConvertAsync(
+                command,
+                issuerProvider.GetSnapshot(),
+                brandLogo,
+                renderer,
+                pdfConverter,
+                ct
+            );
             if (pdf.IsFailure)
             {
                 await FailAsync(generation, command, pdf.Error, unitOfWork, bus, now, logger, ct);

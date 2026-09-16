@@ -34,7 +34,12 @@ public static class DeleteTenantPaymentConfigHandler
             PaymentAuditAction.TenantPaymentConfigDeleted,
             command.ActorUserId,
             correlation.CorrelationId,
-            before: new { config.ProviderCode, config.Mode, config.IsActive },
+            before: new
+            {
+                config.ProviderCode,
+                config.Mode,
+                config.IsActive,
+            },
             after: (object?)null,
             reason: null,
             nowUtc,
